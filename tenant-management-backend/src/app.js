@@ -2,8 +2,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
-import authRoutes from "./routes/auth.route.js";
-
+import authRoute from "./modules/auth/auth.route.js";
+import propertyRoute from "./modules/tenant/property.route.js";
 import { connectDB } from "./config/db.js";
 
 const app = express();
@@ -12,8 +12,8 @@ const app = express();
 app.use(express.json());
 
 // Mount routes
-app.use("/api/auth", authRoutes);
-
+app.use("/api/auth", authRoute);
+app.use("/api/property", propertyRoute);
 // Connect DB
 connectDB()
   .then(() => {
