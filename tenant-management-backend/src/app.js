@@ -2,11 +2,20 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
+import cors from "cors";
 import authRoute from "./modules/auth/auth.route.js";
 import propertyRoute from "./modules/tenant/property.route.js";
 import { connectDB } from "./config/db.js";
 
 const app = express();
+
+// CORS middleware - must be before routes
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:5173", // Vite default port
+  credentials: true, // Allow cookies/credentials
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
 // Middleware to parse JSON
 app.use(express.json());
