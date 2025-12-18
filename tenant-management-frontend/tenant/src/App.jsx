@@ -1,28 +1,20 @@
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-function App() {
+import { Routes, Route } from "react-router-dom";
+import Signup from "./Signup";
+import Login from "./Login";
+import { Toaster } from "@/components/ui/sonner";
+import Home from "./Home";
+import AppLayout from "./components/layout/Applayout";
+
+export default function App() {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center">
-      <Button>Click me</Button>
-      <Select>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Theme" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="light">Light</SelectItem>
-          <SelectItem value="dark">Dark</SelectItem>
-          <SelectItem value="system">System</SelectItem>
-        </SelectContent>
-      </Select>
-      <h1>hello</h1>
-    </div>
+    <AppLayout>
+      <Routes>
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/home" element={<Home />} />
+      </Routes>
+      <Toaster />
+    </AppLayout>
   );
 }
-
-export default App;
