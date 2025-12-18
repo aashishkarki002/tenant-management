@@ -1,11 +1,12 @@
-import { Routes, Route } from "react-router-dom";
-import Signup from "./Signup";
-import Login from "./Login";
-import { Toaster } from "@/components/ui/sonner";
-import Home from "./Home";
-import AppLayout from "./components/layout/Applayout";
-
-export default function App() {
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+function App() {
   return (
     <AppLayout>
       <Routes>
