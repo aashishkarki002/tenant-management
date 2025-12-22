@@ -6,7 +6,7 @@ import cors from "cors";
 import authRoute from "./modules/auth/auth.route.js";
 import propertyRoute from "./modules/tenant/property.route.js";
 import { connectDB } from "./config/db.js";
-
+import cookieParser from "cookie-parser";
 const app = express();
 
 // CORS middleware - must be before routes
@@ -16,7 +16,7 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
-
+app.use(cookieParser());
 // Middleware to parse JSON
 app.use(express.json());
 

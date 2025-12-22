@@ -1,9 +1,16 @@
 import {Router} from "express";
 import { registerUser } from "./auth.controller.js";
 import { loginUser } from "./auth.controller.js";
+import { verifyEmail } from "./auth.controller.js";
+import { changePassword } from "./auth.controller.js";
 import middleware from "../../middleware/auth.middleware.js";
+import { logoutUser } from "./auth.controller.js";
+import { refreshToken } from "./auth.controller.js";
 const router = Router();
 router.post("/register", registerUser);
 router.post("/login", loginUser);
-
+router.get("/verify-email", verifyEmail);
+router.patch("/change-password", middleware, changePassword);
+router.post("/logout", middleware, logoutUser);
+router.post("/refresh-token", refreshToken);
 export default router;
