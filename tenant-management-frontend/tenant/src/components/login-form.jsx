@@ -31,12 +31,21 @@ export default function LoginForm({
       email: '',
       password: '',
     },
+    onSubmit: async (values) => {
+      const response = await fetch('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
+      });
+      const data = await response.json();
+      console.log(data);
+      console.log(response);
+    },
   });
-  const handleSubmit = (values) => {
-    console.log(values);
-  };
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props} onSubmit={formik.handleSubmit} >
+    <div className={cn("flex flex-col gap-6", className)} {...props} >
       
       <Card>
         <CardHeader>
@@ -46,7 +55,7 @@ export default function LoginForm({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={formik.handleSubmit} >
+          <form onSubmit={formik.handleSubmit}   >
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
@@ -61,11 +70,11 @@ export default function LoginForm({
                     Forgot your password?
                   </a>
                 </div>
-                <Input id="password" type="password" required formik={formik} onChange={formik.handleChange} value={formik.values.password} />
+                <Input id="password" type="password" required formik={formik} onChange={formik.handleChange} value={formik.values.password} name="password" />
               </Field>
               <Field>
-              <Toaster />
-                <Button type="submit"  onClick={() => toast("Event has been created")}  onSubmit={formik.handleSubmit} >Login</Button>
+             
+                <Button type="submit">Login</Button>
                 <Button variant="outline" type="button">
                   Login with Google
                 </Button>
