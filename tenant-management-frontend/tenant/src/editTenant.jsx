@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
 import { Separator } from "@/components/ui/separator";
 
-function AddTenants() {
+function EditTenant() {
   const formik = useFormik({
     initialValues: {
       name: "",
@@ -51,7 +51,7 @@ function AddTenants() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
             <ClipboardListIcon className="w-8 h-8 text-primary" />
-            New Tenant Registration
+            Edit Tenant
           </h1>
           <Button
             variant="outline"
@@ -462,10 +462,11 @@ function AddTenants() {
                   <div className="flex flex-col gap-3 pt-2">
                     <Button
                       type="submit"
-                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+                      variant="default"
+                      className="w-full bg-blue-500 hover:bg-blue-600 text-white shadow-md"
                       size="lg"
                     >
-                      Save & Register
+                      Save Changes
                     </Button>
                     <Button
                       type="button"
@@ -486,4 +487,4 @@ function AddTenants() {
     </div>
   );
 }
-export default AddTenants;
+export default EditTenant;

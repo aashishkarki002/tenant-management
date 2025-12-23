@@ -1,5 +1,11 @@
-import { SidebarProvider, SidebarTrigger, SidebarInset, SidebarRail } from "../ui/sidebar"
-import AppSidebar from "../app-sidebar"
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  SidebarInset,
+  SidebarRail,
+} from "../ui/sidebar";
+import AppSidebar from "../app-sidebar";
+import Header from "../header";
 
 export default function AppLayout({ children }) {
   return (
@@ -9,11 +15,10 @@ export default function AppLayout({ children }) {
       <SidebarInset>
         <header className="flex items-center border-b px-4 py-2">
           <SidebarTrigger />
+          <Header />
         </header>
-        <main className="flex-1 p-4 overflow-x-hidden">
-          {children}
-        </main>
+        <main className="flex-1 p-4 overflow-x-hidden">{children}</main>
       </SidebarInset>
     </SidebarProvider>
-  )
+  );
 }

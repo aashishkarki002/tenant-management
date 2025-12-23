@@ -1,4 +1,12 @@
-import { LayoutDashboard, Users, DollarSign, FileText, BarChart, Wrench, Banknote } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  DollarSign,
+  FileText,
+  BarChart,
+  Wrench,
+  Banknote,
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -10,17 +18,24 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarFooter,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 import { Link } from "react-router-dom";
 
 // Menu items
 const items = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard ,},
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Tenants", url: "/tenants", icon: Users },
   { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
   { title: "Accounting", url: "/accounting", icon: FileText },
@@ -30,17 +45,32 @@ const items = [
 ];
 
 export default function AppSidebar() {
+  const { isMobile, setOpenMobile } = useSidebar();
+  const handleNav = () => {
+    if (isMobile) setOpenMobile(false);
+  };
+
   return (
     <Sidebar variant="sidebar">
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xl font-bold ml-10 text-black">EasyManage</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-xl font-bold ml-10 mt-10 text-black">
+            EasyManage
+          </SidebarGroupLabel>
+          <Separator className="w-full h-1 bg-gray-200 my-2" />
           <SidebarGroupLabel className="mt-8 p-3">Main Menu</SidebarGroupLabel>
           <SidebarGroupContent className="p-3">
             <SidebarMenu>
               {items.map((item) => (
-                <SidebarMenuItem key={item.title} className="mb-2 text-gray-500">
-                  <SidebarMenuButton asChild className="hover:bg-blue-100 hover:text-blue-600 rounded-md p-2 flex items-center gap-2">
+                <SidebarMenuItem
+                  key={item.title}
+                  className="mb-2 text-gray-500"
+                >
+                  <SidebarMenuButton
+                    asChild
+                    className="hover:bg-blue-100 hover:text-blue-600 rounded-md p-2 flex items-center gap-2"
+                    onClick={handleNav}
+                  >
                     <Link to={item.url}>
                       <item.icon className="w-5 h-5" />
                       <span>{item.title}</span>
@@ -64,7 +94,9 @@ export default function AppSidebar() {
                     <AvatarFallback>CN</AvatarFallback>
                   </Avatar>
                   <div className="text-center font-semibold">Admin</div>
-                  <div className="text-center text-gray-500 text-sm">abs@gmail.com</div>
+                  <div className="text-center text-gray-500 text-sm">
+                    abs@gmail.com
+                  </div>
                 </CardHeader>
               </Card>
             </button>
