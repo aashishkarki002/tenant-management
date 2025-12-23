@@ -3,8 +3,7 @@
   dotenv.config();
   const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ;
   const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ;
-  console.log("Access Secret:", JWT_ACCESS_SECRET);
-console.log("Refresh Secret:", JWT_REFRESH_SECRET);
+
 
   const ACCESS_EXPIRES_IN = process.env.ACCESS_EXPIRES_IN || "15m";
   const REFRESH_EXPIRES_IN = process.env.REFRESH_EXPIRES_IN || "7d";
