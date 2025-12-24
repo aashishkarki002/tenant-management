@@ -10,10 +10,12 @@ export default function (req, res, next) {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-    req.admin = decoded; 
+    req.admin = decoded;
     next();
   } catch (error) {
     console.error(error);
-    return res.status(401).json({ success: false, message: "Invalid or expired token" });
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token" });
   }
 }

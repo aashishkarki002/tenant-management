@@ -1,12 +1,13 @@
 import Admin from "./admin.Model.js";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { loginUserService } from "./auth.services.js";
 import { sendEmail } from "../../config/nodemailer.js";
 import { changePasswordService } from "./auth.services.js";
+import { generateAccessToken, generateRefreshToken } from "../../utils/jwt.js";
 import dotenv from "dotenv";
 import generateEmailVerificationToken from "../../utils/token.js";
 dotenv.config();
-
 
 export const registerUser = async (req, res) => {
   try {
@@ -14,12 +15,12 @@ export const registerUser = async (req, res) => {
 
     const existingUser = await Admin.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: "User already exists" });
+      return res
+        .status(400)
+        .json({ success: false, message: "User already exists" });
     }
 
     const { rawToken, hashedToken, expires } = generateEmailVerificationToken();
-
-
 
     const newUser = await Admin.create({
       name,
@@ -32,7 +33,7 @@ export const registerUser = async (req, res) => {
       isEmailVerified: false,
     });
 
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${rawToken}`;
+    const verificationUrl = `${process.env.BACKEND_URL}/api/auth/verify-email?token=${rawToken}`;
 
     await sendEmail({
       to: email,
@@ -51,14 +52,18 @@ export const registerUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Register error:", error);
-    return res.status(500).json({ success: false, message: "User creation failed" });
+    return res
+      .status(500)
+      .json({ success: false, message: "User creation failed" });
   }
 };
 export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
     if (!token) {
-      return res.status(400).json({ success: false, message: "Verification token is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Verification token is required" });
     }
 
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
@@ -69,11 +74,15 @@ export const verifyEmail = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(400).json({ success: false, message: "Invalid or expired token" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired token" });
     }
 
     if (user.isEmailVerified) {
-      return res.status(200).json({ success: true, message: "Email already verified" });
+      return res
+        .status(200)
+        .json({ success: true, message: "Email already verified" });
     }
 
     user.isEmailVerified = true;
@@ -81,10 +90,53 @@ export const verifyEmail = async (req, res) => {
     user.emailVerificationTokenExpiresAt = undefined;
     await user.save();
 
-    return res.status(200).json({ success: true, message: "Email verified successfully" });
+    return res.redirect(
+      `${process.env.FRONTEND_URL}/login?success=Email verified successfully. Please login.`
+    );
   } catch (error) {
     console.error("Verify email error:", error);
-    return res.status(500).json({ success: false, message: "Email verification failed" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Email verification failed" });
+  }
+};
+export const resendEmailVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await Admin.findOne({ email });
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User not found" });
+    }
+    if (user.isEmailVerified) {
+      return res
+        .status(200)
+        .json({ success: true, message: "Email already verified" });
+    }
+    const { rawToken, hashedToken, expires } = generateEmailVerificationToken();
+    user.emailVerificationToken = hashedToken;
+    user.emailVerificationTokenExpiresAt = expires;
+    await user.save();
+    const verificationUrl = `${process.env.BACKEND_URL}/api/auth/verify-email?token=${rawToken}`;
+    await sendEmail({
+      to: email,
+      subject: "Verify your email",
+      html: `
+      <h2>Verify your email</h2>
+      <p>Click the link below to verify your account:</p>
+      <a href="${verificationUrl}">${verificationUrl}</a>
+      <p>This link expires in 10 minutes.</p>
+    `,
+    });
+    return res
+      .status(200)
+      .json({ success: true, message: "Email verification link sent" });
+  } catch (error) {
+    console.error("Resend email verification error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Email verification failed" });
   }
 };
 export const loginUser = async (req, res) => {
@@ -92,7 +144,9 @@ export const loginUser = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: "Email and password are required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and password are required" });
     }
 
     const result = await loginUserService(email, password);
@@ -101,7 +155,6 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: result.message });
     }
 
-     
     res.cookie("refreshToken", result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -126,32 +179,42 @@ export const loginUser = async (req, res) => {
     return res.status(500).json({ success: false, message: "Login failed" });
   }
 };
-export const changePassword = async (req, res ) => {
+export const changePassword = async (req, res) => {
   try {
+    const adminId = req.admin?.id;
 
-const adminId = req.admin?.id;
+    if (!adminId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Admin ID is required" });
+    }
 
-if (!adminId) {
-    return res.status(400).json({ success: false, message: "Admin ID is required" });
-}
+    const { oldPassword, newPassword } = req.body;
 
-    const {  oldPassword, newPassword } = req.body;
-
-  if (!oldPassword || !newPassword) {
-    return res.status(400).json({ success: false, message: "Old password and new password are required" });
-  }
-  if (oldPassword === newPassword) {
-    return res.status(400).json({ success: false, message: "New password cannot be the same as the old password" });
-  }
-    const result = await changePasswordService(adminId, oldPassword, newPassword);
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Old password and new password are required",
+      });
+    }
+    if (oldPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password cannot be the same as the old password",
+      });
+    }
+    const result = await changePasswordService(
+      adminId,
+      oldPassword,
+      newPassword
+    );
     res.cookie("refreshToken", result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-   return res.status(200).json({ success: true, message: result.message,  });
-
+    return res.status(200).json({ success: true, message: result.message });
   } catch (error) {
     console.error("Change password error:", error);
     throw new Error("Change password failed");
@@ -161,15 +224,19 @@ export const logoutUser = async (req, res) => {
   try {
     const adminId = req.admin?.id;
     if (!adminId) {
-      return res.status(400).json({ success: false, message: "Admin ID is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Admin ID is required" });
     }
-   res.clearCookie("refreshToken",{
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 0,
-   });
-    return res.status(200).json({ success: true, message: "Logout successful" });
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 0,
+    });
+    return res
+      .status(200)
+      .json({ success: true, message: "Logout successful" });
   } catch (error) {
     console.error("Logout error:", error);
     return res.status(500).json({ success: false, message: "Logout failed" });
@@ -187,11 +254,19 @@ export const refreshToken = async (req, res) => {
 
     const admin = await Admin.findById(decoded.id).select("+password");
     if (!admin) {
-      return res.status(401).json({ success: false, message: "Admin not found" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Admin not found" });
     }
 
-    const newAccessToken = generateAccessToken({ id: admin._id, role: admin.role });
-    const newRefreshToken = generateRefreshToken({ id: admin._id, role: admin.role });
+    const newAccessToken = generateAccessToken({
+      id: admin._id,
+      role: admin.role,
+    });
+    const newRefreshToken = generateRefreshToken({
+      id: admin._id,
+      role: admin.role,
+    });
 
     res.cookie("refreshToken", newRefreshToken, {
       httpOnly: true,
@@ -215,5 +290,20 @@ export const refreshToken = async (req, res) => {
   } catch (error) {
     console.error("Refresh token error:", error);
     return res.status(401).json({ success: false, message: "Unauthorized" });
+  }
+};
+
+export const getMe = async (req, res) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      admin: req.admin,
+    });
+  } catch (error) {
+    console.error("Get me error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Get me failed",
+    });
   }
 };
