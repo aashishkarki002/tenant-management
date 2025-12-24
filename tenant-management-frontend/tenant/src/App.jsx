@@ -15,6 +15,7 @@ import AddTenants from "./addTenants";
 import Demo from "./demo";
 import VerifyEmail from "./verify_email";
 import EditTenant from "./editTenant";
+import Admin from "./Admin";
 export default function App() {
   const location = useLocation();
   const path = location.pathname.toLowerCase();
@@ -32,10 +33,11 @@ export default function App() {
       <Route path="/revenue" element={<Revenue />} />
       <Route path="/maintenance" element={<Maintenance />} />
       <Route path="/cheque-drafts" element={<Cheque_drafts />} />
-      <Route path="/addTenants" element={<AddTenants />} />
+      <Route path="/tenant/addTenants" element={<AddTenants />} />
       <Route path="/demo" element={<Demo />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
-      <Route path="/editTenant" element={<EditTenant />} />
+      <Route path="/tenant/editTenant" element={<EditTenant />} />
+      <Route path="/admin" element={<Admin />} />
     </Routes>
   );
 

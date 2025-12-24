@@ -96,7 +96,7 @@ export default function Tenants() {
            cursor-pointer
            "
             onClick={() => {
-              navigate("/addTenants");
+              navigate("/tenant/addTenants");
             }}
           >
             <Plus className="w-5 h-5" />
@@ -119,7 +119,9 @@ export default function Tenants() {
                     <DropdownMenuContent>
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => navigate("/editTenant")}>
+                      <DropdownMenuItem
+                        onClick={() => navigate("/tenant/editTenant")}
+                      >
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem>Delete</DropdownMenuItem>
@@ -190,7 +192,11 @@ export default function Tenants() {
                     <DropdownMenuContent>
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem>Edit</DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => navigate("/tenant/editTenant")}
+                      >
+                        Edit
+                      </DropdownMenuItem>
                       <DropdownMenuItem>Delete</DropdownMenuItem>
                       <DropdownMenuItem>View Details</DropdownMenuItem>
                     </DropdownMenuContent>

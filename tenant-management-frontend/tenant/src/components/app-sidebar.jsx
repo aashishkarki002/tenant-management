@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-
+import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
 
 // Menu items
@@ -46,6 +46,9 @@ const items = [
 
 export default function AppSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
+
+  const navigate = useNavigate();
+
   const handleNav = () => {
     if (isMobile) setOpenMobile(false);
   };
@@ -103,7 +106,7 @@ export default function AppSidebar() {
           </DropdownMenuTrigger>
 
           <DropdownMenuContent side="top" align="center" className="w-44">
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate("/admin")}>
               <span>Account</span>
             </DropdownMenuItem>
             <DropdownMenuItem>
