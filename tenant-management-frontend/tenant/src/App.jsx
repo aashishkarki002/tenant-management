@@ -16,6 +16,7 @@ import Demo from "./demo";
 import VerifyEmail from "./verify_email";
 import EditTenant from "./editTenant";
 import Admin from "./Admin";
+
 export default function App() {
   const location = useLocation();
   const path = location.pathname.toLowerCase();
@@ -38,6 +39,7 @@ export default function App() {
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/tenant/editTenant" element={<EditTenant />} />
       <Route path="/admin" element={<Admin />} />
+      
     </Routes>
   );
 
