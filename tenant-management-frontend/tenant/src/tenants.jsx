@@ -8,6 +8,8 @@ import { Mail } from "lucide-react";
 import { Phone } from "lucide-react";
 import { Calendar } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { useState, useEffect } from "react";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,9 +27,36 @@ import {
 import { ArrowDown } from "lucide-react";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import TenantCard from "./components/TenantCard";
+import axios from "axios";
 
 export default function Tenants() {
+const [tenants, setTenants] = useState([]);
+const [properties, setProperties] = useState([]);
+
+useEffect(() => {
+  const fetchtenants = async () => {
+    const response = await axios.get("http://localhost:3000/api/tenant/get-tenants");
+    const data = await response.data;
+    setTenants(data.tenants);
+  }
+const fetchblocks = async () => {
+  const response = await axios.get("http://localhost:3000/api/property/get-property");
+  const data = await response.data;
+  setProperties(data.property || []);
+  console.log(data.property);
+}
+
+  fetchtenants();
+  fetchblocks();
+ 
+}, []);
+
+
+
+
   const navigate = useNavigate();
+
   return (
     <div>
       <div className="flex justify-between">
@@ -46,7 +75,7 @@ export default function Tenants() {
         </div>
 
         {/* Dropdown */}
-        <div className="w-full sm:w-auto">
+        <div className="w-full sm:w-auto">  
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -60,29 +89,34 @@ export default function Tenants() {
 
             <DropdownMenuContent className="w-full sm:w-56" align="start">
               <DropdownMenuLabel>Select Block</DropdownMenuLabel>
-
+         
               <DropdownMenuGroup className="flex flex-col gap-1">
-                {/* Birendra Block Submenu */}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="w-full text-left">
-                    Birendra Block
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-full sm:w-56">
-                    <DropdownMenuItem>Sagar Block</DropdownMenuItem>
-                    <DropdownMenuItem>Jyoti Block</DropdownMenuItem>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-
-                {/* Narendra Block Submenu */}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="w-full text-left">
-                    Narendra Block
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-full sm:w-56">
-                    <DropdownMenuItem>Saurya Block</DropdownMenuItem>
-                    <DropdownMenuItem>Block</DropdownMenuItem>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
+                {properties && properties.length > 0 ? (
+                  properties.flatMap((property) => 
+                    property.blocks && property.blocks.length > 0 
+                      ? property.blocks.map((block) => (
+                          <DropdownMenuSub key={block._id}>
+                            <DropdownMenuSubTrigger className="w-full text-left">
+                              {block.name || `Block ${block._id}`}
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-full sm:w-56">
+                              {block.innerBlocks && block.innerBlocks.length > 0 ? (
+                                block.innerBlocks.map((innerBlock) => (
+                                  <DropdownMenuItem key={innerBlock._id}>
+                                    {innerBlock.name || `Inner Block ${innerBlock._id}`}
+                                  </DropdownMenuItem>
+                                ))
+                              ) : (
+                                <DropdownMenuItem disabled>No inner blocks</DropdownMenuItem>
+                              )}
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+                        ))
+                      : []
+                  )
+                ) : (
+                  <DropdownMenuItem disabled>No blocks available</DropdownMenuItem>
+                )}
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -106,428 +140,13 @@ export default function Tenants() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ">
-        <Card className="w-full h-70 hover:shadow-lg transition-shadow duration-300">
-          <CardContent>
-            <div className="text-center">
-              <div className="flex justify-between">
-                <h2 className="text-black text-lg font-semibold">
-                  Utshaha shrestha
-                </h2>
-                <p>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger>⋮</DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => navigate("/tenant/editTenant")}
-                      >
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>Delete</DropdownMenuItem>
-                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </p>
-              </div>
-
-              <p className="text-gray-500 text-sm text-left flex items-center gap-2">
-                <House className="w-4 h-4 text-gray-500" />
-                Unit 101
-              </p>
-            </div>
-            <div className="text-gray-500 text-sm mt-3">
-              <div className="flex flex-col gap-2 w-full ">
-                <div className="flex mb-2 justify-between items-center w-full">
-                  <p className="text-black text-sm">Status</p>
-                  <Badge
-                    variant="outline"
-                    className="bg-green-50 text-green-600 w-20 border-green-600"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="text-black text-sm">Rent</p>
-                  <p className="text-black text-sm ml-3">₹80000</p>
-                </div>
-              </div>
-              <div className="flex justify-between items-center w-full">
-                <Badge className="bg-blue-50 text-blue-600 mr-2 w-full p-4 mt-2 rounded-md ">
-                  <div className="flex justify-between items-center w-full">
-                    <div className="flex items-center">
-                      <Calendar className="w-5 h-5 text-gray-500 mr-2" />
-                      Lease End
-                    </div>
-                    <div>
-                      <p className="text-black text-sm ml-3">2025-12-18</p>
-                    </div>
-                  </div>
-                </Badge>
-              </div>
-              <Separator className="my-2" />
-              <div className="flex justify-between items-center w-full ">
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-green-100 hover:text-green-600">
-                  <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
-                  Call
-                </Button>
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-blue-100 hover:text-blue-600">
-                  <Mail className="w-5 h-5 text-black mr-2  " />
-                  Email
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="w-full h-70 hover:shadow-lg transition-shadow duration-300">
-          <CardContent>
-            <div className="text-center">
-              <div className="flex justify-between">
-                <h2 className="text-black text-lg font-semibold">
-                  Utshaha shrestha
-                </h2>
-                <p>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger>⋮</DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => navigate("/tenant/editTenant")}
-                      >
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>Delete</DropdownMenuItem>
-                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </p>
-              </div>
-
-              <p className="text-gray-500 text-sm text-left flex items-center gap-2">
-                <House className="w-4 h-4 text-gray-500" />
-                Unit 101
-              </p>
-            </div>
-            <div className="text-gray-500 text-sm mt-3">
-              <div className="flex flex-col gap-2 w-full ">
-                <div className="flex mb-2 justify-between items-center w-full">
-                  <p className="text-black text-sm">Status</p>
-                  <Badge
-                    variant="outline"
-                    className="bg-green-50 text-green-600 w-20 border-green-600"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="text-black text-sm">Rent</p>
-                  <p className="text-black text-sm ml-3">₹80000</p>
-                </div>
-              </div>
-              <div className="flex justify-between items-center w-full">
-                <Badge className="bg-blue-50 text-blue-600 mr-2 w-full p-4 mt-2 rounded-md ">
-                  <div className="flex justify-between items-center w-full">
-                    <div className="flex items-center">
-                      <Calendar className="w-5 h-5 text-gray-500 mr-2" />
-                      Lease End
-                    </div>
-                    <div>
-                      <p className="text-black text-sm ml-3">2025-12-18</p>
-                    </div>
-                  </div>
-                </Badge>
-              </div>
-              <Separator className="my-2" />
-              <div className="flex justify-between items-center w-full ">
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-green-100 hover:text-green-600">
-                  <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
-                  Call
-                </Button>
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-blue-100 hover:text-blue-600">
-                  <Mail className="w-5 h-5 text-black mr-2  " />
-                  Email
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="w-full h-70 hover:shadow-lg transition-shadow duration-300">
-          <CardContent>
-            <div className="text-center">
-              <div className="flex justify-between">
-                <h2 className="text-black text-lg font-semibold">
-                  Utshaha shrestha
-                </h2>
-                <p>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger>⋮</DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>Edit</DropdownMenuItem>
-                      <DropdownMenuItem>Delete</DropdownMenuItem>
-                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </p>
-              </div>
-
-              <p className="text-gray-500 text-sm text-left flex items-center gap-2">
-                <House className="w-4 h-4 text-gray-500" />
-                Unit 101
-              </p>
-            </div>
-            <div className="text-gray-500 text-sm mt-3">
-              <div className="flex flex-col gap-2 w-full ">
-                <div className="flex mb-2 justify-between items-center w-full">
-                  <p className="text-black text-sm">Status</p>
-                  <Badge
-                    variant="outline"
-                    className="bg-green-50 text-green-600 w-20 border-green-600"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="text-black text-sm">Rent</p>
-                  <p className="text-black text-sm ml-3">₹80000</p>
-                </div>
-              </div>
-              <div className="flex justify-between items-center w-full">
-                <Badge className="bg-blue-50 text-blue-600 mr-2 w-full p-4 mt-2 rounded-md ">
-                  <div className="flex justify-between items-center w-full">
-                    <div className="flex items-center">
-                      <Calendar className="w-5 h-5 text-gray-500 mr-2" />
-                      Lease End
-                    </div>
-                    <div>
-                      <p className="text-black text-sm ml-3">2025-12-18</p>
-                    </div>
-                  </div>
-                </Badge>
-              </div>
-              <Separator className="my-2" />
-              <div className="flex justify-between items-center w-full ">
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-green-100 hover:text-green-600">
-                  <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
-                  Call
-                </Button>
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-blue-100 hover:text-blue-600">
-                  <Mail className="w-5 h-5 text-black mr-2  " />
-                  Email
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="w-full h-70 hover:shadow-lg transition-shadow duration-300">
-          <CardContent>
-            <div className="text-center">
-              <div className="flex justify-between">
-                <h2 className="text-black text-lg font-semibold">
-                  Utshaha shrestha
-                </h2>
-                <p>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger>⋮</DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>Edit</DropdownMenuItem>
-                      <DropdownMenuItem>Delete</DropdownMenuItem>
-                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </p>
-              </div>
-
-              <p className="text-gray-500 text-sm text-left flex items-center gap-2">
-                <House className="w-4 h-4 text-gray-500" />
-                Unit 101
-              </p>
-            </div>
-            <div className="text-gray-500 text-sm mt-3">
-              <div className="flex flex-col gap-2 w-full ">
-                <div className="flex mb-2 justify-between items-center w-full">
-                  <p className="text-black text-sm">Status</p>
-                  <Badge
-                    variant="outline"
-                    className="bg-green-50 text-green-600 w-20 border-green-600"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="text-black text-sm">Rent</p>
-                  <p className="text-black text-sm ml-3">₹80000</p>
-                </div>
-              </div>
-              <div className="flex justify-between items-center w-full">
-                <Badge className="bg-blue-50 text-blue-600 mr-2 w-full p-4 mt-2 rounded-md ">
-                  <div className="flex justify-between items-center w-full">
-                    <div className="flex items-center">
-                      <Calendar className="w-5 h-5 text-gray-500 mr-2" />
-                      Lease End
-                    </div>
-                    <div>
-                      <p className="text-black text-sm ml-3">2025-12-18</p>
-                    </div>
-                  </div>
-                </Badge>
-              </div>
-              <Separator className="my-2" />
-              <div className="flex justify-between items-center w-full ">
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-green-100 hover:text-green-600">
-                  <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
-                  Call
-                </Button>
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-blue-100 hover:text-blue-600">
-                  <Mail className="w-5 h-5 text-black mr-2  " />
-                  Email
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="w-full h-70 hover:shadow-lg transition-shadow duration-300">
-          <CardContent>
-            <div className="text-center">
-              <div className="flex justify-between">
-                <h2 className="text-black text-lg font-semibold">
-                  Utshaha shrestha
-                </h2>
-                <p>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger>⋮</DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>Edit</DropdownMenuItem>
-                      <DropdownMenuItem>Delete</DropdownMenuItem>
-                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </p>
-              </div>
-
-              <p className="text-gray-500 text-sm text-left flex items-center gap-2">
-                <House className="w-4 h-4 text-gray-500" />
-                Unit 101
-              </p>
-            </div>
-            <div className="text-gray-500 text-sm mt-3">
-              <div className="flex flex-col gap-2 w-full ">
-                <div className="flex mb-2 justify-between items-center w-full">
-                  <p className="text-black text-sm">Status</p>
-                  <Badge
-                    variant="outline"
-                    className="bg-green-50 text-green-600 w-20 border-green-600"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="text-black text-sm">Rent</p>
-                  <p className="text-black text-sm ml-3">₹80000</p>
-                </div>
-              </div>
-              <div className="flex justify-between items-center w-full">
-                <Badge className="bg-blue-50 text-blue-600 mr-2 w-full p-4 mt-2 rounded-md ">
-                  <div className="flex justify-between items-center w-full">
-                    <div className="flex items-center">
-                      <Calendar className="w-5 h-5 text-gray-500 mr-2" />
-                      Lease End
-                    </div>
-                    <div>
-                      <p className="text-black text-sm ml-3">2025-12-18</p>
-                    </div>
-                  </div>
-                </Badge>
-              </div>
-              <Separator className="my-2" />
-              <div className="flex justify-between items-center w-full ">
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-green-100 hover:text-green-600">
-                  <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
-                  Call
-                </Button>
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-blue-100 hover:text-blue-600">
-                  <Mail className="w-5 h-5 text-black mr-2  " />
-                  Email
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="w-full h-70 hover:shadow-lg transition-shadow duration-300">
-          <CardContent>
-            <div className="text-center">
-              <div className="flex justify-between">
-                <h2 className="text-black text-lg font-semibold">
-                  Utshaha shrestha
-                </h2>
-                <p>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger>⋮</DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>Edit</DropdownMenuItem>
-                      <DropdownMenuItem>Delete</DropdownMenuItem>
-                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </p>
-              </div>
-
-              <p className="text-gray-500 text-sm text-left flex items-center gap-2">
-                <House className="w-4 h-4 text-gray-500" />
-                Unit 101
-              </p>
-            </div>
-            <div className="text-gray-500 text-sm mt-3">
-              <div className="flex flex-col gap-2 w-full ">
-                <div className="flex mb-2 justify-between items-center w-full">
-                  <p className="text-black text-sm">Status</p>
-                  <Badge
-                    variant="outline"
-                    className="bg-green-50 text-green-600 w-20 border-green-600"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="text-black text-sm">Rent</p>
-                  <p className="text-black text-sm ml-3">₹80000</p>
-                </div>
-              </div>
-              <div className="flex justify-between items-center w-full">
-                <Badge className="bg-blue-50 text-blue-600 mr-2 w-full p-4 mt-2 rounded-md ">
-                  <div className="flex justify-between items-center w-full">
-                    <div className="flex items-center">
-                      <Calendar className="w-5 h-5 text-gray-500 mr-2" />
-                      Lease End
-                    </div>
-                    <div>
-                      <p className="text-black text-sm ml-3">2025-12-18</p>
-                    </div>
-                  </div>
-                </Badge>
-              </div>
-              <Separator className="my-2" />
-              <div className="flex justify-between items-center w-full ">
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-green-100 hover:text-green-600">
-                  <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
-                  Call
-                </Button>
-                <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-blue-100 hover:text-blue-600">
-                  <Mail className="w-5 h-5 text-black mr-2  " />
-                  Email
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {tenants.length === 0 ? (
+          <p>No tenants found</p>
+        ) : (
+          tenants.map((tenant) => (
+            <TenantCard key={tenant._id} tenant={tenant} />
+          ))
+        )}
       </div>
     </div>
   );
