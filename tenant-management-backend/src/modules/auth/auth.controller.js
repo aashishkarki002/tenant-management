@@ -155,11 +155,39 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: result.message });
     }
 
+    // Validate that tokens were generated
+    if (!result.accessToken) {
+      console.error("Access token not generated in login service");
+      return res.status(500).json({
+        success: false,
+        message: "Failed to generate access token",
+      });
+    }
+
+    if (!result.refreshToken) {
+      console.error("Refresh token not generated in login service");
+      return res.status(500).json({
+        success: false,
+        message: "Failed to generate refresh token",
+      });
+    }
+
+    // Set refresh token as httpOnly cookie
     res.cookie("refreshToken", result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/api/auth/refresh-token",
+    });
+
+    // Set access token as httpOnly cookie (for protected routes)
+    res.cookie("accessToken", result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000, // 15 minutes (matches token expiry)
+      path: "/",
     });
 
     return res.status(200).json({
@@ -172,7 +200,7 @@ export const loginUser = async (req, res) => {
         role: result.admin.role,
         phone: result.admin.phone,
       },
-      token: result.accessToken,
+      token: result.accessToken, // Also return in response for clients that prefer headers
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -208,12 +236,24 @@ export const changePassword = async (req, res) => {
       oldPassword,
       newPassword
     );
+    // Set new refresh token
     res.cookie("refreshToken", result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/api/auth/refresh-token",
     });
+
+    // Set new access token
+    res.cookie("accessToken", result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000, // 15 minutes
+      path: "/",
+    });
+
     return res.status(200).json({ success: true, message: result.message });
   } catch (error) {
     console.error("Change password error:", error);
@@ -228,11 +268,18 @@ export const logoutUser = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Admin ID is required" });
     }
+    // Clear both tokens
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 0,
+      path: "/api/auth/refresh-token",
+    });
+    res.clearCookie("accessToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
     });
     return res
       .status(200)
@@ -268,11 +315,22 @@ export const refreshToken = async (req, res) => {
       role: admin.role,
     });
 
+    // Set new refresh token
     res.cookie("refreshToken", newRefreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/api/auth/refresh-token",
+    });
+
+    // Set new access token
+    res.cookie("accessToken", newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000, // 15 minutes
+      path: "/",
     });
 
     return res.status(200).json({
@@ -284,7 +342,7 @@ export const refreshToken = async (req, res) => {
         role: admin.role,
         phone: admin.phone,
       },
-      token: newAccessToken,
+      token: newAccessToken, // Also return in response for clients that prefer headers
       message: "Token refreshed",
     });
   } catch (error) {
@@ -295,9 +353,34 @@ export const refreshToken = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
+    const adminId = req.admin?.id;
+
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const admin = await Admin.findById(adminId).select("-password");
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin not found",
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      admin: req.admin,
+      admin: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+        phone: admin.phone,
+        isEmailVerified: admin.isEmailVerified,
+      },
     });
   } catch (error) {
     console.error("Get me error:", error);
