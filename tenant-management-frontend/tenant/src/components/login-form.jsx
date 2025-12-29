@@ -1,7 +1,10 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useFormik } from "formik";
-
+import api from "../../plugins/axios";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   Card,
   CardContent,
@@ -18,22 +21,37 @@ import {
 import { Input } from "@/components/ui/input";
 
 export default function LoginForm({ className, ...props }) {
+  const navigate = useNavigate();
+  const { fetchMe } = useAuth();
   const formik = useFormik({
     initialValues: {
       email: "",
       password: "",
     },
     onSubmit: async (values) => {
-      const response = await fetch("http://localhost:3000/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(values),
-      });
-      const data = await response.json();
-      console.log(data);
-      console.log(response);
+      try {
+        const response = await api.post("/api/auth/login", {
+          email: values.email,
+          password: values.password,
+        });
+
+        const data = response.data;
+        
+        if(data.success){
+          // Store token in localStorage
+          localStorage.setItem("token", data.token);
+          // Fetch user data to update AuthContext (force fetch even on login page)
+          await fetchMe(true);
+          // Navigate to home page
+          navigate("/");
+        }else{
+          toast.error(data.message);
+        }
+      } catch (error) {
+        console.error("Login error:", error);
+        const errorMessage = error.response?.data?.message || "Login failed. Please try again.";
+        toast.error(errorMessage);
+      }
     },
   });
   return (
