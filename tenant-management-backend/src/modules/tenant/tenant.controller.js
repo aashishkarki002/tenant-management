@@ -9,8 +9,6 @@ if (!fs.existsSync(TEMP_UPLOAD_DIR)) fs.mkdirSync(TEMP_UPLOAD_DIR);
 
 export const createTenant = async (req, res) => {
   try {
-    // 1️⃣ Validate form fields
-
     await tenantValidation.validate(req.body, { abortEarly: false });
 
     // 2️⃣ Validate required files
@@ -62,6 +60,8 @@ export const createTenant = async (req, res) => {
       ...req.body,
       image: imageResult.secure_url,
       pdfAgreement: pdfResult.secure_url,
+      // spaceHandoverDate will be set from req.body if provided, otherwise defaults to null
+      isDeleted: false,
     });
 
     // 6️⃣ Respond to client
@@ -76,6 +76,7 @@ export const createTenant = async (req, res) => {
     });
   } catch (error) {
     if (error.name === "ValidationError") {
+<<<<<<< HEAD
       // Format Yup validation errors
       const errors = {};
       error.inner?.forEach((err) => {
@@ -87,6 +88,27 @@ export const createTenant = async (req, res) => {
         success: false, 
         message: "Validation failed",
         errors 
+=======
+      // Format yup validation errors into a more readable format
+      const formattedErrors = {};
+      if (error.inner && error.inner.length > 0) {
+        error.inner.forEach((err) => {
+          if (err.path) {
+            formattedErrors[err.path] = err.message;
+          }
+        });
+      } else if (error.errors) {
+        // Fallback to error.errors if inner is not available
+        formattedErrors.general = Array.isArray(error.errors)
+          ? error.errors.join(", ")
+          : error.errors;
+      }
+
+      res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: formattedErrors,
+>>>>>>> 7e99566fca63318186417021f8270ee7461c6d41
       });
     } else {
       console.error("Tenant creation error:", error);

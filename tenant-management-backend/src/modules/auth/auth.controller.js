@@ -199,6 +199,7 @@ export const loginUser = async (req, res) => {
         email: result.admin.email,
         role: result.admin.role,
         phone: result.admin.phone,
+        address: result.admin.address,
       },
       token: result.accessToken, // Also return in response for clients that prefer headers
     });

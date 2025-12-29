@@ -8,6 +8,8 @@ import propertyRoute from "./modules/tenant/property.route.js";
 import { connectDB } from "./config/db.js";
 import cookieParser from "cookie-parser";
 import tenantRoute from "./modules/tenant/tenant.route.js";
+import rentRoute from "./modules/rents/rent.route.js";
+import bankRoute from "./modules/banks/bank.route.js";
 const app = express();
 
 // CORS middleware - must be before routes
@@ -28,6 +30,8 @@ app.use(express.json());
 app.use("/api/auth", authRoute);
 app.use("/api/property", propertyRoute);
 app.use("/api/tenant", tenantRoute);
+app.use("/api/rent", rentRoute);
+app.use("/api/bank", bankRoute);
 // Connect DB
 connectDB()
   .then(() => {
