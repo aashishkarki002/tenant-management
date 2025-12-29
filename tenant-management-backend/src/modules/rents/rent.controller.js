@@ -1,5 +1,5 @@
 import rent from "./Rent.js";
-import bankAccount from "./BankAccountModel.js";
+import BankAccount from "./BankAccountModel.js";
 
 export const createRent = async (req, res) => {
   try {
@@ -10,14 +10,13 @@ export const createRent = async (req, res) => {
       property,
       rentAmount,
       paidAmount,
-      bankAccount,
       month,
-      status,
       paymentDate,
       note,
       createdBy,
       paymentmethod,
       paymentProof,
+      bankAccountId,
     } = req.body;
     let rentStatus = "pending";
     if (paidAmount >= rentAmount) {
@@ -32,17 +31,19 @@ export const createRent = async (req, res) => {
       property,
       rentAmount,
       paidAmount,
-      bankAccount: paymentmethod === "bank" ? bankAccount : null,
+      bankAccount: paymentmethod === "bank" ? bankAccountId : null,
       paymentDate: paidAmount > 0 ? new Date() : null,
-      status,
+      status: rentStatus,
       note,
       month,
       paymentProof,
       createdBy: req.admin.id,
     });
+    console.log("createdBy", req.admin.id);
+
     if (paymentmethod === "bank" && paidAmount > 0) {
-      await bankAccount.findByIdAndUpdate(bankAccount, {
-        $inc: { balance: -paidAmount },
+      await BankAccount.findByIdAndUpdate(newRent.bankAccount, {
+        $inc: { balance: paidAmount },
       });
     }
     return res.status(201).json({
