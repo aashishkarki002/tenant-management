@@ -76,8 +76,20 @@ export const createTenant = async (req, res) => {
     });
   } catch (error) {
     if (error.name === "ValidationError") {
-      res.status(400).json({ success: false, errors: error.errors });
+      // Format Yup validation errors
+      const errors = {};
+      error.inner?.forEach((err) => {
+        if (err.path) {
+          errors[err.path] = err.message;
+        }
+      });
+      res.status(400).json({ 
+        success: false, 
+        message: "Validation failed",
+        errors 
+      });
     } else {
+      console.error("Tenant creation error:", error);
       res.status(500).json({
         success: false,
         message: "Tenant creation failed",
@@ -222,11 +234,13 @@ export const updateTenant = async (req, res) => {
 export const deleteTenant = async (req, res) => {
   try {
     const tenantId = req.params.id;
+    console.log(tenantId);
     const softDeletedTenant = await Tenant.findByIdAndUpdate(
       tenantId,
       { isDeleted: true },
       { new: true }
     );
+    console.log(softDeletedTenant);
     if (!softDeletedTenant) {
       return res
         .status(404)
