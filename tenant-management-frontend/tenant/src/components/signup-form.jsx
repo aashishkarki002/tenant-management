@@ -50,6 +50,8 @@ export default function SignupForm({ className, ...props }) {
             "An error occurred during registration"
         );
         console.error("Signup error:", error);
+      } finally {
+        setIsLoading(false);
       }
     },
   });

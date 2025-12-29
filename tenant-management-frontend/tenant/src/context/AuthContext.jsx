@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    
     const fetchMe = async (force = false) => {
         // Skip fetch if on login or signup page to prevent loops (unless forced)
         if (!force) {
@@ -15,6 +16,14 @@ export const AuthProvider = ({ children }) => {
                 setUser(null);
                 return;
             }
+        }
+        
+        // Check if token exists before making request
+        const token = localStorage.getItem("token");
+        if (!token && !force) {
+            setUser(null);
+            setLoading(false);
+            return;
         }
         
         try {
@@ -30,13 +39,27 @@ export const AuthProvider = ({ children }) => {
                 console.error("Error fetching user:", error);
             }
             setUser(null);
+            // Clear invalid token
+            if (error.response?.status === 401) {
+                localStorage.removeItem("token");
+                localStorage.removeItem("user");
+            }
         } finally {
             setLoading(false);
         }
     }
+    
     useEffect(() => {
         fetchMe();
     }, []);
+    
+    const login = async (token) => {
+        // Store token first
+        localStorage.setItem("token", token);
+        // Then fetch user data
+        await fetchMe(true);
+    };
+    
     const logout = () => {
         setUser(null);
         localStorage.removeItem("token");
@@ -46,7 +69,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, fetchMe, logout }}>
+        <AuthContext.Provider value={{ user, loading, fetchMe, login, logout }}>
             {children}
         </AuthContext.Provider>
     )

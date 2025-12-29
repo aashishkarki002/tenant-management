@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
 import { Separator } from "@/components/ui/separator";
-import axios from "axios";
+import api from "../plugins/axios";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
 
@@ -25,13 +25,14 @@ function AddTenants() {
   useEffect(() => {
     const fetchProperties = async () => {
       try {
-        const response = await axios.get(
-          "http://localhost:3000/api/property/get-property"
-        );
+        const response = await api.get("/api/property/get-property");
         const data = await response.data;
         setProperties(data.property || []);
       } catch (error) {
         console.error("Error fetching properties:", error);
+        if (error.response?.status === 401) {
+          toast.error("Unauthorized. Please login again.");
+        }
       }
     };
 
@@ -146,8 +147,8 @@ function AddTenants() {
         formData.append("pdfAgreement", values.pdfAgreement);
         formData.append("property", propertyId);
 
-        const res = await axios.post(
-          "http://localhost:3000/api/tenant/create-tenant",
+        const res = await api.post(
+          "/api/tenant/create-tenant",
           formData,
           {
             headers: {

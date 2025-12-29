@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 
 export default function LoginForm({ className, ...props }) {
   const navigate = useNavigate();
-  const { fetchMe } = useAuth();
+  const { login, user } = useAuth();
   const formik = useFormik({
     initialValues: {
       email: "",
@@ -38,17 +38,24 @@ export default function LoginForm({ className, ...props }) {
         const data = response.data;
         
         if(data.success){
-          // Store token in localStorage
-          localStorage.setItem("token", data.token);
-          // Fetch user data to update AuthContext (force fetch even on login page)
-          await fetchMe(true);
+          // Use AuthContext login method to update state
+          await login(data.token);
           // Navigate to home page
           navigate("/");
+          toast.success("Login successful!");
         }else{
           toast.error(data.message);
         }
       } catch (error) {
         console.error("Login error:", error);
+        
+        // Handle network errors (backend not running)
+        if (error.code === "ERR_NETWORK" || error.message === "Network Error") {
+          toast.error("Cannot connect to server. Please make sure the backend server is running on http://localhost:3000");
+          return;
+        }
+        
+        // Handle other errors
         const errorMessage = error.response?.data?.message || "Login failed. Please try again.";
         toast.error(errorMessage);
       }
