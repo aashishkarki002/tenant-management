@@ -10,9 +10,10 @@ import {
 } from "./tenant.controller.js";
 import upload from "../../middleware/upload.js";
 import { multerErrorHandler } from "../../middleware/multerErrorHandler.js";
+import { protect } from "../../middleware/protect.js";
 const router = Router();
-router.get("/get-tenants", getTenants);
-router.get("/get-tenant/:id", getTenantById);
+router.get("/get-tenants", protect, getTenants);
+router.get("/get-tenant/:id", protect, getTenantById);
 router.patch(
   "/update-tenant/:id",
   upload.fields([
@@ -22,10 +23,10 @@ router.patch(
   multerErrorHandler,
   updateTenant
 );
-router.patch("/delete-tenant/:id", deleteTenant);
-router.patch("/restore-tenant/:id", restoreTenant);
+router.patch("/delete-tenant/:id", protect, deleteTenant);
+router.patch("/restore-tenant/:id", protect, restoreTenant);
 
-router.get("/search-tenants", searchTenants);
+router.get("/search-tenants", protect, searchTenants);
 router.post(
   "/create-tenant",
   upload.fields([
@@ -33,6 +34,7 @@ router.post(
     { name: "pdfAgreement", maxCount: 1 },
   ]),
   multerErrorHandler,
+  protect,
   createTenant
 );
 export default router;

@@ -1,5 +1,6 @@
 import rent from "./Rent.js";
-import BankAccount from "./BankAccountModel.js";
+import { getBankAccounts } from "../banks/bank.controller.js";
+import BankAccount from "../banks/BankAccountModel.js";
 
 export const createRent = async (req, res) => {
   try {
