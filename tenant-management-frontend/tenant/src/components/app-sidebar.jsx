@@ -20,7 +20,7 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
-
+import api from "../../plugins/axios";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -32,10 +32,11 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
-
+import { useAuth } from "../context/AuthContext";
+import { toast } from "sonner";
 // Menu items
 const items = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Tenants", url: "/tenants", icon: Users },
   { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
   { title: "Accounting", url: "/accounting", icon: FileText },
@@ -52,7 +53,29 @@ export default function AppSidebar() {
   const handleNav = () => {
     if (isMobile) setOpenMobile(false);
   };
-
+  const { user, logout } = useAuth();
+const SignOut = async () => {
+  try {
+    // Try to call the logout endpoint, but don't fail if it errors
+    try {
+      await api.post("/api/auth/logout");
+    } catch (apiError) {
+      // Log but don't show error - we'll still clear local state
+      console.log("Logout API call failed (may be expected if token expired):", apiError);
+    }
+    
+    // Always clear local state and redirect, regardless of API call result
+    logout();
+    navigate("/login");
+    toast.success("Signed out successfully");
+  } catch (error) {
+    console.error("Sign out error:", error);
+    // Even if there's an error, clear local state and redirect
+    logout();
+    navigate("/login");
+    toast.success("Signed out successfully");
+  }
+}
   return (
     <Sidebar variant="sidebar">
       <SidebarContent>
@@ -96,9 +119,9 @@ export default function AppSidebar() {
                     <AvatarImage src="https://github.com/shadcn.png" />
                     <AvatarFallback>CN</AvatarFallback>
                   </Avatar>
-                  <div className="text-center font-semibold">Admin</div>
+                  <div className="text-center font-semibold">{user?.name ?? "Admin"}</div>
                   <div className="text-center text-gray-500 text-sm">
-                    abs@gmail.com
+                    {user?.email ?? "admin@gmail.com"}
                   </div>
                 </CardHeader>
               </Card>
@@ -109,7 +132,7 @@ export default function AppSidebar() {
             <DropdownMenuItem onClick={() => navigate("/admin")}>
               <span>Account</span>
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={SignOut}>
               <span>Sign out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>

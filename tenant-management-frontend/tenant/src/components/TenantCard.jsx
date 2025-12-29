@@ -10,11 +10,45 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import ViewDetail from './ViewDetail';
-
-export default function TenantCard({tenant}) {
+import axios from 'axios';
+import { toast } from 'sonner';
+export default function TenantCard({tenant, HandleDeleteTenant}) {
   
     const navigate = useNavigate();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    
+    const DeleteTenant = async () => {
+      try {
+        if (!tenant?._id) {
+          toast.error("Tenant ID is missing");
+          console.error("Tenant ID is undefined:", tenant);
+          return;
+        }
+        
+        console.log("Deleting tenant with ID:", tenant._id);
+        const response = await axios.patch(`http://localhost:3000/api/tenant/delete-tenant/${tenant._id}`);
+        
+        if(response.data.success){
+          toast.success(response.data.message);
+          HandleDeleteTenant();
+        } else {
+          toast.error(response.data.message || "Failed to delete tenant");
+        }
+      } catch (error) {
+        console.error("Error deleting tenant:", error);
+        if (error.response) {
+          // Server responded with error status
+          toast.error(error.response.data?.message || `Error: ${error.response.status}`);
+          console.error("Response data:", error.response.data);
+        } else if (error.request) {
+          // Request was made but no response received
+          toast.error("No response from server. Please check your connection.");
+        } else {
+          // Error setting up the request
+          toast.error(error.message || "An error occurred while deleting tenant");
+        }
+      }
+    }
     return (
         <Card className="w-full h-70 hover:shadow-lg transition-shadow duration-300">
         <CardContent>
@@ -30,11 +64,11 @@ export default function TenantCard({tenant}) {
                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      onClick={() => navigate("/tenant/editTenant")}
+                      onClick={() => navigate(`/tenant/editTenant/${tenant._id}`)}
                     >
                       Edit
                     </DropdownMenuItem>
-                    <DropdownMenuItem>Delete</DropdownMenuItem>
+                    <DropdownMenuItem onClick={DeleteTenant}>Delete </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={(e) => {
                         e.preventDefault();

@@ -3,13 +3,8 @@ import { Input } from "@/components/ui/input";
 import { House, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Mail } from "lucide-react";
-import { Phone } from "lucide-react";
-import { Calendar } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 import { useState, useEffect } from "react";
-
+import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,26 +28,40 @@ import axios from "axios";
 export default function Tenants() {
 const [tenants, setTenants] = useState([]);
 const [properties, setProperties] = useState([]);
+const [loading, setLoading] = useState(true);
+
+const fetchData = async () => {
+  setLoading(true);
+  try {
+    const fetchtenants = async () => {
+      const response = await axios.get("http://localhost:3000/api/tenant/get-tenants");
+      const data = await response.data;
+      setTenants(data.tenants);
+    };
+    
+    const fetchblocks = async () => {
+      const response = await axios.get("http://localhost:3000/api/property/get-property");
+      const data = await response.data;
+      setProperties(data.property || []);
+      console.log(data.property);
+    };
+
+    // Fetch both in parallel
+    await Promise.all([fetchtenants(), fetchblocks()]);
+  } catch (error) {
+    console.error("Error fetching data:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
 useEffect(() => {
-  const fetchtenants = async () => {
-    const response = await axios.get("http://localhost:3000/api/tenant/get-tenants");
-    const data = await response.data;
-    setTenants(data.tenants);
-  }
-const fetchblocks = async () => {
-  const response = await axios.get("http://localhost:3000/api/property/get-property");
-  const data = await response.data;
-  setProperties(data.property || []);
-  console.log(data.property);
-}
-
-  fetchtenants();
-  fetchblocks();
- 
+  fetchData();
 }, []);
 
-
+const HandleDeleteTenant =  () => {
+  fetchData();
+}
 
 
   const navigate = useNavigate();
@@ -140,11 +149,17 @@ const fetchblocks = async () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ">
-        {tenants.length === 0 ? (
-          <p>No tenants found</p>
+        {loading ? (
+          <div className="col-span-full flex justify-center items-center py-12">
+            <Spinner className="size-10" />
+          </div>
+        ) : tenants.length === 0 ? (
+          <div className="col-span-full">
+            <p className="text-center text-gray-500 py-12">No tenants found</p>
+          </div>
         ) : (
           tenants.map((tenant) => (
-            <TenantCard key={tenant._id} tenant={tenant} />
+            <TenantCard key={tenant._id} tenant={tenant} HandleDeleteTenant={HandleDeleteTenant} />
           ))
         )}
       </div>

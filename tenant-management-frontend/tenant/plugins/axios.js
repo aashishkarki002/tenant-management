@@ -1,79 +1,94 @@
 import axios from "axios";
-
-const axiosInstance = axios.create({
-    baseURL: "http://localhost:3000",
-    headers: {
-        "Content-Type": "application/json",
-    },
-    withCredentials: true, // Include cookies for refresh token
+const api = axios.create({
+  baseURL: "http://localhost:3000",
+  withCredentials: true,
 });
+let isRefreshing = false;
+let failedQueue = [];
 
-// Request interceptor - adds bearer token to all requests
-axiosInstance.interceptors.request.use(
-    async (config) => {
-        // Get token from localStorage
-        const token = localStorage.getItem("token");
-        
-        // If token exists, add it to Authorization header as Bearer token
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-        
-        return config;
-    },
-    (error) => {
-        // Handle request error
-        return Promise.reject(error);
+const processQueue = (error) => {
+  failedQueue.forEach(prom => {
+    if (error) prom.reject(error);
+    else prom.resolve();
+  });
+  failedQueue = [];
+};
+
+// Request interceptor to add token from localStorage to Authorization header
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
-// Response interceptor - handles authentication errors
-axiosInstance.interceptors.response.use(
-    (response) => {
-        // If response is successful, return it as is
-        return response;
-    },
-    async (error) => {
-        const originalRequest = error.config;
+api.interceptors.response.use(
 
-        // Handle 401 Unauthorized errors
-        if (error.response?.status === 401 && !originalRequest._retry) {
-            originalRequest._retry = true;
+  (response) => response,
 
-            try {
-                // Attempt to refresh the token
-                const refreshResponse = await axios.post(
-                    `${axiosInstance.defaults.baseURL}/api/auth/refresh-token`,
-                    {},
-                    { withCredentials: true }
-                );
+  async (error) => {
+    const originalRequest = error.config;
 
-                if (refreshResponse.data.success && refreshResponse.data.token) {
-                    // Store the new access token
-                    localStorage.setItem("token", refreshResponse.data.token);
-                    
-                    // Update the original request with new token
-                    originalRequest.headers.Authorization = `Bearer ${refreshResponse.data.token}`;
-                    
-                    // Retry the original request
-                    return axiosInstance(originalRequest);
-                }
-            } catch (refreshError) {
-                // Refresh token failed - clear storage and redirect to login
-                localStorage.removeItem("token");
-                
-                // Redirect to login page if not already there
-                if (window.location.pathname !== "/login") {
-                    window.location.href = "/login";
-                }
-                
-                return Promise.reject(refreshError);
-            }
+    // Don't try to refresh if:
+    // 1. The request was to refresh-token itself (avoid infinite loop)
+    // 2. The request was to logout (should not refresh on logout)
+    // 3. The request was already retried
+    // 4. We're on login/signup pages
+    const isRefreshTokenRequest = originalRequest.url?.includes("/refresh-token");
+    const isLogoutRequest = originalRequest.url?.includes("/logout");
+    const path = window.location.pathname.toLowerCase();
+    const isPublicRoute = path.startsWith("/login") || path.startsWith("/signup");
+
+    // If access token expired and we should try to refresh
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !isRefreshTokenRequest &&
+      !isLogoutRequest &&
+      !isPublicRoute
+    ) {
+      originalRequest._retry = true;
+
+      if (isRefreshing) {
+        // wait until refresh finishes
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(() => api(originalRequest));
+      }
+
+      isRefreshing = true;
+
+      try {
+        // 🔄 call refresh-token
+        await api.post("/api/auth/refresh-token");
+
+        processQueue(null);
+        return api(originalRequest); // retry original request
+      } catch (refreshError) {
+        processQueue(refreshError);
+
+        // logout if refresh fails - but don't redirect if already on login
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        // Only redirect if not already on login/signup page
+        if (!isPublicRoute) {
+          window.location.href = "/login";
         }
 
-        // For other errors, just reject the promise
-        return Promise.reject(error);
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
     }
+
+    return Promise.reject(error);
+  }
 );
 
-export default axiosInstance;
+export default api;
