@@ -23,7 +23,7 @@ import { ArrowDown } from "lucide-react";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import TenantCard from "./components/TenantCard";
-import axios from "axios";
+import api from "../plugins/axios";
 
 export default function Tenants() {
 const [tenants, setTenants] = useState([]);
@@ -34,13 +34,13 @@ const fetchData = async () => {
   setLoading(true);
   try {
     const fetchtenants = async () => {
-      const response = await axios.get("http://localhost:3000/api/tenant/get-tenants");
+      const response = await api.get("/api/tenant/get-tenants");
       const data = await response.data;
       setTenants(data.tenants);
     };
     
     const fetchblocks = async () => {
-      const response = await axios.get("http://localhost:3000/api/property/get-property");
+      const response = await api.get("/api/property/get-property");
       const data = await response.data;
       setProperties(data.property || []);
       console.log(data.property);

@@ -17,8 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import axios from "axios";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
-import NepaliDatePicker from "@sbmdkl/nepali-datepicker-reactjs";
-import "@sbmdkl/nepali-datepicker-reactjs/dist/index.css";
+
 
 function AddTenants() {
   const [properties, setProperties] = useState([]);
