@@ -15,7 +15,10 @@ import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
 import { Separator } from "@/components/ui/separator";
 import axios from "axios";
+import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
+import NepaliDatePicker from "@sbmdkl/nepali-datepicker-reactjs";
+import "@sbmdkl/nepali-datepicker-reactjs/dist/index.css";
 
 function AddTenants() {
   const [properties, setProperties] = useState([]);
@@ -23,7 +26,9 @@ function AddTenants() {
   useEffect(() => {
     const fetchProperties = async () => {
       try {
-        const response = await axios.get("http://localhost:3000/api/property/get-property");
+        const response = await axios.get(
+          "http://localhost:3000/api/property/get-property"
+        );
         const data = await response.data;
         setProperties(data.property || []);
       } catch (error) {
@@ -37,7 +42,7 @@ function AddTenants() {
   // Helper function to get innerBlocks for selected block
   const getInnerBlocksForBlock = (blockId) => {
     if (!blockId || !properties || properties.length === 0) return [];
-    
+
     for (const property of properties) {
       if (property.blocks && property.blocks.length > 0) {
         const selectedBlock = property.blocks.find(
@@ -56,7 +61,7 @@ function AddTenants() {
   // Helper function to get property ID from selected block
   const getPropertyIdFromBlock = (blockId) => {
     if (!blockId || !properties || properties.length === 0) return null;
-    
+
     for (const property of properties) {
       if (property.blocks && property.blocks.length > 0) {
         const selectedBlock = property.blocks.find(
@@ -77,66 +82,72 @@ function AddTenants() {
       phone: "",
       email: "",
       address: "",
-      leaseStart: "",
-      leaseEnd: "",
+      leaseStartDate: "",
+      leaseEndDate: "",
       block: "",
       innerBlock: "",
       image: null,
       pdfAgreement: null,
-      agreementSignedDate: "",
-      propertySize: "",
+      dateOfAgreementSigned: "",
+      leasedSquareFeet: "",
       securityDeposit: "",
       status: "",
       keyHandoverDate: "",
-      spacehandedOverDate: "",
-      spacereturnedDate: "",
+      spaceHandoverDate: "",
+      spaceReturnedDate: "",
     },
     onSubmit: async (values) => {
       try {
+        // Validate lease end date is after lease start date
+        if (values.leaseStartDate && values.leaseEndDate) {
+          if (new Date(values.leaseEndDate) < new Date(values.leaseStartDate)) {
+            toast.error("Lease end date must be after lease start date");
+            return;
+          }
+        }
+
         const formData = new FormData();
-        
-        // Get property ID from selected block
+
         const propertyId = getPropertyIdFromBlock(values.block);
         if (!propertyId) {
-          alert("Please select a valid block");
+          toast.error("Please select a valid block");
           return;
         }
 
-        // Map field names to match backend expectations
-        // Required fields - always append if they have values
-        formData.append("name", values.name || "");
-        formData.append("unitNumber", values.unitNumber || "");
-        formData.append("phone", values.phone || "");
-        formData.append("email", values.email || "");
-        formData.append("address", values.address || "");
-        formData.append("leaseStartDate", values.leaseStart || "");
-        formData.append("leaseEndDate", values.leaseEnd || "");
-        formData.append("block", values.block || "");
-        formData.append("innerBlock", values.innerBlock || "");
-        formData.append("dateOfAgreementSigned", values.agreementSignedDate || "");
-        formData.append("leasedSquareFeet", values.propertySize || "");
-        formData.append("property", propertyId);
-        
-        // Use leaseStartDate as fallback for missing required dates if not provided
-        const defaultDate = values.leaseStart || new Date().toISOString().split('T')[0];
-        formData.append("keyHandoverDate", values.keyHandoverDate || defaultDate);
-        formData.append("spacehandedOverDate", values.spacehandedOverDate || defaultDate);
-        formData.append("spacereturnedDate", values.spacereturnedDate || defaultDate);
-        
-        // Handle files - must be present
-        if (!values.image || !(values.image instanceof File)) {
-          alert("Please upload a tenant photo");
+        // Add all form fields except files
+        // FormData sends everything as strings, backend will parse them
+        Object.entries(values).forEach(([key, value]) => {
+          if (
+            key !== "image" &&
+            key !== "pdfAgreement" &&
+            key !== "spaceHandoverDate" && // Handle separately
+            key !== "spaceReturnedDate" // Handle separately
+          ) {
+            if (value !== null && value !== "" && value !== undefined) {
+              formData.append(key, value);
+            }
+          }
+        });
+
+        // Handle optional date fields - only append if they have values
+        // Backend expects null for empty optional dates
+        if (values.spaceHandoverDate && values.spaceHandoverDate !== "") {
+          formData.append("spaceHandoverDate", values.spaceHandoverDate);
+        }
+        if (values.spaceReturnedDate && values.spaceReturnedDate !== "") {
+          formData.append("spaceReturnedDate", values.spaceReturnedDate);
+        }
+
+        if (!values.image || !values.pdfAgreement) {
+          toast.error("Image and PDF are required");
           return;
         }
-        if (!values.pdfAgreement || !(values.pdfAgreement instanceof File)) {
-          alert("Please upload a PDF agreement");
-          return;
-        }
-        
+
         formData.append("image", values.image);
         formData.append("pdfAgreement", values.pdfAgreement);
+        formData.append("property", propertyId);
 
-        const response = await axios.post(
+        const res = await axios.post(
           "http://localhost:3000/api/tenant/create-tenant",
           formData,
           {
@@ -145,34 +156,48 @@ function AddTenants() {
             },
           }
         );
-        const data = await response.data;
-        console.log("Success:", data);
-        
-        // Reset form or redirect on success
-        if (data.success) {
-          alert("Tenant created successfully!");
+
+        if (res.data.success) {
+          toast.success("Tenant created successfully!");
           formik.resetForm();
           handleClose();
         }
       } catch (error) {
         console.error("Error creating tenant:", error);
-        if (error.response) {
-          console.error("Response data:", error.response.data);
-          const responseData = error.response.data;
-          
-          // Handle validation errors
-          if (responseData.errors) {
-            const errorMessages = Object.entries(responseData.errors)
-              .map(([field, message]) => `${field}: ${message}`)
-              .join("\n");
-            alert(`Validation errors:\n${errorMessages}`);
-          } else {
-            const errorMessage = responseData?.message || 
-                               "Failed to create tenant. Please check all required fields.";
-            alert(errorMessage);
+        console.error("Error response:", error?.response?.data);
+        console.error("Error response errors:", error?.response?.data?.errors);
+
+        // Handle validation errors
+        if (error?.response?.data?.errors) {
+          const validationErrors = error.response.data.errors;
+
+          // Yup errors can be an array or object
+          let errorMessages = [];
+
+          if (Array.isArray(validationErrors)) {
+            errorMessages = validationErrors;
+          } else if (typeof validationErrors === "object") {
+            // Extract error messages from yup error object
+            errorMessages = Object.entries(validationErrors).map(
+              ([field, messages]) => {
+                if (Array.isArray(messages)) {
+                  return messages.map((msg) => `${field}: ${msg}`).join(", ");
+                }
+                return `${field}: ${messages}`;
+              }
+            );
           }
+
+          const errorText =
+            errorMessages.length > 0
+              ? errorMessages.join("; ")
+              : JSON.stringify(validationErrors);
+
+          toast.error(errorText || "Validation failed");
         } else {
-          alert("Network error. Please try again.");
+          const errorMessage =
+            error?.response?.data?.message || "Failed to create tenant";
+          toast.error(errorMessage);
         }
       }
     },
@@ -325,35 +350,95 @@ function AddTenants() {
                   <div className="grid sm:grid-cols-2 gap-4">
                     <Field>
                       <FieldLabel
-                        htmlFor="leaseStart"
+                        htmlFor="leaseStartDate"
                         className="text-sm font-medium"
                       >
-                        Lease Start Date
+                        Lease Start Date AD
                       </FieldLabel>
+
                       <Input
-                        id="leaseStart"
+                        id="leaseStartDate"
                         type="date"
                         required
                         onChange={formik.handleChange}
-                        value={formik.values.leaseStart}
-                        name="leaseStart"
+                        value={formik.values.leaseStartDate}
+                        name="leaseStartDate"
                         className="mt-1.5"
                       />
                     </Field>
                     <Field>
                       <FieldLabel
-                        htmlFor="leaseEnd"
+                        htmlFor="leaseEndDate"
                         className="text-sm font-medium"
                       >
                         Lease End Date
                       </FieldLabel>
                       <Input
-                        id="leaseEnd"
+                        id="leaseEndDate"
+                        type="date"
+                        required
+                        min={formik.values.leaseStartDate || undefined}
+                        onChange={formik.handleChange}
+                        value={formik.values.leaseEndDate}
+                        name="leaseEndDate"
+                        className="mt-1.5"
+                      />
+                      {formik.values.leaseStartDate &&
+                        formik.values.leaseEndDate &&
+                        new Date(formik.values.leaseEndDate) <
+                          new Date(formik.values.leaseStartDate) && (
+                          <p className="text-sm text-red-500 mt-1">
+                            Lease end date must be after lease start date
+                          </p>
+                        )}
+                    </Field>
+                    <Field>
+                      <FieldLabel
+                        htmlFor="keyHandoverDate"
+                        className="text-sm font-medium"
+                      >
+                        Key Handover Date
+                      </FieldLabel>
+                      <Input
+                        id="keyHandoverDate"
                         type="date"
                         required
                         onChange={formik.handleChange}
-                        value={formik.values.leaseEnd}
-                        name="leaseEnd"
+                        value={formik.values.keyHandoverDate}
+                        name="keyHandoverDate"
+                        className="mt-1.5"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel
+                        htmlFor="spaceHandoverDate"
+                        className="text-sm font-medium"
+                      >
+                        Space Handover Date (Optional)
+                      </FieldLabel>
+                      <Input
+                        id="spaceHandoverDate"
+                        type="date"
+                        onChange={formik.handleChange}
+                        value={formik.values.spaceHandoverDate}
+                        name="spaceHandoverDate"
+                        className="mt-1.5"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel
+                        htmlFor="spaceReturnedDate"
+                        className="text-sm font-medium"
+                      >
+                        Space Returned Date
+                      </FieldLabel>
+                      <Input
+                        id="spaceReturnedDate"
+                        type="date"
+                        required
+                        onChange={formik.handleChange}
+                        value={formik.values.spaceReturnedDate}
+                        name="spaceReturnedDate"
                         className="mt-1.5"
                       />
                     </Field>
@@ -391,7 +476,10 @@ function AddTenants() {
                             properties.flatMap((property) =>
                               property.blocks && property.blocks.length > 0
                                 ? property.blocks.map((block) => (
-                                    <SelectItem key={block._id} value={block._id}>
+                                    <SelectItem
+                                      key={block._id}
+                                      value={block._id}
+                                    >
                                       {block.name || `Block ${block._id}`}
                                     </SelectItem>
                                   ))
@@ -465,7 +553,7 @@ function AddTenants() {
                         htmlFor="image"
                         className="text-sm font-medium mb-2 block"
                       >
-                        Tenant Photo (Optional)
+                        Tenant Photo *
                       </Label>
                       <label
                         htmlFor="image"
@@ -523,18 +611,18 @@ function AddTenants() {
 
                   <Field>
                     <FieldLabel
-                      htmlFor="agreementSignedDate"
+                      htmlFor="dateOfAgreementSigned"
                       className="text-sm font-medium"
                     >
                       Agreement Signed Date
                     </FieldLabel>
                     <Input
-                      id="agreementSignedDate"
+                      id="dateOfAgreementSigned"
                       type="date"
                       required
                       onChange={formik.handleChange}
-                      value={formik.values.agreementSignedDate}
-                      name="agreementSignedDate"
+                      value={formik.values.dateOfAgreementSigned}
+                      name="dateOfAgreementSigned"
                       className="mt-1.5"
                     />
                   </Field>
@@ -552,19 +640,19 @@ function AddTenants() {
                 <div className="space-y-5">
                   <div>
                     <Label
-                      htmlFor="propertySize"
+                      htmlFor="leasedSquareFeet"
                       className="text-sm font-medium"
                     >
-                      Property Size (sqm)
+                      Leased Square Feet (sqft)
                     </Label>
                     <Input
-                      id="propertySize"
+                      id="leasedSquareFeet"
                       type="number"
                       placeholder="100"
                       required
                       onChange={formik.handleChange}
-                      value={formik.values.propertySize}
-                      name="propertySize"
+                      value={formik.values.leasedSquareFeet}
+                      name="leasedSquareFeet"
                       className="mt-1.5"
                     />
                   </div>
@@ -625,8 +713,9 @@ function AddTenants() {
                         <SelectValue placeholder="Select Status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Active">Active</SelectItem>
-                        <SelectItem value="MovedOut">Moved Out</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                        <SelectItem value="vacated">Vacated</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
