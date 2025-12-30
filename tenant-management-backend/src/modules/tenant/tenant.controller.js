@@ -1,17 +1,20 @@
 import fs from "fs";
 import path from "path";
-import Tenant from "./Tenant.Model.js";
+import { Tenant } from "./Tenant.Model.js";
 import tenantValidation from "../../validations/tenantValidation.js";
 import cloudinary from "../../config/cloudinary.js";
+import { Rent } from "../rents/rent.Model.js";
+import mongoose from "mongoose";
 // Temporary folder to save uploads
 const TEMP_UPLOAD_DIR = path.join(process.cwd(), "tmp");
 if (!fs.existsSync(TEMP_UPLOAD_DIR)) fs.mkdirSync(TEMP_UPLOAD_DIR);
 
 export const createTenant = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     await tenantValidation.validate(req.body, { abortEarly: false });
 
-    // 2️⃣ Validate required files
     if (!req.files || !req.files.image || !req.files.image[0]) {
       return res
         .status(400)
@@ -25,7 +28,6 @@ export const createTenant = async (req, res) => {
         .json({ success: false, message: "PDF agreement file is required" });
     }
 
-    // Helper: save file buffer to temp path
     const saveTempFile = (file) => {
       const tempPath = path.join(TEMP_UPLOAD_DIR, file.originalname);
       fs.writeFileSync(tempPath, file.buffer);
@@ -51,59 +53,83 @@ export const createTenant = async (req, res) => {
       overwrite: true,
     });
 
-    // 4️⃣ Remove temporary files
     fs.unlinkSync(imageTempPath);
     fs.unlinkSync(pdfTempPath);
 
-    // 5️⃣ Create tenant in DB
-    const tenant = await Tenant.create({
-      ...req.body,
-      image: imageResult.secure_url,
-      pdfAgreement: pdfResult.secure_url,
-      // spaceHandoverDate will be set from req.body if provided, otherwise defaults to null
-      isDeleted: false,
-    });
+    const tenant = await Tenant.create(
+      [
+        {
+          ...req.body,
+          image: imageResult.secure_url,
+          pdfAgreement: pdfResult.secure_url,
+          isDeleted: false,
+        },
+      ],
+      { session }
+    );
 
-    // 6️⃣ Respond to client
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
+    await Rent.create(
+      [
+        {
+          tenant: tenant[0]._id,
+          month,
+          innerBlock: tenant[0].innerBlock,
+          block: tenant[0].block,
+          property: tenant[0].property,
+          status: "pending",
+          rentAmount: tenant[0].totalRent,
+          createdBy: req.admin.id,
+          year,
+        },
+      ],
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
     res.status(201).json({
       success: true,
-      message: "Tenant created successfully",
-      tenant,
+      message: "Tenant and initial rent created successfully",
+      tenant: tenant[0],
       urls: {
         imageUrl: imageResult.secure_url,
         pdfUrl: pdfResult.secure_url,
       },
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
     if (error.name === "ValidationError") {
-      // Format yup validation errors into a more readable format
       const formattedErrors = {};
       if (error.inner && error.inner.length > 0) {
         error.inner.forEach((err) => {
-          if (err.path) {
-            formattedErrors[err.path] = err.message;
-          }
+          if (err.path) formattedErrors[err.path] = err.message;
         });
       } else if (error.errors) {
-        // Fallback to error.errors if inner is not available
         formattedErrors.general = Array.isArray(error.errors)
           ? error.errors.join(", ")
           : error.errors;
       }
 
-      res.status(400).json({
+      return res.status(400).json({
         success: false,
         message: "Validation failed",
         errors: formattedErrors,
       });
-    } else {
-      console.error("Tenant creation error:", error);
-      res.status(500).json({
-        success: false,
-        message: "Tenant creation failed",
-        error: error.message,
-      });
     }
+
+    console.error("Tenant creation error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Tenant creation failed",
+      error: error.message,
+    });
   }
 };
 

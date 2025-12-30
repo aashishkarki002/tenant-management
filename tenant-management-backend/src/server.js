@@ -1,4 +1,5 @@
 import app from "./app.js";
+import "./modules/rents/rentScheduler.js";
 
 const PORT = process.env.PORT || 3000;
 

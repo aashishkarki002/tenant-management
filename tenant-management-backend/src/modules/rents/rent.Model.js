@@ -6,6 +6,7 @@ const rentSchema = new mongoose.Schema(
       ref: "Tenant",
       required: true,
     },
+
     innerBlock: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "InnerBlock",
@@ -21,33 +22,38 @@ const rentSchema = new mongoose.Schema(
       ref: "Property",
       required: true,
     },
-    rentAmount: { type: Number, required: true },
-    paidAmount: { type: Number, required: true },
-    bankAccount: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "BankAccount",
+    month: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 12,
+    },
+    year: {
+      type: Number,
       required: true,
     },
-    month: { type: String, required: true },
+    rentAmount: {
+      type: Number,
+      required: true,
+    },
+    paidAmount: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
     status: {
       type: String,
-      enum: ["pending", "paid", "failed", "partially_paid"],
+      enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
       default: "pending",
     },
-    paymentDate: { type: Date, required: true },
-    note: { type: String, required: true },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
       required: true,
     },
-    paymentmethod: {
-      type: String,
-      enum: ["cash", "bank", "cheque"],
-      default: "cash",
-    },
-    paymentProof: { type: String, required: true },
   },
   { timestamps: true }
 );
-export default mongoose.model("Rent", rentSchema);
+rentSchema.index({ tenant: 1, month: 1, year: 1 }, { unique: true });
+export const Rent = mongoose.model("Rent", rentSchema);

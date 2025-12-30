@@ -1,63 +1,89 @@
-import rent from "./Rent.js";
-import { getBankAccounts } from "../banks/bank.controller.js";
-import BankAccount from "../banks/BankAccountModel.js";
-
-export const createRent = async (req, res) => {
+import { Rent } from "./rent.Model.js";
+import { Tenant } from "../tenant/Tenant.Model.js";
+async function createRent(req, res) {
   try {
-    const {
-      tenant,
-      innerBlock,
-      block,
-      property,
-      rentAmount,
-      paidAmount,
-      month,
-      paymentDate,
-      note,
-      createdBy,
-      paymentmethod,
-      paymentProof,
-      bankAccountId,
-    } = req.body;
-    let rentStatus = "pending";
-    if (paidAmount >= rentAmount) {
-      rentStatus = "paid";
-    } else if (paidAmount < rentAmount) {
-      rentStatus = "partially_paid";
+    const { tenantId, month, year } = req.body;
+
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tenant not found" });
     }
-    const newRent = await rent.create({
-      tenant,
-      innerBlock,
-      block,
-      property,
-      rentAmount,
-      paidAmount,
-      bankAccount: paymentmethod === "bank" ? bankAccountId : null,
-      paymentDate: paidAmount > 0 ? new Date() : null,
-      status: rentStatus,
-      note,
+    const exists = await Rent.findOne({ tenant: tenant.id, month, year });
+    if (exists) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Rent already exists" });
+    }
+    const rent = await Rent.create({
+      tenant: tenant.id,
+      innerBlock: tenant.innerBlock,
+      block: tenant.block,
+      property: tenant.property,
+      rentAmount: tenant.totalRent,
+
       month,
-      paymentProof,
+      year,
       createdBy: req.admin.id,
     });
-    console.log("createdBy", req.admin.id);
-
-    if (paymentmethod === "bank" && paidAmount > 0) {
-      await BankAccount.findByIdAndUpdate(newRent.bankAccount, {
-        $inc: { balance: paidAmount },
-      });
-    }
-    return res.status(201).json({
-      success: true,
-      message: "Rent created successfully",
-      rent: newRent,
-    });
+    res
+      .status(201)
+      .json({ success: true, message: "Rent created successfully", rent });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({
+    res
+      .status(500)
+      .json({ success: false, message: "Rent creation failed", error: error });
+  }
+}
+export default createRent;
+export async function getRentsFiltered(req, res) {
+  try {
+    const { month, year } = req.query;
+
+    if (!month || !year) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Month and year are required" });
+    }
+
+    const rents = await Rent.find({
+      month: Number(month),
+      year: Number(year),
+    })
+      .populate("tenant")
+      .populate("innerBlock")
+      .populate("block")
+      .populate("property");
+
+    res.status(200).json({
+      success: true,
+      count: rents.length,
+      rents,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
       success: false,
-      message: "Rent creation failed",
+      message: "Rents fetching failed",
       error: error.message,
     });
   }
-};
+}
+
+export async function getRents(req, res) {
+  try {
+    const rents = await Rent.find()
+      .populate("tenant")
+      .populate("innerBlock")
+      .populate("block")
+      .populate("property");
+    res.status(200).json({ success: true, rents });
+  } catch (error) {
+    console.log(error);
+    res
+      .status(500)
+      .json({ success: false, message: "Rents fetching failed", error: error });
+  }
+}

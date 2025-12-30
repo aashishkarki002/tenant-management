@@ -73,4 +73,4 @@ try {
   console.log(error);
 }
 
-export default mongoose.model("Tenant", tenantSchema);
+export const Tenant = mongoose.model("Tenant", tenantSchema);
