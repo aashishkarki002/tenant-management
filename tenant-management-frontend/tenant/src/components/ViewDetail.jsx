@@ -1,8 +1,97 @@
-import React from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import api from '../../plugins/axios'
 
 function ViewDetail({open, onOpenChange, tenant}) {
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
+  const blobUrlRef = useRef(null);
+
+  const fetchPdf = useCallback(async () => {
+    if (!tenant?.pdfAgreement) return;
+
+    setPdfLoading(true);
+    setPdfError(null);
+
+    try {
+      // Check if it's a Cloudinary URL or backend URL
+      const isCloudinaryUrl = tenant.pdfAgreement.includes('cloudinary.com') || 
+                              tenant.pdfAgreement.includes('res.cloudinary.com');
+      
+      let blob;
+      
+      if (isCloudinaryUrl) {
+        // For Cloudinary URLs, try fetching directly first
+        try {
+          const response = await fetch(tenant.pdfAgreement, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/pdf',
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch PDF: ${response.status}`);
+          }
+          
+          blob = await response.blob();
+        } catch (fetchError) {
+          // If direct fetch fails (e.g., 401, CORS), try with authenticated axios
+          console.log('Direct fetch failed, trying with authentication:', fetchError);
+          const response = await api.get(tenant.pdfAgreement, {
+            responseType: 'blob',
+            headers: {
+              'Accept': 'application/pdf',
+            },
+          });
+          blob = new Blob([response.data], { type: 'application/pdf' });
+        }
+      } else {
+        // For backend URLs, use authenticated axios
+        const response = await api.get(tenant.pdfAgreement, {
+          responseType: 'blob',
+          headers: {
+            'Accept': 'application/pdf',
+          },
+        });
+        blob = new Blob([response.data], { type: 'application/pdf' });
+      }
+      
+      const blobUrl = URL.createObjectURL(blob);
+      blobUrlRef.current = blobUrl;
+      setPdfUrl(blobUrl);
+    } catch (error) {
+      console.error('Error fetching PDF:', error);
+      setPdfError('Failed to load PDF. Please try again.');
+      // Don't set fallback URL as it will likely fail with 401 again
+    } finally {
+      setPdfLoading(false);
+    }
+  }, [tenant?.pdfAgreement]);
+
+  useEffect(() => {
+    if (open && tenant?.pdfAgreement) {
+      fetchPdf();
+    } else if (!open) {
+      // Clean up blob URL when dialog closes
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+        setPdfUrl(null);
+      }
+    }
+
+    // Cleanup function - revoke blob URL when component unmounts
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+    };
+  }, [open, tenant?.pdfAgreement, fetchPdf]);
+
   return (
 
 <Dialog open={open} onOpenChange={onOpenChange}>
@@ -60,12 +149,23 @@ function ViewDetail({open, onOpenChange, tenant}) {
         {tenant.pdfAgreement && (
           <div className="mt-4">
             <div className="mb-2 text-sm text-slate-600">PDF Agreement:</div>
-            <iframe
-              src={tenant.pdfAgreement}
-              className="w-full border border-slate-200 rounded"
-              style={{ height: "600px" }}
-              title="PDF Agreement"
-            />
+            {pdfLoading ? (
+              <div className="w-full border border-slate-200 rounded flex items-center justify-center" style={{ height: "600px" }}>
+                <div className="text-slate-600">Loading PDF...</div>
+              </div>
+            ) : pdfError ? (
+              <div className="w-full border border-slate-200 rounded p-4" style={{ height: "600px" }}>
+                <div className="text-red-600 mb-2">{pdfError}</div>
+                <Button onClick={fetchPdf} variant="outline" size="sm">Retry</Button>
+              </div>
+            ) : pdfUrl ? (
+              <iframe
+                src={pdfUrl}
+                className="w-full border border-slate-200 rounded"
+                style={{ height: "600px" }}
+                title="PDF Agreement"
+              />
+            ) : null}
           </div>
         )}
          

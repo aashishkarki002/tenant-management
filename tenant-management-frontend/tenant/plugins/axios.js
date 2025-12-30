@@ -66,7 +66,12 @@ api.interceptors.response.use(
 
       try {
         // 🔄 call refresh-token
-        await api.post("/api/auth/refresh-token");
+        const refreshResponse = await api.post("/api/auth/refresh-token");
+        
+        // Update token in localStorage if returned in response
+        if (refreshResponse.data?.token) {
+          localStorage.setItem("token", refreshResponse.data.token);
+        }
 
         processQueue(null);
         return api(originalRequest); // retry original request

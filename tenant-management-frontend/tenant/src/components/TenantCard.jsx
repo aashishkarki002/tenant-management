@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import ViewDetail from './ViewDetail';
-import axios from 'axios';
+import api from '../../plugins/axios';
 import { toast } from 'sonner';
 export default function TenantCard({tenant, HandleDeleteTenant}) {
   
@@ -26,7 +26,7 @@ export default function TenantCard({tenant, HandleDeleteTenant}) {
         }
         
         console.log("Deleting tenant with ID:", tenant._id);
-        const response = await axios.patch(`http://localhost:3000/api/tenant/delete-tenant/${tenant._id}`);
+        const response = await api.patch(`/api/tenant/delete-tenant/${tenant._id}`);
         
         if(response.data.success){
           toast.success(response.data.message);

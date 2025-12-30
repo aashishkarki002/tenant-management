@@ -6,6 +6,7 @@ import {
   BarChart,
   Wrench,
   Banknote,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -43,6 +44,7 @@ const items = [
   { title: "Revenue Streams", url: "/revenue", icon: BarChart },
   { title: "Maintenance", url: "/maintenance", icon: Wrench },
   { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
+  { title: "Electricity", url: "/electricity", icon: Zap },
 ];
 
 export default function AppSidebar() {
@@ -80,11 +82,11 @@ const SignOut = async () => {
     <Sidebar variant="sidebar">
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xl font-bold ml-10 mt-10 text-black">
+          <SidebarGroupLabel className="text-xl font-bold ml-10 mt-8 text-black">
             EasyManage
           </SidebarGroupLabel>
           <Separator className="w-full h-1 bg-gray-200 my-2" />
-          <SidebarGroupLabel className="mt-8 p-3">Main Menu</SidebarGroupLabel>
+          <SidebarGroupLabel className="mt-4 p-2">Main Menu</SidebarGroupLabel>
           <SidebarGroupContent className="p-3">
             <SidebarMenu>
               {items.map((item) => (
@@ -94,7 +96,7 @@ const SignOut = async () => {
                 >
                   <SidebarMenuButton
                     asChild
-                    className="hover:bg-blue-100 hover:text-blue-600 rounded-md p-2 flex items-center gap-2"
+                    className="hover:bg-blue-100 hover:text-blue-600 rounded-md flex items-center gap-2"
                     onClick={handleNav}
                   >
                     <Link to={item.url}>
@@ -112,7 +114,7 @@ const SignOut = async () => {
       <SidebarFooter>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="w-full p-2 cursor-pointer outline-none border-none bg-transparent text-left">
+            <button className="w-full  cursor-pointer outline-none border-none bg-transparent text-left">
               <Card className="w-full cursor-pointer hover:bg-gray-200 bg-gray-50 transition-colors">
                 <CardHeader className="flex flex-col items-center gap-2 p-4">
                   <Avatar>

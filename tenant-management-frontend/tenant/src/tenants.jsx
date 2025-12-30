@@ -24,32 +24,72 @@ import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import TenantCard from "./components/TenantCard";
 import api from "../plugins/axios";
+import { toast } from "sonner";
 
 export default function Tenants() {
 const [tenants, setTenants] = useState([]);
 const [properties, setProperties] = useState([]);
 const [loading, setLoading] = useState(true);
 
+
 const fetchData = async () => {
   setLoading(true);
   try {
+    // Check if token exists
+    const token = localStorage.getItem("token");
+    if (!token) {
+      toast.error("Please login to continue");
+      navigate("/login");
+      return;
+    }
+
     const fetchtenants = async () => {
-      const response = await api.get("/api/tenant/get-tenants");
-      const data = await response.data;
-      setTenants(data.tenants);
+      try {
+        const response = await api.get("/api/tenant/get-tenants");
+        const data = await response.data;
+        setTenants(data.tenants || []);
+      } catch (error) {
+        console.error("Error fetching tenants:", error);
+        if (error.response?.status === 401) {
+          toast.error("Session expired. Please login again.");
+          // The axios interceptor should handle redirect, but we'll set empty state
+          setTenants([]);
+        } else {
+          toast.error("Failed to load tenants. Please try again.");
+        }
+      }
     };
     
     const fetchblocks = async () => {
-      const response = await api.get("/api/property/get-property");
-      const data = await response.data;
-      setProperties(data.property || []);
-      console.log(data.property);
+      try {
+        const response = await api.get("/api/property/get-property");
+        const data = await response.data;
+        setProperties(data.property || []);
+      } catch (error) {
+        console.error("Error fetching properties:", error);
+        if (error.response?.status === 401) {
+          // Don't show toast for properties 401 - it's already handled by tenants or interceptor
+          setProperties([]);
+        } else {
+          // Only show error if it's not a 401 (401 is handled by interceptor/tenants)
+          if (error.response?.status !== 401) {
+            toast.error("Failed to load properties. Some features may be limited.");
+          }
+          setProperties([]);
+        }
+      }
     };
+    
 
     // Fetch both in parallel
     await Promise.all([fetchtenants(), fetchblocks()]);
   } catch (error) {
     console.error("Error fetching data:", error);
+    if (error.response?.status === 401) {
+      toast.error("Authentication failed. Please login again.");
+    } else {
+      toast.error("Failed to load data. Please try again.");
+    }
   } finally {
     setLoading(false);
   }

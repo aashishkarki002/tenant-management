@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
 import { Separator } from "@/components/ui/separator";
 import axios from "axios";
+import api from "../plugins/axios";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
 
@@ -25,7 +26,7 @@ function AddTenants() {
   useEffect(() => {
     const fetchProperties = async () => {
       try {
-        const response = await axios.get(
+        const response = await api.get(
           "http://localhost:3000/api/property/get-property"
         );
         const data = await response.data;
@@ -146,7 +147,7 @@ function AddTenants() {
         formData.append("pdfAgreement", values.pdfAgreement);
         formData.append("property", propertyId);
 
-        const res = await axios.post(
+        const res = await api.post(
           "http://localhost:3000/api/tenant/create-tenant",
           formData,
           {
