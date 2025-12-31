@@ -31,24 +31,34 @@ const units = [
   },
 ];
 
-export default async function createUnit(req, res) {
+const createUnit = async (req, res) => {
   try {
     const createdUnits = await Unit.create(units);
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Units created successfully",
-        units: createdUnits,
-      });
+    res.status(201).json({
+      success: true,
+      message: "Units created successfully",
+      units: createdUnits,
+    });
   } catch (error) {
     console.error(error.message);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Units creation failed",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Units creation failed",
+      error: error.message,
+    });
+  }
+};
+export default async function getUnits(req, res) {
+  try {
+    const units = await Unit.find({ isOccupied: false });
+    res.status(200).json({ success: true, units: units });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Units fetching failed",
+      error: error.message,
+    });
   }
 }
+export { createUnit };
