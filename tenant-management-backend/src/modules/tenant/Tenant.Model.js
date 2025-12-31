@@ -7,11 +7,28 @@ const tenantSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true },
     address: { type: String, required: true },
-
-    image: { type: String, required: true },
-    pdfAgreement: { type: String, required: true },
-
-    unitNumber: { type: String, required: true },
+    documents: [
+      {
+        type: {
+          type: String,
+          required: true,
+        },
+        files: [
+          {
+            url: String,
+            uploadedAt: { type: Date, default: Date.now },
+          },
+        ],
+      },
+    ],
+    units: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Unit",
+        required: true,
+      },
+    ],
+    pricePerSqft: { type: Number, required: true },
 
     dateOfAgreementSigned: { type: Date, required: true },
     leaseStartDate: { type: Date, required: true },
@@ -19,7 +36,8 @@ const tenantSchema = new mongoose.Schema(
     keyHandoverDate: { type: Date, required: true },
     spaceHandoverDate: { type: Date, default: null },
     spaceReturnedDate: { type: Date, default: null },
-
+    camRatePerSqft: { type: Number, required: true },
+    camCharges: { type: Number, default: 0 },
     leasedSquareFeet: { type: Number, required: true },
 
     securityDeposit: { type: Number, required: true },
@@ -56,18 +74,19 @@ const tenantSchema = new mongoose.Schema(
 
 try {
   tenantSchema.pre("save", async function () {
-    // Only recalc if leasedSquareFeet or innerBlock changed
-    if (!this.isModified("leasedSquareFeet") && !this.isModified("innerBlock"))
+    if (
+      !this.isNew ||
+      (!this.isModified("leasedSquareFeet") &&
+        !this.isModified("pricePerSqft") &&
+        !this.isModified("camRatePerSqft"))
+    )
       return;
 
-    const tenant = this;
-    const innerBlock = await InnerBlock.findById(tenant.innerBlock);
-    if (!innerBlock) throw new Error("InnerBlock not found");
-
-    const baseRate = innerBlock.pricePerSqft;
-    tenant.tds = baseRate * 0.1;
-    tenant.rentalRate = baseRate - tenant.tds;
-    tenant.totalRent = tenant.rentalRate * tenant.leasedSquareFeet;
+    const baseRate = this.pricePerSqft;
+    this.tds = baseRate * 0.1;
+    this.rentalRate = baseRate - this.tds;
+    this.totalRent = this.rentalRate * this.leasedSquareFeet;
+    this.camCharges = this.camRatePerSqft * this.leasedSquareFeet;
   });
 } catch (error) {
   console.log(error);

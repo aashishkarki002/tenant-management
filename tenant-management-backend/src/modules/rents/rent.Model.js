@@ -46,7 +46,13 @@ const rentSchema = new mongoose.Schema(
       enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
       default: "pending",
     },
-
+    units: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Unit",
+        required: true,
+      },
+    ],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",

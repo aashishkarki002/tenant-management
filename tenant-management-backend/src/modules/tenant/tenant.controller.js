@@ -5,27 +5,27 @@ import tenantValidation from "../../validations/tenantValidation.js";
 import cloudinary from "../../config/cloudinary.js";
 import { Rent } from "../rents/rent.Model.js";
 import mongoose from "mongoose";
+import { Unit } from "./units/unit.model.js";
 // Temporary folder to save uploads
 const TEMP_UPLOAD_DIR = path.join(process.cwd(), "tmp");
 if (!fs.existsSync(TEMP_UPLOAD_DIR)) fs.mkdirSync(TEMP_UPLOAD_DIR);
-
 export const createTenant = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  try {
-    await tenantValidation.validate(req.body, { abortEarly: false });
 
-    if (!req.files || !req.files.image || !req.files.image[0]) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Image file is required" });
+  try {
+    // Handle unitNumber to units conversion for backward compatibility
+    if (req.body.unitNumber && !req.body.units) {
+      req.body.units = [req.body.unitNumber];
     }
 
-    const pdfFile = req.files?.pdfAgreement?.[0] || null;
-    if (!pdfFile) {
-      return res
-        .status(400)
-        .json({ success: false, message: "PDF agreement file is required" });
+    await tenantValidation.validate(req.body, { abortEarly: false });
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one document is required",
+      });
     }
 
     const saveTempFile = (file) => {
@@ -34,56 +34,117 @@ export const createTenant = async (req, res) => {
       return tempPath;
     };
 
-    const imageTempPath = saveTempFile(req.files.image[0]);
-    const pdfTempPath = saveTempFile(pdfFile);
+    const documents = [];
 
-    const imageResult = await cloudinary.uploader.upload(imageTempPath, {
-      folder: "tenants/images",
-      transformation: [{ width: 1000, height: 1000, crop: "limit" }],
-      use_filename: true,
-      unique_filename: false,
-      overwrite: true,
-    });
+    for (const field in req.files) {
+      const uploadedFiles = Array.isArray(req.files[field])
+        ? req.files[field]
+        : [req.files[field]];
 
-    const pdfResult = await cloudinary.uploader.upload(pdfTempPath, {
-      folder: "tenants/documents",
-      resource_type: "raw",
-      use_filename: true,
-      unique_filename: false,
-      overwrite: true,
-    });
+      const filesArr = [];
 
-    fs.unlinkSync(imageTempPath);
-    fs.unlinkSync(pdfTempPath);
+      for (const file of uploadedFiles) {
+        const tempPath = saveTempFile(file);
+
+        const uploadOptions =
+          file.mimetype === "application/pdf"
+            ? { folder: "tenants/documents", resource_type: "raw" }
+            : {
+                folder: "tenants/images",
+                transformation: [{ width: 1000, height: 1000, crop: "limit" }],
+              };
+
+        const result = await cloudinary.uploader.upload(tempPath, {
+          ...uploadOptions,
+          use_filename: true,
+          unique_filename: false,
+          overwrite: true,
+        });
+
+        fs.unlinkSync(tempPath);
+
+        filesArr.push({ url: result.secure_url });
+      }
+
+      documents.push({
+        type: field,
+        files: filesArr,
+      });
+    }
+    console.log(req.body);
+
+    let unitIds = [];
+    if (req.body.units && Array.isArray(req.body.units)) {
+      unitIds = req.body.units.map((unitId) => {
+        if (mongoose.Types.ObjectId.isValid(unitId)) {
+          return new mongoose.Types.ObjectId(unitId);
+        }
+        throw new Error(`Invalid unit ID: ${unitId}`);
+      });
+    } else if (req.body.units) {
+      // Handle single unit as string
+      if (mongoose.Types.ObjectId.isValid(req.body.units)) {
+        unitIds = [new mongoose.Types.ObjectId(req.body.units)];
+      } else {
+        throw new Error(`Invalid unit ID: ${req.body.units}`);
+      }
+    } else {
+      throw new Error("Units are required");
+    }
+
+    // Verify units exist and are not already occupied
+    const units = await Unit.find({ _id: { $in: unitIds } }).session(session);
+    if (units.length !== unitIds.length) {
+      throw new Error("One or more units not found");
+    }
+
+    // Check if any unit is already occupied
+    const occupiedUnits = units.filter((unit) => unit.isOccupied);
+    if (occupiedUnits.length > 0) {
+      throw new Error(
+        `One or more units are already occupied: ${occupiedUnits
+          .map((u) => u.name)
+          .join(", ")}`
+      );
+    }
 
     const tenant = await Tenant.create(
       [
         {
           ...req.body,
-          image: imageResult.secure_url,
-          pdfAgreement: pdfResult.secure_url,
+          units: unitIds,
+          documents,
+          cam: {
+            ratePerSqft: req.body.camRatePerSqft,
+          },
           isDeleted: false,
         },
       ],
       { session }
     );
 
+    // Mark units as occupied
+    await Unit.updateMany(
+      { _id: { $in: unitIds } },
+      { $set: { isOccupied: true } },
+      { session }
+    );
+
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
 
     await Rent.create(
       [
         {
           tenant: tenant[0]._id,
-          month,
+          month: now.getMonth() + 1,
+          year: now.getFullYear(),
           innerBlock: tenant[0].innerBlock,
           block: tenant[0].block,
           property: tenant[0].property,
-          status: "pending",
           rentAmount: tenant[0].totalRent,
+          status: "pending",
           createdBy: req.admin.id,
-          year,
+          units: tenant[0].units,
         },
       ],
       { session }
@@ -96,33 +157,10 @@ export const createTenant = async (req, res) => {
       success: true,
       message: "Tenant and initial rent created successfully",
       tenant: tenant[0],
-      urls: {
-        imageUrl: imageResult.secure_url,
-        pdfUrl: pdfResult.secure_url,
-      },
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-
-    if (error.name === "ValidationError") {
-      const formattedErrors = {};
-      if (error.inner && error.inner.length > 0) {
-        error.inner.forEach((err) => {
-          if (err.path) formattedErrors[err.path] = err.message;
-        });
-      } else if (error.errors) {
-        formattedErrors.general = Array.isArray(error.errors)
-          ? error.errors.join(", ")
-          : error.errors;
-      }
-
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: formattedErrors,
-      });
-    }
 
     console.error("Tenant creation error:", error);
     res.status(500).json({
@@ -138,7 +176,8 @@ export const getTenants = async (req, res) => {
     const tenants = await Tenant.find({ isDeleted: false })
       .populate("property")
       .populate("block")
-      .populate("innerBlock");
+      .populate("innerBlock")
+      .populate("units");
     res.status(200).json({ success: true, tenants });
   } catch (error) {
     console.log(error);
@@ -155,7 +194,8 @@ export const getTenantById = async (req, res) => {
     const tenant = await Tenant.findById(req.params.id)
       .populate("property")
       .populate("block")
-      .populate("innerBlock");
+      .populate("innerBlock")
+      .populate("units");
 
     if (!tenant) {
       return res
@@ -273,6 +313,10 @@ export const deleteTenant = async (req, res) => {
       { isDeleted: true },
       { new: true }
     );
+    await Unit.updateMany(
+      { _id: { $in: softDeletedTenant.units } },
+      { $set: { isOccupied: false } }
+    );
     if (!softDeletedTenant) {
       return res
         .status(404)
@@ -338,7 +382,8 @@ export const searchTenants = async (req, res) => {
     const tenants = await Tenant.find(filters)
       .populate("property")
       .populate("block")
-      .populate("innerBlock");
+      .populate("innerBlock")
+      .populate("units");
     res.status(200).json({ success: true, tenants });
   } catch (error) {
     console.log(error);

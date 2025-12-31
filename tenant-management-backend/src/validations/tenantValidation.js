@@ -59,9 +59,13 @@ const tenantValidation = yup.object().shape({
       const num = Number(value);
       return !isNaN(num) && isFinite(num);
     })
-    .transform((value) => (value !== null && value !== undefined && value !== "" ? Number(value) : null))
+    .transform((value) =>
+      value !== null && value !== undefined && value !== ""
+        ? Number(value)
+        : null
+    )
     .required("Size square feet is required"),
-  unitNumber: yup.string().required("Unit number is required"),
+  unitNumber: yup.string().optional(),
   securityDeposit: yup
     .mixed()
     .test("is-number", "Security deposit must be a number", (value) => {
@@ -69,7 +73,42 @@ const tenantValidation = yup.object().shape({
       const num = Number(value);
       return !isNaN(num) && isFinite(num);
     })
-    .transform((value) => (value !== null && value !== undefined && value !== "" ? Number(value) : null))
+    .transform((value) =>
+      value !== null && value !== undefined && value !== ""
+        ? Number(value)
+        : null
+    )
     .required("Security deposit is required"),
+  pricePerSqft: yup
+    .mixed()
+    .test("is-number", "Price per square feet must be a number", (value) => {
+      if (value === null || value === undefined || value === "") return false;
+      const num = Number(value);
+      return !isNaN(num) && isFinite(num);
+    })
+    .transform((value) =>
+      value !== null && value !== undefined && value !== ""
+        ? Number(value)
+        : null
+    )
+    .required("Price per square feet is required"),
+  camRatePerSqft: yup
+    .mixed()
+    .test("is-number", "CAM rate per square feet must be a number", (value) => {
+      if (value === null || value === undefined || value === "") return false;
+      const num = Number(value);
+      return !isNaN(num) && isFinite(num);
+    })
+    .transform((value) =>
+      value !== null && value !== undefined && value !== ""
+        ? Number(value)
+        : null
+    )
+    .required("CAM rate per square feet is required"),
+  units: yup
+    .array()
+    .of(yup.string().required("Unit ID is required"))
+    .min(1, "At least one unit is required")
+    .required("Units are required"),
 });
 export default tenantValidation;
