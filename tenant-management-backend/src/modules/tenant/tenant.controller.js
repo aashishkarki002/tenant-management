@@ -6,10 +6,27 @@ import cloudinary from "../../config/cloudinary.js";
 import { Rent } from "../rents/rent.Model.js";
 import mongoose from "mongoose";
 import { Unit } from "./units/unit.model.js";
-// Temporary folder to save uploads
+import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
+import { sendEmail } from "../../config/nodemailer.js";
+
 const TEMP_UPLOAD_DIR = path.join(process.cwd(), "tmp");
 if (!fs.existsSync(TEMP_UPLOAD_DIR)) fs.mkdirSync(TEMP_UPLOAD_DIR);
 export const createTenant = async (req, res) => {
+  const {
+    firstDay,
+    reminderDay,
+    lastDay,
+    npMonth,
+    npYear,
+    nepaliDate,
+    englishDate,
+    englishMonth,
+    englishYear,
+    firstDayEnglish,
+    reminderDayEnglish,
+    englishDueDate,
+    lastDayEnglish,
+  } = getNepaliMonthDates();
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -122,6 +139,12 @@ export const createTenant = async (req, res) => {
       ],
       { session }
     );
+    await sendEmail({
+      to: tenant[0].email,
+      subject: "Welcome to our property management system",
+      html: `Welcome to our property management system.
+    You will receive a notification via this email for any updates regarding your units.`,
+    });
 
     // Mark units as occupied
     await Unit.updateMany(
@@ -130,14 +153,12 @@ export const createTenant = async (req, res) => {
       { session }
     );
 
-    const now = new Date();
-
     await Rent.create(
       [
         {
           tenant: tenant[0]._id,
-          month: now.getMonth() + 1,
-          year: now.getFullYear(),
+          month: englishMonth,
+          year: englishYear,
           innerBlock: tenant[0].innerBlock,
           block: tenant[0].block,
           property: tenant[0].property,
@@ -145,6 +166,20 @@ export const createTenant = async (req, res) => {
           status: "pending",
           createdBy: req.admin.id,
           units: tenant[0].units,
+          englishMonth: englishMonth,
+          englishYear: englishYear,
+          nepaliMonth: npMonth,
+          nepaliYear: npYear,
+          nepaliDate: nepaliDate,
+          nepaliDueDate: lastDay,
+          englishDueDate: englishDueDate,
+          dueDate: reminderDay,
+          lastPaidDate: null,
+          lastPaidBy: null,
+          lateFee: 0,
+          lateFeeDate: null,
+          lateFeeApplied: false,
+          lateFeeStatus: "pending",
         },
       ],
       { session }
@@ -188,7 +223,6 @@ export const getTenants = async (req, res) => {
     });
   }
 };
-
 export const getTenantById = async (req, res) => {
   try {
     const tenant = await Tenant.findById(req.params.id)
@@ -213,7 +247,6 @@ export const getTenantById = async (req, res) => {
     });
   }
 };
-
 export const updateTenant = async (req, res) => {
   try {
     const tenantId = req.params.id;
@@ -289,6 +322,16 @@ export const updateTenant = async (req, res) => {
       .populate("property")
       .populate("block")
       .populate("innerBlock");
+    const updatedUnits = await Unit.updateMany(
+      { _id: { $in: updatedTenant.units } },
+      { $set: { isOccupied: true } }
+    );
+    if (!updatedUnits) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to update units",
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -304,7 +347,6 @@ export const updateTenant = async (req, res) => {
     });
   }
 };
-
 export const deleteTenant = async (req, res) => {
   try {
     const tenantId = req.params.id;

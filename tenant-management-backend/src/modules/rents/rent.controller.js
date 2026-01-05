@@ -1,5 +1,6 @@
 import { Rent } from "./rent.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
+import { io } from "../../server.js";
 async function createRent(req, res) {
   try {
     const { tenantId, month, year } = req.body;
@@ -55,7 +56,8 @@ export async function getRentsFiltered(req, res) {
       .populate("tenant")
       .populate("innerBlock")
       .populate("block")
-      .populate("property");
+      .populate("property")
+      .populate("units");
 
     res.status(200).json({
       success: true,
@@ -78,12 +80,31 @@ export async function getRents(req, res) {
       .populate("tenant")
       .populate("innerBlock")
       .populate("block")
-      .populate("property");
+      .populate("property")
+      .populate("units");
     res.status(200).json({ success: true, rents });
   } catch (error) {
     console.log(error);
     res
       .status(500)
       .json({ success: false, message: "Rents fetching failed", error: error });
+  }
+}
+export async function getOverdueRents(req, res) {
+  try {
+    const overdueRents = await Rent.find({ status: "overdue" });
+    console.log(overdueRents);
+    res.status(200).json({ success: true, overdueRents });
+    io.emit("overdueRent", {
+      message: "Overdue rents fetched successfully",
+      overdueRents,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Overdue rents fetching failed",
+      error: error,
+    });
   }
 }

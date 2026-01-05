@@ -21,7 +21,11 @@ router.get("/search-tenants", protect, searchTenants);
 router.post(
   "/create-tenant",
   protect,
-  upload.any(),
+  upload.fields([
+    { name: "image", maxCount: 5 },
+    { name: "pdfAgreement", maxCount: 5 },
+    { name: "documents", maxCount: 5 },
+  ]),
   multerErrorHandler,
   createTenant
 );
