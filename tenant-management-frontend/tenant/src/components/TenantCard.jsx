@@ -12,8 +12,26 @@ import { useNavigate } from 'react-router-dom';
 import ViewDetail from './ViewDetail';
 import api from '../../plugins/axios';
 import { toast } from 'sonner';
+import NepaliDate from 'nepali-datetime'
 export default function TenantCard({tenant, HandleDeleteTenant}) {
+  // Convert English date to Nepali date
+  // Handle ISO format dates (e.g., "2024-01-15T00:00:00.000Z") from backend
+  let nepaliDate = null;
+  let nepaliDateString = '';
   
+  if (tenant?.leaseEndDate) {
+    try {
+      // Extract YYYY-MM-DD from ISO date string or use as-is if already in that format
+      const dateStr = tenant.leaseEndDate.includes('T') 
+        ? tenant.leaseEndDate.split('T')[0] 
+        : tenant.leaseEndDate;
+      nepaliDate = NepaliDate.parseEnglishDate(dateStr, 'YYYY-MM-DD');
+      nepaliDateString = nepaliDate.format('YYYY-MMM-DD');
+    } catch (error) {
+      console.error('Error converting date to Nepali:', error);
+      nepaliDateString = 'Invalid date';
+    }
+  }
     const navigate = useNavigate();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     
@@ -85,7 +103,7 @@ export default function TenantCard({tenant, HandleDeleteTenant}) {
 
             <p className="text-gray-500 text-sm text-left flex items-center gap-2">
               <House className="w-4 h-4 text-gray-500" />
-              {tenant?.unitNumber}
+              {tenant?.unitNumber? tenant?.unitNumber : tenant?.units?.map((unit) => unit.name).join(", ")}
             </p>
           </div>
           <div className="text-gray-500 text-sm mt-3">
@@ -112,18 +130,18 @@ export default function TenantCard({tenant, HandleDeleteTenant}) {
                     Lease End
                   </div>
                   <div>
-                    <p className="text-black text-sm ml-3">{new Date(tenant?.leaseEndDate).toLocaleDateString()}</p>
+                    <p className="text-black text-sm ml-3">{nepaliDateString || 'N/A'}</p>
                   </div>
                 </div>
               </Badge>
             </div>
             <Separator className="my-2" />
             <div className="flex justify-between items-center w-full ">
-              <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-green-100 hover:text-green-600">
+              <Button className="bg-gray-50 text-black mr-2 w-30  hover:bg-green-100 hover:text-green-600">
                 <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
                 Call
               </Button>
-              <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-gray-200 hover:bg-blue-100 hover:text-blue-600">
+              <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-blue-100 hover:text-blue-600">
                 <Mail className="w-5 h-5 text-black mr-2  " />
                 Email
               </Button>

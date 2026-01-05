@@ -56,28 +56,31 @@ export default function AppSidebar() {
     if (isMobile) setOpenMobile(false);
   };
   const { user, logout } = useAuth();
-const SignOut = async () => {
-  try {
-    // Try to call the logout endpoint, but don't fail if it errors
+  const SignOut = async () => {
     try {
-      await api.post("/api/auth/logout");
-    } catch (apiError) {
-      // Log but don't show error - we'll still clear local state
-      console.log("Logout API call failed (may be expected if token expired):", apiError);
+      // Try to call the logout endpoint, but don't fail if it errors
+      try {
+        await api.post("/api/auth/logout");
+      } catch (apiError) {
+        // Log but don't show error - we'll still clear local state
+        console.log(
+          "Logout API call failed (may be expected if token expired):",
+          apiError
+        );
+      }
+
+      // Always clear local state and redirect, regardless of API call result
+      logout();
+      navigate("/login");
+      toast.success("Signed out successfully");
+    } catch (error) {
+      console.error("Sign out error:", error);
+      // Even if there's an error, clear local state and redirect
+      logout();
+      navigate("/login");
+      toast.success("Signed out successfully");
     }
-    
-    // Always clear local state and redirect, regardless of API call result
-    logout();
-    navigate("/login");
-    toast.success("Signed out successfully");
-  } catch (error) {
-    console.error("Sign out error:", error);
-    // Even if there's an error, clear local state and redirect
-    logout();
-    navigate("/login");
-    toast.success("Signed out successfully");
-  }
-}
+  };
   return (
     <Sidebar variant="sidebar">
       <SidebarContent>
@@ -121,7 +124,9 @@ const SignOut = async () => {
                     <AvatarImage src="https://github.com/shadcn.png" />
                     <AvatarFallback>CN</AvatarFallback>
                   </Avatar>
-                  <div className="text-center font-semibold">{user?.name ?? "Admin"}</div>
+                  <div className="text-center font-semibold">
+                    {user?.name ?? "Admin"}
+                  </div>
                   <div className="text-center text-gray-500 text-sm">
                     {user?.email ?? "admin@gmail.com"}
                   </div>

@@ -1,7 +1,14 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ClipboardListIcon, XIcon, ImageIcon, FileIcon } from "lucide-react";
+import {
+  ClipboardListIcon,
+  XIcon,
+  ImageIcon,
+  FileIcon,
+  Trash2Icon,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -19,10 +26,18 @@ import api from "../plugins/axios";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
 
-
 function AddTenants() {
   const [properties, setProperties] = useState([]);
+  const [units, setUnits] = useState([]);
 
+  useEffect(() => {
+    const getUnits = async () => {
+      const response = await api.get("/api/unit/get-units");
+      setUnits(response.data.units);
+      console.log(response.data.units);
+    };
+    getUnits();
+  }, []);
   useEffect(() => {
     const fetchProperties = async () => {
       try {
@@ -86,10 +101,12 @@ function AddTenants() {
       leaseEndDate: "",
       block: "",
       innerBlock: "",
-      image: null,
-      pdfAgreement: null,
+      documentType: "",
+      documents: {}, // Store files grouped by document type: { documentType: [files] }
       dateOfAgreementSigned: "",
       leasedSquareFeet: "",
+      pricePerSqft: "",
+      camRatePerSqft: "",
       securityDeposit: "",
       status: "",
       keyHandoverDate: "",
@@ -138,13 +155,34 @@ function AddTenants() {
           formData.append("spaceReturnedDate", values.spaceReturnedDate);
         }
 
-        if (!values.image || !values.pdfAgreement) {
-          toast.error("Image and PDF are required");
+        // Handle documents - extract first image and first PDF for backward compatibility
+        let hasImage = false;
+        let hasPdf = false;
+
+        Object.entries(values.documents || {}).forEach(([docType, files]) => {
+          files.forEach((file) => {
+            if (
+              file.type === "application/pdf" ||
+              file.name.toLowerCase().endsWith(".pdf")
+            ) {
+              if (!hasPdf) {
+                formData.append("pdfAgreement", file);
+                hasPdf = true;
+              }
+            } else if (file.type.startsWith("image/")) {
+              if (!hasImage) {
+                formData.append("image", file);
+                hasImage = true;
+              }
+            }
+          });
+        });
+
+        if (!hasImage || !hasPdf) {
+          toast.error("At least one image and one PDF document are required");
           return;
         }
 
-        formData.append("image", values.image);
-        formData.append("pdfAgreement", values.pdfAgreement);
         formData.append("property", propertyId);
 
         const res = await api.post(
@@ -267,16 +305,23 @@ function AddTenants() {
                       >
                         Unit Number
                       </FieldLabel>
-                      <Input
-                        id="unitNumber"
-                        type="text"
-                        placeholder="A-101"
-                        required
-                        onChange={formik.handleChange}
+                      <Select
                         value={formik.values.unitNumber}
-                        name="unitNumber"
-                        className="mt-1.5"
-                      />
+                        onValueChange={(value) =>
+                          formik.setFieldValue("unitNumber", value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {units.map((unit) => (
+                            <SelectItem key={unit._id} value={unit._id}>
+                              {unit.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </Field>
                     <Field>
                       <FieldLabel
@@ -414,7 +459,7 @@ function AddTenants() {
                         htmlFor="spaceHandoverDate"
                         className="text-sm font-medium"
                       >
-                        Space Handover Date (Optional)
+                        Space Handover Date
                       </FieldLabel>
                       <Input
                         id="spaceHandoverDate"
@@ -430,7 +475,7 @@ function AddTenants() {
                         htmlFor="spaceReturnedDate"
                         className="text-sm font-medium"
                       >
-                        Space Returned Date
+                        Space Returned Date (Optional)
                       </FieldLabel>
                       <Input
                         id="spaceReturnedDate"
@@ -457,7 +502,7 @@ function AddTenants() {
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="block" className="text-sm font-medium">
-                        Block
+                        Building
                       </Label>
                       <Select
                         name="block"
@@ -498,7 +543,7 @@ function AddTenants() {
                         htmlFor="innerBlock"
                         className="text-sm font-medium"
                       >
-                        Inner Block
+                        Block
                       </Label>
                       <Select
                         key={formik.values.block || "no-block"}
@@ -547,91 +592,214 @@ function AddTenants() {
                   Documents
                 </h2>
                 <div className="space-y-5">
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label
-                        htmlFor="image"
-                        className="text-sm font-medium mb-2 block"
-                      >
-                        Tenant Photo *
-                      </Label>
-                      <label
-                        htmlFor="image"
-                        className="flex cursor-pointer items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-muted/30 px-6 py-8 hover:border-primary hover:bg-muted/50 transition-all"
-                      >
-                        <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {formik.values.image
-                            ? formik.values.image.name
-                            : "Upload Photo"}
-                        </span>
-                      </label>
-                      <input
-                        id="image"
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) =>
-                          formik.setFieldValue("image", e.target.files?.[0])
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label
-                        htmlFor="pdfAgreement"
-                        className="text-sm font-medium mb-2 block"
-                      >
-                        Lease Agreement (PDF)
-                      </Label>
-                      <label
-                        htmlFor="pdfAgreement"
-                        className="flex cursor-pointer items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-muted/30 px-6 py-8 hover:border-primary hover:bg-muted/50 transition-all"
-                      >
-                        <FileIcon className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {formik.values.pdfAgreement
-                            ? formik.values.pdfAgreement.name
-                            : "Upload PDF"}
-                        </span>
-                      </label>
-                      <input
-                        id="pdfAgreement"
-                        type="file"
-                        accept=".pdf"
-                        className="hidden"
-                        onChange={(e) =>
-                          formik.setFieldValue(
-                            "pdfAgreement",
-                            e.target.files?.[0]
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
+                  {/* Helper Text */}
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Select document type first, then upload one or more files.
+                  </p>
 
-                  <Field>
-                    <FieldLabel
-                      htmlFor="dateOfAgreementSigned"
-                      className="text-sm font-medium"
-                    >
-                      Agreement Signed Date
-                    </FieldLabel>
-                    <Input
-                      id="dateOfAgreementSigned"
-                      type="date"
-                      required
-                      onChange={formik.handleChange}
-                      value={formik.values.dateOfAgreementSigned}
-                      name="dateOfAgreementSigned"
-                      className="mt-1.5"
-                    />
-                  </Field>
+                  <div className="space-y-4">
+                    {/* Document Type Selector */}
+                    <div>
+                      <Label
+                        htmlFor="documentType"
+                        className="text-sm font-medium mb-2 block"
+                      >
+                        Document Type
+                      </Label>
+                      <Select
+                        name="documentType"
+                        value={formik.values.documentType || ""}
+                        onValueChange={(value) =>
+                          formik.setFieldValue("documentType", value)
+                        }
+                      >
+                        <SelectTrigger className="w-full h-10">
+                          <SelectValue placeholder="Choose Document Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="tenantPhoto">
+                            Citizenship
+                          </SelectItem>
+                          <SelectItem value="leaseAgreement">
+                            Agreement
+                          </SelectItem>
+                          <SelectItem value="other">Photo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Upload Document */}
+                    <div>
+                      <Label
+                        htmlFor="fileUpload"
+                        className="text-sm font-medium mb-2 block"
+                      >
+                        Upload Document
+                      </Label>
+                      <label
+                        htmlFor="fileUpload"
+                        className={`flex cursor-pointer items-center justify-center gap-3 rounded-lg border-2 border-dashed transition-all w-full min-h-12 px-4 py-3 ${
+                          !formik.values.documentType
+                            ? "border-muted bg-muted/20 cursor-not-allowed opacity-60"
+                            : "border-border bg-muted/30 hover:border-primary hover:bg-muted/50"
+                        }`}
+                      >
+                        <input
+                          id="fileUpload"
+                          type="file"
+                          accept="image/*,.pdf,application/pdf"
+                          className="hidden"
+                          disabled={!formik.values.documentType}
+                          multiple
+                          onChange={(e) => {
+                            if (!formik.values.documentType) {
+                              toast.error(
+                                "Please select a document type first"
+                              );
+                              return;
+                            }
+                            const files = Array.from(e.target.files || []);
+                            if (files.length > 0) {
+                              const currentFiles =
+                                formik.values.documents?.[
+                                  formik.values.documentType
+                                ] || [];
+                              const updatedFiles = [...currentFiles, ...files];
+                              formik.setFieldValue("documents", {
+                                ...formik.values.documents,
+                                [formik.values.documentType]: updatedFiles,
+                              });
+                            }
+                            e.target.value = "";
+                          }}
+                        />
+                        <FileIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+                        <span className="text-sm text-muted-foreground text-center">
+                          {!formik.values.documentType
+                            ? "Select document type first"
+                            : "Click to upload or drag and drop"}
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* File Preview List - Grouped by Document Type */}
+                    {formik.values.documents &&
+                      Object.keys(formik.values.documents).length > 0 && (
+                        <div className="space-y-4 mt-6">
+                          <h3 className="text-sm font-semibold text-foreground">
+                            Selected Files
+                          </h3>
+                          {Object.entries(formik.values.documents).map(
+                            ([docType, files]) => {
+                              if (!files || files.length === 0) return null;
+                              const docTypeLabels = {
+                                tenantPhoto: "Citizenship",
+                                leaseAgreement: "Agreement",
+                                other: "Photo",
+                              };
+                              return (
+                                <div
+                                  key={docType}
+                                  className="space-y-2 border rounded-lg p-4 bg-muted/20"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                    >
+                                      {docTypeLabels[docType] || docType}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                      {files.length} file
+                                      {files.length !== 1 ? "s" : ""}
+                                    </span>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {files.map((file, index) => (
+                                      <div
+                                        key={`${docType}-${index}`}
+                                        className="flex items-center justify-between gap-3 p-2 bg-background rounded-md border border-border hover:bg-muted/50 transition-colors"
+                                      >
+                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                          {file.type.startsWith("image/") ? (
+                                            <ImageIcon className="h-4 w-4 text-primary shrink-0" />
+                                          ) : (
+                                            <FileIcon className="h-4 w-4 text-primary shrink-0" />
+                                          )}
+                                          <span className="text-sm text-foreground truncate">
+                                            {file.name}
+                                          </span>
+                                          <span className="text-xs text-muted-foreground shrink-0">
+                                            ({(file.size / 1024).toFixed(1)} KB)
+                                          </span>
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                          onClick={() => {
+                                            const updatedFiles = files.filter(
+                                              (_, i) => i !== index
+                                            );
+                                            if (updatedFiles.length === 0) {
+                                              const newDocuments = {
+                                                ...formik.values.documents,
+                                              };
+                                              delete newDocuments[docType];
+                                              formik.setFieldValue(
+                                                "documents",
+                                                newDocuments
+                                              );
+                                            } else {
+                                              formik.setFieldValue(
+                                                "documents",
+                                                {
+                                                  ...formik.values.documents,
+                                                  [docType]: updatedFiles,
+                                                }
+                                              );
+                                            }
+                                          }}
+                                          aria-label={`Remove ${file.name}`}
+                                        >
+                                          <Trash2Icon className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+                          )}
+                        </div>
+                      )}
+
+                    {/* Agreement Signed Date */}
+                    <Field>
+                      <FieldLabel
+                        htmlFor="dateOfAgreementSigned"
+                        className="text-sm font-medium"
+                      >
+                        Agreement Signed Date
+                      </FieldLabel>
+                      <Input
+                        id="dateOfAgreementSigned"
+                        type="date"
+                        required
+                        onChange={formik.handleChange}
+                        value={formik.values.dateOfAgreementSigned}
+                        name="dateOfAgreementSigned"
+                        className="mt-1.5 w-full h-10"
+                      />
+                    </Field>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 w-105">
             <Card className="shadow-lg sticky top-6 border-primary/20">
               <CardContent className="p-6">
                 <h2 className="text-xl font-semibold mb-6 text-foreground">
@@ -656,7 +824,43 @@ function AddTenants() {
                       className="mt-1.5"
                     />
                   </div>
+                  <div>
+                    <Label
+                      htmlFor="pricePerSqft"
+                      className="text-sm font-medium"
+                    >
+                      Price Per Square Feet (₹)
+                    </Label>
+                  </div>
+                  <Input
+                    id="pricePerSqft"
+                    type="number"
+                    placeholder="100"
+                    required
+                    onChange={formik.handleChange}
+                    value={formik.values.pricePerSqft}
+                    name="pricePerSqft"
+                    className="mt-1.5"
+                  />
 
+                  <div>
+                    <Label
+                      htmlFor="camRatePerSqft"
+                      className="text-sm font-medium"
+                    >
+                      CAM Rate Per Square Feet (₹)
+                    </Label>
+                    <Input
+                      id="camRatePerSqft"
+                      type="number"
+                      placeholder="100"
+                      required
+                      onChange={formik.handleChange}
+                      value={formik.values.camRatePerSqft}
+                      name="camRatePerSqft"
+                      className="mt-1.5"
+                    />
+                  </div>
                   <div>
                     <Label
                       htmlFor="securityDeposit"
