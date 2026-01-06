@@ -24,7 +24,7 @@ router.post(
   upload.fields([
     { name: "image", maxCount: 5 },
     { name: "pdfAgreement", maxCount: 5 },
-    { name: "documents", maxCount: 5 },
+    { name: "citizenShip", maxCount: 5 },
   ]),
   multerErrorHandler,
   createTenant

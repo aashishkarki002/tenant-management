@@ -105,6 +105,10 @@ const rentSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    emailReminderSent: {
+      type: Boolean,
+      default: false,
+    },
 
     lastPaidBy: {
       type: mongoose.Schema.Types.ObjectId,

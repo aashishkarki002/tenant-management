@@ -77,12 +77,16 @@ export async function getRentsFiltered(req, res) {
 export async function getRents(req, res) {
   try {
     const rents = await Rent.find()
-      .populate("tenant")
+      .populate({
+        path: "tenant",
+        match: { isDeleted: false },
+      })
       .populate("innerBlock")
       .populate("block")
       .populate("property")
       .populate("units");
-    res.status(200).json({ success: true, rents });
+    const filteredRents = rents.filter((rent) => rent.tenant !== null);
+    res.status(200).json({ success: true, rents: filteredRents });
   } catch (error) {
     console.log(error);
     res

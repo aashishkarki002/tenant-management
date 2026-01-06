@@ -63,13 +63,16 @@ export const createTenant = async (req, res) => {
       for (const file of uploadedFiles) {
         const tempPath = saveTempFile(file);
 
-        const uploadOptions =
-          file.mimetype === "application/pdf"
-            ? { folder: "tenants/documents", resource_type: "raw" }
-            : {
-                folder: "tenants/images",
-                transformation: [{ width: 1000, height: 1000, crop: "limit" }],
-              };
+        const isPdf =
+          file.mimetype === "application/pdf" ||
+          file.mimetype === "application/x-pdf" ||
+          file.mimetype === "application/octet-stream";
+        const uploadOptions = isPdf
+          ? { folder: "tenants/pdfs", resource_type: "raw" }
+          : {
+              folder: "tenants/images",
+              transformation: [{ width: 1000, height: 1000, crop: "limit" }],
+            };
 
         const result = await cloudinary.uploader.upload(tempPath, {
           ...uploadOptions,
