@@ -36,9 +36,6 @@ function AddTenants() {
       setUnits(response.data.units);
       console.log(response.data.units);
     };
-    getUnits();
-  }, []);
-  useEffect(() => {
     const fetchProperties = async () => {
       try {
         const response = await api.get(
@@ -50,8 +47,8 @@ function AddTenants() {
         console.error("Error fetching properties:", error);
       }
     };
-
     fetchProperties();
+    getUnits();
   }, []);
 
   // Helper function to get innerBlocks for selected block
@@ -113,6 +110,8 @@ function AddTenants() {
       spaceHandoverDate: "",
       spaceReturnedDate: "",
     },
+    // Update the onSubmit function in your formik configuration
+
     onSubmit: async (values) => {
       try {
         // Validate lease end date is after lease start date
@@ -131,14 +130,13 @@ function AddTenants() {
           return;
         }
 
-        // Add all form fields except files
-        // FormData sends everything as strings, backend will parse them
+        // Add all form fields except files and documents
         Object.entries(values).forEach(([key, value]) => {
           if (
-            key !== "image" &&
-            key !== "pdfAgreement" &&
-            key !== "spaceHandoverDate" && // Handle separately
-            key !== "spaceReturnedDate" // Handle separately
+            key !== "documents" &&
+            key !== "documentType" &&
+            key !== "spaceHandoverDate" &&
+            key !== "spaceReturnedDate"
           ) {
             if (value !== null && value !== "" && value !== undefined) {
               formData.append(key, value);
@@ -146,8 +144,7 @@ function AddTenants() {
           }
         });
 
-        // Handle optional date fields - only append if they have values
-        // Backend expects null for empty optional dates
+        // Handle optional date fields
         if (values.spaceHandoverDate && values.spaceHandoverDate !== "") {
           formData.append("spaceHandoverDate", values.spaceHandoverDate);
         }
@@ -155,45 +152,47 @@ function AddTenants() {
           formData.append("spaceReturnedDate", values.spaceReturnedDate);
         }
 
-        // Handle documents - extract first image and first PDF for backward compatibility
-        let hasImage = false;
-        let hasPdf = false;
+        // Map document types to backend field names
+        const fieldMapping = {
+          tenantPhoto: "citizenShip",
+          leaseAgreement: "pdfAgreement",
+          other: "image",
+        };
 
-        Object.entries(values.documents || {}).forEach(([docType, files]) => {
-          files.forEach((file) => {
-            if (
-              file.type === "application/pdf" ||
-              file.name.toLowerCase().endsWith(".pdf")
-            ) {
-              if (!hasPdf) {
-                formData.append("pdfAgreement", file);
-                hasPdf = true;
-              }
-            } else if (file.type.startsWith("image/")) {
-              if (!hasImage) {
-                formData.append("image", file);
-                hasImage = true;
-              }
+        // Track what file types we have
+        let hasRequiredFiles = {
+          image: false,
+          pdfAgreement: false,
+          citizenShip: false,
+        };
+
+        // Process documents and append to FormData with correct field names
+        if (values.documents && Object.keys(values.documents).length > 0) {
+          Object.entries(values.documents).forEach(([docType, files]) => {
+            const backendFieldName = fieldMapping[docType];
+
+            if (backendFieldName && files && files.length > 0) {
+              files.forEach((file) => {
+                formData.append(backendFieldName, file);
+                hasRequiredFiles[backendFieldName] = true;
+              });
             }
           });
-        });
+        }
 
-        if (!hasImage || !hasPdf) {
-          toast.error("At least one image and one PDF document are required");
+        // Validate required files
+        if (!hasRequiredFiles.image || !hasRequiredFiles.pdfAgreement) {
+          toast.error("Please upload at least one image and one PDF agreement");
           return;
         }
 
         formData.append("property", propertyId);
 
-        const res = await api.post(
-          "http://localhost:3000/api/tenant/create-tenant",
-          formData,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          }
-        );
+        const res = await api.post("/api/tenant/create-tenant", formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        });
 
         if (res.data.success) {
           toast.success("Tenant created successfully!");
@@ -203,19 +202,15 @@ function AddTenants() {
       } catch (error) {
         console.error("Error creating tenant:", error);
         console.error("Error response:", error?.response?.data);
-        console.error("Error response errors:", error?.response?.data?.errors);
 
         // Handle validation errors
         if (error?.response?.data?.errors) {
           const validationErrors = error.response.data.errors;
-
-          // Yup errors can be an array or object
           let errorMessages = [];
 
           if (Array.isArray(validationErrors)) {
             errorMessages = validationErrors;
           } else if (typeof validationErrors === "object") {
-            // Extract error messages from yup error object
             errorMessages = Object.entries(validationErrors).map(
               ([field, messages]) => {
                 if (Array.isArray(messages)) {

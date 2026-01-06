@@ -22,7 +22,7 @@ export default function Header() {
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
       // Join the admin room after connection is established
-      socket.emit("joinRoom", `admin:${ADMIN_ID}`);
+      socket.emit("join:admin", ADMIN_ID);
       console.log("Joined admin room");
     });
 

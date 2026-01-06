@@ -160,15 +160,12 @@ export default function RentDashboard() {
 
   return (
     <>
-      <div className="mb-6">
-        <p className="text-2xl font-bold">Rent & Payments</p>
-        <p className="text-gray-500 text-sm">Track monthly rent collection</p>
-      </div>
-
       <Card className="max-w-5xl mx-auto mt-6">
         <CardHeader>
-          <CardTitle>Rent & Payments</CardTitle>
-          <CardDescription>Track monthly rent collection</CardDescription>
+          <CardTitle className="text-2xl font-bold">Rent & Payments</CardTitle>
+          <CardDescription className="text-gray-500 text-sm">
+            Track monthly rent collection
+          </CardDescription>
           <div className="mt-2 text-sm text-muted-foreground">
             <strong>Total Collected:</strong>{" "}
             <span className="text-primary">
