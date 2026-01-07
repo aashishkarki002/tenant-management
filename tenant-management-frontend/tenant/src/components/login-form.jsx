@@ -19,8 +19,10 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-
+import { useState } from "react";
+import { Spinner } from "@/components/ui/spinner";
 export default function LoginForm({ className, ...props }) {
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { fetchMe } = useAuth();
   const formik = useFormik({
@@ -29,6 +31,7 @@ export default function LoginForm({ className, ...props }) {
       password: "",
     },
     onSubmit: async (values) => {
+      setLoading(true);
       try {
         const response = await api.post("/api/auth/login", {
           email: values.email,
@@ -36,22 +39,24 @@ export default function LoginForm({ className, ...props }) {
         });
 
         const data = response.data;
-        
-        if(data.success){
+
+        if (data.success) {
           // Store token in localStorage
           localStorage.setItem("token", data.token);
           // Fetch user data to update AuthContext (force fetch even on login page)
           await fetchMe(true);
           // Navigate to home page
           navigate("/");
-        }else{
+        } else {
           toast.error(data.message);
         }
       } catch (error) {
         console.error("Login error:", error);
-        const errorMessage = error.response?.data?.message || "Login failed. Please try again.";
+        const errorMessage =
+          error.response?.data?.message || "Login failed. Please try again.";
         toast.error(errorMessage);
       }
+      setLoading(false);
     },
   });
   return (
@@ -100,7 +105,7 @@ export default function LoginForm({ className, ...props }) {
                 />
               </Field>
               <Field>
-                <Button type="submit">Login</Button>
+                <Button type="submit">{loading ? <Spinner /> : "Login"}</Button>
                 <Button variant="outline" type="button">
                   Login with Google
                 </Button>
