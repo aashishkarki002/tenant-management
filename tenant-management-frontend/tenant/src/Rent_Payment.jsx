@@ -149,8 +149,6 @@ export default function RentDashboard() {
     getUnits();
   }, []);
 
-  console.log(units);
-
   // Calculate totals from actual data
   const totalCollected = rents.reduce(
     (sum, rent) => sum + (rent.paidAmount || 0),
@@ -160,7 +158,7 @@ export default function RentDashboard() {
 
   return (
     <>
-      <Card className="max-w-5xl mx-auto mt-6">
+      <Card className="w-full sm:max-w-5xl mx-auto mt-6">
         <CardHeader>
           <CardTitle className="text-2xl font-bold">Rent & Payments</CardTitle>
           <CardDescription className="text-gray-500 text-sm">
@@ -245,9 +243,9 @@ export default function RentDashboard() {
                           </div>
                           <div>
                             <p className="mb-2">Payment Method:</p>
-                            <div className="w-50">
+                            <div className="w-full sm:w-50">
                               <div className="flex justify-between">
-                                <Select className="w-50">
+                                <Select className="w-full sm:w-50">
                                   <SelectTrigger>
                                     <SelectValue placeholder="Bank" />
                                   </SelectTrigger>
@@ -269,7 +267,7 @@ export default function RentDashboard() {
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
-                                <Select className="w-50">
+                                <Select className="w-full sm:w-50">
                                   <SelectTrigger>
                                     <SelectValue placeholder="cheque" />
                                   </SelectTrigger>
@@ -299,26 +297,25 @@ export default function RentDashboard() {
                             <Textarea placeholder="" />
                           </div>
                         </DialogHeader>
-                        <div className="flex justify-between">
-                          <DialogFooter>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="bg-gray-200 text-black hover:bg-gray-200 w-50"
-                              onClick={() => {}}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="bg-blue-600 text-white hover:bg-blue-800 hover:text-white w-50"
-                              onClick={() => {}}
-                            >
-                              Confirm Payment
-                            </Button>
-                          </DialogFooter>
-                        </div>
+
+                        <DialogFooter>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-gray-200 text-black hover:bg-gray-200 w-full sm:w-50"
+                            onClick={() => {}}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-blue-600 text-white hover:bg-blue-800 hover:text-white w-50"
+                            onClick={() => {}}
+                          >
+                            Confirm Payment
+                          </Button>
+                        </DialogFooter>
                       </DialogContent>
                     </Dialog>
                   </TableCell>

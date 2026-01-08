@@ -64,12 +64,12 @@ export default function Dashboard() {
   return (
     <div>
       <p className="text-3xl font-bold">Dashboard</p>
-      <p className="text-gray-500">Welcome {user.name}</p>
-      <div className="grid grid-cols-4 gap-6 mt-4">
-        <Card className="flex gap-4 w-62">
+      <p className="text-gray-500 text-2xl">Welcome {user.name}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-4">
+        <Card className="flex gap-4 w-full">
           <CardHeader>
             <CardTitle className="flex items-center  justify-between">
-              <p className="text-gray-500">Total Tenants</p>
+              <p className="text-gray-500 text-lg">Total Tenants</p>
               <div className="p-2 bg-blue-50 rounded-md text-accent w-10">
                 <Users className="w-5 h-5 text-blue-500" />
               </div>
@@ -82,10 +82,10 @@ export default function Dashboard() {
             </p>
           </CardContent>
         </Card>
-        <Card className="flex gap-2 w-62">
+        <Card className="flex gap-2 w-full">
           <CardHeader>
             <CardTitle className="flex items-center  justify-between">
-              <p className="text-gray-500">Occupency Rate</p>
+              <p className="text-gray-500 text-lg">Occupency Rate</p>
               <div className="p-2 bg-blue-50 rounded-md text-accent w-10">
                 <HouseIcon className="w-5 h-5 text-green-500" />
               </div>
@@ -103,10 +103,10 @@ export default function Dashboard() {
             </p>
           </CardContent>
         </Card>
-        <Card className="flex gap-2 w-62">
+        <Card className="flex gap-2 w-full">
           <CardHeader>
             <CardTitle className="flex items-center  justify-between">
-              <p className="text-gray-500">Rent Due Today</p>
+              <p className="text-gray-500 text-lg">Rent Due Today</p>
               <div className="p-2 bg-blue-50 rounded-md text-accent w-10">
                 <Users className="w-5 h-5 text-blue-500" />
               </div>
@@ -124,10 +124,10 @@ export default function Dashboard() {
             </p>
           </CardContent>
         </Card>
-        <Card className="flex gap-2 w-62">
+        <Card className="flex gap-2 w-full">
           <CardHeader>
             <CardTitle className="flex items-center  justify-between">
-              <p className="text-gray-500">Monthly Revenue</p>
+              <p className="text-gray-500 text-lg">Monthly Revenue</p>
               <div className="p-2 bg-blue-50 rounded-md text-accent w-10">
                 <DollarSign className="w-5 h-5 text-purple-500" />
               </div>
@@ -151,20 +151,21 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
-          <CardContent className="flex gap-6 items-center">
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card
-              className="flex gap-2 w-85 bg-blue-50 ml-4 p-4 cursor-pointer"
+              className="flex gap-2 w-full bg-blue-50 p-4 cursor-pointer"
               onClick={() => navigate("/tenant/addTenants")}
             >
               <CardHeader>
-                <CardTitle className="flex items-center  gap-4">
-                  <PlusIcon className="w-10 h-10 text-white bg-blue-500 rounded-md p-2" />
-                  <div>
-                    {" "}
-                    <p className="text-black">Total Tenants </p>
-                    <p className="text-blue-500 text-sm mt-2">
-                      Register a new lease
-                    </p>
+                <CardTitle className="flex items-center  ">
+                  <div className="flex items-center gap-2 w-full">
+                    <PlusIcon className="w-10 h-10 text-white bg-blue-500 rounded-md p-2" />
+                    <div className="flex flex-col">
+                      <p className="text-black">Total Tenants </p>
+                      <p className="text-blue-500 text-sm mt-2">
+                        Register a new lease
+                      </p>
+                    </div>
                   </div>
                 </CardTitle>
               </CardHeader>
@@ -172,14 +173,13 @@ export default function Dashboard() {
             </Card>
 
             <Card
-              className="flex gap-2 w-85 bg-green-50 p-4 cursor-pointer"
+              className="flex gap-2 w-full bg-green-50 p-4 cursor-pointer"
               onClick={() => navigate("/rent-payment")}
             >
               <CardHeader>
                 <CardTitle className="flex items-center  gap-4">
                   <WalletIcon className="w-10 h-10 text-white bg-green-800 rounded-md p-2" />
                   <div>
-                    {" "}
                     <p className="text-black">Record Rent </p>
                     <p className="text-green-800 text-sm mt-2">
                       Mark rent as paid
@@ -190,7 +190,7 @@ export default function Dashboard() {
               <CardContent></CardContent>
             </Card>
             <Card
-              className="flex gap-2 w-85 bg-yellow-50 p-4 cursor-pointer"
+              className="flex gap-2 w-full bg-yellow-50 p-4 cursor-pointer"
               onClick={() => navigate("/maintenance")}
             >
               <CardHeader>
@@ -209,7 +209,7 @@ export default function Dashboard() {
             </Card>
           </CardContent>
         </Card>
-        <div className="flex ">
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
           <div className=" flex-2 ">
             <Card className="mt-6 w-full">
               <CardHeader>
@@ -268,7 +268,7 @@ export default function Dashboard() {
             </Card>
           </div>
           <div className="flex-1">
-            <Card className="mt-6 w-100">
+            <Card className="mt-6 w-full">
               <CardHeader>
                 <CardTitle>Building Status</CardTitle>
               </CardHeader>
@@ -296,7 +296,11 @@ export default function Dashboard() {
                 <p className="text-gray-500 mb-2 flex justify-between mt-4">
                   Maintenance <span className="text-black font-bold">20%</span>{" "}
                 </p>
-                <Progress value={20} className="w-full bg-yellow-600 mt-2" />
+                <Progress
+                  value={20}
+                  className="w-full bg-yellow-200 mt-2 rounded-md"
+                  indicatorClassName="bg-yellow-600 "
+                />
               </CardContent>
             </Card>
           </div>

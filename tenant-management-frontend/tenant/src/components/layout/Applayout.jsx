@@ -13,7 +13,7 @@ export default function AppLayout({ children }) {
       <AppSidebar />
       <SidebarRail />
       <SidebarInset>
-        <header className="flex items-center border-b px-4 py-2">
+        <header className="flex items-center border-b sm:px-4 ">
           <SidebarTrigger />
           <Header />
         </header>

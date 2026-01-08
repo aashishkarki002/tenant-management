@@ -12,9 +12,10 @@ import {
 import { socket } from "../../plugins/socket";
 import { useEffect } from "react";
 import { useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 export default function Header() {
   const [notifications, setNotifications] = useState([]);
-
+  const isMobile = useIsMobile();
   useEffect(() => {
     const ADMIN_ID = "694bb354fad15644979f5209"; // replace with your admin ID
 
@@ -55,13 +56,15 @@ export default function Header() {
   }, []);
 
   return (
-    <div className="flex  justify-between items-center p-4 w-full gap-4">
-      <div className="relative w-full sm:flex-1 max-w-md">
+    <div className="flex flex-wrap sm:flex-nowrap justify-between items-center  sm:p-4 w-full gap-4">
+      <div className="relative flex-1 min-w-0">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
         <Input
           type="text"
-          className="w-full pl-10 h-10 text-sm border-gray-300 rounded-md"
-          placeholder="Search name, unit, lease end (YYYY-MM-DD)"
+          className="w-full sm:pl-10 pl-4 h-10 text-sm border-gray-300 rounded-md"
+          placeholder={
+            isMobile ? "Search..." : "Search name, unit, lease end (YYYY-MM-DD)"
+          }
         />
       </div>
       <Sheet>
@@ -74,7 +77,7 @@ export default function Header() {
           <SheetHeader>
             <SheetTitle>Notifications</SheetTitle>
           </SheetHeader>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
             {notifications.map((notification) => (
               <div className="flex items-center gap-2">
                 <Bell className="w-5 h-5 text-gray-500" />

@@ -85,11 +85,11 @@ export default function AppSidebar() {
     <Sidebar variant="sidebar">
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xl font-bold ml-10 mt-8 text-black">
+          <SidebarGroupLabel className="text-xl font-bold ml-4 md:ml-10 mt-6 text-black">
             EasyManage
           </SidebarGroupLabel>
-          <Separator className="w-full h-1 bg-gray-200 my-2" />
-          <SidebarGroupLabel className="mt-4 p-2">Main Menu</SidebarGroupLabel>
+          <Separator className="w-full h-px md:h-1 bg-gray-200 my-2" />
+          <SidebarGroupLabel className="">Main Menu</SidebarGroupLabel>
           <SidebarGroupContent className="p-3">
             <SidebarMenu>
               {items.map((item) => (
@@ -119,7 +119,7 @@ export default function AppSidebar() {
           <DropdownMenuTrigger asChild>
             <button className="w-full  cursor-pointer outline-none border-none bg-transparent text-left">
               <Card className="w-full cursor-pointer hover:bg-gray-200 bg-gray-50 transition-colors">
-                <CardHeader className="flex flex-col items-center gap-2 p-4">
+                <CardHeader className="flex flex-row md:flex-col items-center gap-2 p-3">
                   <Avatar>
                     <AvatarImage src="https://github.com/shadcn.png" />
                     <AvatarFallback>CN</AvatarFallback>
@@ -135,7 +135,11 @@ export default function AppSidebar() {
             </button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent side="top" align="center" className="w-44">
+          <DropdownMenuContent
+            side="top"
+            align="center"
+            className="min-w-[10rem] w-auto"
+          >
             <DropdownMenuItem onClick={() => navigate("/admin")}>
               <span>Account</span>
             </DropdownMenuItem>
