@@ -1,79 +1,6 @@
 import { Rent } from "./rent.Model.js";
-import { Tenant } from "../tenant/Tenant.Model.js";
-import { io } from "../../server.js";
-async function createRent(req, res) {
-  try {
-    const { tenantId, month, year } = req.body;
-
-    const tenant = await Tenant.findById(tenantId);
-    if (!tenant) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Tenant not found" });
-    }
-    const exists = await Rent.findOne({ tenant: tenant.id, month, year });
-    if (exists) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Rent already exists" });
-    }
-    const rent = await Rent.create({
-      tenant: tenant.id,
-      innerBlock: tenant.innerBlock,
-      block: tenant.block,
-      property: tenant.property,
-      rentAmount: tenant.totalRent,
-
-      month,
-      year,
-      createdBy: req.admin.id,
-    });
-    res
-      .status(201)
-      .json({ success: true, message: "Rent created successfully", rent });
-  } catch (error) {
-    console.log(error);
-    res
-      .status(500)
-      .json({ success: false, message: "Rent creation failed", error: error });
-  }
-}
-export default createRent;
-export async function getRentsFiltered(req, res) {
-  try {
-    const { month, year } = req.query;
-
-    if (!month || !year) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Month and year are required" });
-    }
-
-    const rents = await Rent.find({
-      month: Number(month),
-      year: Number(year),
-    })
-      .populate("tenant")
-      .populate("innerBlock")
-      .populate("block")
-      .populate("property")
-      .populate("units");
-
-    res.status(200).json({
-      success: true,
-      count: rents.length,
-      rents,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Rents fetching failed",
-      error: error.message,
-    });
-  }
-}
-
+import handleMonthlyRents from "./rent.service.js";
+import { sendEmailToTenants } from "./rent.service.js";
 export async function getRents(req, res) {
   try {
     const rents = await Rent.find()
@@ -94,21 +21,36 @@ export async function getRents(req, res) {
       .json({ success: false, message: "Rents fetching failed", error: error });
   }
 }
-export async function getOverdueRents(req, res) {
+export async function processMonthlyRents(req, res) {
   try {
-    const overdueRents = await Rent.find({ status: "overdue" });
-    console.log(overdueRents);
-    res.status(200).json({ success: true, overdueRents });
-    io.emit("overdueRent", {
-      message: "Overdue rents fetched successfully",
-      overdueRents,
+    const result = await handleMonthlyRents();
+
+    res.status(200).json({
+      success: result.success,
+      message: result.message,
+      createdCount: result.createdCount || 0,
+      updatedOverdueCount: result.updatedOverdueCount || 0,
+      error: result.error || null,
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({
       success: false,
-      message: "Overdue rents fetching failed",
-      error: error,
+      message: "Monthly rent processing failed",
+      error: error.message,
+    });
+  }
+}
+export async function sendEmailToTenantsController(req, res) {
+  try {
+    const result = await sendEmailToTenants();
+    res.status(200).json({ success: true, message: result.message });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Email sending failed",
+      error: error.message,
     });
   }
 }

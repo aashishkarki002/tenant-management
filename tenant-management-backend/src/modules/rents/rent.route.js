@@ -1,11 +1,10 @@
 import { Router } from "express";
-import createRent from "./rent.controller.js";
-import { getRents, getRentsFiltered } from "./rent.controller.js";
+import { processMonthlyRents } from "./rent.controller.js";
+import { getRents } from "./rent.controller.js";
 import { protect } from "../../middleware/protect.js";
-import { getOverdueRents } from "./rent.controller.js";
+import { sendEmailToTenantsController } from "./rent.controller.js";
 const router = Router();
-router.post("/create-rent", protect, createRent);
-router.get("/get-overdue-rents", protect, getOverdueRents);
+router.post("/process-monthly-rents", protect, processMonthlyRents);
 router.get("/get-rents", protect, getRents);
-router.get("/get-rents-filtered", protect, getRentsFiltered);
+router.post("/send-email-to-tenants", protect, sendEmailToTenantsController);
 export default router;

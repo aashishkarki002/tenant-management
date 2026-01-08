@@ -11,7 +11,10 @@ import tenantRoute from "./modules/tenant/tenant.route.js";
 import rentRoute from "./modules/rents/rent.route.js";
 import bankRoute from "./modules/banks/bank.route.js";
 import unitRoute from "./modules/tenant/units/unit.route.js";
-
+import notificationRoute from "./modules/notifications/notification.route.js";
+import "./cron/monthlyRent.cron.js"; // Import to initialize cron job
+import "./cron/monthlyEmail.cron.js"; // Import to initialize cron job
+// Import to initialize cron job
 const app = express();
 
 // CORS middleware - must be before routes
@@ -35,6 +38,7 @@ app.use("/api/tenant", tenantRoute);
 app.use("/api/rent", rentRoute);
 app.use("/api/bank", bankRoute);
 app.use("/api/unit", unitRoute);
+app.use("/api/notification", notificationRoute);
 // Connect DB
 connectDB()
   .then(async () => {

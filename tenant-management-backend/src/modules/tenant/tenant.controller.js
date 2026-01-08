@@ -13,19 +13,16 @@ const TEMP_UPLOAD_DIR = path.join(process.cwd(), "tmp");
 if (!fs.existsSync(TEMP_UPLOAD_DIR)) fs.mkdirSync(TEMP_UPLOAD_DIR);
 export const createTenant = async (req, res) => {
   const {
-    firstDay,
     reminderDay,
     lastDay,
     npMonth,
     npYear,
     nepaliDate,
-    englishDate,
+
     englishMonth,
     englishYear,
-    firstDayEnglish,
-    reminderDayEnglish,
+
     englishDueDate,
-    lastDayEnglish,
   } = getNepaliMonthDates();
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -63,23 +60,33 @@ export const createTenant = async (req, res) => {
       for (const file of uploadedFiles) {
         const tempPath = saveTempFile(file);
 
+        // Check both mimetype and file extension for PDF detection
+        const fileExtension = path.extname(file.originalname).toLowerCase();
         const isPdf =
+          fileExtension === ".pdf" ||
           file.mimetype === "application/pdf" ||
-          file.mimetype === "application/x-pdf" ||
-          file.mimetype === "application/octet-stream";
+          file.mimetype === "application/x-pdf";
+
         const uploadOptions = isPdf
-          ? { folder: "tenants/pdfs", resource_type: "raw" }
+          ? {
+              folder: "tenants/pdfs",
+              resource_type: "raw",
+              use_filename: true,
+              unique_filename: false,
+              overwrite: true,
+            }
           : {
               folder: "tenants/images",
               transformation: [{ width: 1000, height: 1000, crop: "limit" }],
+              use_filename: true,
+              unique_filename: false,
+              overwrite: true,
             };
 
-        const result = await cloudinary.uploader.upload(tempPath, {
-          ...uploadOptions,
-          use_filename: true,
-          unique_filename: false,
-          overwrite: true,
-        });
+        const result = await cloudinary.uploader.upload(
+          tempPath,
+          uploadOptions
+        );
 
         fs.unlinkSync(tempPath);
 
@@ -305,6 +312,10 @@ export const updateTenant = async (req, res) => {
         unique_filename: false,
         overwrite: true,
       });
+      console.log(
+        req.files.pdfAgreement[0].originalname,
+        req.files.pdfAgreement[0].mimetype
+      );
 
       fs.unlinkSync(pdfTempPath);
       updatedTenantData.pdfAgreement = pdfResult.secure_url;
