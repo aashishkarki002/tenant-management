@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { Search } from "lucide-react";
 import {
@@ -13,48 +14,71 @@ import { socket } from "../../plugins/socket";
 import { useEffect } from "react";
 import { useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "../context/AuthContext";
+import api from "../../plugins/axios";
+
 export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const isMobile = useIsMobile();
+  const { user, loading } = useAuth();
+
+  // Fetch notifications when user is loaded
   useEffect(() => {
-    const ADMIN_ID = "694bb354fad15644979f5209"; // replace with your admin ID
+    if (loading || !user) return;
 
-    // Connection event handlers
-    socket.on("connect", () => {
-      console.log("Socket connected:", socket.id);
-      // Join the admin room after connection is established
-      socket.emit("join:admin", ADMIN_ID);
-      console.log("Joined admin room");
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("Socket disconnected:", reason);
-    });
-
-    socket.on("connect_error", (error) => {
-      console.error("Socket connection error:", error);
-    });
-
-    // Listen for rent overdue notifications
-    socket.on("rent:overdue", (notification) => {
-      console.log("Overdue Rent Notification:", notification);
-      // Add to state
-      setNotifications((prev) => [notification, ...prev]);
-    });
-
-    // Connect socket
-    socket.connect();
-
-    // Cleanup on unmount
-    return () => {
-      socket.off("connect");
-      socket.off("disconnect");
-      socket.off("connect_error");
-      socket.off("rent:overdue");
-      socket.disconnect();
+    const getNotifications = async () => {
+      try {
+        // The backend uses the authenticated user's ID from the token, so we don't need to pass it in the URL
+        const response = await api.get("/api/notification/get-notifications/0");
+        if (response.data.success) {
+          setNotifications(response.data.notifications || []);
+        }
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+        // Don't show error toast - notifications are not critical
+      }
     };
-  }, []);
 
+    getNotifications();
+  }, [user, loading]);
+
+  // Connect socket and listen for new notifications
+  useEffect(() => {
+    if (!user) {
+      socket.disconnect();
+      return;
+    }
+
+    // Connect socket if not already connected
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    // Join admin room when connected
+    const handleConnect = () => {
+      if (user?._id || user?.id) {
+        socket.emit("join:admin", user._id || user.id);
+      }
+    };
+
+    // Handle new notifications
+    const handleNewNotification = (data) => {
+      setNotifications((prev) => [data.notification, ...prev]);
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("new-notification", handleNewNotification);
+
+    // Join room immediately if already connected
+    if (socket.connected && (user?._id || user?.id)) {
+      socket.emit("join:admin", user._id || user.id);
+    }
+
+    return () => {
+      socket.off("connect", handleConnect);
+      socket.off("new-notification", handleNewNotification);
+    };
+  }, [user]);
   return (
     <div className="flex flex-wrap sm:flex-nowrap justify-between items-center  sm:p-4 w-full gap-4">
       <div className="relative flex-1 min-w-0">
@@ -69,21 +93,58 @@ export default function Header() {
       </div>
       <Sheet>
         <SheetTrigger asChild>
-          <Button variant="outline" className="w-10 h-10 rounded-full">
+          <Button variant="outline" className="w-10 h-10 rounded-full relative">
             <Bell className="w-5 h-5 text-gray-500" />
+            {notifications.filter((n) => !n.isRead).length > 0 && (
+              <Badge
+                variant="destructive"
+                className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+              >
+                {notifications.filter((n) => !n.isRead).length}
+              </Badge>
+            )}
           </Button>
         </SheetTrigger>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Notifications</SheetTitle>
           </SheetHeader>
-          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
-            {notifications.map((notification) => (
-              <div className="flex items-center gap-2">
-                <Bell className="w-5 h-5 text-gray-500" />
-                <p className="text-sm text-gray-500">{notification.message}</p>
-              </div>
-            ))}
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto mt-4">
+            {notifications.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">
+                No notifications
+              </p>
+            ) : (
+              notifications.map((notification) => (
+                <div
+                  key={notification._id || notification.id}
+                  className={`flex items-start gap-3 p-3 rounded-lg border ${
+                    !notification.isRead
+                      ? "bg-blue-50 border-blue-200"
+                      : "bg-gray-50 border-gray-200"
+                  }`}
+                >
+                  <Bell
+                    className={`w-5 h-5 mt-0.5 ${
+                      !notification.isRead ? "text-blue-500" : "text-gray-400"
+                    }`}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">
+                      {notification.title}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {notification.message}
+                    </p>
+                    {notification.createdAt && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        {new Date(notification.createdAt).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </SheetContent>
       </Sheet>

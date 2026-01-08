@@ -68,7 +68,7 @@ const formatNepaliDueDate = (rent) => {
         // This is already a Nepali date, create NepaliDate object
         // Try with 1-indexed month first (most date libraries use this)
         try {
-          const nepaliDate = new NepaliDate(year, month, day);
+          const nepaliDate = new NepaliDate(year, month - 1, day);
           return nepaliDate.format("YYYY-MMM-DD");
         } catch (e) {
           // If that fails, try with 0-indexed month
@@ -117,10 +117,10 @@ const formatNepaliDueDate = (rent) => {
       const dateStr = rent.nepaliDueDate.split("T")[0];
       return dateStr; // Return raw date string as fallback
     }
-    if (rent.nepaliMonth && rent.nepaliYear) {
+    if (rent.nepaliMonth - 1 && rent.nepaliYear) {
       return `${rent.nepaliYear}-${String(rent.nepaliMonth).padStart(2, "0")}`;
     }
-    if (rent.month && rent.year) {
+    if (rent.month - 1 && rent.year) {
       return `${rent.month}/${rent.year}`;
     }
     return "N/A";

@@ -55,6 +55,7 @@ function ViewDetail({ open, onOpenChange, tenant }) {
       const dateStr = tenant.leaseEndDate.includes("T")
         ? tenant.leaseEndDate.split("T")[0]
         : tenant.leaseEndDate;
+      console.log(dateStr);
       nepaliDate = NepaliDate.parseEnglishDate(dateStr, "YYYY-MM-DD");
       nepaliDateString = nepaliDate.format("YYYY-MMM-DD");
     } catch (error) {
@@ -99,19 +100,19 @@ function ViewDetail({ open, onOpenChange, tenant }) {
             <div className="flex justify-between">
               <span className="text-slate-600">Lease Start Date:</span>
               <span className="font-semibold text-slate-900">
-                {nepaliDateString || "N/A"}
+                {tenant.leaseStartDate || "N/A"}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Lease End Date:</span>
               <span className="font-semibold text-slate-900">
-                {nepaliDateString || "N/A"}
+                {tenant.leaseEndDate || "N/A"}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Key Handover Date:</span>
               <span className="font-semibold text-slate-900">
-                {nepaliDateString || "N/A"}
+                {tenant.keyHandoverDate || "N/A"}
               </span>
             </div>
             <div className="flex justify-between">
