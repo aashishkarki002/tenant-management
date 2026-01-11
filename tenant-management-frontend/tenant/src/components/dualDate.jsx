@@ -29,7 +29,7 @@ const DualCalendarTailwind = ({ onChange }) => {
     const [bsYear, bsMonth, bsDay] = cleaned.split("-").map(Number);
     const [enYear, enMonth0, enDay] = dateConverter.nepaliToEnglish(
       bsYear,
-      bsMonth - 1,
+      bsMonth + 1,
       bsDay
     );
 
@@ -55,7 +55,7 @@ const DualCalendarTailwind = ({ onChange }) => {
     const [enYear, enMonth, enDay] = adDate.split("-").map(Number);
     const [npYear, npMonth, npDay] = dateConverter.englishToNepali(
       enYear,
-      enMonth - 1,
+      enMonth,
       enDay
     );
 

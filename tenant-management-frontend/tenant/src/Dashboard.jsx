@@ -269,36 +269,6 @@ export default function Dashboard() {
               <CardHeader>
                 <CardTitle>Building Status</CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-gray-500 mb-2 flex justify-between">
-                  Occupency{" "}
-                  <span className="text-black font-bold">
-                    {(units.length / tenants.length) * 100}%
-                  </span>{" "}
-                </p>
-                <Progress
-                  value={(units.length / tenants.length) * 100}
-                  className="w-full bg-blue-200"
-                />
-                <p className="text-gray-500 mb-2 flex justify-between mt-4">
-                  Rent Collected{" "}
-                  <span className="text-black font-bold">
-                    {totalCollected} / {totalDue}
-                  </span>{" "}
-                </p>
-                <Progress
-                  value={(totalCollected / totalDue) * 100}
-                  className="w-full bg-green-600"
-                />
-                <p className="text-gray-500 mb-2 flex justify-between mt-4">
-                  Maintenance <span className="text-black font-bold">20%</span>{" "}
-                </p>
-                <Progress
-                  value={20}
-                  className="w-full bg-yellow-200 mt-2 rounded-md"
-                  indicatorClassName="bg-yellow-600 "
-                />
-              </CardContent>
             </Card>
           </div>
         </div>

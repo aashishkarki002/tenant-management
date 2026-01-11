@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { House, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
@@ -27,84 +27,159 @@ import api from "../plugins/axios";
 import { toast } from "sonner";
 
 export default function Tenants() {
-const [tenants, setTenants] = useState([]);
-const [properties, setProperties] = useState([]);
-const [loading, setLoading] = useState(true);
+  const [tenants, setTenants] = useState([]);
+  const [properties, setProperties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBlock, setSelectedBlock] = useState(null);
+  const [selectedInnerBlock, setSelectedInnerBlock] = useState(null);
+  const [search, setSearch] = useState("");
+  const isInitialMount = useRef(true);
 
+  const navigate = useNavigate();
 
-const fetchData = async () => {
-  setLoading(true);
-  try {
-    // Check if token exists
-    const token = localStorage.getItem("token");
-    if (!token) {
-      toast.error("Please login to continue");
-      navigate("/login");
+  const fetchProperties = async () => {
+    try {
+      const response = await api.get("/api/property/get-property");
+      const data = await response.data;
+      setProperties(data.property || []);
+    } catch (error) {
+      console.error("Error fetching properties:", error);
+      if (error.response?.status === 401) {
+        // Don't show toast for properties 401 - it's already handled by tenants or interceptor
+        setProperties([]);
+      } else {
+        // Only show error if it's not a 401 (401 is handled by interceptor/tenants)
+        if (error.response?.status !== 401) {
+          toast.error(
+            "Failed to load properties. Some features may be limited."
+          );
+        }
+        setProperties([]);
+      }
+    }
+  };
+
+  const filterTenants = async () => {
+    setLoading(true);
+    try {
+      const params = {};
+
+      if (search && search.trim()) {
+        params.search = search.trim();
+      }
+
+      if (selectedBlock && selectedBlock._id) {
+        params.block = selectedBlock._id;
+      }
+
+      if (selectedInnerBlock && selectedInnerBlock._id) {
+        params.innerBlock = selectedInnerBlock._id;
+      }
+
+      const response = await api.get(`/api/tenant/search-tenants`, {
+        params,
+      });
+
+      const data = await response.data;
+      setTenants(data.tenants || []);
+    } catch (error) {
+      console.error("Error filtering tenants:", error);
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please login again.");
+        setTenants([]);
+      } else {
+        toast.error("Failed to filter tenants. Please try again.");
+        setTenants([]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // Check if token exists
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Please login to continue");
+        navigate("/login");
+        return;
+      }
+
+      const fetchtenants = async () => {
+        try {
+          const response = await api.get("/api/tenant/get-tenants");
+          const data = await response.data;
+          setTenants(data.tenants || []);
+        } catch (error) {
+          console.error("Error fetching tenants:", error);
+          if (error.response?.status === 401) {
+            toast.error("Session expired. Please login again.");
+            // The axios interceptor should handle redirect, but we'll set empty state
+            setTenants([]);
+          } else {
+            toast.error("Failed to load tenants. Please try again.");
+          }
+        }
+      };
+
+      // Fetch both in parallel
+      await Promise.all([fetchtenants(), fetchProperties()]);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      if (error.response?.status === 401) {
+        toast.error("Authentication failed. Please login again.");
+      } else {
+        toast.error("Failed to load data. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    // Skip filtering on initial mount to avoid double fetch
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
       return;
     }
 
-    const fetchtenants = async () => {
-      try {
-        const response = await api.get("/api/tenant/get-tenants");
-        const data = await response.data;
-        setTenants(data.tenants || []);
-      } catch (error) {
-        console.error("Error fetching tenants:", error);
-        if (error.response?.status === 401) {
-          toast.error("Session expired. Please login again.");
-          // The axios interceptor should handle redirect, but we'll set empty state
-          setTenants([]);
-        } else {
-          toast.error("Failed to load tenants. Please try again.");
-        }
-      }
-    };
-    
-    const fetchblocks = async () => {
-      try {
-        const response = await api.get("/api/property/get-property");
-        const data = await response.data;
-        setProperties(data.property || []);
-      } catch (error) {
-        console.error("Error fetching properties:", error);
-        if (error.response?.status === 401) {
-          // Don't show toast for properties 401 - it's already handled by tenants or interceptor
-          setProperties([]);
-        } else {
-          // Only show error if it's not a 401 (401 is handled by interceptor/tenants)
-          if (error.response?.status !== 401) {
-            toast.error("Failed to load properties. Some features may be limited.");
-          }
-          setProperties([]);
-        }
-      }
-    };
-    
-
-    // Fetch both in parallel
-    await Promise.all([fetchtenants(), fetchblocks()]);
-  } catch (error) {
-    console.error("Error fetching data:", error);
-    if (error.response?.status === 401) {
-      toast.error("Authentication failed. Please login again.");
+    // Filter tenants when search, selectedBlock, or selectedInnerBlock changes
+    // Only filter if at least one filter is active, otherwise show all tenants
+    if (search || selectedBlock || selectedInnerBlock) {
+      filterTenants();
     } else {
-      toast.error("Failed to load data. Please try again.");
+      // If no filters are active, fetch all tenants
+      const fetchtenants = async () => {
+        setLoading(true);
+        try {
+          const response = await api.get("/api/tenant/get-tenants");
+          const data = await response.data;
+          setTenants(data.tenants || []);
+        } catch (error) {
+          console.error("Error fetching tenants:", error);
+          if (error.response?.status === 401) {
+            toast.error("Session expired. Please login again.");
+            setTenants([]);
+          } else {
+            toast.error("Failed to load tenants. Please try again.");
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchtenants();
     }
-  } finally {
-    setLoading(false);
-  }
-};
+  }, [search, selectedBlock, selectedInnerBlock]);
 
-useEffect(() => {
-  fetchData();
-}, []);
-
-const HandleDeleteTenant =  () => {
-  fetchData();
-}
-
-
-  const navigate = useNavigate();
+  const HandleDeleteTenant = () => {
+    fetchData();
+  };
 
   return (
     <div>
@@ -120,43 +195,66 @@ const HandleDeleteTenant =  () => {
             type="text"
             placeholder="Search by name, unit, block"
             className="pl-10 h-10 w-full text-sm border-gray-300 rounded-md"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
         {/* Dropdown */}
-        <div className="w-full sm:w-auto">  
+        <div className="w-full sm:w-auto">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 className="flex items-center gap-2 h-10 w-full sm:w-auto justify-center"
               >
-                Select Block
+                {selectedBlock
+                  ? selectedInnerBlock
+                    ? `${selectedBlock.name} - ${selectedInnerBlock.name}`
+                    : selectedBlock.name
+                  : "Select Block"}
                 <ArrowDown className="w-5 h-5 text-gray-500" />
               </Button>
             </DropdownMenuTrigger>
 
             <DropdownMenuContent className="w-full sm:w-56" align="start">
-              <DropdownMenuLabel>Select Block</DropdownMenuLabel>
-         
+              <DropdownMenuLabel>
+                {selectedBlock ? selectedBlock.name : "Select Block"}{" "}
+                {selectedInnerBlock
+                  ? selectedInnerBlock.name
+                  : "Select Inner Block"}
+              </DropdownMenuLabel>
+
               <DropdownMenuGroup className="flex flex-col gap-1">
                 {properties && properties.length > 0 ? (
-                  properties.flatMap((property) => 
-                    property.blocks && property.blocks.length > 0 
+                  properties.flatMap((property) =>
+                    property.blocks && property.blocks.length > 0
                       ? property.blocks.map((block) => (
                           <DropdownMenuSub key={block._id}>
-                            <DropdownMenuSubTrigger className="w-full text-left">
+                            <DropdownMenuSubTrigger
+                              className="w-full text-left"
+                              onClick={() => setSelectedBlock(block)}
+                            >
                               {block.name || `Block ${block._id}`}
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="w-full sm:w-56">
-                              {block.innerBlocks && block.innerBlocks.length > 0 ? (
+                              {block.innerBlocks &&
+                              block.innerBlocks.length > 0 ? (
                                 block.innerBlocks.map((innerBlock) => (
-                                  <DropdownMenuItem key={innerBlock._id}>
-                                    {innerBlock.name || `Inner Block ${innerBlock._id}`}
+                                  <DropdownMenuItem
+                                    key={innerBlock._id}
+                                    onClick={() =>
+                                      setSelectedInnerBlock(innerBlock)
+                                    }
+                                  >
+                                    {innerBlock.name ||
+                                      `Inner Block ${innerBlock._id}`}
                                   </DropdownMenuItem>
                                 ))
                               ) : (
-                                <DropdownMenuItem disabled>No inner blocks</DropdownMenuItem>
+                                <DropdownMenuItem disabled>
+                                  No inner blocks
+                                </DropdownMenuItem>
                               )}
                             </DropdownMenuSubContent>
                           </DropdownMenuSub>
@@ -164,7 +262,9 @@ const HandleDeleteTenant =  () => {
                       : []
                   )
                 ) : (
-                  <DropdownMenuItem disabled>No blocks available</DropdownMenuItem>
+                  <DropdownMenuItem disabled>
+                    No blocks available
+                  </DropdownMenuItem>
                 )}
               </DropdownMenuGroup>
             </DropdownMenuContent>
@@ -199,7 +299,11 @@ const HandleDeleteTenant =  () => {
           </div>
         ) : (
           tenants.map((tenant) => (
-            <TenantCard key={tenant._id} tenant={tenant} HandleDeleteTenant={HandleDeleteTenant} />
+            <TenantCard
+              key={tenant._id}
+              tenant={tenant}
+              HandleDeleteTenant={HandleDeleteTenant}
+            />
           ))
         )}
       </div>

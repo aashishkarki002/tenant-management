@@ -40,10 +40,6 @@ function ViewDetail({ open, onOpenChange, tenant }) {
   // Debug logging
   useEffect(() => {
     if (open && tenant) {
-      console.log("Tenant data:", tenant);
-      console.log("Tenant documents:", tenant.documents);
-      console.log("Image URL:", imageUrl);
-      console.log("PDF URL:", pdfUrl);
     }
   }, [open, tenant, imageUrl, pdfUrl]);
 

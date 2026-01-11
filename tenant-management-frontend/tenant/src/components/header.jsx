@@ -16,11 +16,14 @@ import { useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "../context/AuthContext";
 import api from "../../plugins/axios";
+import { useLocation } from "react-router-dom";
 
 export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const isMobile = useIsMobile();
   const { user, loading } = useAuth();
+  const location = useLocation();
+  const isTenantsPage = location.pathname === "/tenants";
 
   // Fetch notifications when user is loaded
   useEffect(() => {
@@ -81,73 +84,82 @@ export default function Header() {
   }, [user]);
   return (
     <div className="flex flex-wrap sm:flex-nowrap justify-between items-center  sm:p-4 w-full gap-4">
-      <div className="relative flex-1 min-w-0">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-        <Input
-          type="text"
-          className="w-full sm:pl-10 pl-4 h-10 text-sm border-gray-300 rounded-md"
-          placeholder={
-            isMobile ? "Search..." : "Search name, unit, lease end (YYYY-MM-DD)"
-          }
-        />
-      </div>
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="outline" className="w-10 h-10 rounded-full relative">
-            <Bell className="w-5 h-5 text-gray-500" />
-            {notifications.filter((n) => !n.isRead).length > 0 && (
-              <Badge
-                variant="destructive"
-                className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
-              >
-                {notifications.filter((n) => !n.isRead).length}
-              </Badge>
-            )}
-          </Button>
-        </SheetTrigger>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Notifications</SheetTitle>
-          </SheetHeader>
-          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto mt-4">
-            {notifications.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-4">
-                No notifications
-              </p>
-            ) : (
-              notifications.map((notification) => (
-                <div
-                  key={notification._id || notification.id}
-                  className={`flex items-start gap-3 p-3 rounded-lg border ${
-                    !notification.isRead
-                      ? "bg-blue-50 border-blue-200"
-                      : "bg-gray-50 border-gray-200"
-                  }`}
+      {!isTenantsPage && (
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+          <Input
+            type="text"
+            className="w-full sm:pl-10 pl-4 h-10 text-sm border-gray-300 rounded-md"
+            placeholder={
+              isMobile
+                ? "Search..."
+                : "Search name, unit, lease end (YYYY-MM-DD)"
+            }
+          />
+        </div>
+      )}
+      <div className={isTenantsPage ? "ml-auto" : ""}>
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-10 h-10 rounded-full relative"
+            >
+              <Bell className="w-5 h-5 text-gray-500" />
+              {notifications.filter((n) => !n.isRead).length > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
                 >
-                  <Bell
-                    className={`w-5 h-5 mt-0.5 ${
-                      !notification.isRead ? "text-blue-500" : "text-gray-400"
+                  {notifications.filter((n) => !n.isRead).length}
+                </Badge>
+              )}
+            </Button>
+          </SheetTrigger>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>Notifications</SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto mt-4">
+              {notifications.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  No notifications
+                </p>
+              ) : (
+                notifications.map((notification) => (
+                  <div
+                    key={notification._id || notification.id}
+                    className={`flex items-start gap-3 p-3 rounded-lg border ${
+                      !notification.isRead
+                        ? "bg-blue-50 border-blue-200"
+                        : "bg-gray-50 border-gray-200"
                     }`}
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      {notification.title}
-                    </p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {notification.message}
-                    </p>
-                    {notification.createdAt && (
-                      <p className="text-xs text-gray-400 mt-1">
-                        {new Date(notification.createdAt).toLocaleString()}
+                  >
+                    <Bell
+                      className={`w-5 h-5 mt-0.5 ${
+                        !notification.isRead ? "text-blue-500" : "text-gray-400"
+                      }`}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {notification.title}
                       </p>
-                    )}
+                      <p className="text-sm text-gray-600 mt-1">
+                        {notification.message}
+                      </p>
+                      {notification.createdAt && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          {new Date(notification.createdAt).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+                ))
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
     </div>
   );
 }

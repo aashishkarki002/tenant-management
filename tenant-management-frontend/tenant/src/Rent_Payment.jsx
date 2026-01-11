@@ -30,6 +30,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import DualCalendarTailwind from "./components/dualDate";
+import { useFormik } from "formik";
 import {
   Select,
   SelectTrigger,
@@ -44,6 +46,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
 const statusVariant = {
   Paid: "success",
   paid: "success",
@@ -130,21 +134,28 @@ const formatNepaliDueDate = (rent) => {
 export default function RentDashboard() {
   const [rents, setRents] = useState([]);
   const [units, setUnits] = useState([]);
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("Cash");
+  const [paymentDate, setPaymentDate] = useState(["", ""]);
 
+  const GetBankAccounts = async () => {
+    const response = await api.get("/api/bank/get-bank-accounts");
+    const data = await response.data;
+    setBankAccounts(data.bankAccounts);
+  };
   const getRents = async () => {
     const response = await api.get("/api/rent/get-rents");
     setRents(response.data.rents);
-    console.log(response.data.rents);
   };
 
   useEffect(() => {
     getRents();
+    GetBankAccounts();
   }, []);
   useEffect(() => {
     const getUnits = async () => {
       const response = await api.get("/api/unit/get-units");
       setUnits(response.data.units);
-      console.log(response.data.units);
     };
     getUnits();
   }, []);
@@ -156,175 +167,266 @@ export default function RentDashboard() {
   );
   const totalDue = rents.reduce((sum, rent) => sum + (rent.rentAmount || 0), 0);
 
+  const formik = useFormik({
+    initialValues: {
+      rentId: "",
+      paymentDate: null,
+      paymentMethod: selectedPaymentMethod,
+      bankAccountId: "",
+      amount: 0,
+      notes: "",
+      receivedBy: "",
+    },
+    onSubmit: async (values) => {
+      console.log(values);
+      const response = await api.post("/api/payment/pay-rent", values);
+      if (response.data.success) {
+        toast.success(response.data.message);
+        formik.resetForm();
+      } else {
+        toast.error(response.data.message);
+      }
+    },
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    formik.handleSubmit();
+  };
   return (
     <>
-      <Card className="w-full sm:max-w-5xl mx-auto mt-6">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold">Rent & Payments</CardTitle>
-          <CardDescription className="text-gray-500 text-sm">
-            Track monthly rent collection
-          </CardDescription>
-          <div className="mt-2 text-sm text-muted-foreground">
-            <strong>Total Collected:</strong>{" "}
-            <span className="text-primary">
-              ₹{totalCollected.toLocaleString()} / ₹{totalDue.toLocaleString()}
-            </span>
-          </div>
-        </CardHeader>
+      <Toaster />
+      <form onSubmit={handleSubmit}>
+        <Card className="w-full sm:max-w-5xl mx-auto mt-6">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold">
+              Rent & Payments
+            </CardTitle>
+            <CardDescription className="text-gray-500 text-sm">
+              Track monthly rent collection
+            </CardDescription>
+            <div className="mt-2 text-sm text-muted-foreground">
+              <strong>Total Collected:</strong>{" "}
+              <span className="text-primary">
+                ₹{totalCollected.toLocaleString()} / ₹
+                {totalDue.toLocaleString()}
+              </span>
+            </div>
+          </CardHeader>
 
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tenant / Unit</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rents.map((rent, idx) => (
-                <TableRow key={rent._id || idx}>
-                  <TableCell>
-                    <div className="font-medium">
-                      {rent.tenant ? rent.tenant.name : "No Tenant Assigned"}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {rent.innerBlock?.name || "N/A"} -{" "}
-                      {rent.block?.name || "N/A"}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    ₹{rent.rentAmount?.toLocaleString() || "0"}
-                  </TableCell>
-                  <TableCell>{formatNepaliDueDate(rent)}</TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant[rent.status] || "default"}>
-                      {rent.status || "Unknown"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="bg-blue-600 text-white hover:bg-blue-800 hover:text-white"
-                        >
-                          Record Payment
-                        </Button>
-                      </DialogTrigger>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tenant / Unit</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rents.map((rent, idx) => (
+                  <TableRow key={rent._id || idx}>
+                    <TableCell>
+                      <div className="font-medium">
+                        {rent.tenant ? rent.tenant.name : "No Tenant Assigned"}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {rent.innerBlock?.name || "N/A"} -{" "}
+                        {rent.block?.name || "N/A"}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      ₹{rent.rentAmount?.toLocaleString() || "0"}
+                    </TableCell>
+                    <TableCell>{formatNepaliDueDate(rent)}</TableCell>
+                    <TableCell>
+                      <Badge variant={statusVariant[rent.status] || "default"}>
+                        {rent.status || "Unknown"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={rent.status === "paid"}
+                            className="bg-gray-500 text-white hover:bg-gray-800 hover:text-white"
+                            onClick={() => {
+                              formik.setFieldValue(
+                                "rentId",
+                                rent._id.toString()
+                              );
+                              formik.setFieldValue(
+                                "amount",
+                                rent.rentAmount || 0
+                              );
+                              formik.setFieldValue("paymentDate", null);
+                            }}
+                          >
+                            {rent.status === "paid"
+                              ? "Paid"
+                              : "Record Payment "}
+                          </Button>
+                        </DialogTrigger>
 
-                      <DialogContent>
-                        <DialogHeader>
-                          {" "}
-                          <DialogTitle className="text-2xl font-bold">
-                            Record Payment
-                          </DialogTitle>
-                          <div className="bg-gray-100 p-4 rounded-md mt-4">
-                            <p className="text-gray-500">Receiving From:</p>
-                            <p className="text-black font-bold text-xl">
-                              {rent.tenant?.name || "N/A"}
-                            </p>
-                            {console.log(rent.tenant?.units)}
-                            <p className="text-gray-500">
-                              {" "}
-                              {rent.tenant?.unitNumber
-                                ? rent.tenant.unitNumber
-                                : rent.tenant.units
-                                    ?.map((unit) => unit.name)
-                                    .join(", ")}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="mb-2">Amount Received:</p>
-                            <Input placeholder="" />
-                          </div>
-                          <div>
-                            <p className="mb-2">Payment Method:</p>
-                            <div className="w-full sm:w-50">
-                              <div className="flex justify-between">
-                                <Select className="w-full sm:w-50">
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Bank" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Bank">
-                                      Siddhartha Bank
-                                    </SelectItem>
-                                    <SelectItem value="Bank">
-                                      Nepal Bank
-                                    </SelectItem>
-                                    <SelectItem value="Bank">
-                                      Prabhu Bank
-                                    </SelectItem>
-                                    <SelectItem value="Bank">
-                                      Rastriya Banijya Bank
-                                    </SelectItem>
-                                    <SelectItem value="Bank">
-                                      Siddhartha Bank
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Select className="w-full sm:w-50">
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="cheque" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Cheque">
-                                      Siddhartha Bank
-                                    </SelectItem>
-                                    <SelectItem value="Cheque">
-                                      Nepal Bank
-                                    </SelectItem>
-                                    <SelectItem value="Cheque">
-                                      Prabhu Bank
-                                    </SelectItem>
-                                    <SelectItem value="Cheque">
-                                      Rastriya Banijya Bank
-                                    </SelectItem>
-                                    <SelectItem value="Cheque">
-                                      Siddhartha Bank
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
+                        <DialogContent>
+                          <DialogHeader>
+                            {" "}
+                            <DialogTitle className="text-2xl font-bold">
+                              Record Payment
+                            </DialogTitle>
+                            <div className="bg-gray-100 p-4 rounded-md mt-4">
+                              <p className="text-gray-500">Receiving From:</p>
+                              <p className="text-black font-bold text-xl">
+                                {rent.tenant?.name || "N/A"}
+                              </p>
+
+                              <p className="text-gray-500">
+                                {" "}
+                                {rent.tenant?.unitNumber
+                                  ? rent.tenant.unitNumber
+                                  : rent.tenant.units
+                                      ?.map((unit) => unit.name)
+                                      .join(", ")}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="mb-2">Amount Received:</p>
+                              <Input
+                                placeholder=""
+                                value={formik.values.amount}
+                                onChange={formik.handleChange}
+                                name="amount"
+                              />
+                            </div>
+                            <div>
+                              <p className="mb-2">Payment Date:</p>
+                              <DualCalendarTailwind
+                                onChange={(english, nepali) => {
+                                  // Create Date object directly from Nepali date (e.g., "2082-09-20")
+                                  // Don't convert to English date - parse Nepali date directly
+                                  if (nepali) {
+                                    const [year, month, day] = nepali
+                                      .split("-")
+                                      .map(Number);
+                                    const dateObj = new Date(
+                                      year,
+                                      month - 1,
+                                      day
+                                    );
+                                    formik.setFieldValue(
+                                      "paymentDate",
+                                      dateObj
+                                    );
+                                  } else {
+                                    formik.setFieldValue("paymentDate", null);
+                                  }
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <p className="mb-2">Payment Method:</p>
+                              <div className="w-full sm:w-50">
+                                <div className="flex gap-2">
+                                  <Select
+                                    className="w-full sm:w-50"
+                                    value={formik.values.paymentMethod}
+                                    onValueChange={(value) =>
+                                      formik.setFieldValue(
+                                        "paymentMethod",
+                                        value
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select Payment Method" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="bank_transfer">
+                                        Bank
+                                      </SelectItem>
+                                      <SelectItem value="cash">Cash</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Select
+                                    className="w-full sm:w-50"
+                                    disabled={
+                                      formik.values.paymentMethod !==
+                                      "bank_transfer"
+                                    }
+                                    value={formik.values.bankAccountId}
+                                    onValueChange={(value) =>
+                                      formik.setFieldValue(
+                                        "bankAccountId",
+                                        value
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Bank" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {bankAccounts.map((bank) => (
+                                        <SelectItem
+                                          key={bank._id}
+                                          value={bank._id}
+                                        >
+                                          {bank.bankName}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="mt-2">
-                            <p className="mb-2">Notes(Optional)</p>
-                            <Textarea placeholder="" />
-                          </div>
-                        </DialogHeader>
+                            <div className="mt-2">
+                              <p className="mb-2">Notes(Optional)</p>
+                              <Textarea
+                                placeholder=""
+                                value={formik.values.notes}
+                                onChange={formik.handleChange}
+                                name="notes"
+                              />
+                            </div>
+                          </DialogHeader>
 
-                        <DialogFooter>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="bg-gray-200 text-black hover:bg-gray-200 w-full sm:w-50"
-                            onClick={() => {}}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="bg-blue-600 text-white hover:bg-blue-800 hover:text-white w-50"
-                            onClick={() => {}}
-                          >
-                            Confirm Payment
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                          <DialogFooter>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="bg-gray-200 text-black hover:bg-gray-200 w-full sm:w-50"
+                              onClick={() => {
+                                formik.resetForm();
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="submit"
+                              variant="outline"
+                              size="sm"
+                              className="bg-blue-600 text-white hover:bg-blue-800 hover:text-white w-50"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                formik.handleSubmit();
+                              }}
+                            >
+                              Confirm Payment
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </form>
     </>
   );
 }
