@@ -41,24 +41,17 @@ function getNepaliMonthDates(year, month) {
  * @returns {{ isFirstDay: boolean, isReminderDay: boolean, isLastDay: boolean }}
  */
 function checkNepaliSpecialDays() {
-  // Fake date that will match all checks
-  const fakeDate = new NepaliDate(2080, 0, 1); // year, month (0-based), day
-
-  // Make all special days the same as fakeDate
-  const firstDay = fakeDate;
-  const reminderDay = fakeDate;
-  const lastDay = fakeDate;
-
-  // Compare NepaliDate objects
+  const now = new NepaliDate();
+  const { firstDay, reminderDay, lastDay } = getNepaliMonthDates();
   const isSameDay = (date1, date2) =>
     date1.getDate() === date2.getDate() &&
     date1.getMonth() === date2.getMonth() &&
     date1.getYear() === date2.getYear();
 
   return {
-    isFirstDay: isSameDay(fakeDate, firstDay),
-    isReminderDay: isSameDay(fakeDate, reminderDay),
-    isLastDay: isSameDay(fakeDate, lastDay),
+    isFirstDay: isSameDay(now, firstDay),
+    isReminderDay: isSameDay(now, reminderDay),
+    isLastDay: isSameDay(now, lastDay),
   };
 }
 

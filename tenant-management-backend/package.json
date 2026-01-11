@@ -29,6 +29,7 @@
     "nepali-datetime": "^1.5.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.11",
+    "pdfkit": "^0.17.2",
     "socket.io": "^4.8.3",
     "streamifier": "^0.1.1",
     "yup": "^1.7.1"
