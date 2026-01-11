@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { Rent } from "../rents/rent.Model.js";
-import { Payment } from "./payment.Model.js";
+import { Payment } from "./payment.model.js";
 import BankAccount from "../banks/BankAccountModel.js";
 import {
   generateAndUploadRentPDF,
@@ -28,10 +28,24 @@ export const createPayment = async (paymentData) => {
     const rent = await Rent.findById(rentId).session(session);
     if (!rent) throw new Error("Rent not found");
 
+    // Get tenantId from rent if not provided
+    const finalTenantId =
+      tenantId || (rent.tenant ? rent.tenant.toString() : null);
+    if (!finalTenantId) throw new Error("Tenant ID is required");
+
     // 2️⃣ Update rent
     rent.paidAmount += amount;
     rent.lastPaidDate = paymentDate;
-    rent.lastPaidBy = receivedBy;
+    // Only set lastPaidBy if receivedBy is a valid ObjectId, otherwise set to null
+    if (
+      receivedBy &&
+      mongoose.Types.ObjectId.isValid(receivedBy) &&
+      receivedBy.trim() !== ""
+    ) {
+      rent.lastPaidBy = new mongoose.Types.ObjectId(receivedBy);
+    } else {
+      rent.lastPaidBy = null;
+    }
 
     rent.status =
       rent.paidAmount >= rent.rentAmount
@@ -42,32 +56,45 @@ export const createPayment = async (paymentData) => {
 
     await rent.save({ session });
 
-    // 3️⃣ Update bank account
-    const bankAccount = await BankAccount.findById(bankAccountId).session(
-      session
-    );
-    if (!bankAccount) throw new Error("Bank account not found");
+    // 3️⃣ Update bank account (only for bank_transfer or cheque)
+    let bankAccount = null;
+    let bankAccountObjectId = null;
+    if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
+      // Convert bankAccountId string to MongoDB ObjectId
+      if (!bankAccountId) {
+        throw new Error(
+          "Bank account ID is required for bank transfer or cheque payments"
+        );
+      }
+      if (!mongoose.Types.ObjectId.isValid(bankAccountId)) {
+        throw new Error("Invalid bank account ID format");
+      }
+      bankAccountObjectId = new mongoose.Types.ObjectId(bankAccountId);
+      bankAccount = await BankAccount.findById(bankAccountObjectId).session(
+        session
+      );
+      if (!bankAccount) throw new Error("Bank account not found");
 
-    bankAccount.balance += amount;
-    await bankAccount.save({ session });
+      bankAccount.balance += amount;
+      await bankAccount.save({ session });
+    }
 
     // 4️⃣ Create payment
-    const [payment] = await Payment.create(
-      [
-        {
-          rent: rentId,
-          tenant: tenantId,
-          amount,
-          paymentDate,
-          paymentMethod,
-          paymentStatus,
-          note,
-          receivedBy,
-          bankAccount: bankAccountId,
-        },
-      ],
-      { session }
-    );
+    const paymentData = {
+      rent: rentId,
+      tenant: finalTenantId,
+      amount,
+      paymentDate,
+      paymentMethod,
+      paymentStatus,
+      note,
+      receivedBy,
+    };
+    // Only include bankAccount if it exists (for bank_transfer or cheque)
+    if (bankAccountObjectId) {
+      paymentData.bankAccount = bankAccountObjectId;
+    }
+    const [payment] = await Payment.create([paymentData], { session });
 
     // 5️⃣ Commit DB transaction **before generating PDF**
     await session.commitTransaction();
