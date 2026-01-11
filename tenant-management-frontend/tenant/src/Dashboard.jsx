@@ -58,9 +58,6 @@ export default function Dashboard() {
     getUnits();
     getRents();
   }, []);
-  console.log(tenants);
-  console.log(units);
-  console.log(rents);
   return (
     <div>
       <p className="text-3xl font-bold">Dashboard</p>

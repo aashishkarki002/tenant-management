@@ -17,8 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { useParams } from "react-router-dom";
 
 function EditTenant() {
-  const { id } = useParams();   
-  console.log(id);
+  const { id } = useParams();
   const formik = useFormik({
     initialValues: {
       name: "",

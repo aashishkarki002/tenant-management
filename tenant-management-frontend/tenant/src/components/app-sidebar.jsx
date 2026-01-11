@@ -63,10 +63,6 @@ export default function AppSidebar() {
         await api.post("/api/auth/logout");
       } catch (apiError) {
         // Log but don't show error - we'll still clear local state
-        console.log(
-          "Logout API call failed (may be expected if token expired):",
-          apiError
-        );
       }
 
       // Always clear local state and redirect, regardless of API call result

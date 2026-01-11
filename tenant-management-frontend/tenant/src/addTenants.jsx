@@ -21,7 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
 import { Separator } from "@/components/ui/separator";
-import axios from "axios";
+import DualCalendarTailwind from "./components/dualDate";
+import "nepali-datepicker-reactjs/dist/index.css";
 import api from "../plugins/axios";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
@@ -34,7 +35,6 @@ function AddTenants() {
     const getUnits = async () => {
       const response = await api.get("/api/unit/get-units");
       setUnits(response.data.units);
-      console.log(response.data.units);
     };
     const fetchProperties = async () => {
       try {
@@ -396,14 +396,10 @@ function AddTenants() {
                         Lease Start Date AD
                       </FieldLabel>
 
-                      <Input
-                        id="leaseStartDate"
-                        type="date"
-                        required
-                        onChange={formik.handleChange}
-                        value={formik.values.leaseStartDate}
-                        name="leaseStartDate"
-                        className="mt-1.5"
+                      <DualCalendarTailwind
+                        onChange={(date) =>
+                          formik.setFieldValue("leaseStartDate", date)
+                        }
                       />
                     </Field>
                     <Field>
@@ -413,15 +409,10 @@ function AddTenants() {
                       >
                         Lease End Date
                       </FieldLabel>
-                      <Input
-                        id="leaseEndDate"
-                        type="date"
-                        required
-                        min={formik.values.leaseStartDate || undefined}
-                        onChange={formik.handleChange}
-                        value={formik.values.leaseEndDate}
-                        name="leaseEndDate"
-                        className="mt-1.5"
+                      <DualCalendarTailwind
+                        onChange={(date) =>
+                          formik.setFieldValue("leaseEndDate", date)
+                        }
                       />
                       {formik.values.leaseStartDate &&
                         formik.values.leaseEndDate &&
@@ -439,14 +430,10 @@ function AddTenants() {
                       >
                         Key Handover Date
                       </FieldLabel>
-                      <Input
-                        id="keyHandoverDate"
-                        type="date"
-                        required
-                        onChange={formik.handleChange}
-                        value={formik.values.keyHandoverDate}
-                        name="keyHandoverDate"
-                        className="mt-1.5"
+                      <DualCalendarTailwind
+                        onChange={(date) =>
+                          formik.setFieldValue("keyHandoverDate", date)
+                        }
                       />
                     </Field>
                     <Field>
@@ -456,13 +443,10 @@ function AddTenants() {
                       >
                         Space Handover Date
                       </FieldLabel>
-                      <Input
-                        id="spaceHandoverDate"
-                        type="date"
-                        onChange={formik.handleChange}
-                        value={formik.values.spaceHandoverDate}
-                        name="spaceHandoverDate"
-                        className="mt-1.5"
+                      <DualCalendarTailwind
+                        onChange={(date) =>
+                          formik.setFieldValue("spaceHandoverDate", date)
+                        }
                       />
                     </Field>
                     <Field>
@@ -472,14 +456,10 @@ function AddTenants() {
                       >
                         Space Returned Date (Optional)
                       </FieldLabel>
-                      <Input
-                        id="spaceReturnedDate"
-                        type="date"
-                        required
-                        onChange={formik.handleChange}
-                        value={formik.values.spaceReturnedDate}
-                        name="spaceReturnedDate"
-                        className="mt-1.5"
+                      <DualCalendarTailwind
+                        onChange={(date) =>
+                          formik.setFieldValue("spaceReturnedDate", date)
+                        }
                       />
                     </Field>
                   </div>
@@ -778,14 +758,10 @@ function AddTenants() {
                       >
                         Agreement Signed Date
                       </FieldLabel>
-                      <Input
-                        id="dateOfAgreementSigned"
-                        type="date"
-                        required
-                        onChange={formik.handleChange}
-                        value={formik.values.dateOfAgreementSigned}
-                        name="dateOfAgreementSigned"
-                        className="mt-1.5 w-full h-10"
+                      <DualCalendarTailwind
+                        onChange={(date) =>
+                          formik.setFieldValue("dateOfAgreementSigned", date)
+                        }
                       />
                     </Field>
                   </div>

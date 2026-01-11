@@ -20,6 +20,7 @@ import ViewDetail from "./ViewDetail";
 import api from "../../plugins/axios";
 import { toast } from "sonner";
 import NepaliDate from "nepali-datetime";
+import { Building } from "lucide-react";
 export default function TenantCard({ tenant, HandleDeleteTenant }) {
   // Convert English date to Nepali date
   // Handle ISO format dates (e.g., "2024-01-15T00:00:00.000Z") from backend
@@ -27,7 +28,6 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
   let nepaliDateString = "";
 
   if (tenant?.leaseEndDate) {
-    console.log(tenant.leaseEndDate);
     try {
       // Extract YYYY-MM-DD from ISO date string or use as-is if already in that format
       const dateStr = tenant.leaseEndDate.includes("T")
@@ -51,7 +51,6 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
         return;
       }
 
-      console.log("Deleting tenant with ID:", tenant._id);
       const response = await api.patch(
         `/api/tenant/delete-tenant/${tenant._id}`
       );
@@ -116,7 +115,10 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
             onOpenChange={setIsDialogOpen}
             tenant={tenant}
           />
-
+          <span className="text-gray-500 text-sm text-left flex items-center gap-2">
+            <Building className="w-4 h-4 text-gray-500" />
+            {tenant?.block.name}
+          </span>
           <p className="text-gray-500 text-sm text-left flex items-center gap-2">
             <House className="w-4 h-4 text-gray-500" />
             {tenant?.unitNumber

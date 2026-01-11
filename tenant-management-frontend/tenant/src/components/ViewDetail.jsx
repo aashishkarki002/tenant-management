@@ -1,3 +1,4 @@
+// components/ViewDetail.jsx
 import React, { useEffect } from "react";
 import {
   Dialog,
@@ -7,7 +8,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import NepaliDate from "nepali-datetime";
+import { toNepaliDate } from "../../utils/formatNepali";
 
 function ViewDetail({ open, onOpenChange, tenant }) {
   // Extract image and PDF URLs from documents array
@@ -19,7 +20,7 @@ function ViewDetail({ open, onOpenChange, tenant }) {
     if (imageDoc && imageDoc.files && imageDoc.files.length > 0) {
       return imageDoc.files[0].url;
     }
-    return tenant?.image || null;
+    return tenant?.image || null; // ✅ Return image URL or null
   };
 
   const getPdfUrl = () => {
@@ -45,24 +46,6 @@ function ViewDetail({ open, onOpenChange, tenant }) {
       console.log("PDF URL:", pdfUrl);
     }
   }, [open, tenant, imageUrl, pdfUrl]);
-
-  let nepaliDate = null;
-  let nepaliDateString = "";
-
-  if (tenant?.leaseEndDate) {
-    try {
-      // Extract YYYY-MM-DD from ISO date string or use as-is if already in that format
-      const dateStr = tenant.leaseEndDate.includes("T")
-        ? tenant.leaseEndDate.split("T")[0]
-        : tenant.leaseEndDate;
-      console.log(dateStr);
-      nepaliDate = NepaliDate.parseEnglishDate(dateStr, "YYYY-MM-DD");
-      nepaliDateString = nepaliDate.format("YYYY-MMM-DD");
-    } catch (error) {
-      console.error("Error converting date to Nepali:", error);
-      nepaliDateString = "Invalid date";
-    }
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -100,21 +83,28 @@ function ViewDetail({ open, onOpenChange, tenant }) {
             <div className="flex justify-between">
               <span className="text-slate-600">Lease Start Date:</span>
               <span className="font-semibold text-slate-900">
-                {tenant.leaseStartDate || "N/A"}
+                {toNepaliDate(tenant?.leaseStartDate)}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Lease End Date:</span>
               <span className="font-semibold text-slate-900">
-                {tenant.leaseEndDate || "N/A"}
+                {toNepaliDate(tenant?.leaseEndDate)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-600">Agreement Signed Date:</span>
+              <span className="font-semibold text-slate-900">
+                {toNepaliDate(tenant?.dateOfAgreementSigned)}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Key Handover Date:</span>
               <span className="font-semibold text-slate-900">
-                {tenant.keyHandoverDate || "N/A"}
+                {toNepaliDate(tenant?.keyHandoverDate)}
               </span>
             </div>
+
             <div className="flex justify-between">
               <span className="text-slate-600">Leased Square Feet:</span>
               <span className="font-semibold text-slate-900">
@@ -134,6 +124,7 @@ function ViewDetail({ open, onOpenChange, tenant }) {
               </span>
             </div>
           </div>
+
           {imageUrl && (
             <div className="flex justify-between items-center">
               <span className="text-slate-600">Tenant Photo/Image:</span>
@@ -202,4 +193,5 @@ function ViewDetail({ open, onOpenChange, tenant }) {
     </Dialog>
   );
 }
+
 export default ViewDetail;
