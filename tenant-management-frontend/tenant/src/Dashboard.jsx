@@ -29,246 +29,472 @@ export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
   const [units, setUnits] = useState([]);
   const [rents, setRents] = useState([]);
-  const [totalCollected, setTotalCollected] = useState(0);
-  const [totalDue, setTotalDue] = useState(0);
+  const [rentSummary, setRentSummary] = useState({
+    totalCollected: 0,
+    totalDue: 0,
+    totalPending: 0,
+  });
+  const [overdueRents, setOverdueRents] = useState([]);
+  const [upcomingRents, setUpcomingRents] = useState([]);
+
   useEffect(() => {
     const getTenants = async () => {
-      const response = await api.get("/api/tenant/get-tenants");
-      setTenants(response.data.tenants);
+      try {
+        const response = await api.get("/api/tenant/get-tenants");
+        setTenants(response.data.tenants || []);
+      } catch (error) {
+        console.error("Error fetching tenants:", error);
+      }
     };
     const getUnits = async () => {
-      const response = await api.get("/api/unit/get-units");
-      setUnits(response.data.units);
+      try {
+        const response = await api.get("/api/unit/get-units");
+        setUnits(response.data.units || []);
+      } catch (error) {
+        console.error("Error fetching units:", error);
+      }
     };
     const getRents = async () => {
-      const response = await api.get("/api/rent/get-rents");
-      setRents(response.data.rents);
+      try {
+        const response = await api.get("/api/rent/get-rents");
+        const rentsData = response.data.rents || [];
+        setRents(rentsData);
+
+        // Calculate overdue and upcoming rents
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const overdue = rentsData.filter((rent) => {
+          if (!rent.englishDueDate) return false;
+          const dueDate = new Date(rent.englishDueDate);
+          dueDate.setHours(0, 0, 0, 0);
+          const remaining = (rent.rentAmount || 0) - (rent.paidAmount || 0);
+          return dueDate < today && remaining > 0 && rent.status !== "paid";
+        });
+
+        const upcoming = rentsData.filter((rent) => {
+          if (!rent.englishDueDate) return false;
+          const dueDate = new Date(rent.englishDueDate);
+          dueDate.setHours(0, 0, 0, 0);
+          const daysUntilDue = Math.ceil(
+            (dueDate - today) / (1000 * 60 * 60 * 24)
+          );
+          const remaining = (rent.rentAmount || 0) - (rent.paidAmount || 0);
+          return (
+            daysUntilDue >= 0 &&
+            daysUntilDue <= 7 &&
+            remaining > 0 &&
+            rent.status !== "paid"
+          );
+        });
+
+        setOverdueRents(overdue.slice(0, 3));
+        setUpcomingRents(upcoming.slice(0, 3));
+      } catch (error) {
+        console.error("Error fetching rents:", error);
+      }
     };
-    const getTotalCollected = async () => {
-      const response = await api.get("/api/rent/get-total-collected");
-      setTotalCollected(response.data.totalCollected);
+    const getRentSummary = async () => {
+      try {
+        const response = await api.get("/api/payment/get-rent-summary");
+        if (response.data.success && response.data.data) {
+          setRentSummary(response.data.data);
+        }
+      } catch (error) {
+        console.error("Error fetching rent summary:", error);
+      }
     };
-    const getTotalDue = async () => {
-      const response = await api.get("/api/rent/get-total-due");
-      setTotalDue(response.data.totalDue);
-    };
-    getTotalCollected();
-    getTotalDue();
     getTenants();
     getUnits();
     getRents();
+    getRentSummary();
   }, []);
+
+  // Calculate statistics
+  console.log(tenants);
+  const totalTenants = tenants.length;
+  const totalUnits = units.length;
+  const occupiedUnits = tenants.filter((t) => t.status === "active").length;
+  const occupancyRate =
+    totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
+
+  const totalRentDue = rents.reduce((sum, rent) => {
+    const remaining = (rent.rentAmount || 0) - (rent.paidAmount || 0);
+    return sum + (remaining > 0 ? remaining : 0);
+  }, 0);
+
+  const monthlyRevenue = rentSummary.totalCollected || 0;
+  const totalDue = rentSummary.totalDue || 0;
+
+  // Calculate tenants added this month
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const tenantsThisMonth = tenants.filter((tenant) => {
+    const createdDate = new Date(
+      tenant.createdAt || tenant.dateOfAgreementSigned
+    );
+    return (
+      createdDate.getMonth() === currentMonth &&
+      createdDate.getFullYear() === currentYear
+    );
+  }).length;
+
+  // Get tenants with contracts ending soon
+  const contractsEndingSoon = tenants
+    .filter((tenant) => {
+      if (!tenant.leaseEndDate) return false;
+      const endDate = new Date(tenant.leaseEndDate);
+      const today = new Date();
+      const daysUntilEnd = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+      return daysUntilEnd >= 0 && daysUntilEnd <= 30;
+    })
+    .slice(0, 3);
+
   return (
-    <div>
-      <p className="text-3xl font-bold">Dashboard</p>
-      <p className="text-gray-500 text-2xl">Welcome {user.name}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-4">
-        <Card className="flex gap-4 w-full">
+    <div className="p-4 sm:p-6">
+      <div className="mb-6">
+        <p className="text-3xl font-bold">Dashboard</p>
+        <p className="text-gray-500 text-xl mt-1">
+          Welcome {user?.name || "Admin"}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <Card className="w-full">
           <CardHeader>
-            <CardTitle className="flex items-center  justify-between">
+            <CardTitle className="flex items-center justify-between">
               <p className="text-gray-500 text-lg">Total Tenants</p>
-              <div className="p-2 bg-blue-50 rounded-md text-accent w-10">
+              <div className="p-2 bg-blue-50 rounded-md">
                 <Users className="w-5 h-5 text-blue-500" />
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-black text-2xl font-bold">{tenants.length}</p>
-            <p className="text-gray-500 text-sm">
-              +{tenants.length - tenants.length} this month
+            <p className="text-black text-2xl font-bold">{totalTenants}</p>
+            <p className="text-gray-500 text-sm mt-1">
+              +{tenantsThisMonth} this month
             </p>
           </CardContent>
         </Card>
-        <Card className="flex gap-2 w-full">
+
+        <Card className="w-full">
           <CardHeader>
-            <CardTitle className="flex items-center  justify-between">
-              <p className="text-gray-500 text-lg">Occupency Rate</p>
-              <div className="p-2 bg-blue-50 rounded-md text-accent w-10">
+            <CardTitle className="flex items-center justify-between">
+              <p className="text-gray-500 text-lg">Occupancy Rate</p>
+              <div className="p-2 bg-green-50 rounded-md">
                 <HouseIcon className="w-5 h-5 text-green-500" />
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-black text-2xl font-bold">
-              {(units.length / tenants.length) * 100}%
-            </p>
-            <p className="text-gray-500 text-sm">
-              +
-              {(units.length / tenants.length) * 100 -
-                (units.length / tenants.length) * 100}
-              % this month
+            <p className="text-black text-2xl font-bold">{occupancyRate}%</p>
+            <p className="text-gray-500 text-sm mt-1">
+              {occupiedUnits} of {totalUnits} units occupied
             </p>
           </CardContent>
         </Card>
-        <Card className="flex gap-2 w-full">
+
+        <Card className="w-full">
           <CardHeader>
-            <CardTitle className="flex items-center  justify-between">
-              <p className="text-gray-500 text-lg">Rent Due Today</p>
-              <div className="p-2 bg-blue-50 rounded-md text-accent w-10">
-                <Users className="w-5 h-5 text-blue-500" />
+            <CardTitle className="flex items-center justify-between">
+              <p className="text-gray-500 text-lg">Rent Due</p>
+              <div className="p-2 bg-orange-50 rounded-md">
+                <AlertCircleIcon className="w-5 h-5 text-orange-500" />
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-black text-2xl font-bold">
-              ₹{rents.reduce((sum, rent) => sum + rent.remainingAmount, 0)}
+              ₹{totalRentDue.toLocaleString()}
             </p>
-            <p className="text-gray-500 text-sm">
-              +₹
-              {rents.reduce((sum, rent) => sum + rent.remainingAmount, 0) -
-                rents.reduce((sum, rent) => sum + rent.remainingAmount, 0)}{" "}
-              this month
+            <p className="text-gray-500 text-sm mt-1">
+              {overdueRents.length} overdue payments
             </p>
           </CardContent>
         </Card>
-        <Card className="flex gap-2 w-full">
+
+        <Card className="w-full">
           <CardHeader>
-            <CardTitle className="flex items-center  justify-between">
+            <CardTitle className="flex items-center justify-between">
               <p className="text-gray-500 text-lg">Monthly Revenue</p>
-              <div className="p-2 bg-blue-50 rounded-md text-accent w-10">
+              <div className="p-2 bg-purple-50 rounded-md">
                 <DollarSign className="w-5 h-5 text-purple-500" />
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-black text-2xl font-bold">
-              ₹{rents.reduce((sum, rent) => sum + rent.paidAmount, 0)}
+              ₹{monthlyRevenue.toLocaleString()}
             </p>
-            <p className="text-gray-500 text-sm">
-              +₹
-              {rents.reduce((sum, rent) => sum + rent.paidAmount, 0) -
-                rents.reduce((sum, rent) => sum + rent.remainingAmount, 0)}
-              this month
+            <p className="text-gray-500 text-sm mt-1">
+              of ₹{totalDue.toLocaleString()} total
             </p>
           </CardContent>
         </Card>
       </div>
-      <div className=" mt-6">
+
+      <div className="mt-6">
         <Card className="flex flex-col gap-6">
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card
-              className="flex gap-2 w-full bg-blue-50 p-4 cursor-pointer"
+              className="flex gap-2 w-full bg-blue-50 p-4 cursor-pointer hover:bg-blue-100 transition-colors"
               onClick={() => navigate("/tenant/addTenants")}
             >
-              <CardHeader>
-                <CardTitle className="flex items-center  ">
-                  <div className="flex items-center gap-2 w-full">
+              <CardHeader className="p-0">
+                <CardTitle className="flex items-center">
+                  <div className="flex items-center gap-3 w-full">
                     <PlusIcon className="w-10 h-10 text-white bg-blue-500 rounded-md p-2" />
                     <div className="flex flex-col">
-                      <p className="text-black">Total Tenants </p>
-                      <p className="text-blue-500 text-sm mt-2">
+                      <p className="text-black font-semibold">Add Tenant</p>
+                      <p className="text-blue-500 text-sm mt-1">
                         Register a new lease
                       </p>
                     </div>
                   </div>
                 </CardTitle>
               </CardHeader>
-              <CardContent></CardContent>
             </Card>
 
             <Card
-              className="flex gap-2 w-full bg-green-50 p-4 cursor-pointer"
+              className="flex gap-2 w-full bg-green-50 p-4 cursor-pointer hover:bg-green-100 transition-colors"
               onClick={() => navigate("/rent-payment")}
             >
-              <CardHeader>
-                <CardTitle className="flex items-center  gap-4">
+              <CardHeader className="p-0">
+                <CardTitle className="flex items-center gap-3">
                   <WalletIcon className="w-10 h-10 text-white bg-green-800 rounded-md p-2" />
                   <div>
-                    <p className="text-black">Record Rent </p>
-                    <p className="text-green-800 text-sm mt-2">
+                    <p className="text-black font-semibold">Record Rent</p>
+                    <p className="text-green-800 text-sm mt-1">
                       Mark rent as paid
                     </p>
                   </div>
                 </CardTitle>
               </CardHeader>
-              <CardContent></CardContent>
             </Card>
+
             <Card
-              className="flex gap-2 w-full bg-yellow-50 p-4 cursor-pointer"
+              className="flex gap-2 w-full bg-yellow-50 p-4 cursor-pointer hover:bg-yellow-100 transition-colors"
               onClick={() => navigate("/maintenance")}
             >
-              <CardHeader>
-                <CardTitle className="flex items-center  gap-4">
+              <CardHeader className="p-0">
+                <CardTitle className="flex items-center gap-3">
                   <WrenchIcon className="w-10 h-10 text-white bg-yellow-700 rounded-md p-2" />
                   <div>
-                    {" "}
-                    <p className="text-black">Maintenance </p>
-                    <p className="text-yellow-700 text-sm mt-2">
+                    <p className="text-black font-semibold">Maintenance</p>
+                    <p className="text-yellow-700 text-sm mt-1">
                       Schedule a repair
                     </p>
                   </div>
                 </CardTitle>
               </CardHeader>
-              <CardContent></CardContent>
             </Card>
           </CardContent>
         </Card>
-        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
-          <div className=" flex-2 ">
-            <Card className="mt-6 w-full">
+
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 mt-6">
+          <div className="flex-1 lg:flex-2">
+            <Card className="w-full">
               <CardHeader>
                 <CardTitle>Upcoming Deadlines</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="flex gap-2 bg-blue-50 p-4 rounded-md  ">
-                  <AlertCircleIcon className="w-10 h-10 text-red-500 rounded-md p-2 bg-blue-50" />
-                  <div className="flex flex-col gap-2">
-                    <p className="text-black text-sm">
-                      Rent OverDue: {units[0]?.name}
+              <CardContent className="space-y-4">
+                {overdueRents.length > 0 ? (
+                  overdueRents.map((rent, idx) => {
+                    const dueDate = new Date(rent.englishDueDate);
+                    const daysOverdue = Math.ceil(
+                      (new Date() - dueDate) / (1000 * 60 * 60 * 24)
+                    );
+                    const remaining =
+                      (rent.rentAmount || 0) - (rent.paidAmount || 0);
+                    return (
+                      <div
+                        key={rent._id || idx}
+                        className="flex gap-3 bg-red-50 p-4 rounded-md border border-red-200"
+                      >
+                        <AlertCircleIcon className="w-10 h-10 text-red-500 shrink-0" />
+                        <div className="flex flex-col gap-1 flex-1">
+                          <p className="text-black text-sm font-semibold">
+                            Rent Overdue: {rent.tenant?.name || "N/A"}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            ₹{remaining.toLocaleString()} due • {daysOverdue}{" "}
+                            day
+                            {daysOverdue !== 1 ? "s" : ""} overdue
+                          </p>
+                        </div>
+                        <div className="flex items-center">
+                          <Button
+                            className="bg-gray-50 text-black hover:bg-black hover:text-white"
+                            onClick={() => navigate("/rent-payment")}
+                          >
+                            Pay Now
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-gray-500 text-sm text-center py-4">
+                    No overdue rents
+                  </p>
+                )}
+
+                {upcomingRents.length > 0 &&
+                  upcomingRents.map((rent, idx) => {
+                    const dueDate = new Date(rent.englishDueDate);
+                    const daysUntilDue = Math.ceil(
+                      (dueDate - new Date()) / (1000 * 60 * 60 * 24)
+                    );
+                    const remaining =
+                      (rent.rentAmount || 0) - (rent.paidAmount || 0);
+                    return (
+                      <div
+                        key={rent._id || idx}
+                        className="flex gap-3 bg-blue-50 p-4 rounded-md border border-blue-200"
+                      >
+                        <CalendarDaysIcon className="w-10 h-10 text-blue-500 shrink-0" />
+                        <div className="flex flex-col gap-1 flex-1">
+                          <p className="text-black text-sm font-semibold">
+                            Rent Due Soon: {rent.tenant?.name || "N/A"}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            ₹{remaining.toLocaleString()} due in {daysUntilDue}{" "}
+                            day{daysUntilDue !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center">
+                          <Button
+                            className="bg-gray-50 text-black hover:bg-black hover:text-white"
+                            onClick={() => navigate("/rent-payment")}
+                          >
+                            View
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                {contractsEndingSoon.length > 0 &&
+                  contractsEndingSoon.map((tenant, idx) => {
+                    const endDate = new Date(tenant.leaseEndDate);
+                    const daysUntilEnd = Math.ceil(
+                      (endDate - new Date()) / (1000 * 60 * 60 * 24)
+                    );
+                    return (
+                      <div
+                        key={tenant._id || idx}
+                        className="flex gap-3 bg-yellow-50 p-4 rounded-md border border-yellow-200"
+                      >
+                        <CalendarDaysIcon className="w-10 h-10 text-yellow-600 shrink-0" />
+                        <div className="flex flex-col gap-1 flex-1">
+                          <p className="text-black text-sm font-semibold">
+                            Contract Ending: {tenant.name}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            Contract ending in {daysUntilEnd} day
+                            {daysUntilEnd !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center">
+                          <Button
+                            className="bg-gray-50 text-black hover:bg-black hover:text-white"
+                            onClick={() => navigate("/tenant/tenants")}
+                          >
+                            View
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                {overdueRents.length === 0 &&
+                  upcomingRents.length === 0 &&
+                  contractsEndingSoon.length === 0 && (
+                    <p className="text-gray-500 text-sm text-center py-8">
+                      No upcoming deadlines
                     </p>
-                    <p className="text-gray-500 text-sm">
-                      Due date was yesterday
-                    </p>
-                  </div>
-                  <div className="ml-auto">
-                    <Button className="bg-gray-50 text-black hover:bg-black hover:text-white ">
-                      Remind
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex gap-2 bg-blue-50 p-4 rounded-md mt-4">
-                  <CalendarDaysIcon className="w-10 h-10 text-blue-500 rounded-md p-2 bg-blue-50" />
-                  <div className="flex flex-col gap-2">
-                    <p className="text-black text-sm">
-                      Contract Ending {units[0]?.name}
-                    </p>
-                    <p className="text-gray-500 text-sm">
-                      Contract ending in 10 days
-                    </p>
-                  </div>
-                  <div className="ml-auto">
-                    <Button className="bg-gray-50 text-black hover:bg-black hover:text-white ">
-                      Remind
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex gap-2 bg-blue-50 p-4 rounded-md mt-4">
-                  <WrenchIcon className="w-10 h-10 text-yellow-500 rounded-md p-2 bg-blue-50" />
-                  <div className="flex flex-col gap-2">
-                    <p className="text-black text-sm">
-                      Repair Scheduled : {units[0]?.name}
-                    </p>
-                    <p className="text-gray-500 text-sm">
-                      Repair scheduled for {units[0]?.name}
-                    </p>
-                  </div>
-                  <div className="ml-auto">
-                    <Button className="bg-gray-50 text-black hover:bg-black hover:text-white ">
-                      Remind
-                    </Button>
-                  </div>
-                </div>
+                  )}
               </CardContent>
             </Card>
           </div>
+
           <div className="flex-1">
-            <Card className="mt-6 w-full">
+            <Card className="w-full">
               <CardHeader>
                 <CardTitle>Building Status</CardTitle>
               </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-sm text-gray-600">Occupancy</p>
+                    <p className="text-sm font-semibold">{occupancyRate}%</p>
+                  </div>
+                  <Progress value={occupancyRate} className="h-2" />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-sm text-gray-600">Rent Collection</p>
+                    <p className="text-sm font-semibold">
+                      {totalDue > 0
+                        ? Math.round((monthlyRevenue / totalDue) * 100)
+                        : 0}
+                      %
+                    </p>
+                  </div>
+                  <Progress
+                    value={totalDue > 0 ? (monthlyRevenue / totalDue) * 100 : 0}
+                    className="h-2"
+                  />
+                </div>
+
+                <div className="pt-4 border-t space-y-3">
+                  <div className="flex justify-between">
+                    <p className="text-sm text-gray-600">Total Units</p>
+                    <p className="text-sm font-semibold">{totalUnits}</p>
+                  </div>
+                  <div className="flex justify-between">
+                    <p className="text-sm text-gray-600">Occupied</p>
+                    <p className="text-sm font-semibold text-green-600">
+                      {occupiedUnits}
+                    </p>
+                  </div>
+                  <div className="flex justify-between">
+                    <p className="text-sm text-gray-600">Vacant</p>
+                    <p className="text-sm font-semibold text-gray-400">
+                      {totalUnits - occupiedUnits}
+                    </p>
+                  </div>
+                  <div className="flex justify-between">
+                    <p className="text-sm text-gray-600">Total Tenants</p>
+                    <p className="text-sm font-semibold">{totalTenants}</p>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t space-y-3">
+                  <div className="flex justify-between">
+                    <p className="text-sm text-gray-600">Total Revenue</p>
+                    <p className="text-sm font-semibold">
+                      ₹{monthlyRevenue.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex justify-between">
+                    <p className="text-sm text-gray-600">Total Due</p>
+                    <p className="text-sm font-semibold text-orange-600">
+                      ₹{totalRentDue.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex justify-between">
+                    <p className="text-sm text-gray-600">Pending</p>
+                    <p className="text-sm font-semibold text-red-600">
+                      ₹{(rentSummary.totalPending || 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
             </Card>
           </div>
         </div>
