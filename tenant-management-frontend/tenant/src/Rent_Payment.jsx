@@ -139,6 +139,11 @@ export default function RentDashboard() {
   const [paymentDate, setPaymentDate] = useState(["", ""]);
   const [totalCollected, setTotalCollected] = useState(0);
   const [totalDue, setTotalDue] = useState(0);
+  // Filter states
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState("all");
+  const [datePickerResetKey, setDatePickerResetKey] = useState(0);
   const normalizeStatus = (status = "") => status.toLowerCase();
   const GetBankAccounts = async () => {
     const response = await api.get("/api/bank/get-bank-accounts");
@@ -151,7 +156,24 @@ export default function RentDashboard() {
   };
   const getPayments = async () => {
     try {
-      const response = await api.get("/api/payment/get-all-payment-history");
+      // Build query parameters for filtering
+      const params = new URLSearchParams();
+      if (filterStartDate) {
+        params.append("startDate", filterStartDate);
+      }
+      if (filterEndDate) {
+        params.append("endDate", filterEndDate);
+      }
+      if (filterPaymentMethod && filterPaymentMethod !== "all") {
+        params.append("paymentMethod", filterPaymentMethod);
+      }
+
+      const queryString = params.toString();
+      const endpoint = queryString
+        ? `/api/payment/get-filtered-payment-history?${queryString}`
+        : "/api/payment/get-all-payment-history";
+
+      const response = await api.get(endpoint);
       if (response.data.success) {
         setPayments(response.data.data || []);
       } else {
@@ -165,7 +187,7 @@ export default function RentDashboard() {
 
   useEffect(() => {
     getPayments();
-  }, []);
+  }, [filterStartDate, filterEndDate, filterPaymentMethod]);
   useEffect(() => {
     const fetchRentSummary = async () => {
       try {
@@ -507,6 +529,74 @@ export default function RentDashboard() {
                 </CardDescription>
               </div>
               <CardContent>
+                {/* Filter Section */}
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+                  <div className="flex flex-col sm:flex-row gap-4 items-end">
+                    {/* Date Range Filter */}
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Start Date
+                        </label>
+                        <DualCalendarTailwind
+                          key={`start-${datePickerResetKey}`}
+                          onChange={(english, nepali) => {
+                            setFilterStartDate(english || "");
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          End Date
+                        </label>
+                        <DualCalendarTailwind
+                          key={`end-${datePickerResetKey}`}
+                          onChange={(english, nepali) => {
+                            setFilterEndDate(english || "");
+                          }}
+                        />
+                      </div>
+                    </div>
+                    {/* Payment Method Filter */}
+                    <div className="w-full sm:w-48">
+                      <label className="block text-sm font-medium mb-2">
+                        Payment Method
+                      </label>
+                      <Select
+                        value={filterPaymentMethod}
+                        onValueChange={(value) => setFilterPaymentMethod(value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Methods" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Methods</SelectItem>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="bank_transfer">
+                            Bank Transfer
+                          </SelectItem>
+                          <SelectItem value="cheque">Cheque</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Clear Filter Button */}
+                    <div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setFilterStartDate("");
+                          setFilterEndDate("");
+                          setFilterPaymentMethod("all");
+                          setDatePickerResetKey((prev) => prev + 1);
+                        }}
+                        className="w-full sm:w-auto"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                  </div>
+                </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
