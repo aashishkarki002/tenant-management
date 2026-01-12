@@ -26,129 +26,69 @@ import { Progress } from "@/components/ui/progress";
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [tenants, setTenants] = useState([]);
-  const [units, setUnits] = useState([]);
-  const [rents, setRents] = useState([]);
-  const [rentSummary, setRentSummary] = useState({
-    totalCollected: 0,
-    totalDue: 0,
-    totalPending: 0,
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState({
+    totalTenants: 0,
+    activeTenants: 0,
+    tenantsThisMonth: 0,
+    occupiedUnits: 0,
+    totalUnits: 0,
+    occupancyRate: 0,
+    rentSummary: {
+      totalCollected: 0,
+      totalDue: 0,
+      totalPending: 0,
+    },
+    totalRentDue: 0,
+    overdueRents: [],
+    upcomingRents: [],
+    contractsEndingSoon: [],
   });
-  const [overdueRents, setOverdueRents] = useState([]);
-  const [upcomingRents, setUpcomingRents] = useState([]);
 
   useEffect(() => {
-    const getTenants = async () => {
+    const fetchDashboardData = async () => {
       try {
-        const response = await api.get("/api/tenant/get-tenants");
-        setTenants(response.data.tenants || []);
-      } catch (error) {
-        console.error("Error fetching tenants:", error);
-      }
-    };
-    const getUnits = async () => {
-      try {
-        const response = await api.get("/api/unit/get-units");
-        setUnits(response.data.units || []);
-      } catch (error) {
-        console.error("Error fetching units:", error);
-      }
-    };
-    const getRents = async () => {
-      try {
-        const response = await api.get("/api/rent/get-rents");
-        const rentsData = response.data.rents || [];
-        setRents(rentsData);
-
-        // Calculate overdue and upcoming rents
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const overdue = rentsData.filter((rent) => {
-          if (!rent.englishDueDate) return false;
-          const dueDate = new Date(rent.englishDueDate);
-          dueDate.setHours(0, 0, 0, 0);
-          const remaining = (rent.rentAmount || 0) - (rent.paidAmount || 0);
-          return dueDate < today && remaining > 0 && rent.status !== "paid";
-        });
-
-        const upcoming = rentsData.filter((rent) => {
-          if (!rent.englishDueDate) return false;
-          const dueDate = new Date(rent.englishDueDate);
-          dueDate.setHours(0, 0, 0, 0);
-          const daysUntilDue = Math.ceil(
-            (dueDate - today) / (1000 * 60 * 60 * 24)
-          );
-          const remaining = (rent.rentAmount || 0) - (rent.paidAmount || 0);
-          return (
-            daysUntilDue >= 0 &&
-            daysUntilDue <= 7 &&
-            remaining > 0 &&
-            rent.status !== "paid"
-          );
-        });
-
-        setOverdueRents(overdue.slice(0, 3));
-        setUpcomingRents(upcoming.slice(0, 3));
-      } catch (error) {
-        console.error("Error fetching rents:", error);
-      }
-    };
-    const getRentSummary = async () => {
-      try {
-        const response = await api.get("/api/payment/get-rent-summary");
+        setLoading(true);
+        const response = await api.get("/api/payment/dashboard-stats");
         if (response.data.success && response.data.data) {
-          setRentSummary(response.data.data);
+          setDashboardData(response.data.data);
         }
       } catch (error) {
-        console.error("Error fetching rent summary:", error);
+        console.error("Error fetching dashboard data:", error);
+      } finally {
+        setLoading(false);
       }
     };
-    getTenants();
-    getUnits();
-    getRents();
-    getRentSummary();
+    fetchDashboardData();
   }, []);
 
-  // Calculate statistics
-  console.log(tenants);
-  const totalTenants = tenants.length;
-  const totalUnits = units.length;
-  const occupiedUnits = tenants.filter((t) => t.status === "active").length;
-  const occupancyRate =
-    totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
-
-  const totalRentDue = rents.reduce((sum, rent) => {
-    const remaining = (rent.rentAmount || 0) - (rent.paidAmount || 0);
-    return sum + (remaining > 0 ? remaining : 0);
-  }, 0);
+  // Destructure data from backend
+  const {
+    totalTenants,
+    tenantsThisMonth,
+    totalUnits,
+    occupiedUnits,
+    occupancyRate,
+    rentSummary,
+    totalRentDue,
+    overdueRents,
+    upcomingRents,
+    contractsEndingSoon,
+  } = dashboardData;
 
   const monthlyRevenue = rentSummary.totalCollected || 0;
   const totalDue = rentSummary.totalDue || 0;
 
-  // Calculate tenants added this month
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const tenantsThisMonth = tenants.filter((tenant) => {
-    const createdDate = new Date(
-      tenant.createdAt || tenant.dateOfAgreementSigned
-    );
+  if (loading) {
     return (
-      createdDate.getMonth() === currentMonth &&
-      createdDate.getFullYear() === currentYear
+      <div className="p-4 sm:p-6">
+        <div className="mb-6">
+          <p className="text-3xl font-bold">Dashboard</p>
+          <p className="text-gray-500 text-xl mt-1">Loading...</p>
+        </div>
+      </div>
     );
-  }).length;
-
-  // Get tenants with contracts ending soon
-  const contractsEndingSoon = tenants
-    .filter((tenant) => {
-      if (!tenant.leaseEndDate) return false;
-      const endDate = new Date(tenant.leaseEndDate);
-      const today = new Date();
-      const daysUntilEnd = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
-      return daysUntilEnd >= 0 && daysUntilEnd <= 30;
-    })
-    .slice(0, 3);
+  }
 
   return (
     <div className="p-4 sm:p-6">
@@ -307,8 +247,6 @@ export default function Dashboard() {
                     const daysOverdue = Math.ceil(
                       (new Date() - dueDate) / (1000 * 60 * 60 * 24)
                     );
-                    const remaining =
-                      (rent.rentAmount || 0) - (rent.paidAmount || 0);
                     return (
                       <div
                         key={rent._id || idx}
@@ -320,8 +258,8 @@ export default function Dashboard() {
                             Rent Overdue: {rent.tenant?.name || "N/A"}
                           </p>
                           <p className="text-gray-600 text-sm">
-                            ₹{remaining.toLocaleString()} due • {daysOverdue}{" "}
-                            day
+                            ₹{rent.remaining.toLocaleString()} due •{" "}
+                            {daysOverdue} day
                             {daysOverdue !== 1 ? "s" : ""} overdue
                           </p>
                         </div>
@@ -344,12 +282,6 @@ export default function Dashboard() {
 
                 {upcomingRents.length > 0 &&
                   upcomingRents.map((rent, idx) => {
-                    const dueDate = new Date(rent.englishDueDate);
-                    const daysUntilDue = Math.ceil(
-                      (dueDate - new Date()) / (1000 * 60 * 60 * 24)
-                    );
-                    const remaining =
-                      (rent.rentAmount || 0) - (rent.paidAmount || 0);
                     return (
                       <div
                         key={rent._id || idx}
@@ -361,8 +293,9 @@ export default function Dashboard() {
                             Rent Due Soon: {rent.tenant?.name || "N/A"}
                           </p>
                           <p className="text-gray-600 text-sm">
-                            ₹{remaining.toLocaleString()} due in {daysUntilDue}{" "}
-                            day{daysUntilDue !== 1 ? "s" : ""}
+                            ₹{rent.remaining.toLocaleString()} due in{" "}
+                            {rent.daysUntilDue} day
+                            {rent.daysUntilDue !== 1 ? "s" : ""}
                           </p>
                         </div>
                         <div className="flex items-center">
@@ -379,10 +312,6 @@ export default function Dashboard() {
 
                 {contractsEndingSoon.length > 0 &&
                   contractsEndingSoon.map((tenant, idx) => {
-                    const endDate = new Date(tenant.leaseEndDate);
-                    const daysUntilEnd = Math.ceil(
-                      (endDate - new Date()) / (1000 * 60 * 60 * 24)
-                    );
                     return (
                       <div
                         key={tenant._id || idx}
@@ -394,8 +323,8 @@ export default function Dashboard() {
                             Contract Ending: {tenant.name}
                           </p>
                           <p className="text-gray-600 text-sm">
-                            Contract ending in {daysUntilEnd} day
-                            {daysUntilEnd !== 1 ? "s" : ""}
+                            Contract ending in {tenant.daysUntilEnd} day
+                            {tenant.daysUntilEnd !== 1 ? "s" : ""}
                           </p>
                         </div>
                         <div className="flex items-center">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react";
 import {
   Globe,
   Lock,
@@ -12,16 +12,30 @@ import {
   Building,
   Plus,
   Trash2,
-} from "lucide-react"
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "./context/AuthContext";
 import { useFormik } from "formik";
 import api from "../plugins/axios";
-import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
+import {
+  Drawer,
+  DrawerTrigger,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerClose,
+} from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 import { FieldGroup } from "@/components/ui/field";
 import { toast } from "sonner";
 
@@ -39,7 +53,7 @@ export default function Admin() {
     onSubmit: (values) => {
       console.log(values);
     },
-  })
+  });
   const [bankAccounts, setBankAccounts] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -49,17 +63,16 @@ export default function Admin() {
       if (response.data.success) {
         toast.success(response.data.message);
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error("Error changing password:", error);
       toast.error(error.response.data.message);
     }
-  }
+  };
   const GetBankAccounts = async () => {
     const response = await api.get("/api/bank/get-bank-accounts");
     const data = await response.data;
     setBankAccounts(data.bankAccounts);
-  }
+  };
 
   useEffect(() => {
     GetBankAccounts();
@@ -93,24 +106,23 @@ export default function Admin() {
       }
     },
   });
-  
-  const [selectedLanguage, setSelectedLanguage] = useState("en")
-  const [currentPassword, setCurrentPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [passwordError, setPasswordError] = useState("")
-  const [passwordSuccess, setPasswordSuccess] = useState(false)
-const CreateBankAccount = async (values) => {
-  try {
-    const response = await api.post("/api/bank/create-bank-account", values);
-    if (response.data.success) {
-      GetBankAccounts();
+
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const CreateBankAccount = async (values) => {
+    try {
+      const response = await api.post("/api/bank/create-bank-account", values);
+      if (response.data.success) {
+        GetBankAccounts();
+      }
+    } catch (error) {
+      console.error("Error creating bank account:", error);
     }
-  }
-  catch (error) {
-    console.error("Error creating bank account:", error);
-  }
-}
+  };
   const languages = [
     { code: "en", name: "English", flag: "🇺🇸" },
     { code: "es", name: "Español", flag: "🇪🇸" },
@@ -118,54 +130,74 @@ const CreateBankAccount = async (values) => {
     { code: "de", name: "Deutsch", flag: "🇩🇪" },
     { code: "zh", name: "中文", flag: "🇨🇳" },
     { code: "ar", name: "العربية", flag: "🇸🇦" },
-  ]
+  ];
 
   const handlePasswordChange = (e) => {
-    e.preventDefault()
-    setPasswordError("")
-    setPasswordSuccess(false)
+    e.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess(false);
 
     if (newPassword.length < 8) {
-      setPasswordError("Password must be at least 8 characters long")
-      return
+      setPasswordError("Password must be at least 8 characters long");
+      return;
     }
 
     if (newPassword !== confirmPassword) {
-      setPasswordError("Passwords do not match")
-      return
+      setPasswordError("Passwords do not match");
+      return;
     }
 
     if (!currentPassword) {
-      setPasswordError("Please enter your current password")
-      return
+      setPasswordError("Please enter your current password");
+      return;
     }
 
     // Simulate password change success
-    setPasswordSuccess(true)
-    setCurrentPassword("")
-    setNewPassword("")
-    setConfirmPassword("")
+    setPasswordSuccess(true);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
 
-    setTimeout(() => setPasswordSuccess(false), 3000)
-  }
+    setTimeout(() => setPasswordSuccess(false), 3000);
+  };
 
+  const DeleteBankAccount = async (id) => {
+    try {
+      const response = await api.patch(`/api/bank/delete-bank-account/${id}`);
+      if (response.data.success) {
+        GetBankAccounts();
+        toast.success("Bank account deleted successfully");
+      }
+    } catch (error) {
+      console.error("Error deleting bank account:", error);
+    }
+  };
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-        <p className="text-slate-500">Manage your account preferences, admin details, and financial settings</p>
+        <p className="text-slate-500">
+          Manage your account preferences, admin details, and financial settings
+        </p>
       </div>
 
       {/* Admin Details section */}
-      <Card title="Admin Details" subtitle="Manage your administrator profile and contact information">
+      <Card
+        title="Admin Details"
+        subtitle="Manage your administrator profile and contact information"
+      >
         <div className="space-y-6">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
               <User className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h4 className="font-semibold text-slate-900">Administrator Profile</h4>
-              <p className="text-sm text-slate-500">These details will be used for official communications</p>
+              <h4 className="font-semibold text-slate-900">
+                Administrator Profile
+              </h4>
+              <p className="text-sm text-slate-500">
+                These details will be used for official communications
+              </p>
             </div>
           </div>
 
@@ -203,7 +235,9 @@ const CreateBankAccount = async (values) => {
               </label>
               <Input
                 value={user?.company}
-                onChange={(e) => formik.setFieldValue("company", e.target.value)}
+                onChange={(e) =>
+                  formik.setFieldValue("company", e.target.value)
+                }
               />
             </div>
             <div className="md:col-span-2 space-y-2">
@@ -212,7 +246,9 @@ const CreateBankAccount = async (values) => {
               </label>
               <Input
                 value={user?.address}
-                onChange={(e) => formik.setFieldValue("address", e.target.value)}
+                onChange={(e) =>
+                  formik.setFieldValue("address", e.target.value)
+                }
               />
             </div>
           </div>
@@ -224,15 +260,22 @@ const CreateBankAccount = async (values) => {
       </Card>
 
       {/* Bank Accounts section */}
-      <Card title="Bank Accounts" subtitle="Manage bank accounts for rent collection and security deposits">
+      <Card
+        title="Bank Accounts"
+        subtitle="Manage bank accounts for rent collection and security deposits"
+      >
         <div className="space-y-6">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
               <CreditCard className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h4 className="font-semibold text-slate-900">Financial Accounts</h4>
-              <p className="text-sm text-slate-500">Configure bank details for automated payments</p>
+              <h4 className="font-semibold text-slate-900">
+                Financial Accounts
+              </h4>
+              <p className="text-sm text-slate-500">
+                Configure bank details for automated payments
+              </p>
             </div>
           </div>
 
@@ -247,14 +290,26 @@ const CreateBankAccount = async (values) => {
                     <Building className="w-5 h-5 text-slate-400" />
                   </div>
                   <div>
-                    <h5 className="font-medium text-slate-900">{account.bankName}</h5>
+                    <h5 className="font-medium text-slate-900">
+                      {account.bankName}
+                    </h5>
                     <p className="text-xs text-slate-500">
-                      {account.accountType} • {account.accountNumber}
+                      {account.bankName} • {account.accountNumber}
                     </p>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={Trash2}
+                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => DeleteBankAccount(account._id)}
+                  >
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                  </Button>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="ghost"
+                  <Button
+                    variant="ghost"
                     size="sm"
                     icon={Trash2}
                     className="text-red-500 hover:text-red-600 hover:bg-red-50"
@@ -268,19 +323,31 @@ const CreateBankAccount = async (values) => {
             {usemobile ? (
               <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
                 <DrawerTrigger asChild>
-                  <Button variant="outline" icon={Plus} onClick={() => setDrawerOpen(true)}>
+                  <Button
+                    variant="outline"
+                    icon={Plus}
+                    onClick={() => setDrawerOpen(true)}
+                  >
                     Add New Bank Account
                   </Button>
                 </DrawerTrigger>
                 <DrawerContent>
                   <DrawerHeader>
                     <DrawerTitle>Add New Bank Account</DrawerTitle>
-                    <p className="text-sm text-gray-500 mt-2">Add the bank account details for rent collection and security deposits</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Add the bank account details for rent collection and
+                      security deposits
+                    </p>
                   </DrawerHeader>
-                  <form onSubmit={CreateBankAccount} className="px-4 pb-4 space-y-4">
+                  <form
+                    onSubmit={CreateBankAccount}
+                    className="px-4 pb-4 space-y-4"
+                  >
                     <FieldGroup>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">Account Number</label>
+                        <label className="text-sm font-medium text-slate-700">
+                          Account Number
+                        </label>
                         <Input
                           type="text"
                           placeholder="Account Number"
@@ -290,7 +357,9 @@ const CreateBankAccount = async (values) => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">Account Name</label>
+                        <label className="text-sm font-medium text-slate-700">
+                          Account Name
+                        </label>
                         <Input
                           type="text"
                           placeholder="Account Name"
@@ -300,7 +369,9 @@ const CreateBankAccount = async (values) => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">Bank Name</label>
+                        <label className="text-sm font-medium text-slate-700">
+                          Bank Name
+                        </label>
                         <Input
                           type="text"
                           placeholder="Bank Name"
@@ -309,14 +380,21 @@ const CreateBankAccount = async (values) => {
                           name="bankName"
                         />
                       </div>
-                    
                     </FieldGroup>
                     <div className="flex gap-2 pt-4">
-                      <Button type="submit" icon={Save} disabled={bankAccountFormik.isSubmitting}>
-                        {bankAccountFormik.isSubmitting ? "Creating..." : "Create Bank Account"}
+                      <Button
+                        type="submit"
+                        icon={Save}
+                        disabled={bankAccountFormik.isSubmitting}
+                      >
+                        {bankAccountFormik.isSubmitting
+                          ? "Creating..."
+                          : "Create Bank Account"}
                       </Button>
                       <DrawerClose asChild>
-                        <Button type="button" variant="ghost">Cancel</Button>
+                        <Button type="button" variant="ghost">
+                          Cancel
+                        </Button>
                       </DrawerClose>
                     </div>
                   </form>
@@ -332,12 +410,20 @@ const CreateBankAccount = async (values) => {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Add New Bank Account</DialogTitle>
-                    <p className="text-sm text-gray-500 mt-2">Add the bank account details for rent collection and security deposits</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Add the bank account details for rent collection and
+                      security deposits
+                    </p>
                   </DialogHeader>
-                  <form onSubmit={bankAccountFormik.handleSubmit} className="space-y-4">
+                  <form
+                    onSubmit={bankAccountFormik.handleSubmit}
+                    className="space-y-4"
+                  >
                     <FieldGroup>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">Account Number</label>
+                        <label className="text-sm font-medium text-slate-700">
+                          Account Number
+                        </label>
                         <Input
                           type="text"
                           placeholder="Account Number"
@@ -347,7 +433,9 @@ const CreateBankAccount = async (values) => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">Account Name</label>
+                        <label className="text-sm font-medium text-slate-700">
+                          Account Name
+                        </label>
                         <Input
                           type="text"
                           placeholder="Account Name"
@@ -357,7 +445,9 @@ const CreateBankAccount = async (values) => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">Bank Name</label>
+                        <label className="text-sm font-medium text-slate-700">
+                          Bank Name
+                        </label>
                         <Input
                           type="text"
                           placeholder="Bank Name"
@@ -366,14 +456,21 @@ const CreateBankAccount = async (values) => {
                           name="bankName"
                         />
                       </div>
-                      
                     </FieldGroup>
                     <div className="flex gap-2 pt-4 justify-end">
                       <DialogClose asChild>
-                        <Button type="button" variant="ghost">Cancel</Button>
+                        <Button type="button" variant="ghost">
+                          Cancel
+                        </Button>
                       </DialogClose>
-                      <Button type="submit" icon={Save} disabled={bankAccountFormik.isSubmitting}>
-                        {bankAccountFormik.isSubmitting ? "Creating..." : "Create Bank Account"}
+                      <Button
+                        type="submit"
+                        icon={Save}
+                        disabled={bankAccountFormik.isSubmitting}
+                      >
+                        {bankAccountFormik.isSubmitting
+                          ? "Creating..."
+                          : "Create Bank Account"}
                       </Button>
                     </div>
                   </form>
@@ -385,7 +482,10 @@ const CreateBankAccount = async (values) => {
       </Card>
 
       {/* Language Settings */}
-      <Card title="Language Preferences" subtitle="Choose your preferred language for the application">
+      <Card
+        title="Language Preferences"
+        subtitle="Choose your preferred language for the application"
+      >
         <div className="space-y-4">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
@@ -393,7 +493,9 @@ const CreateBankAccount = async (values) => {
             </div>
             <div>
               <h4 className="font-semibold text-slate-900">Display Language</h4>
-              <p className="text-sm text-slate-500">Select the language for the interface</p>
+              <p className="text-sm text-slate-500">
+                Select the language for the interface
+              </p>
             </div>
           </div>
 
@@ -421,7 +523,10 @@ const CreateBankAccount = async (values) => {
       </Card>
 
       {/* Password Change */}
-      <Card title="Security Settings" subtitle="Update your password to keep your account secure">
+      <Card
+        title="Security Settings"
+        subtitle="Update your password to keep your account secure"
+      >
         <form onSubmit={ChangePassword} className="space-y-4">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
@@ -429,13 +534,18 @@ const CreateBankAccount = async (values) => {
             </div>
             <div>
               <h4 className="font-semibold text-slate-900">Change Password</h4>
-              <p className="text-sm text-slate-500">Ensure your password is strong and secure</p>
+              <p className="text-sm text-slate-500">
+                Ensure your password is strong and secure
+              </p>
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="currentPassword" className="block text-sm font-medium text-slate-700 mb-2">
+              <label
+                htmlFor="currentPassword"
+                className="block text-sm font-medium text-slate-700 mb-2"
+              >
                 Current Password
               </label>
               <Input
@@ -444,12 +554,15 @@ const CreateBankAccount = async (values) => {
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="Enter your current password"
-              className="w-full p-3 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700 mb-2">
+              <label
+                htmlFor="newPassword"
+                className="block text-sm font-medium text-slate-700 mb-2"
+              >
                 New Password
               </label>
               <Input
@@ -460,11 +573,16 @@ const CreateBankAccount = async (values) => {
                 placeholder="Enter your new password"
                 className="w-full p-3 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-slate-500 mt-1">Must be at least 8 characters long</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Must be at least 8 characters long
+              </p>
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
+              <label
+                htmlFor="confirmPassword"
+                className="block text-sm font-medium text-slate-700 mb-2"
+              >
                 Confirm New Password
               </label>
               <Input
@@ -478,7 +596,9 @@ const CreateBankAccount = async (values) => {
             </div>
 
             {passwordError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{passwordError}</div>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {passwordError}
+              </div>
             )}
 
             {passwordSuccess && (
@@ -488,17 +608,17 @@ const CreateBankAccount = async (values) => {
             )}
 
             <div className="pt-2 flex space-x-3">
-              <Button type="submit" icon={Save} >
+              <Button type="submit" icon={Save}>
                 Update Password
               </Button>
               <Button
                 type="button"
                 variant="ghost"
                 onClick={() => {
-                  setCurrentPassword("")
-                  setNewPassword("")
-                  setConfirmPassword("")
-                  setPasswordError("")
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setPasswordError("");
                 }}
               >
                 Cancel

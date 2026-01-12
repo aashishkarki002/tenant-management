@@ -48,15 +48,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-const statusVariant = {
-  Paid: "success",
-  paid: "success",
-  Overdue: "destructive",
-  overdue: "destructive",
-  "Due Now": "warning",
-  "due now": "warning",
-  pending: "secondary",
-  Pending: "secondary",
+const statusStyles = {
+  paid: "bg-green-100 text-green-800 border-green-300",
+  pending: "bg-yellow-100 text-yellow-800 border-yellow-300",
+  overdue: "bg-red-100 text-red-800 border-red-300",
+  partial: "bg-orange-100 text-orange-800 border-orange-300",
 };
 
 // Helper function to format Nepali due date from rent object
@@ -130,14 +126,13 @@ const formatNepaliDueDate = (rent) => {
     return "N/A";
   }
 };
-
 export default function RentDashboard() {
   const [rents, setRents] = useState([]);
   const [units, setUnits] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("Cash");
   const [paymentDate, setPaymentDate] = useState(["", ""]);
-
+  const normalizeStatus = (status = "") => status.toLowerCase();
   const GetBankAccounts = async () => {
     const response = await api.get("/api/bank/get-bank-accounts");
     const data = await response.data;
@@ -159,7 +154,7 @@ export default function RentDashboard() {
     };
     getUnits();
   }, []);
-
+  const statusVariant = (status = "") => statusStyles[normalizeStatus(status)];
   // Calculate totals from actual data
   const totalCollected = rents.reduce(
     (sum, rent) => sum + (rent.paidAmount || 0),
@@ -183,6 +178,7 @@ export default function RentDashboard() {
       if (response.data.success) {
         toast.success(response.data.message);
         formik.resetForm();
+        getRents();
       } else {
         toast.error(response.data.message);
       }
@@ -195,7 +191,6 @@ export default function RentDashboard() {
   };
   return (
     <>
-      <Toaster />
       <form onSubmit={handleSubmit}>
         <Card className="w-full sm:max-w-5xl mx-auto mt-6">
           <CardHeader>
@@ -235,6 +230,10 @@ export default function RentDashboard() {
                       <div className="text-sm text-muted-foreground">
                         {rent.innerBlock?.name || "N/A"} -{" "}
                         {rent.block?.name || "N/A"}
+                        {rent.tenant?.units
+                          ?.map((unit) => unit.name)
+                          .join(", ")}{" "}
+                        - {rent.tenant?.unitNumber || "N/A"}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -242,9 +241,20 @@ export default function RentDashboard() {
                     </TableCell>
                     <TableCell>{formatNepaliDueDate(rent)}</TableCell>
                     <TableCell>
-                      <Badge variant={statusVariant[rent.status] || "default"}>
-                        {rent.status || "Unknown"}
-                      </Badge>
+                      {(() => {
+                        const status = normalizeStatus(rent.status);
+
+                        return (
+                          <Badge
+                            className={`capitalize border ${
+                              statusStyles[status] ||
+                              "bg-gray-100 text-gray-700 border-gray-300"
+                            }`}
+                          >
+                            {status === "partial" ? "Partially Paid" : status}
+                          </Badge>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Dialog>

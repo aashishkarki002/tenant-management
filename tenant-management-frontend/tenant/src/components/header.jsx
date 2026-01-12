@@ -17,6 +17,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "../context/AuthContext";
 import api from "../../plugins/axios";
 import { useLocation } from "react-router-dom";
+import { toast } from "sonner";
 
 export default function Header() {
   const [notifications, setNotifications] = useState([]);
@@ -66,7 +67,16 @@ export default function Header() {
 
     // Handle new notifications
     const handleNewNotification = (data) => {
-      setNotifications((prev) => [data.notification, ...prev]);
+      const notification = data.notification;
+      setNotifications((prev) => [notification, ...prev]);
+
+      // Show toast for payment notifications
+      if (notification.type === "PAYMENT_NOTIFICATION") {
+        toast.success(notification.title, {
+          description: notification.message,
+          duration: 5000,
+        });
+      }
     };
 
     socket.on("connect", handleConnect);

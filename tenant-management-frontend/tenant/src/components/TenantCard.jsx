@@ -79,7 +79,7 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
     }
   };
   return (
-    <Card className="w-full h-70 hover:shadow-lg transition-shadow duration-300">
+    <Card className="w-full h-full hover:shadow-lg transition-shadow duration-300">
       <CardContent>
         <div className="text-center">
           <div className="flex justify-between">

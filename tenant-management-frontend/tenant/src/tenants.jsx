@@ -151,7 +151,8 @@ export default function Tenants() {
 
     // Filter tenants when search, selectedBlock, or selectedInnerBlock changes
     // Only filter if at least one filter is active, otherwise show all tenants
-    if (search || selectedBlock || selectedInnerBlock) {
+    const hasSearch = search && search.trim();
+    if (hasSearch || selectedBlock || selectedInnerBlock) {
       filterTenants();
     } else {
       // If no filters are active, fetch all tenants
@@ -219,33 +220,57 @@ export default function Tenants() {
 
             <DropdownMenuContent className="w-full sm:w-56" align="start">
               <DropdownMenuLabel>
-                {selectedBlock ? selectedBlock.name : "Select Block"}{" "}
-                {selectedInnerBlock
-                  ? selectedInnerBlock.name
-                  : "Select Inner Block"}
+                {selectedBlock
+                  ? selectedInnerBlock
+                    ? `${selectedBlock.name} - ${selectedInnerBlock.name}`
+                    : selectedBlock.name
+                  : "Select Block"}
               </DropdownMenuLabel>
+              {(selectedBlock || selectedInnerBlock) && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedBlock(null);
+                      setSelectedInnerBlock(null);
+                    }}
+                  >
+                    Clear Filter
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
 
               <DropdownMenuGroup className="flex flex-col gap-1">
                 {properties && properties.length > 0 ? (
                   properties.flatMap((property) =>
                     property.blocks && property.blocks.length > 0
                       ? property.blocks.map((block) => (
-                          <DropdownMenuSub key={block._id}>
+                              <DropdownMenuSub key={block._id}>
                             <DropdownMenuSubTrigger
                               className="w-full text-left"
-                              onClick={() => setSelectedBlock(block)}
                             >
                               {block.name || `Block ${block._id}`}
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent className="w-full sm:w-56">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedBlock(block);
+                                  setSelectedInnerBlock(null);
+                                }}
+                              >
+                                All units in {block.name || `Block ${block._id}`}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
                               {block.innerBlocks &&
                               block.innerBlocks.length > 0 ? (
                                 block.innerBlocks.map((innerBlock) => (
                                   <DropdownMenuItem
                                     key={innerBlock._id}
-                                    onClick={() =>
-                                      setSelectedInnerBlock(innerBlock)
-                                    }
+                                    onClick={() => {
+                                      setSelectedBlock(block);
+                                      setSelectedInnerBlock(innerBlock);
+                                    }}
                                   >
                                     {innerBlock.name ||
                                       `Inner Block ${innerBlock._id}`}

@@ -15,26 +15,43 @@ import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
 import { Separator } from "@/components/ui/separator";
 import { useParams } from "react-router-dom";
-
+import api from "../plugins/axios";
+import { useEffect, useState } from "react";
 function EditTenant() {
   const { id } = useParams();
+  const [tenant, setTenant] = useState(null);
+  const getTenant = async () => {
+    try {
+      const response = await api.get(`/api/tenant/get-tenant/${id}`);
+      console.log(response.data.tenant);
+      if (response.data.success) {
+        setTenant(response.data.tenant);
+      }
+    } catch (error) {
+      console.error("Error getting tenant:", error);
+    }
+  };
+  useEffect(() => {
+    getTenant();
+  }, [id]);
   const formik = useFormik({
+    enableReinitialize: true,
     initialValues: {
-      name: "",
-      unitNumber: "",
-      phone: "",
-      email: "",
-      address: "",
-      leaseStart: "",
-      leaseEnd: "",
-      block: "",
-      innerBlock: "",
+      name: tenant?.name || "",
+      unitNumber: tenant?.unitNumber || "",
+      phone: tenant?.phone || "",
+      email: tenant?.email || "",
+      address: tenant?.address || "",
+      leaseStartDate: tenant?.leaseStartDate || "",
+      leaseEndDate: tenant?.leaseEndDate || "",
+      block: tenant?.block || "",
+      innerBlock: tenant?.innerBlock || "",
+      agreementSignedDate: tenant?.agreementSignedDate || "",
+      propertySize: tenant?.propertySize || "",
+      securityDeposit: tenant?.securityDeposit || "",
+      status: tenant?.status || "",
       image: null,
       pdfAgreement: null,
-      agreementSignedDate: "",
-      propertySize: "",
-      securityDeposit: "",
-      status: "",
     },
     onSubmit: (values) => {
       console.log(values);
