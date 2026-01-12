@@ -4,6 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { Search } from "lucide-react";
 import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -18,7 +24,7 @@ import { useAuth } from "../context/AuthContext";
 import api from "../../plugins/axios";
 import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
-
+import { Link } from "react-router-dom";
 export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const isMobile = useIsMobile();
@@ -130,7 +136,22 @@ export default function Header() {
             <SheetHeader>
               <SheetTitle>Notifications</SheetTitle>
             </SheetHeader>
-            <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto mt-4">
+            <div className="flex flex-col gap-2 max-h-[70vh] overflow-y-auto mt-2">
+              <div className="flex justify-end mr-3">
+                {" "}
+                <Button
+                  variant="outline"
+                  className="w-fit"
+                  onClick={() => {
+                    navigate(
+                      `/notifications/${notification._id || notification.id}`
+                    );
+                  }}
+                >
+                  Mark as read
+                </Button>
+              </div>
+
               {notifications.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-4">
                   No notifications
@@ -139,24 +160,38 @@ export default function Header() {
                 notifications.map((notification) => (
                   <div
                     key={notification._id || notification.id}
-                    className={`flex items-start gap-3 p-3 rounded-lg border ${
+                    className={`flex items-start gap-3 mb-2 rounded-md border  p-3 ml-3 mr-3 ${
                       !notification.isRead
-                        ? "bg-blue-50 border-blue-200"
+                        ? "bg-gray-50 border-gray-200"
                         : "bg-gray-50 border-gray-200"
                     }`}
+                    onClick={() => {
+                      navigate(
+                        `/notifications/${notification._id || notification.id}`
+                      );
+                    }}
                   >
                     <Bell
                       className={`w-5 h-5 mt-0.5 ${
-                        !notification.isRead ? "text-blue-500" : "text-gray-400"
+                        !notification.isRead
+                          ? "text-primary-500"
+                          : "text-gray-400"
                       }`}
                     />
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-semibold text-black">
                         {notification.title}
                       </p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {notification.message}
-                      </p>
+                      <Accordion type="single" collapsible className="w-full">
+                        <AccordionItem value="item-1">
+                          <AccordionTrigger className="text-sm text-gray-600 mt-1 ">
+                            <AccordionContent>
+                              {notification.message}
+                            </AccordionContent>
+                          </AccordionTrigger>
+                        </AccordionItem>
+                      </Accordion>
+
                       {notification.createdAt && (
                         <p className="text-xs text-gray-400 mt-1">
                           {new Date(notification.createdAt).toLocaleString()}
