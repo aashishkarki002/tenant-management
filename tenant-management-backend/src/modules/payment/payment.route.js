@@ -7,11 +7,12 @@ import {
   getAllPaymentHistory,
   getPaymentHistoryByTenant,
 } from "./payment.controller.js";
+import { getFilteredPaymentHistory } from "./payment.controller.js";
 import { protect } from "../../middleware/protect.js";
 const router = Router();
 
-router.post("/pay-rent", payRent);
-router.get("/get-rent-summary", getRentSummary);
+router.post("/pay-rent", protect, payRent);
+router.get("/get-rent-summary", protect, getRentSummary);
 router.get("/dashboard-stats", protect, getDashboardStats);
 router.post("/send-receipt/:paymentId", protect, sendReceiptEmail);
 router.get("/get-all-payment-history", protect, getAllPaymentHistory);
@@ -20,4 +21,5 @@ router.get(
   protect,
   getPaymentHistoryByTenant
 );
+router.get("/get-filtered-payment-history", protect, getFilteredPaymentHistory);
 export default router;

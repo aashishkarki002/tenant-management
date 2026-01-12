@@ -1,8 +1,9 @@
-import { createPayment, sendPaymentReceiptEmail } from "./payment.service.js";
+import { createPayment } from "./payment.service.js";
 import { Rent } from "../rents/rent.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
 import { Unit } from "../tenant/units/unit.model.js";
 import { Payment } from "./payment.model.js";
+import { getFilteredPaymentHistoryService } from "./payment.service.js";
 export async function payRent(req, res) {
   try {
     const {
@@ -17,6 +18,7 @@ export async function payRent(req, res) {
       bankAccountId,
     } = req.body;
     const paymentData = {
+      adminId: req.admin.id,
       rentId,
       tenantId,
       amount,
@@ -317,6 +319,27 @@ export async function getPaymentHistoryByTenant(req, res) {
     res.json({ success: true, data: payments });
   } catch (err) {
     console.error("Error getting payment history by tenant:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+export async function getFilteredPaymentHistory(req, res) {
+  try {
+    const { tenantId, startDate, endDate, paymentMethod } = req.query;
+
+    const result = await getFilteredPaymentHistoryService(
+      tenantId,
+      startDate,
+      endDate,
+      paymentMethod
+    );
+
+    if (result.success) {
+      res.json({ success: true, data: result.data });
+    } else {
+      res.status(400).json({ success: false, message: result.error });
+    }
+  } catch (err) {
+    console.error("Error getting filtered payment history:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 }

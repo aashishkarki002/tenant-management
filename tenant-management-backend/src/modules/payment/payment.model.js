@@ -34,9 +34,19 @@ const paymentSchema = new mongoose.Schema({
     enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
     default: "pending",
   },
+  receipt: {
+    url: String,
+    publicId: String,
+    generatedAt: Date,
+  },
   note: {
     type: String,
     required: false,
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Admin",
+    required: true,
   },
 });
 export const Payment = mongoose.model("Payment", paymentSchema);

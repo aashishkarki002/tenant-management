@@ -5,13 +5,14 @@ import BankAccount from "../banks/BankAccountModel.js";
 import {
   generateAndUploadRentPDF,
   generatePDFToBuffer,
+  uploadPDFBufferToCloudinary,
 } from "../../utils/rentGenrator.js";
 import {
   sendEmail,
   sendPaymentReceiptEmail as sendPaymentReceiptEmailFromNodemailer,
 } from "../../config/nodemailer.js";
 import { emitPaymentNotification } from "../../utils/payment.Notification.js";
-
+import buildFilter from "../../utils/buildFilter.js";
 export const createPayment = async (paymentData) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -20,6 +21,7 @@ export const createPayment = async (paymentData) => {
   let pdfGeneratedToBuffer = false;
   try {
     const {
+      adminId,
       rentId,
       tenantId,
       amount,
@@ -53,13 +55,14 @@ export const createPayment = async (paymentData) => {
     } else {
       rent.lastPaidBy = null;
     }
-
+    console.log(rent.paidAmount, rent.rentAmount);
     rent.status =
       rent.paidAmount >= rent.rentAmount
         ? "paid"
         : rent.paidAmount > 0
         ? "partially_paid"
         : "pending";
+    console.log(rent.status);
 
     await rent.save({ session });
 
@@ -96,6 +99,7 @@ export const createPayment = async (paymentData) => {
       paymentStatus,
       note,
       receivedBy,
+      createdBy: new mongoose.Types.ObjectId(adminId),
     };
     // Only include bankAccount if it exists (for bank_transfer or cheque)
     if (bankAccountObjectId) {
@@ -181,9 +185,10 @@ export const createPayment = async (paymentData) => {
     let emailSent = false;
     let emailError = null;
     const tenantEmail = populatedRent.tenant.email;
-    if (populatedRent.tenant.email) {
-      try {
-        await sendPaymentReceiptEmailFromNodemailer({
+
+    // Send email and upload to Cloudinary in parallel using the same buffer
+    const emailPromise = populatedRent.tenant.email
+      ? sendPaymentReceiptEmailFromNodemailer({
           to: tenantEmail,
           tenantName: populatedRent.tenant.name,
           amount: payment.amount,
@@ -193,33 +198,90 @@ export const createPayment = async (paymentData) => {
           propertyName: populatedRent.property.name,
           pdfBuffer,
           pdfFileName: `receipt-${payment._id.toString()}.pdf`,
+        })
+          .then(() => {
+            emailSent = true;
+            emailError = null;
+            console.log(
+              `Email sent successfully to ${populatedRent.tenant.name} ${tenantEmail}`
+            );
+          })
+          .catch((error) => {
+            emailSent = false;
+            emailError = error.message;
+            console.error(
+              `Failed to send email to ${populatedRent.tenant.name} ${tenantEmail}:`,
+              error.message
+            );
+          })
+      : Promise.resolve().then(() => {
+          console.warn(
+            `No email address found for tenant ${payment.tenant.name}`
+          );
         });
-        emailSent = true;
-        emailError = null;
-        console.log(
-          `Email sent successfully to ${populatedRent.tenant.name} ${tenantEmail}`
-        );
-      } catch (error) {
-        emailSent = false;
-        emailError = error.message;
-        console.error(
-          `Failed to send email to ${populatedRent.tenant.name} ${tenantEmail}:`,
-          error.message
-        );
-      }
-    } else {
-      console.warn(`No email address found for tenant ${payment.tenant.name}`);
-    }
-    setImmediate(async () => {
-      try {
-        uploadedPDF = await generateAndUploadRentPDF(pdfData);
-        console.log(
-          `PDF uploaded successfully to Cloudinary: ${uploadedPDF.url}`
-        );
-      } catch (error) {
-        console.error(`Failed to upload PDF to Cloudinary:`, error.message);
-      }
-    });
+
+    // Upload the same PDF buffer to Cloudinary (non-blocking, happens in background)
+    const paymentId = payment._id.toString();
+    console.log("Uploading PDF buffer to Cloudinary...");
+    // Start upload in background - don't await it to avoid blocking the response
+    uploadPDFBufferToCloudinary(pdfBuffer, paymentId)
+      .then(async (result) => {
+        if (result) {
+          console.log(`Background upload completed: ${result.url}`);
+          try {
+            // Fetch fresh payment instance
+            const freshPayment = await Payment.findById(paymentId);
+
+            if (!freshPayment) {
+              console.error(
+                `Payment ${paymentId} not found for background update`
+              );
+              return;
+            }
+
+            console.log("Payment found, updating receipt field...");
+
+            // Update the receipt field
+            freshPayment.receipt = {
+              url: result.url,
+              publicId: result.cloudinaryId,
+              generatedAt: new Date(),
+            };
+
+            // Save the updated payment
+            const savedPayment = await freshPayment.save();
+
+            console.log(
+              `✅ Receipt URL saved successfully to payment ${paymentId}:`,
+              {
+                url: savedPayment.receipt?.url,
+                publicId: savedPayment.receipt?.publicId,
+              }
+            );
+
+            // Verify the save by fetching again
+            const verifyPayment = await Payment.findById(paymentId);
+            console.log("Verification - Receipt field:", verifyPayment.receipt);
+          } catch (saveError) {
+            console.error(`❌ Failed to save PDF URL in background:`, {
+              error: saveError.message,
+              stack: saveError.stack,
+              paymentId,
+            });
+          }
+        } else {
+          console.error("Upload result was null or undefined");
+        }
+      })
+      .catch((error) => {
+        console.error(`❌ Background PDF upload failed:`, {
+          error: error.message,
+          stack: error.stack,
+          paymentId,
+        });
+      });
+    // Don't wait for upload - return immediately
+    uploadedPDF = null;
 
     return {
       success: true,
@@ -230,10 +292,10 @@ export const createPayment = async (paymentData) => {
       uploadedPDF: uploadedPDF || null,
       url: uploadedPDF?.url || null,
       pdfGeneratedToBuffer: pdfGeneratedToBuffer || false,
-      note: pdfGeneratedToBuffer
-        ? "PDF generated to buffer (Cloudinary upload timed out)"
-        : uploadedPDF
+      note: uploadedPDF
         ? "PDF uploaded to Cloudinary successfully"
+        : pdfGeneratedToBuffer
+        ? "PDF generated and upload to Cloudinary started in background"
         : "PDF generation failed",
     };
   } catch (error) {
@@ -407,6 +469,33 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
     return {
       success: false,
       message: "Failed to send payment receipt email",
+      error: error.message,
+    };
+  }
+};
+export const getFilteredPaymentHistoryService = async (
+  tenantId,
+  startDate,
+  endDate,
+  paymentMethod
+) => {
+  try {
+    const filter = buildFilter({
+      tenantId,
+      startDate,
+      endDate,
+      paymentMethod,
+      dateField: "paymentDate",
+    });
+    const payments = await Payment.find(filter).sort({ paymentDate: -1 });
+    return {
+      success: true,
+      data: payments,
+    };
+  } catch (error) {
+    console.error("Error getting filtered payment history:", error);
+    return {
+      success: false,
       error: error.message,
     };
   }

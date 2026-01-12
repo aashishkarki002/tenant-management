@@ -3,9 +3,16 @@ import cloudinary from "../config/cloudinary.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { Readable, PassThrough } from "stream";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Temp directory for file uploads
+const TEMP_UPLOAD_DIR = path.join(process.cwd(), "tmp");
+if (!fs.existsSync(TEMP_UPLOAD_DIR)) {
+  fs.mkdirSync(TEMP_UPLOAD_DIR, { recursive: true });
+}
 
 export async function generateAndUploadRentPDF(rent) {
   return new Promise((resolve, reject) => {
@@ -283,4 +290,145 @@ export async function generatePDFToBuffer(rent) {
       reject(err);
     }
   });
+}
+
+/**
+ * Upload an existing PDF buffer to Cloudinary
+ * This avoids regenerating the PDF when we already have a buffer
+ * Uses upload_stream with a readable stream from the buffer for reliable upload
+ * @param {Buffer} pdfBuffer - The PDF buffer to upload
+ * @param {string} receiptNo - Receipt number for file naming
+ * @returns {Promise<Object>} Object with fileName, url, and cloudinaryId
+ */
+export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
+  // Validate buffer
+  if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer)) {
+    const error = new Error("Invalid PDF buffer provided");
+    console.error("❌ [uploadPDFBufferToCloudinary] Validation failed:", {
+      receiptNo,
+      error: error.message,
+    });
+    throw error;
+  }
+
+  if (pdfBuffer.length === 0) {
+    const error = new Error("PDF buffer is empty");
+    console.error("❌ [uploadPDFBufferToCloudinary] Validation failed:", {
+      receiptNo,
+      error: error.message,
+    });
+    throw error;
+  }
+
+  let tempFilePath = null;
+
+  try {
+    // Create a temporary file path
+    const fileName = `receipt-${receiptNo}-${Date.now()}.pdf`;
+    tempFilePath = path.join(TEMP_UPLOAD_DIR, fileName);
+
+    console.log(
+      "💾 [uploadPDFBufferToCloudinary] Writing buffer to temp file:",
+      {
+        receiptNo,
+        tempFilePath,
+        bufferSize: pdfBuffer.length,
+      }
+    );
+
+    // Write buffer to temporary file
+    fs.writeFileSync(tempFilePath, pdfBuffer);
+
+    console.log("✅ [uploadPDFBufferToCloudinary] Temp file created:", {
+      receiptNo,
+      tempFilePath,
+      fileSize: fs.statSync(tempFilePath).size,
+    });
+
+    // Upload the file to Cloudinary
+    const uploadOptions = {
+      folder: "rents/pdfs",
+      resource_type: "raw",
+      public_id: `receipt-${receiptNo}`,
+    };
+
+    console.log("☁️ [uploadPDFBufferToCloudinary] Uploading to Cloudinary:", {
+      receiptNo,
+      options: uploadOptions,
+    });
+
+    const result = await cloudinary.uploader.upload(
+      tempFilePath,
+      uploadOptions
+    );
+
+    console.log(
+      "📥 [uploadPDFBufferToCloudinary] Cloudinary response received:",
+      {
+        receiptNo,
+        hasResult: !!result,
+        hasSecureUrl: !!result?.secure_url,
+        hasPublicId: !!result?.public_id,
+        resultKeys: result ? Object.keys(result) : [],
+      }
+    );
+
+    if (!result || !result.secure_url) {
+      console.error(
+        "❌ [uploadPDFBufferToCloudinary] Invalid result from Cloudinary:",
+        {
+          receiptNo,
+          result: result,
+          resultType: typeof result,
+        }
+      );
+      throw new Error("Cloudinary upload returned invalid result");
+    }
+
+    const uploadResult = {
+      fileName: `receipt-${receiptNo}.pdf`,
+      url: result.secure_url,
+      cloudinaryId: result.public_id,
+    };
+
+    console.log("✅ [uploadPDFBufferToCloudinary] Upload successful:", {
+      receiptNo,
+      fileName: uploadResult.fileName,
+      url: uploadResult.url,
+      cloudinaryId: uploadResult.cloudinaryId,
+      resultSize: result.bytes,
+      format: result.format,
+    });
+
+    return uploadResult;
+  } catch (error) {
+    console.error("❌ [uploadPDFBufferToCloudinary] Upload failed:", {
+      receiptNo,
+      error: error.message,
+      errorCode: error.http_code,
+      errorName: error.name,
+      stack: error.stack,
+    });
+    throw error;
+  } finally {
+    // Clean up temporary file
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      try {
+        fs.unlinkSync(tempFilePath);
+        console.log("🗑️ [uploadPDFBufferToCloudinary] Temp file deleted:", {
+          receiptNo,
+          tempFilePath,
+        });
+      } catch (unlinkError) {
+        console.error(
+          "⚠️ [uploadPDFBufferToCloudinary] Failed to delete temp file:",
+          {
+            receiptNo,
+            tempFilePath,
+            error: unlinkError.message,
+          }
+        );
+      }
+    }
+  }
 }
