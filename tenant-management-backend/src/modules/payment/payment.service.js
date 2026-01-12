@@ -6,11 +6,18 @@ import {
   generateAndUploadRentPDF,
   generatePDFToBuffer,
 } from "../../utils/rentGenrator.js";
-import { sendEmail } from "../../config/nodemailer.js";
+import {
+  sendEmail,
+  sendPaymentReceiptEmail as sendPaymentReceiptEmailFromNodemailer,
+} from "../../config/nodemailer.js";
+import { emitPaymentNotification } from "../../utils/payment.Notification.js";
 
 export const createPayment = async (paymentData) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+  let transactionCommitted = false;
+  let uploadedPDF = null;
+  let pdfGeneratedToBuffer = false;
   try {
     const {
       rentId,
@@ -80,7 +87,7 @@ export const createPayment = async (paymentData) => {
     }
 
     // 4️⃣ Create payment
-    const paymentData = {
+    const paymentPayload = {
       rent: rentId,
       tenant: finalTenantId,
       amount,
@@ -92,17 +99,36 @@ export const createPayment = async (paymentData) => {
     };
     // Only include bankAccount if it exists (for bank_transfer or cheque)
     if (bankAccountObjectId) {
-      paymentData.bankAccount = bankAccountObjectId;
+      paymentPayload.bankAccount = bankAccountObjectId;
     }
-    const [payment] = await Payment.create([paymentData], { session });
+    const [payment] = await Payment.create([paymentPayload], { session });
 
     // 5️⃣ Commit DB transaction **before generating PDF**
     await session.commitTransaction();
+    transactionCommitted = true;
     session.endSession();
+
+    // 5️⃣.5 Emit payment notification
+    try {
+      await emitPaymentNotification({
+        paymentId: payment._id.toString(),
+        tenantId: finalTenantId,
+        amount,
+        paymentDate,
+        paymentMethod,
+        paymentStatus,
+        note,
+        receivedBy,
+        bankAccountId: bankAccountObjectId?.toString() || bankAccountId,
+      });
+    } catch (notificationError) {
+      // Don't fail the payment creation if notification fails
+      console.error("Failed to emit payment notification:", notificationError);
+    }
 
     // 6️⃣ Populate rent for PDF
     const populatedRent = await Rent.findById(rentId)
-      .populate("tenant", "name")
+      .populate("tenant", "name email")
       .populate("property", "name");
 
     if (!populatedRent) throw new Error("Rent not found after transaction");
@@ -147,50 +173,54 @@ export const createPayment = async (paymentData) => {
       receivedBy: receivedBy || "",
     };
 
-    // 8️⃣ Generate PDF with timeout to prevent hanging
-    // Try Cloudinary upload first, fallback to buffer if timeout
-    const PDF_TIMEOUT = 30000; // 30 seconds timeout
-    let uploadedPDF = null;
-    let pdfGeneratedToBuffer = false;
-
-    try {
-      const pdfPromise = generateAndUploadRentPDF(pdfData);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("PDF generation timeout")),
-          PDF_TIMEOUT
-        )
-      );
-
-      uploadedPDF = await Promise.race([pdfPromise, timeoutPromise]);
-    } catch (pdfError) {
-      // PDF generation/upload to Cloudinary failed or timed out
-      // Fallback to generating PDF to buffer (faster and more reliable)
-      console.error(
-        `PDF Cloudinary upload failed/timed out for payment ${payment._id}:`,
-        pdfError.message
-      );
-      console.log(
-        `Falling back to buffer generation for payment ${payment._id}...`
-      );
-
+    console.log(`Generating PDF receipt for payment ${payment._id}...`);
+    const pdfBuffer = await generatePDFToBuffer(pdfData);
+    pdfGeneratedToBuffer = true;
+    console.log(`PDF generated successfully (${pdfBuffer.length} bytes)`);
+    console.log(populatedRent.tenant.email);
+    let emailSent = false;
+    let emailError = null;
+    const tenantEmail = populatedRent.tenant.email;
+    if (populatedRent.tenant.email) {
       try {
-        // Generate PDF to buffer as fallback (this is fast and shouldn't timeout)
-        await generatePDFToBuffer(pdfData);
-        pdfGeneratedToBuffer = true;
+        await sendPaymentReceiptEmailFromNodemailer({
+          to: tenantEmail,
+          tenantName: populatedRent.tenant.name,
+          amount: payment.amount,
+          paymentDate: formattedPaymentDate,
+          paidFor,
+          receiptNo: payment._id.toString(),
+          propertyName: populatedRent.property.name,
+          pdfBuffer,
+          pdfFileName: `receipt-${payment._id.toString()}.pdf`,
+        });
+        emailSent = true;
+        emailError = null;
         console.log(
-          `PDF successfully generated to buffer for payment ${payment._id}`
+          `Email sent successfully to ${populatedRent.tenant.name} ${tenantEmail}`
         );
-      } catch (bufferError) {
+      } catch (error) {
+        emailSent = false;
+        emailError = error.message;
         console.error(
-          `PDF buffer generation also failed for payment ${payment._id}:`,
-          bufferError.message
+          `Failed to send email to ${populatedRent.tenant.name} ${tenantEmail}:`,
+          error.message
         );
-        // Even buffer generation failed - log but don't block response
       }
+    } else {
+      console.warn(`No email address found for tenant ${payment.tenant.name}`);
     }
+    setImmediate(async () => {
+      try {
+        uploadedPDF = await generateAndUploadRentPDF(pdfData);
+        console.log(
+          `PDF uploaded successfully to Cloudinary: ${uploadedPDF.url}`
+        );
+      } catch (error) {
+        console.error(`Failed to upload PDF to Cloudinary:`, error.message);
+      }
+    });
 
-    // 9️⃣ Return response (with PDF URL if Cloudinary upload succeeded, or buffer status)
     return {
       success: true,
       message: "Payment created successfully",
@@ -207,8 +237,23 @@ export const createPayment = async (paymentData) => {
         : "PDF generation failed",
     };
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    // Only abort transaction if it wasn't already committed
+    if (!transactionCommitted) {
+      try {
+        await session.abortTransaction();
+      } catch (abortError) {
+        // Transaction might already be committed/aborted, ignore
+        console.error("Error aborting transaction:", abortError.message);
+      }
+    }
+    try {
+      if (session) {
+        session.endSession();
+      }
+    } catch (sessionError) {
+      // Session might already be ended, ignore
+      console.error("Error ending session:", sessionError.message);
+    }
     return {
       success: false,
       message: "Failed to create payment",

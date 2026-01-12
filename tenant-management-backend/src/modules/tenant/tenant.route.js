@@ -16,7 +16,7 @@ const router = Router();
 
 router.get("/get-tenants", protect, getTenants);
 router.get("/get-tenant/:id", protect, getTenantById);
-router.get("/search-tenants/:search", protect, searchTenants);
+router.get("/search-tenants", protect, searchTenants);
 
 router.post(
   "/create-tenant",

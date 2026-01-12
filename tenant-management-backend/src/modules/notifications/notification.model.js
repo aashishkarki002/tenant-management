@@ -14,6 +14,7 @@ const notificationSchema = new mongoose.Schema(
         "RENT_PARTIALLY_PAID",
         "RENT_PAID",
         "RENT_REMINDER",
+        "PAYMENT_NOTIFICATION",
       ],
     },
     title: {
