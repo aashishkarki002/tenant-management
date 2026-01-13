@@ -303,9 +303,21 @@ export async function sendReceiptEmail(req, res) {
 export async function getAllPaymentHistory(req, res) {
   try {
     const payments = await Payment.find()
-      .populate("tenant", "name")
-      .populate("rent", "rentAmount")
-      .populate("bankAccount", "name");
+      .populate({
+        path: "tenant",
+        select: "name",
+      })
+      .populate({
+        path: "rent",
+        populate: [
+          { path: "tenant", select: "name" },
+          { path: "property", select: "name" },
+        ],
+      })
+      .populate({
+        path: "bankAccount",
+        select: "accountNumber accountName bankName",
+      });
     res.json({ success: true, data: payments });
   } catch (err) {
     console.error("Error getting all payment history:", err);
@@ -315,7 +327,23 @@ export async function getAllPaymentHistory(req, res) {
 export async function getPaymentHistoryByTenant(req, res) {
   try {
     const { tenantId } = req.params;
-    const payments = await Payment.find({ tenant: tenantId });
+    const payments = await Payment.find({ tenant: tenantId })
+      .populate({
+        path: "tenant",
+        select: "name",
+      })
+      .populate({
+        path: "rent",
+        populate: [
+          { path: "tenant", select: "name" },
+          { path: "property", select: "name" },
+        ],
+      })
+      .populate({
+        path: "bankAccount",
+        select: "accountNumber accountName bankName",
+      });
+
     res.json({ success: true, data: payments });
   } catch (err) {
     console.error("Error getting payment history by tenant:", err);
@@ -340,6 +368,50 @@ export async function getFilteredPaymentHistory(req, res) {
     }
   } catch (err) {
     console.error("Error getting filtered payment history:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+export async function getPaymentById(req, res) {
+  try {
+    const { paymentId } = req.params;
+    const payment = await Payment.findById(paymentId)
+      .populate("tenant", "name")
+      .populate({
+        path: "rent",
+        populate: [
+          { path: "tenant", select: "name" },
+          { path: "property", select: "name" },
+        ],
+      })
+      .populate({
+        path: "bankAccount",
+        select: "accountNumber accountName bankName",
+      });
+    res.json({ success: true, data: payment });
+  } catch (err) {
+    console.error("Error getting payment by id:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+export async function getPaymentByRentId(req, res) {
+  try {
+    const { rentId } = req.params;
+    const payments = await Payment.find({ rent: rentId })
+      .populate("tenant", "name")
+      .populate({
+        path: "rent",
+        populate: [
+          { path: "tenant", select: "name" },
+          { path: "property", select: "name" },
+        ],
+      })
+      .populate({
+        path: "bankAccount",
+        select: "accountNumber accountName bankName",
+      });
+    res.json({ success: true, data: payments });
+  } catch (err) {
+    console.error("Error getting payment by rent id:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 }

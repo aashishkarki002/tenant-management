@@ -6,8 +6,10 @@ import {
   getDashboardStats,
   getAllPaymentHistory,
   getPaymentHistoryByTenant,
+  getPaymentByRentId,
 } from "./payment.controller.js";
 import { getFilteredPaymentHistory } from "./payment.controller.js";
+import { getPaymentById } from "./payment.controller.js";
 import { protect } from "../../middleware/protect.js";
 const router = Router();
 
@@ -22,4 +24,6 @@ router.get(
   getPaymentHistoryByTenant
 );
 router.get("/get-filtered-payment-history", protect, getFilteredPaymentHistory);
+router.get("/get-payment-by-id/:paymentId", protect, getPaymentById);
+router.get("/get-payment-by-rent-id/:rentId", protect, getPaymentByRentId);
 export default router;
