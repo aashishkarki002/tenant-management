@@ -1,15 +1,40 @@
-// DualCalendarTailwind.jsx
 import React, { useState, useRef, useEffect } from "react";
 import { NepaliDatePicker } from "nepali-datepicker-reactjs";
 import "nepali-datepicker-reactjs/dist/index.css";
 import dateConverter from "nepali-datetime/dateConverter";
 
-const DualCalendarTailwind = ({ onChange }) => {
+const DualCalendarTailwind = ({ onChange, value }) => {
   const [nepaliDate, setNepaliDate] = useState("");
-  const [englishDate, setEnglishDate] = useState("");
+  const [englishDate, setEnglishDate] = useState(value || "");
   const [showCalendar, setShowCalendar] = useState(false);
 
   const calendarRef = useRef(null);
+
+  /* -------------------- helpers -------------------- */
+
+  const formatDate = (y, m, d) =>
+    `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+  // Update state when value prop changes
+  useEffect(() => {
+    if (value !== undefined && value !== englishDate) {
+      setEnglishDate(value);
+      if (value) {
+        const [enYear, enMonthHuman, enDay] = value.split("-").map(Number);
+        const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
+          enYear,
+          enMonthHuman - 1,
+          enDay
+        );
+        const formattedNepali = formatDate(npYear, npMonth0 + 1, npDay);
+        setNepaliDate(formattedNepali);
+      } else {
+        setNepaliDate("");
+      }
+    }
+  }, [value, englishDate]);
+
+  /* -------------------- outside click -------------------- */
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -21,86 +46,92 @@ const DualCalendarTailwind = ({ onChange }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  /* -------------------- BS → AD -------------------- */
   const handleNepaliChange = (bsDate) => {
     if (!bsDate) return;
+
     const cleaned = bsDate.split(" ")[0];
     setNepaliDate(cleaned);
 
-    const [bsYear, bsMonth, bsDay] = cleaned.split("-").map(Number);
+    const [bsYear, bsMonthHuman, bsDay] = cleaned.split("-").map(Number);
+
+    // 🔴 dateConverter expects 0-based months
     const [enYear, enMonth0, enDay] = dateConverter.nepaliToEnglish(
       bsYear,
-      bsMonth + 1,
+      bsMonthHuman - 1,
       bsDay
     );
 
-    const formattedEnglish = `${enYear}-${String(enMonth0 + 1).padStart(
-      2,
-      "0"
-    )}-${String(enDay).padStart(2, "0")}`;
-    setEnglishDate(formattedEnglish);
+    const formattedEnglish = formatDate(enYear, enMonth0 + 1, enDay);
 
-    if (onChange) onChange(formattedEnglish, cleaned);
+    setEnglishDate(formattedEnglish);
+    onChange?.(formattedEnglish, cleaned);
+    setShowCalendar(false);
   };
 
+  /* -------------------- AD → BS -------------------- */
   const handleEnglishChange = (e) => {
     const adDate = e.target.value;
     setEnglishDate(adDate);
 
     if (!adDate) {
       setNepaliDate("");
-      if (onChange) onChange("", "");
+      onChange?.("", "");
       return;
     }
 
-    const [enYear, enMonth, enDay] = adDate.split("-").map(Number);
-    const [npYear, npMonth, npDay] = dateConverter.englishToNepali(
+    const [enYear, enMonthHuman, enDay] = adDate.split("-").map(Number);
+
+    // 🔴 dateConverter expects 0-based months
+    const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
       enYear,
-      enMonth,
+      enMonthHuman - 1,
       enDay
     );
 
-    const formattedNepali = `${npYear}-${String(npMonth).padStart(
-      2,
-      "0"
-    )}-${String(npDay).padStart(2, "0")}`;
-    setNepaliDate(formattedNepali);
+    const formattedNepali = formatDate(npYear, npMonth0 + 1, npDay);
 
-    if (onChange) onChange(adDate, formattedNepali);
+    setNepaliDate(formattedNepali);
+    onChange?.(adDate, formattedNepali);
+    setShowCalendar(false);
   };
 
+  /* -------------------- UI -------------------- */
+
   return (
-    <div className="relative max-w-md mx-auto mt-2">
+    <div className="relative w-full">
       <input
         type="text"
+        readOnly
         value={
           englishDate && nepaliDate ? `${englishDate} / ${nepaliDate}` : ""
         }
-        readOnly
-        onClick={() => setShowCalendar(true)}
         placeholder="Select Date"
-        className="w-full border border-gray-300 rounded-md px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400"
+        onClick={() => setShowCalendar(true)}
+        className="w-full cursor-pointer rounded-md border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
       />
 
       {showCalendar && (
         <div
           ref={calendarRef}
-          className="absolute z-50 mt-2 w-full bg-white border border-gray-200 rounded-md shadow-lg p-4 flex gap-4"
+          className="absolute z-50 mt-2 w-full rounded-md border bg-white p-4 shadow-lg flex gap-4"
         >
           <div className="flex flex-col">
-            <label className="mb-2 text-gray-600">English (AD)</label>
+            <label className="mb-1 text-sm text-gray-600">English (AD)</label>
             <input
               type="date"
               value={englishDate}
               onChange={handleEnglishChange}
-              className="border rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="rounded-md border px-2 py-1 focus:ring-2 focus:ring-blue-400"
             />
           </div>
+
           <div className="flex flex-col w-full">
-            <label className="mb-2 text-gray-600">Nepali (BS)</label>
+            <label className="mb-1 text-sm text-gray-600">Nepali (BS)</label>
             <NepaliDatePicker
               value={nepaliDate}
               onChange={handleNepaliChange}
-              inputClassName="border rounded-md px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+              inputClassName="w-full rounded-md border px-2 py-1 focus:ring-2 focus:ring-blue-400"
               options={{ calendarLocale: "en", valueLocale: "en" }}
             />
           </div>

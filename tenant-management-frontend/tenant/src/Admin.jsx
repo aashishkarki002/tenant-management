@@ -35,6 +35,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogClose,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { FieldGroup } from "@/components/ui/field";
 import { toast } from "sonner";
@@ -161,15 +163,36 @@ export default function Admin() {
     setTimeout(() => setPasswordSuccess(false), 3000);
   };
 
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [accountToDelete, setAccountToDelete] = useState(null);
+
   const DeleteBankAccount = async (id) => {
     try {
       const response = await api.patch(`/api/bank/delete-bank-account/${id}`);
       if (response.data.success) {
         GetBankAccounts();
         toast.success("Bank account deleted successfully");
+        setDeleteConfirmOpen(false);
+        setAccountToDelete(null);
       }
     } catch (error) {
       console.error("Error deleting bank account:", error);
+      toast.error(
+        error?.response?.data?.message || "Failed to delete bank account"
+      );
+      setDeleteConfirmOpen(false);
+      setAccountToDelete(null);
+    }
+  };
+
+  const handleDeleteClick = (accountId) => {
+    setAccountToDelete(accountId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (accountToDelete) {
+      DeleteBankAccount(accountToDelete);
     }
   };
   return (
@@ -302,18 +325,10 @@ export default function Admin() {
                     size="sm"
                     icon={Trash2}
                     className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                    onClick={() => DeleteBankAccount(account._id)}
+                    onClick={() => handleDeleteClick(account._id)}
                   >
                     <Trash2 className="w-4 h-4 text-red-500" />
                   </Button>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={Trash2}
-                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                  />
                 </div>
               </div>
             ))}
@@ -627,6 +642,33 @@ export default function Admin() {
           </div>
         </form>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Bank Account</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this bank account? This action
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirmOpen(false);
+                setAccountToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

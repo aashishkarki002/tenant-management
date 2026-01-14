@@ -48,7 +48,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 const statusStyles = {
@@ -131,6 +131,7 @@ const formatNepaliDueDate = (rent) => {
 };
 
 export default function RentDashboard() {
+  const [isLoading, setIsLoading] = useState(false);
   const [rents, setRents] = useState([]);
   const [payments, setPayments] = useState([]);
   const [units, setUnits] = useState([]);
@@ -151,8 +152,10 @@ export default function RentDashboard() {
     setBankAccounts(data.bankAccounts);
   };
   const getRents = async () => {
+    setIsLoading(true);
     const response = await api.get("/api/rent/get-rents");
     setRents(response.data.rents);
+    setIsLoading(false);
   };
   const getPayments = async () => {
     try {
@@ -228,6 +231,7 @@ export default function RentDashboard() {
     },
     onSubmit: async (values) => {
       console.log(values);
+      setIsLoading(true);
       const response = await api.post("/api/payment/pay-rent", values);
       if (response.data.success) {
         toast.success(response.data.message);
@@ -243,6 +247,7 @@ export default function RentDashboard() {
       } else {
         toast.error(response.data.message);
       }
+      setIsLoading(false);
     },
   });
 
@@ -509,7 +514,7 @@ export default function RentDashboard() {
                                     formik.handleSubmit();
                                   }}
                                 >
-                                  Confirm Payment
+                                  {isLoading ? <Spinner /> : "Confirm Payment"}
                                 </Button>
                               </DialogFooter>
                             </DialogContent>

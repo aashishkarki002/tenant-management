@@ -9,14 +9,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Phone } from "lucide-react";
+import { Phone, Eye } from "lucide-react";
 import { Mail } from "lucide-react";
 import { House } from "lucide-react";
 import { Calendar } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import ViewDetail from "./ViewDetail";
+
 import api from "../../plugins/axios";
 import { toast } from "sonner";
 import NepaliDate from "nepali-datetime";
@@ -104,17 +104,22 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
                       setIsDialogOpen(true);
                     }}
                   >
-                    View Details
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() =>
+                        navigate(`/tenant/viewDetail/${tenant._id}`)
+                      }
+                    >
+                      <Eye className="w-5 h-5 mr-2" />
+                      View Details
+                    </Button>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </p>
           </div>
-          <ViewDetail
-            open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
-            tenant={tenant}
-          />
+
           <span className="text-gray-500 text-sm text-left flex items-center gap-2">
             <Building className="w-4 h-4 text-gray-500" />
             {tenant?.block.name}
