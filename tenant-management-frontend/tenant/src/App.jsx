@@ -11,6 +11,7 @@ import Accounting from "./Accounting";
 import Revenue from "./Revenue";
 import Maintenance from "./Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
+import Payments from "./payments";
 import AddTenants from "./addTenants";
 import Demo from "./demo";
 import VerifyEmail from "./verify_email";
@@ -66,6 +67,14 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <Revenue />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
+        path="/rent-payment/payments/:id"
+        element={
+          <ProtectedRoutes>
+            <Payments />
           </ProtectedRoutes>
         }
       />

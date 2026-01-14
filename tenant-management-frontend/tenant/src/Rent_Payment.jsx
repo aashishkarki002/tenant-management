@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import api from "../plugins/axios";
 import NepaliDate from "nepali-datetime";
+import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -132,6 +133,7 @@ const formatNepaliDueDate = (rent) => {
 
 export default function RentDashboard() {
   const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
   const [rents, setRents] = useState([]);
   const [payments, setPayments] = useState([]);
   const [units, setUnits] = useState([]);
@@ -694,24 +696,18 @@ export default function RentDashboard() {
                             </TableCell>
                             <TableCell>{payment.note || "—"}</TableCell>
                             <TableCell>
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="bg-gray-200 text-black hover:bg-gray-200 w-full sm:w-50"
-                                  >
-                                    View
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle className="text-2xl font-bold">
-                                      Payment Details
-                                    </DialogTitle>
-                                  </DialogHeader>
-                                </DialogContent>
-                              </Dialog>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="bg-gray-200 text-black hover:bg-gray-200 w-full sm:w-50"
+                                onClick={() => {
+                                  navigate(
+                                    `/rent-payment/payments/${payment._id}`
+                                  );
+                                }}
+                              >
+                                View
+                              </Button>
                             </TableCell>
                           </TableRow>
                         );
