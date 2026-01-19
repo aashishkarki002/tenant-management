@@ -20,6 +20,7 @@ import EditTenant from "./editTenant";
 import Admin from "./Admin";
 import ProtectedRoutes from "./protectedRoutes";
 import Test from "./test";
+import ViewDetail from "./ViewDetail";
 export default function App() {
   const location = useLocation();
   const path = location.pathname.toLowerCase();
@@ -148,6 +149,14 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <Test />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
+        path="/tenant/viewDetail/:id"
+        element={
+          <ProtectedRoutes>
+            <ViewDetail />
           </ProtectedRoutes>
         }
       />
