@@ -8,6 +8,7 @@ import Tenants from "./tenants";
 import Dashboard from "./Dashboard";
 import Rent_Payment from "./Rent_Payment";
 import Accounting from "./Accounting";
+import Electricity from "./Electricity";
 import Revenue from "./Revenue";
 import Maintenance from "./Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
@@ -46,6 +47,14 @@ export default function App() {
         }
       />
       <Route
+        path="/electricity"
+        element={
+          <ProtectedRoutes>
+            <Electricity />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
         path="/rent-payment"
         element={
           <ProtectedRoutes>
@@ -69,6 +78,7 @@ export default function App() {
           </ProtectedRoutes>
         }
       />
+
       <Route
         path="/rent-payment/payments/:id"
         element={

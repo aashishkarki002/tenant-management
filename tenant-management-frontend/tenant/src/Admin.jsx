@@ -186,7 +186,7 @@ export default function Admin() {
         title="Admin Details"
         subtitle="Manage your administrator profile and contact information"
       >
-        <div className="space-y-6">
+        <div className="space-y-6 ml-4 mr-4">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
               <User className="w-5 h-5 text-blue-600" />
@@ -264,7 +264,7 @@ export default function Admin() {
         title="Bank Accounts"
         subtitle="Manage bank accounts for rent collection and security deposits"
       >
-        <div className="space-y-6">
+        <div className="space-y-6 ml-4 mr-4">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
               <CreditCard className="w-5 h-5 text-blue-600" />
@@ -486,7 +486,7 @@ export default function Admin() {
         title="Language Preferences"
         subtitle="Choose your preferred language for the application"
       >
-        <div className="space-y-4">
+        <div className="space-y-4 ml-4 mr-4">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
               <Globe className="w-5 h-5 text-blue-600" />
@@ -527,7 +527,7 @@ export default function Admin() {
         title="Security Settings"
         subtitle="Update your password to keep your account secure"
       >
-        <form onSubmit={ChangePassword} className="space-y-4">
+        <form onSubmit={ChangePassword} className="space-y-4 ml-4 mr-4">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
               <Lock className="w-5 h-5 text-blue-600" />
