@@ -13,20 +13,23 @@ const paymentSchema = new mongoose.Schema({
   bankAccount: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "BankAccount",
-    required: true,
+    required: false,
   },
   amount: {
     type: Number,
     required: true,
   },
-
   paymentDate: {
+    type: Date,
+    required: true,
+  },
+  nepaliDate: {
     type: Date,
     required: true,
   },
   paymentMethod: {
     type: String,
-    enum: ["cheque", "bank_transfer"],
+    enum: ["cheque", "bank_transfer", "cash"],
     required: true,
   },
   paymentStatus: {
@@ -39,8 +42,21 @@ const paymentSchema = new mongoose.Schema({
     publicId: String,
     generatedAt: Date,
   },
+  bankVerifiedDate: {
+    type: Date,
+    required: false,
+  },
+  receiptGeneratedDate: {
+    type: Date,
+    required: false,
+  },
   note: {
     type: String,
+    required: false,
+  },
+  receivedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Admin",
     required: false,
   },
   createdBy: {

@@ -43,6 +43,12 @@ const rentSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    tdsAmount: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
     status: {
       type: String,
       enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
@@ -126,12 +132,17 @@ rentSchema.set("toJSON", { virtuals: true });
 rentSchema.set("toObject", { virtuals: true });
 
 rentSchema.pre("save", function () {
-  if (this.paidAmount > this.rentAmount) {
-    throw new Error("Paid amount cannot be greater than rent amount");
+  if (this.paidAmount > this.rentAmount - this.tdsAmount) {
+    throw new Error("Paid amount cannot be greater than rent amount after tds");
   }
-  if (this.paidAmount === 0) this.status = "pending";
-  else if (this.paidAmount < this.rentAmount) this.status = "partially_paid";
-  else this.status = "paid";
+  const effectiveRentAmount = this.rentAmount - (this.tdsAmount || 0);
+  if (this.paidAmount === 0) {
+    this.status = "pending";
+  } else if (this.paidAmount >= effectiveRentAmount) {
+    this.status = "paid";
+  } else {
+    this.status = "partially_paid";
+  }
 });
 
 rentSchema.index(

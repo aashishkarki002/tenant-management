@@ -8,7 +8,7 @@ import mongoose from "mongoose";
 import { Unit } from "./units/unit.model.js";
 import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
 import { sendEmail } from "../../config/nodemailer.js";
-
+import { ledgerService } from "../ledger/ledger.service.js";
 const TEMP_UPLOAD_DIR = path.join(process.cwd(), "tmp");
 if (!fs.existsSync(TEMP_UPLOAD_DIR)) fs.mkdirSync(TEMP_UPLOAD_DIR);
 export const createTenant = async (req, res) => {
@@ -163,7 +163,7 @@ export const createTenant = async (req, res) => {
       { session }
     );
 
-    await Rent.create(
+ const rent = await Rent.create(
       [
         {
           tenant: tenant[0]._id,
@@ -194,7 +194,7 @@ export const createTenant = async (req, res) => {
       ],
       { session }
     );
-
+    await ledgerService.recordRentCharge(rent[0]._id, session);
     await session.commitTransaction();
     session.endSession();
 

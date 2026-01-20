@@ -1,9 +1,15 @@
-import { createPayment } from "./payment.service.js";
+import {
+  createPayment,
+  sendPaymentReceiptEmail,
+  logPaymentActivity,
+  getPaymentActivities,
+} from "./payment.service.js";
 import { Rent } from "../rents/rent.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
 import { Unit } from "../tenant/units/unit.model.js";
 import { Payment } from "./payment.model.js";
 import { getFilteredPaymentHistoryService } from "./payment.service.js";
+import parsePaginationParams from "../../helper/paginator.js";
 export async function payRent(req, res) {
   try {
     const {
@@ -11,6 +17,7 @@ export async function payRent(req, res) {
       tenantId,
       amount,
       paymentDate,
+      nepaliDate,
       paymentMethod,
       paymentStatus,
       note,
@@ -23,6 +30,7 @@ export async function payRent(req, res) {
       tenantId,
       amount,
       paymentDate,
+      nepaliDate,
       paymentMethod,
       paymentStatus,
       note,
@@ -31,9 +39,16 @@ export async function payRent(req, res) {
     };
     const result = await createPayment(paymentData);
 
-    res.json({ success: true, data: result });
+    res.status(201).json({
+      success: true,
+      message: "Payment recorded successfully",
+      data: result,
+    });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({
+      success: false,
+      message: err.message || "Failed to record payment",
+    });
   }
 }
 
@@ -60,16 +75,19 @@ export async function getRentSummary(req, res) {
       totalPending: 0,
     };
 
-    res.json({ success: true, data });
+    res.json({
+      success: true,
+      message: "Rent summary fetched successfully",
+      data,
+    });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({
+      success: false,
+      message: err.message || "Failed to fetch rent summary",
+    });
   }
 }
 
-/**
- * Get comprehensive dashboard statistics
- * GET /api/payment/dashboard-stats
- */
 export async function getDashboardStats(req, res) {
   try {
     const today = new Date();
@@ -255,17 +273,20 @@ export async function getDashboardStats(req, res) {
       contractsEndingSoon,
     };
 
-    res.json({ success: true, data });
+    res.json({
+      success: true,
+      message: "Dashboard stats fetched successfully",
+      data,
+    });
   } catch (err) {
     console.error("Error fetching dashboard stats:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to fetch dashboard stats",
+    });
   }
 }
 
-/**
- * Send payment receipt email to tenant
- * POST /api/payments/send-receipt/:paymentId
- */
 export async function sendReceiptEmail(req, res) {
   try {
     const { paymentId } = req.params;
@@ -282,72 +303,121 @@ export async function sendReceiptEmail(req, res) {
     if (result.success) {
       res.json({
         success: true,
-        message: result.message,
+        message: result.message || "Payment receipt email sent",
         data: { emailSentTo: result.emailSentTo },
       });
     } else {
       res.status(400).json({
         success: false,
-        message: result.message,
+        message: result.message || "Failed to send payment receipt email",
         error: result.error,
       });
     }
   } catch (err) {
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Failed to send payment receipt email",
       error: err.message,
     });
   }
 }
 export async function getAllPaymentHistory(req, res) {
   try {
-    const payments = await Payment.find()
-      .populate({
-        path: "tenant",
-        select: "name",
-      })
-      .populate({
-        path: "rent",
-        populate: [
-          { path: "tenant", select: "name" },
-          { path: "property", select: "name" },
-        ],
-      })
-      .populate({
-        path: "bankAccount",
-        select: "accountNumber accountName bankName",
-      });
-    res.json({ success: true, data: payments });
+    const { page, limit, skip } = parsePaginationParams(req);
+    const [payments, total] = await Promise.all([
+      Payment.find()
+        .sort({ createdAt: -1 }) // latest first
+        .skip(skip)
+        .limit(limit)
+        .populate({
+          path: "tenant",
+          select: "name",
+        })
+        .populate({
+          path: "rent",
+          populate: [
+            { path: "tenant", select: "name" },
+            { path: "property", select: "name" },
+          ],
+        })
+        .populate({
+          path: "bankAccount",
+          select: "accountNumber accountName bankName",
+        })
+        .lean(),
+
+      Payment.countDocuments(),
+    ]);
+    res.json({
+      success: true,
+      message: "Payment history fetched successfully",
+      data: payments,
+      pagination: {
+        page,
+        limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (err) {
     console.error("Error getting all payment history:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get payment history",
+    });
   }
 }
 export async function getPaymentHistoryByTenant(req, res) {
   try {
     const { tenantId } = req.params;
-    const payments = await Payment.find({ tenant: tenantId })
-      .populate({
-        path: "tenant",
-        select: "name",
-      })
-      .populate({
-        path: "rent",
-        populate: [
-          { path: "tenant", select: "name" },
-          { path: "property", select: "name" },
-        ],
-      })
-      .populate({
-        path: "bankAccount",
-        select: "accountNumber accountName bankName",
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        message: "Tenant ID is required",
       });
+    }
+    const { page, limit, skip } = parsePaginationParams(req);
+    const [payments, total] = await Promise.all([
+      Payment.find({ tenant: tenantId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate({
+          path: "tenant",
+          select: "name",
+        })
+        .populate({
+          path: "rent",
+          populate: [
+            { path: "tenant", select: "name" },
+            { path: "property", select: "name" },
+          ],
+        })
+        .populate({
+          path: "bankAccount",
+          select: "accountNumber accountName bankName",
+        })
+        .lean(),
+      Payment.countDocuments({ tenant: tenantId }),
+    ]);
 
-    res.json({ success: true, data: payments });
+    res.json({
+      success: true,
+      message: "Tenant payment history fetched successfully",
+      data: payments,
+      pagination: {
+        page,
+        limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (err) {
     console.error("Error getting payment history by tenant:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get tenant payment history",
+    });
   }
 }
 export async function getFilteredPaymentHistory(req, res) {
@@ -362,20 +432,37 @@ export async function getFilteredPaymentHistory(req, res) {
     );
 
     if (result.success) {
-      res.json({ success: true, data: result.data });
+      res.json({
+        success: true,
+        message: "Filtered payment history fetched successfully",
+        data: result.data,
+      });
     } else {
-      res.status(400).json({ success: false, message: result.error });
+      res.status(400).json({
+        success: false,
+        message: result.error || "Failed to fetch filtered payment history",
+      });
     }
   } catch (err) {
     console.error("Error getting filtered payment history:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get filtered payment history",
+    });
   }
 }
 export async function getPaymentById(req, res) {
   try {
     const { paymentId } = req.params;
+    if (!paymentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment ID is required",
+      });
+    }
     const payment = await Payment.findById(paymentId)
       .populate("tenant", "name")
+      .populate("createdBy", "name")
       .populate({
         path: "rent",
         populate: [
@@ -387,15 +474,28 @@ export async function getPaymentById(req, res) {
         path: "bankAccount",
         select: "accountNumber accountName bankName",
       });
-    res.json({ success: true, data: payment });
+    res.json({
+      success: true,
+      message: "Payment fetched successfully",
+      data: payment,
+    });
   } catch (err) {
     console.error("Error getting payment by id:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get payment by id",
+    });
   }
 }
 export async function getPaymentByRentId(req, res) {
   try {
     const { rentId } = req.params;
+    if (!rentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Rent ID is required",
+      });
+    }
     const payments = await Payment.find({ rent: rentId })
       .populate("tenant", "name")
       .populate({
@@ -409,9 +509,100 @@ export async function getPaymentByRentId(req, res) {
         path: "bankAccount",
         select: "accountNumber accountName bankName",
       });
-    res.json({ success: true, data: payments });
+    res.json({
+      success: true,
+      message: "Payments for rent fetched successfully",
+      data: payments,
+    });
   } catch (err) {
     console.error("Error getting payment by rent id:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get payments by rent id",
+    });
+  }
+}
+
+export async function logActivity(req, res) {
+  try {
+    const { paymentId } = req.params;
+    const { activityType, metadata } = req.body;
+    const adminId = req.admin?.id || null;
+
+    if (!paymentId || !activityType) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment ID and activity type are required",
+      });
+    }
+
+    // Verify payment exists
+    const payment = await Payment.findById(paymentId);
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    const result = await logPaymentActivity(
+      paymentId,
+      activityType,
+      adminId,
+      metadata || {}
+    );
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: "Activity logged successfully",
+        data: result.data,
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.error || "Failed to log activity",
+      });
+    }
+  } catch (err) {
+    console.error("Error logging payment activity:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to log payment activity",
+    });
+  }
+}
+
+export async function getActivities(req, res) {
+  try {
+    const { paymentId } = req.params;
+
+    if (!paymentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment ID is required",
+      });
+    }
+
+    const result = await getPaymentActivities(paymentId);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: "Payment activities fetched successfully",
+        data: result.data,
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.error || "Failed to fetch payment activities",
+      });
+    }
+  } catch (err) {
+    console.error("Error getting payment activities:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get payment activities",
+    });
   }
 }

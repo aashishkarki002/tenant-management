@@ -1,12 +1,14 @@
 import mongoose from "mongoose";
-import InnerBlock from "./InnerBlock.Model.js";
 
 const tenantSchema = new mongoose.Schema(
   {
+    // Basic tenant info
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true },
     address: { type: String, required: true },
+
+    // Documents
     documents: [
       {
         type: {
@@ -21,6 +23,8 @@ const tenantSchema = new mongoose.Schema(
         ],
       },
     ],
+
+    // Units and pricing
     units: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -29,25 +33,36 @@ const tenantSchema = new mongoose.Schema(
       },
     ],
     pricePerSqft: { type: Number, required: true },
+    leasedSquareFeet: { type: Number, required: true },
+    camRatePerSqft: { type: Number, required: true },
 
+    // Dates
     dateOfAgreementSigned: { type: Date, required: true },
     leaseStartDate: { type: Date, required: true },
     leaseEndDate: { type: Date, required: true },
     keyHandoverDate: { type: Date, required: true },
     spaceHandoverDate: { type: Date, default: null },
     spaceReturnedDate: { type: Date, default: null },
-    camRatePerSqft: { type: Number, required: true },
-    camCharges: { type: Number, default: 0 },
-    leasedSquareFeet: { type: Number, required: true },
 
+    // Financials
+    tds: { type: Number, default: 0 },
+    rentalRate: { type: Number, default: 0 }, // rent after TDS per sqft
+    grossAmount: { type: Number, default: 0 }, // rent before TDS
+    totalRent: { type: Number, default: 0 }, // rent after TDS, before CAM
+    camCharges: { type: Number, default: 0 },
+    netAmount: { type: Number, default: 0 }, // total tenant pays including CAM
     securityDeposit: { type: Number, required: true },
 
+    // Status
     status: {
       type: String,
       enum: ["active", "inactive", "vacated"],
       default: "active",
     },
+    isDeleted: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
 
+    // References
     property: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Property",
@@ -63,33 +78,42 @@ const tenantSchema = new mongoose.Schema(
       ref: "InnerBlock",
       required: true,
     },
-    isDeleted: { type: Boolean, default: false },
-    tds: { type: Number, default: 0 },
-    rentalRate: { type: Number, default: 0 },
-    totalRent: { type: Number, default: 0 },
-    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
 
-try {
-  tenantSchema.pre("save", async function () {
-    if (
-      !this.isNew ||
-      (!this.isModified("leasedSquareFeet") &&
-        !this.isModified("pricePerSqft") &&
-        !this.isModified("camRatePerSqft"))
+// Pre-save hook to calculate rent amounts
+tenantSchema.pre("save", async function () {
+  // Only calculate if new or relevant fields changed
+  if (
+    !this.isNew &&
+    !(
+      this.isModified("leasedSquareFeet") ||
+      this.isModified("pricePerSqft") ||
+      this.isModified("camRatePerSqft")
     )
-      return;
+  )
+    return;
 
-    const baseRate = this.pricePerSqft;
-    this.tds = baseRate * 0.1;
-    this.rentalRate = baseRate - this.tds;
-    this.totalRent = this.rentalRate * this.leasedSquareFeet;
-    this.camCharges = this.camRatePerSqft * this.leasedSquareFeet;
-  });
-} catch (error) {
-  console.log(error);
-}
+  const baseRate = this.pricePerSqft;
+
+  // TDS = 10% of baseRate
+  this.tds = baseRate * 0.1;
+
+  // Rent per sqft after TDS
+  this.rentalRate = baseRate - this.tds;
+
+  // Gross amount = total rent before TDS
+  this.grossAmount = baseRate * this.leasedSquareFeet;
+
+  // Total rent after TDS but before CAM
+  this.totalRent = this.rentalRate * this.leasedSquareFeet;
+
+  // CAM charges
+  this.camCharges = this.camRatePerSqft * this.leasedSquareFeet;
+
+  // Net amount tenant pays
+  this.netAmount = this.totalRent + this.camCharges;
+});
 
 export const Tenant = mongoose.model("Tenant", tenantSchema);

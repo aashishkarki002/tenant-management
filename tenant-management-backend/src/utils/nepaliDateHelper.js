@@ -14,7 +14,7 @@ function getNepaliMonthDates(year, month) {
 
   const lastDayNumber = NepaliDate.getDaysOfMonth(npYear, npMonth0);
   const reminderDayNumber = lastDayNumber - 7;
-  const englishMonth = now.getMonth() + 1;
+  const englishMonth = now.getEnglishMonth() + 1;
   const englishYear = now.getEnglishYear();
   const firstDay = new NepaliDate(npYear, npMonth0, 1);
   const lastDay = new NepaliDate(npYear, npMonth0, lastDayNumber);

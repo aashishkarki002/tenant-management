@@ -7,7 +7,7 @@ import {
 } from "../../utils/nepaliDateHelper.js";
 import dotenv from "dotenv";
 import { sendEmail } from "../../config/nodemailer.js";
-
+import { ledgerService } from "../ledger/ledger.service.js";
 import Notification from "../notifications/notification.model.js";
 import NepaliDate from "nepali-datetime";
 import { getIO } from "../../config/socket.js";
@@ -78,7 +78,14 @@ const handleMonthlyRents = async () => {
       }));
 
     if (rentsToInsert.length) {
-      await Rent.insertMany(rentsToInsert);
+      const insertedRents = await Rent.insertMany(rentsToInsert);
+      for (const rent of insertedRents) {
+        try {
+          await ledgerService.recordRentCharge(rent._id, null);
+        } catch (error) {
+          throw error;
+        }
+      }
       console.log("Monthly rents created:", rentsToInsert.length);
     } else {
       console.log("All rents for this month already exist");
