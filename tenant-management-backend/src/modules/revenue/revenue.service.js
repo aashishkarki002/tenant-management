@@ -2,6 +2,7 @@ import { Revenue } from "./Revenue.Model.js";
 import { RevenueSource } from "./RevenueSource.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
 import Admin from "../auth/admin.Model.js";
+import mongoose from "mongoose";
  async function createRevenue(revenueData) {
     try {
         const { source, amount, date, payerType, tenant, referenceType, referenceId, status, notes, createdBy ,adminId } = revenueData;
@@ -62,3 +63,58 @@ async function getAllRevenue() {
     }
 }
 export { getAllRevenue };
+
+/**
+ * Record revenue for a rent payment
+ * @param {Object} params - Revenue recording parameters
+ * @param {number} params.amount - Payment amount
+ * @param {Date} params.paymentDate - Payment date
+ * @param {string} params.tenantId - Tenant ID
+ * @param {string} params.rentId - Rent ID
+ * @param {string} params.note - Payment note
+ * @param {string|ObjectId} params.adminId - Admin ID who created the payment
+ * @param {Session} params.session - MongoDB session (optional)
+ */
+export async function recordRentRevenue({
+  amount,
+  paymentDate,
+  tenantId,
+  rentId,
+  note,
+  adminId,
+  session = null,
+}) {
+  try {
+    // Find the RENT revenue source
+    const rentRevenueSource = await RevenueSource.findOne({ code: "RENT" }).session(
+      session
+    );
+    if (!rentRevenueSource) {
+      throw new Error("Revenue source RENT not configured");
+    }
+
+    // Create revenue record
+    const revenue = await Revenue.create(
+      [
+        {
+          source: rentRevenueSource._id,
+          amount,
+          date: paymentDate,
+          payerType: "TENANT",
+          tenant: new mongoose.Types.ObjectId(tenantId),
+          referenceType: "RENT",
+          referenceId: new mongoose.Types.ObjectId(rentId),
+          status: "RECORDED",
+          notes: note,
+          createdBy: new mongoose.Types.ObjectId(adminId),
+        },
+      ],
+      { session }
+    );
+
+    return revenue[0];
+  } catch (error) {
+    console.error("Failed to record rent revenue:", error);
+    throw error;
+  }
+}

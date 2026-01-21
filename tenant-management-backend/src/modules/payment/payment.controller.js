@@ -39,6 +39,13 @@ export async function payRent(req, res) {
     };
     const result = await createPayment(paymentData);
 
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.error || "Failed to record payment",
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: "Payment recorded successfully",

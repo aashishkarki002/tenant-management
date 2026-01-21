@@ -1,381 +1,88 @@
-  import mongoose from "mongoose";
-  import { Rent } from "../rents/rent.Model.js";
-  import { Payment } from "./payment.model.js";
-  import BankAccount from "../banks/BankAccountModel.js";
-  import Admin from "../auth/admin.Model.js";
-  import {
-    generateAndUploadRentPDF,
-    generatePDFToBuffer,
-    uploadPDFBufferToCloudinary,
-  } from "../../utils/rentGenrator.js";
-  import {
-    sendEmail,
-    sendPaymentReceiptEmail as sendPaymentReceiptEmailFromNodemailer,
-  } from "../../config/nodemailer.js";
-  import { emitPaymentNotification } from "../../utils/payment.Notification.js";
-  import buildFilter from "../../utils/buildFilter.js";
-  import NepaliDate from "nepali-datetime";
-  import { ledgerService } from "../ledger/ledger.service.js";
-  export const createPayment = async (paymentData) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-    let transactionCommitted = false;
-    let uploadedPDF = null;
-    let pdfGeneratedToBuffer = false;
-    try {
-      const {
-        adminId,
-        rentId,
-        tenantId,
-        amount,
-        paymentDate,
-        nepaliDate,
-        paymentMethod,
-        paymentStatus,
-        note,
-        receivedBy,
-        bankAccountId,
-      } = paymentData;
+import mongoose from "mongoose";
+import { Rent } from "../rents/rent.Model.js";
+import { Payment } from "./payment.model.js";
+import { applyPaymentToBank } from "../banks/bank.domain.js";
+import {
+  generatePDFToBuffer,
+  uploadPDFBufferToCloudinary,
+} from "../../utils/rentGenrator.js";
+import {
+  sendEmail,
+  sendPaymentReceiptEmail as sendPaymentReceiptEmailFromNodemailer,
+} from "../../config/nodemailer.js";
+import { applyPaymentToRent } from "../rents/rent.domain.js";
+import buildFilter from "../../utils/buildFilter.js";
+import { buildPaymentPayload, createPaymentRecord } from "./payment.domain.js";
+import { ledgerService } from "../ledger/ledger.service.js";
+import { recordRentRevenue } from "../revenue/revenue.service.js";
+import { emitPaymentNotification } from "../../utils/payment.Notification.js";
+import { handleReceiptSideEffects } from "../../reciepts/reciept.service.js";
 
-      // 1️⃣ Fetch rent
-      const rent = await Rent.findById(rentId).session(session);
-      if (!rent) throw new Error("Rent not found");
+export async function createPayment(paymentData) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-      // Get tenantId from rent if not provided
-      const finalTenantId =
-        tenantId || (rent.tenant ? rent.tenant.toString() : null);
-      if (!finalTenantId) throw new Error("Tenant ID is required");
+  try {
+    const rent = await Rent.findById(paymentData.rentId).session(session);
+    if (!rent) throw new Error("Rent not found");
 
-      // 2️⃣ Update rent
-      rent.paidAmount += amount;
-      rent.lastPaidDate = paymentDate;
-      // Only set lastPaidBy if receivedBy is a valid ObjectId, otherwise set to null
-      if (
-        receivedBy &&
-        mongoose.Types.ObjectId.isValid(receivedBy) &&
-        receivedBy.trim() !== ""
-      ) {
-        rent.lastPaidBy = new mongoose.Types.ObjectId(receivedBy);
-      } else {
-        rent.lastPaidBy = null;
-      }
-      console.log(rent.paidAmount, rent.rentAmount, rent.tdsAmount);
-      // Calculate status considering TDS (same logic as rent model pre-save hook)
-      const effectiveRentAmount = rent.rentAmount - (rent.tdsAmount || 0);
-      if (rent.paidAmount === 0) {
-        rent.status = "pending";
-      } else if (rent.paidAmount >= effectiveRentAmount) {
-        rent.status = "paid";
-      } else {
-        rent.status = "partially_paid";
-      }
-      console.log(rent.status);
+    const tenantId = paymentData.tenantId || rent.tenant;
 
-      await rent.save({ session });
+    applyPaymentToRent(
+      rent,
+      paymentData.amount,
+      paymentData.paymentDate,
+      paymentData.receivedBy
+    );
+    await rent.save({ session });
 
-      // 3️⃣ Update bank account (only for bank_transfer or cheque)
-      let bankAccount = null;
-      let bankAccountObjectId = null;
-      if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
-        // Convert bankAccountId string to MongoDB ObjectId
-        if (!bankAccountId) {
-          throw new Error(
-            "Bank account ID is required for bank transfer or cheque payments"
-          );
-        }
-        if (!mongoose.Types.ObjectId.isValid(bankAccountId)) {
-          throw new Error("Invalid bank account ID format");
-        }
-        bankAccountObjectId = new mongoose.Types.ObjectId(bankAccountId);
-        bankAccount = await BankAccount.findById(bankAccountObjectId).session(
-          session
-        );
-        if (!bankAccount) throw new Error("Bank account not found");
+    const bankAccount = await applyPaymentToBank({
+      paymentMethod: paymentData.paymentMethod,
+      bankAccountId: paymentData.bankAccountId,
+      amount: paymentData.amount,
+      session,
+    });
 
-        bankAccount.balance += amount;
-        await bankAccount.save({ session });
-      }
+    const payload = buildPaymentPayload({
+      rent,
+      tenantId,
+      ...paymentData,
+    });
 
-      // 3.5️⃣ Convert paymentDate to nepaliDate if not provided
-      let finalNepaliDate = nepaliDate;
-      if (!finalNepaliDate && paymentDate) {
-        try {
-          const paymentDateObj = new Date(paymentDate);
-          const nepaliDateObj = NepaliDate.fromEnglishDate(
-            paymentDateObj.getFullYear(),
-            paymentDateObj.getMonth(),
-            paymentDateObj.getDate()
-          );
-          finalNepaliDate = nepaliDateObj.getDateObject();
-        } catch (error) {
-          console.warn("Failed to convert paymentDate to nepaliDate:", error);
-          // Use paymentDate as fallback
-          finalNepaliDate = paymentDate;
-        }
-      } else if (!finalNepaliDate) {
-        throw new Error("Nepali date is required");
-      }
+    const payment = await createPaymentRecord(payload, session);
 
-      // 3.6️⃣ Handle receivedBy (convert to ObjectId if valid)
-      let receivedByObjectId = null;
-      if (receivedBy) {
-        if (
-          mongoose.Types.ObjectId.isValid(receivedBy) &&
-          String(receivedBy).trim() !== ""
-        ) {
-          receivedByObjectId = new mongoose.Types.ObjectId(receivedBy);
-        }
-      }
+    await ledgerService.recordPayment(payment, rent, session);
 
-      // 4️⃣ Create payment
-      // Default paymentStatus to "paid" if not provided (when creating a payment, money has been received)
-      const finalPaymentStatus = paymentStatus || "paid";
-      
-      const paymentPayload = {
-        rent: rentId,
-        tenant: finalTenantId,
-        amount,
-        paymentDate,
-        nepaliMonth: rent.nepaliMonth,
-        nepaliYear: rent.nepaliYear,
-        nepaliDate: rent.nepaliDate,
-        paymentMethod,
-        paymentStatus: finalPaymentStatus,
-        note,
-        createdBy: new mongoose.Types.ObjectId(adminId),
-      };
-      // Only include bankAccount if it exists (for bank_transfer or cheque)
-      if (bankAccountObjectId) {
-        paymentPayload.bankAccount = bankAccountObjectId;
-      }
-      // Include receivedBy if valid
-      if (receivedByObjectId) {
-        paymentPayload.receivedBy = receivedByObjectId;
-      }
-      const [payment] = await Payment.create([paymentPayload], { session });
-      await ledgerService.recordPayment(payment, rent, session);
-      // 5️⃣ Commit DB transaction **before generating PDF**
-      await session.commitTransaction();
-      transactionCommitted = true;
-      session.endSession();
+    await recordRentRevenue({
+      amount: payment.amount,
+      paymentDate: payment.paymentDate,
+      tenantId,
+      rentId: rent._id,
+      note: payment.note,
+      adminId: payment.createdBy,
+      session,
+    });
 
-      // 5️⃣.5 Emit payment notification
-      try {
-        await emitPaymentNotification({
-          paymentId: payment._id.toString(),
-          tenantId: finalTenantId,
-          amount,
-          paymentDate,
-          paymentMethod,
-          paymentStatus: finalPaymentStatus,
-          note,
-          receivedBy,
-          bankAccountId: bankAccountObjectId?.toString() || bankAccountId,
-        });
-      } catch (notificationError) {
-        // Don't fail the payment creation if notification fails
-        console.error("Failed to emit payment notification:", notificationError);
-      }
+    await session.commitTransaction();
+    session.endSession();
 
-      // 6️⃣ Populate rent for PDF
-      const populatedRent = await Rent.findById(rentId)
-        .populate("tenant", "name email")
-        .populate("property", "name");
+    // 🔥 Side effects (non-blocking)
+    emitPaymentNotification({ paymentId: payment._id }).catch(console.error);
 
-      if (!populatedRent) throw new Error("Rent not found after transaction");
+    handleReceiptSideEffects({ payment, rentId: rent._id });
 
-      // 7️⃣ Prepare PDF data
-      const nepaliMonths = [
-        "Baisakh",
-        "Jestha",
-        "Ashadh",
-        "Shrawan",
-        "Bhadra",
-        "Ashwin",
-        "Kartik",
-        "Mangsir",
-        "Poush",
-        "Magh",
-        "Falgun",
-        "Chaitra",
-      ];
-      const monthName =
-        nepaliMonths[populatedRent.nepaliMonth - 1] ||
-        `Month ${populatedRent.nepaliMonth}`;
-      const paidFor = `${monthName} ${populatedRent.nepaliYear}`;
+    return { success: true, payment, rent, bankAccount };
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    return { success: false, error: err.message };
+  }
+}
 
-      const formattedPaymentDate = new Date(paymentDate).toLocaleDateString(
-        "en-US",
-        {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }
-      );
 
-      const pdfData = {
-        receiptNo: payment._id.toString(),
-        amount,
-        paymentDate: formattedPaymentDate,
-        tenantName: populatedRent.tenant?.name || "N/A",
-        property: populatedRent.property?.name || "N/A",
-        paidFor,
-        paymentMethod: paymentMethod === "cheque" ? "Cheque" : "Bank Transfer",
-        receivedBy: receivedBy || "",
-      };
-
-      console.log(`Generating PDF receipt for payment ${payment._id}...`);
-      const pdfBuffer = await generatePDFToBuffer(pdfData);
-      pdfGeneratedToBuffer = true;
-      console.log(`PDF generated successfully (${pdfBuffer.length} bytes)`);
-      console.log(populatedRent.tenant.email);
-      let emailSent = false;
-      let emailError = null;
-      const tenantEmail = populatedRent.tenant.email;
-
-      // Send email and upload to Cloudinary in parallel using the same buffer
-      const emailPromise = populatedRent.tenant.email
-        ? sendPaymentReceiptEmailFromNodemailer({
-            to: tenantEmail,
-            tenantName: populatedRent.tenant.name,
-            amount: payment.amount,
-            paymentDate: formattedPaymentDate,
-            paidFor,
-            receiptNo: payment._id.toString(),
-            propertyName: populatedRent.property.name,
-            pdfBuffer,
-            pdfFileName: `receipt-${payment._id.toString()}.pdf`,
-          })
-            .then(() => {
-              emailSent = true;
-              emailError = null;
-              console.log(
-                `Email sent successfully to ${populatedRent.tenant.name} ${tenantEmail}`
-              );
-            })
-            .catch((error) => {
-              emailSent = false;
-              emailError = error.message;
-              console.error(
-                `Failed to send email to ${populatedRent.tenant.name} ${tenantEmail}:`,
-                error.message
-              );
-            })
-        : Promise.resolve().then(() => {
-            console.warn(
-              `No email address found for tenant ${payment.tenant.name}`
-            );
-          });
-
-      // Upload the same PDF buffer to Cloudinary (non-blocking, happens in background)
-      const paymentId = payment._id.toString();
-      console.log("Uploading PDF buffer to Cloudinary...");
-      // Start upload in background - don't await it to avoid blocking the response
-      uploadPDFBufferToCloudinary(pdfBuffer, paymentId)
-        .then(async (result) => {
-          if (result) {
-            console.log(`Background upload completed: ${result.url}`);
-            try {
-              // Fetch fresh payment instance
-              const freshPayment = await Payment.findById(paymentId);
-
-              if (!freshPayment) {
-                console.error(
-                  `Payment ${paymentId} not found for background update`
-                );
-                return;
-              }
-
-              console.log("Payment found, updating receipt field...");
-
-              const receiptGeneratedAt = new Date();
-              // Update the receipt field
-              freshPayment.receipt = {
-                url: result.url,
-                publicId: result.cloudinaryId,
-                generatedAt: receiptGeneratedAt,
-              };
-              // Set receiptGeneratedDate
-              freshPayment.receiptGeneratedDate = receiptGeneratedAt;
-
-              // Save the updated payment
-              const savedPayment = await freshPayment.save();
-
-              console.log(
-                `✅ Receipt URL saved successfully to payment ${paymentId}:`,
-                {
-                  url: savedPayment.receipt?.url,
-                  publicId: savedPayment.receipt?.publicId,
-                }
-              );
-
-              // Verify the save by fetching again
-              const verifyPayment = await Payment.findById(paymentId);
-              console.log("Verification - Receipt field:", verifyPayment.receipt);
-            } catch (saveError) {
-              console.error(`❌ Failed to save PDF URL in background:`, {
-                error: saveError.message,
-                stack: saveError.stack,
-                paymentId,
-              });
-            }
-          } else {
-            console.error("Upload result was null or undefined");
-          }
-        })
-        .catch((error) => {
-          console.error(`❌ Background PDF upload failed:`, {
-            error: error.message,
-            stack: error.stack,
-            paymentId,
-          });
-        });
-      // Don't wait for upload - return immediately
-      uploadedPDF = null;
-
-      return {
-        success: true,
-        message: "Payment created successfully",
-        payment,
-        rent,
-        bankAccount,
-        uploadedPDF: uploadedPDF || null,
-        url: uploadedPDF?.url || null,
-        pdfGeneratedToBuffer: pdfGeneratedToBuffer || false,
-        note: uploadedPDF
-          ? "PDF uploaded to Cloudinary successfully"
-          : pdfGeneratedToBuffer
-          ? "PDF generated and upload to Cloudinary started in background"
-          : "PDF generation failed",
-      };
-    } catch (error) {
-      // Only abort transaction if it wasn't already committed
-      if (!transactionCommitted) {
-        try {
-          await session.abortTransaction();
-        } catch (abortError) {
-          // Transaction might already be committed/aborted, ignore
-          console.error("Error aborting transaction:", abortError.message);
-        }
-      }
-      try {
-        if (session) {
-          session.endSession();
-        }
-      } catch (sessionError) {
-        // Session might already be ended, ignore
-        console.error("Error ending session:", sessionError.message);
-      }
-      return {
-        success: false,
-        message: "Failed to create payment",
-        error: error.message,
-      };
-    }
-  };
 
   /**
-   * Send payment receipt PDF to tenant via email
+   * Send payment receipt P`DF to tenant via email
    * @param {string} paymentId - Payment ID
    * @returns {Promise<Object>} Result object with success status and message
    */

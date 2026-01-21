@@ -4,6 +4,8 @@ import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./ledger.model.js";
 import { Rent } from "../rents/rent.Model.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
+import { Cam } from "../tenant/cam/cam.model.js";
+import { Sd } from "../tenant/securityDeposits/sd.model.js";
 class LedgerService {
   /**
    * Calculate balance change based on account type and debit/credit amounts
@@ -37,7 +39,7 @@ class LedgerService {
     fetch('http://127.0.0.1:7242/ingest/7243715a-fe6e-4715-bc75-bad5014fb3ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ledger.service.js:35',message:'recordRentCharge called with parameters',data:{rentIdType:typeof rentId,rentIdIsObject:rentId instanceof Object,rentIdValue:rentId?.toString?.()||(JSON.stringify(rentId) ?? 'undefined').substring(0,200),sessionType:typeof session,sessionIsNull:session===null,sessionIsUndefined:typeof session==='undefined'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
     // #endregion
     try {
-      // #region agent log
+     
       fetch('http://127.0.0.1:7242/ingest/7243715a-fe6e-4715-bc75-bad5014fb3ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ledger.service.js:37',message:'Before Rent.findById call',data:{rentIdType:typeof rentId,rentIdValue:rentId?.toString?.()||(JSON.stringify(rentId) ?? 'undefined').substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       const rent = await Rent.findById(rentId).session(session);
@@ -46,7 +48,7 @@ class LedgerService {
         throw new Error("Rent not found");
       }
 
-      // Find accounts
+   
       const accountsReceivableAccount = await Account.findOne({ code: "1200" }).session(session);
       const revenueAccount = await Account.findOne({ code: "4000" }).session(session);
 
@@ -144,6 +146,204 @@ class LedgerService {
       throw error; // Re-throw to let the transaction rollback
     }
   }
+   /**
+   * Record CAM charge
+   * Called by: CAM Service when creating a CAM charge
+   * DR: Accounts Receivable (1200)
+   * CR: CAM Revenue (4100)
+   */ 
+  async recordCamCharge(camId, createdBy, session = null) {
+try {
+  const cam = await Cam.findById(camId).session(session);
+  if (!cam) {
+    throw new Error("Cam not found");
+  }
+  const accountsReceivableAccount = await Account.findOne({ code: "1200" }).session(session);
+  const camRevenueAccount = await Account.findOne({ code: "4000" }).session(session);
+  if (!accountsReceivableAccount) {
+    throw new Error("Account with code 1200 (Accounts Receivable) not found");
+  }
+  if (!camRevenueAccount) {
+    throw new Error("Account with code 4000 (CAM Revenue) not found");
+  }
+const [transaction] = await Transaction.create(
+  [
+    {
+      type: "CAM_CHARGE",
+      transactionDate: cam.createdAt,
+      nepaliDate: cam.nepaliDate,
+      description: `CAM charge for ${cam.nepaliMonth} ${cam.nepaliYear}`,
+      referenceType: "Cam",
+      referenceId: camId,
+      totalAmount: cam.amount,
+      createdBy: createdBy,
+      status: "POSTED",
+    },
+  ],
+  { session }
+);
+const ledgerEntries = [];
+const arEntry = new LedgerEntry({
+  transaction: transaction._id,
+  account: accountsReceivableAccount._id,
+  debitAmount: cam.amount,
+  creditAmount: 0,
+  description: `CAM receivable for ${cam.nepaliMonth} ${cam.nepaliYear}`,
+  tenant: cam.tenant,
+  property: cam.property,
+  nepaliMonth: cam.nepaliMonth,
+  nepaliYear: cam.nepaliYear,
+  transactionDate: cam.createdAt || new Date(),
+});
+await arEntry.save({ session });
+ledgerEntries.push(arEntry);
+
+const arBalanceChange = this.calculateBalanceChange(
+  accountsReceivableAccount.type,
+  cam.amount,
+  0
+);
+accountsReceivableAccount.currentBalance += arBalanceChange;
+await accountsReceivableAccount.save({ session });
+
+const camRevenueEntry = new LedgerEntry({
+  transaction: transaction._id,
+  account: camRevenueAccount._id,
+  debitAmount: 0,
+  creditAmount: cam.amount,
+  description: `CAM income for ${cam.nepaliMonth} ${cam.nepaliYear}`,
+  tenant: cam.tenant,
+  property: cam.property,
+  nepaliMonth: cam.nepaliMonth,
+  nepaliYear: cam.nepaliYear,
+  transactionDate: cam.createdAt || new Date(),
+});
+await camRevenueEntry.save({ session });
+ledgerEntries.push(camRevenueEntry);
+
+const camRevenueBalanceChange = this.calculateBalanceChange(
+  camRevenueAccount.type,
+  0,
+  cam.amount
+);
+camRevenueAccount.currentBalance += camRevenueBalanceChange;
+await camRevenueAccount.save({ session });
+return {
+  success: true,
+  message: "CAM charge recorded successfully",
+  transaction: transaction,
+  ledgerEntries: ledgerEntries,
+};
+} catch (error) {
+  console.error("Failed to record CAM charge:", error);
+  throw error;
+}
+  }
+
+  /**
+   * Record Security Deposit receipt
+   * Called by: Security Deposit Service when receiving a deposit
+   * DR: Cash/Bank (1000)
+   * CR: Security Deposit Liability (2100)
+   */
+  async recordSecurityDeposit(sdId, createdBy, session = null) {
+    try {
+      const sd = await Sd.findById(sdId).session(session);
+      if (!sd) {
+        throw new Error("Security Deposit record not found");
+      }
+
+      const cashBankAccount = await Account.findOne({ 
+        code: "1000" 
+      }).session(session);
+      const securityDepositLiabilityAccount = await Account.findOne({ 
+        code: "2100" 
+      }).session(session);
+
+      if (!cashBankAccount) {
+        throw new Error("Account with code 1000 (Cash/Bank) not found");
+      }
+      if (!securityDepositLiabilityAccount) {
+        throw new Error("Account with code 2100 (Security Deposit Liability) not found");
+      }
+
+      const [transaction] = await Transaction.create(
+        [
+          {
+            type: "SECURITY_DEPOSIT",
+            transactionDate: sd.paidDate || sd.createdAt || new Date(),
+            nepaliDate: sd.nepaliDate,
+            description: `Security deposit received from tenant`,
+            referenceType: "SecurityDeposit",
+            referenceId: sdId,
+            totalAmount: sd.amount,
+            createdBy: createdBy,
+            status: "POSTED",
+          },
+        ],
+        { session }
+      );
+
+      const ledgerEntries = [];
+
+      const cashEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: cashBankAccount._id,
+        debitAmount: sd.amount,
+        creditAmount: 0,
+        description: `Security deposit received`,
+        tenant: sd.tenant,
+        property: sd.property,
+        nepaliMonth: sd.nepaliMonth,
+        nepaliYear: sd.nepaliYear,
+        transactionDate: sd.paidDate || sd.createdAt || new Date(),
+      });
+      await cashEntry.save({ session });
+      ledgerEntries.push(cashEntry);
+
+      const cashBalanceChange = this.calculateBalanceChange(
+        cashBankAccount.type,
+        sd.amount,
+        0
+      );
+      cashBankAccount.currentBalance += cashBalanceChange;
+      await cashBankAccount.save({ session });
+
+      const sdLiabilityEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: securityDepositLiabilityAccount._id,
+        debitAmount: 0,
+        creditAmount: sd.amount,
+        description: `Security deposit liability`,
+        tenant: sd.tenant,
+        property: sd.property,
+        nepaliMonth: sd.nepaliMonth,
+        nepaliYear: sd.nepaliYear,
+        transactionDate: sd.paidDate || sd.createdAt || new Date(),
+      });
+      await sdLiabilityEntry.save({ session });
+      ledgerEntries.push(sdLiabilityEntry);
+
+      const sdLiabilityBalanceChange = this.calculateBalanceChange(
+        securityDepositLiabilityAccount.type,
+        0,
+        sd.amount
+      );
+      securityDepositLiabilityAccount.currentBalance += sdLiabilityBalanceChange;
+      await securityDepositLiabilityAccount.save({ session });
+
+      return {
+        success: true,
+        message: "Security deposit recorded successfully",
+        transaction: transaction,
+        ledgerEntries: ledgerEntries,
+      };
+    } catch (error) {
+      console.error("Failed to record security deposit:", error);
+      throw error;
+    }
+  }
+
   async recordPayment(payment, rent, session = null) {
     try {
       // Determine the cash/bank account code based on payment method
@@ -286,6 +486,114 @@ class LedgerService {
     } catch (error) {
       console.error("Failed to record payment:", error);
       throw error; // Re-throw to let the transaction rollback
+    }
+  }
+  /**
+   * Record CAM payment
+   * Called by: CAM Service when receiving a CAM payment
+   * DR: Cash/Bank (1000)
+   * CR: Accounts Receivable (1200)
+   */
+  async recordCamPayment(payment, cam, session = null) {
+    try {
+      const cashBankAccount = await Account.findOne({
+        code: "1000",
+      }).session(session);
+      const accountsReceivableAccount = await Account.findOne({
+        code: "1200",
+      }).session(session);
+
+      if (!cashBankAccount) {
+        throw new Error("Account with code 1000 (Cash/Bank) not found");
+      }
+      if (!accountsReceivableAccount) {
+        throw new Error("Account with code 1200 (Accounts Receivable) not found");
+      }
+
+      const [transaction] = await Transaction.create(
+        [
+          {
+            type: "CAM_PAYMENT_RECEIVED",
+            transactionDate: payment.paymentDate || new Date(),
+            nepaliDate: payment.nepaliDate || cam.nepaliDate,
+            description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear}`,
+            referenceType: "CamPayment",
+            referenceId: payment._id,
+            totalAmount: payment.amount,
+            createdBy: payment.createdBy,
+            status: "POSTED",
+          },
+        ],
+        { session }
+      );
+
+      const ledgerEntries = [];
+
+      const cashEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: cashBankAccount._id,
+        debitAmount: payment.amount,
+        creditAmount: 0,
+        description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear}`,
+        tenant: cam.tenant,
+        property: cam.property,
+        nepaliMonth: cam.nepaliMonth,
+        nepaliYear: cam.nepaliYear,
+        transactionDate: payment.paymentDate || new Date(),
+      });
+      await cashEntry.save({ session });
+      ledgerEntries.push(cashEntry);
+
+      const cashBalanceChange = this.calculateBalanceChange(
+        cashBankAccount.type,
+        payment.amount,
+        0
+      );
+      cashBankAccount.currentBalance += cashBalanceChange;
+      await cashBankAccount.save({ session });
+
+      const arEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: accountsReceivableAccount._id,
+        debitAmount: 0,
+        creditAmount: payment.amount,
+        description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear}`,
+        tenant: cam.tenant,
+        property: cam.property,
+        nepaliMonth: cam.nepaliMonth,
+        nepaliYear: cam.nepaliYear,
+        transactionDate: payment.paymentDate || new Date(),
+      });
+      await arEntry.save({ session });
+      ledgerEntries.push(arEntry);
+
+      const arBalanceChange = this.calculateBalanceChange(
+        accountsReceivableAccount.type,
+        0,
+        payment.amount
+      );
+      accountsReceivableAccount.currentBalance += arBalanceChange;
+      await accountsReceivableAccount.save({ session });
+
+      return {
+        success: true,
+        message: "CAM payment recorded successfully",
+        transaction: transaction,
+        ledgerEntries: ledgerEntries,
+      };
+    } catch (error) {
+      console.error("Failed to record CAM payment:", error);
+      throw error;
+    }
+  }
+
+  async recordRevenue(revenueData) {
+    try {
+      const revenue = await Revenue.create(revenueData);
+      return revenue;
+    } catch (error) {
+      console.error("Failed to record revenue:", error);
+      throw error;
     }
   }
   async createTransaction(transactionData) {

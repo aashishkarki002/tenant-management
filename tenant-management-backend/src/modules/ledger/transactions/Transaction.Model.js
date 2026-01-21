@@ -14,7 +14,9 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       enum: [
         "RENT_CHARGE",
+        "CAM_CHARGE",
         "PAYMENT_RECEIVED",
+        "SECURITY_DEPOSIT",
         "MAINTENANCE_EXPENSE",
         "REVENUE_STREAM",
         "UTILITY_EXPENSE",
@@ -37,6 +39,9 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       enum: [
         "Rent",
+        "Cam",
+        "SecurityDeposit",
+        "CamPayment",
         "Payment",
         "Maintenance",
         "Revenue",

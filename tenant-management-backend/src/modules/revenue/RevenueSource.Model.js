@@ -20,3 +20,4 @@ export const RevenueSource = mongoose.model(
   "RevenueSource",
   revenueSourceSchema
 );
+

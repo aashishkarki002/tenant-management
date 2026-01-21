@@ -11,6 +11,13 @@ export const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS, // App password if using Gmail
   },
+  connectionTimeout: 10000, // 10 seconds timeout for initial connection
+  socketTimeout: 10000, // 10 seconds timeout for socket operations
+  greetingTimeout: 10000, // 10 seconds timeout for greeting
+  // Additional timeout for sendMail operation
+  pool: true,
+  maxConnections: 1,
+  maxMessages: 3,
 });
 
 transporter.verify((error, success) => {
@@ -32,7 +39,17 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
     attachments: attachments || [],
   };
 
-  await transporter.sendMail(mailOptions);
+  // Add timeout wrapper to prevent indefinite hangs
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new Error("Email sending timeout after 30 seconds"));
+    }, 30000); // 30 seconds timeout
+  });
+
+  await Promise.race([
+    transporter.sendMail(mailOptions),
+    timeoutPromise,
+  ]);
 };
 export async function sendPaymentReceiptEmail({
   to,
@@ -108,7 +125,7 @@ export async function sendPaymentReceiptEmail({
           </div>
           
           <div class="footer">
-            <p>Contact us: info@cup-o-joy.com | +977-9812345678</p>
+            <p>Contact us: info@sallyanhouse.com | +977-9812345678</p>
             <p>This is an automated email. Please do not reply directly to this message.</p>
           </div>
         </div>

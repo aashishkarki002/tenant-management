@@ -9,6 +9,8 @@ import { Unit } from "./units/unit.model.js";
 import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
 import { sendEmail } from "../../config/nodemailer.js";
 import { ledgerService } from "../ledger/ledger.service.js";
+import { createCam } from "./cam/cam.service.js";
+import { createSd } from "./securityDeposits/sd.service.js";
 const TEMP_UPLOAD_DIR = path.join(process.cwd(), "tmp");
 if (!fs.existsSync(TEMP_UPLOAD_DIR)) fs.mkdirSync(TEMP_UPLOAD_DIR);
 export const createTenant = async (req, res) => {
@@ -98,7 +100,7 @@ export const createTenant = async (req, res) => {
         files: filesArr,
       });
     }
-    console.log(req.body);
+
 
     let unitIds = [];
     if (req.body.units && Array.isArray(req.body.units)) {
@@ -149,12 +151,6 @@ export const createTenant = async (req, res) => {
       ],
       { session }
     );
-    await sendEmail({
-      to: tenant[0].email,
-      subject: "Welcome to our property management system",
-      html: `Welcome to our property management system.
-    You will receive a notification via this email for any updates regarding your units.`,
-    });
 
     // Mark units as occupied
     await Unit.updateMany(
@@ -194,9 +190,78 @@ export const createTenant = async (req, res) => {
       ],
       { session }
     );
+  
     await ledgerService.recordRentCharge(rent[0]._id, session);
+const cam = await createCam({
+  tenant: tenant[0]._id,
+  property: tenant[0].property,
+  block: tenant[0].block,
+  innerBlock: tenant[0].innerBlock,
+  nepaliMonth: npMonth,
+  nepaliYear: npYear,
+  nepaliDate: nepaliDate,
+  amount: tenant[0].camCharges,
+  status: "pending",
+  paidDate: null,
+  notes: "",
+  year: englishYear,
+  month: englishMonth,
+}, req.admin.id, session
+);
+if (!cam.success) {
+  await session.abortTransaction();
+  session.endSession();
+  return res.status(500).json({
+    success: false,
+    message: cam.message,
+  });
+}
+    const sd = await createSd({
+      tenant: tenant[0]._id,
+      property: tenant[0].property,
+      block: tenant[0].block,
+      innerBlock: tenant[0].innerBlock,
+      amount: tenant[0].securityDeposit,
+      status: "paid",
+      paidDate: new Date(),
+      notes: "",
+      year: englishYear,
+      month: englishMonth,
+      nepaliMonth: npMonth,
+      nepaliYear: npYear,
+      nepaliDate: nepaliDate,
+    }, req.admin.id, session);
+    if (!sd.success) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(500).json({
+        success: false,
+        message: sd.message,
+      });
+    }
+ 
     await session.commitTransaction();
     session.endSession();
+
+    // Send welcome email after transaction commits (non-blocking)
+    if (tenant[0].email) {
+      sendEmail({
+        to: tenant[0].email,
+        subject: "Welcome to our property management system",
+        html: `Welcome to our property management system.
+    You will receive a notification via this email for any updates regarding your units.`,
+      })
+        .then(() => {
+          console.log(`Welcome email sent successfully to ${tenant[0].email}`);
+        })
+        .catch((emailError) => {
+          console.error(
+            `Failed to send welcome email to ${tenant[0].email}:`,
+            emailError.message
+          );
+          // Don't fail the request if email fails
+        });
+    }
 
     res.status(201).json({
       success: true,
