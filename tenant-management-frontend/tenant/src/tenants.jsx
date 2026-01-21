@@ -37,7 +37,7 @@ export default function Tenants() {
 
   const navigate = useNavigate();
 
-  const fetchProperties = async () => {
+  const fetchProperties = async () => { 
     try {
       const response = await api.get("/api/property/get-property");
       const data = await response.data;

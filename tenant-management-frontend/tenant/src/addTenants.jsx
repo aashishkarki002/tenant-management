@@ -524,33 +524,72 @@ function AddTenants() {
                   </Select>
 
                   <Label>Upload Document</Label>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || []);
-                      const currentFiles =
-                        formik.values.documents?.[formik.values.documentType] ||
-                        [];
-                      formik.setFieldValue("documents", {
-                        ...formik.values.documents,
-                        [formik.values.documentType]: [
-                          ...currentFiles,
-                          ...files,
-                        ],
-                      });
-                    }}
-                  />
-
+                  <div className="flex flex-col gap-2 border-2 border-gray-300 border-dashed rounded-md p-2 ">
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        const currentFiles =
+                          formik.values.documents?.[
+                            formik.values.documentType
+                          ] || [];
+                        formik.setFieldValue("documents", {
+                          ...formik.values.documents,
+                          [formik.values.documentType]: [
+                            ...currentFiles,
+                            ...files,
+                          ],
+                        });
+                      }}
+                    />
+                  </div>
                   {/* Show uploaded files */}
                   {formik.values.documents &&
                     Object.entries(formik.values.documents).map(
                       ([type, files]) => (
-                        <div key={type}>
+                        <div key={type} className="space-y-2">
                           <Badge>{type}</Badge>
-                          <ul>
+                          <ul className="space-y-2">
                             {files.map((file, i) => (
-                              <li key={i}>{file.name}</li>
+                              <li
+                                key={i}
+                                className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-md"
+                              >
+                                <span className="flex-1 text-sm truncate">
+                                  {file.name}
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => {
+                                    const updatedFiles = files.filter(
+                                      (_, index) => index !== i
+                                    );
+                                    if (updatedFiles.length === 0) {
+                                      // Remove the document type if no files remain
+                                      const updatedDocuments = {
+                                        ...formik.values.documents,
+                                      };
+                                      delete updatedDocuments[type];
+                                      formik.setFieldValue(
+                                        "documents",
+                                        updatedDocuments
+                                      );
+                                    } else {
+                                      // Update files for this document type
+                                      formik.setFieldValue("documents", {
+                                        ...formik.values.documents,
+                                        [type]: updatedFiles,
+                                      });
+                                    }
+                                  }}
+                                >
+                                  <XIcon className="h-4 w-4" />
+                                </Button>
+                              </li>
                             ))}
                           </ul>
                         </div>

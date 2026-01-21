@@ -22,7 +22,7 @@ import { useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "../context/AuthContext";
 import api from "../../plugins/axios";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 export default function Header() {
@@ -30,6 +30,7 @@ export default function Header() {
   const isMobile = useIsMobile();
   const { user, loading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const isTenantsPage = location.pathname === "/tenants";
 
   // Fetch notifications when user is loaded
@@ -137,20 +138,6 @@ export default function Header() {
               <SheetTitle>Notifications</SheetTitle>
             </SheetHeader>
             <div className="flex flex-col gap-2 max-h-[70vh] overflow-y-auto mt-2">
-              <div className="flex justify-end mr-3">
-                {" "}
-                <Button
-                  variant="outline"
-                  className="w-fit"
-                  onClick={() => {
-                    navigate(
-                      `/notifications/${notification._id || notification.id}`
-                    );
-                  }}
-                >
-                  Mark as read
-                </Button>
-              </div>
 
               {notifications.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-4">
@@ -184,11 +171,12 @@ export default function Header() {
                       </p>
                       <Accordion type="single" collapsible className="w-full">
                         <AccordionItem value="item-1">
-                          <AccordionTrigger className="text-sm text-gray-600 mt-1 ">
-                            <AccordionContent>
-                              {notification.message}
-                            </AccordionContent>
+                          <AccordionTrigger className="text-sm text-gray-600 mt-1">
+                            View details
                           </AccordionTrigger>
+                          <AccordionContent>
+                            {notification.message}
+                          </AccordionContent>
                         </AccordionItem>
                       </Accordion>
 

@@ -63,31 +63,45 @@ function EditTenant() {
         // Format dates for form inputs (YYYY-MM-DD format)
         const formatDateForInput = (date) => {
           if (!date) return "";
+          // Handle string dates that are already in YYYY-MM-DD format
+          if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return date;
+          }
+          // Handle Date objects or ISO strings
           const d = new Date(date);
           if (isNaN(d.getTime())) return "";
-          return d.toISOString().split("T")[0];
+          // Get local date to avoid timezone issues
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, "0");
+          const day = String(d.getDate()).padStart(2, "0");
+          return `${year}-${month}-${day}`;
         };
 
-        // Set form values
+        // Set form values with all lease info dates preloaded
         formik.setValues({
           name: tenantData.name || "",
           unitNumber: tenantData.units?.[0]?._id || tenantData.units?.[0] || "",
           phone: tenantData.phone || "",
           email: tenantData.email || "",
           address: tenantData.address || "",
+          // Lease Info dates - preloaded
           leaseStartDate: formatDateForInput(tenantData.leaseStartDate),
           leaseEndDate: formatDateForInput(tenantData.leaseEndDate),
-          block: tenantData.block?._id || tenantData.block || "",
-          innerBlock: tenantData.innerBlock?._id || tenantData.innerBlock || "",
-          dateOfAgreementSigned: formatDateForInput(tenantData.dateOfAgreementSigned),
           keyHandoverDate: formatDateForInput(tenantData.keyHandoverDate),
           spaceHandoverDate: formatDateForInput(tenantData.spaceHandoverDate),
           spaceReturnedDate: formatDateForInput(tenantData.spaceReturnedDate),
+          // Property details
+          block: tenantData.block?._id || tenantData.block || "",
+          innerBlock: tenantData.innerBlock?._id || tenantData.innerBlock || "",
+          // Document dates
+          dateOfAgreementSigned: formatDateForInput(tenantData.dateOfAgreementSigned),
+          // Financials
           leasedSquareFeet: tenantData.leasedSquareFeet || "",
           pricePerSqft: tenantData.pricePerSqft || "",
           camRatePerSqft: tenantData.camRatePerSqft || "",
           securityDeposit: tenantData.securityDeposit || "",
           status: tenantData.status || "active",
+          // Documents
           documentType: "",
           documents: {},
           existingDocuments: tenantData.documents || [],
@@ -448,14 +462,16 @@ function EditTenant() {
                 <CardContent className="p-6 space-y-5">
                   <Label>Lease Start Date</Label>
                   <DualCalendarTailwind
-                    value={formik.values.leaseStartDate}
+                    key={`leaseStart-${formik.values.leaseStartDate || "empty"}`}
+                    value={formik.values.leaseStartDate || ""}
                     onChange={(englishDate) => {
                       formik.setFieldValue("leaseStartDate", englishDate);
                     }}
                   />
                   <Label>Lease End Date</Label>
                   <DualCalendarTailwind
-                    value={formik.values.leaseEndDate}
+                    key={`leaseEnd-${formik.values.leaseEndDate || "empty"}`}
+                    value={formik.values.leaseEndDate || ""}
                     onChange={(englishDate) => {
                       formik.setFieldValue("leaseEndDate", englishDate);
                     }}
@@ -470,21 +486,24 @@ function EditTenant() {
                     )}
                   <Label>Key Handover Date</Label>
                   <DualCalendarTailwind
-                    value={formik.values.keyHandoverDate}
+                    key={`keyHandover-${formik.values.keyHandoverDate || "empty"}`}
+                    value={formik.values.keyHandoverDate || ""}
                     onChange={(englishDate) => {
                       formik.setFieldValue("keyHandoverDate", englishDate);
                     }}
                   />
                   <Label>Space Handover Date</Label>
                   <DualCalendarTailwind
-                    value={formik.values.spaceHandoverDate}
+                    key={`spaceHandover-${formik.values.spaceHandoverDate || "empty"}`}
+                    value={formik.values.spaceHandoverDate || ""}
                     onChange={(englishDate) => {
                       formik.setFieldValue("spaceHandoverDate", englishDate);
                     }}
                   />
                   <Label>Space Returned Date (Optional)</Label>
                   <DualCalendarTailwind
-                    value={formik.values.spaceReturnedDate}
+                    key={`spaceReturned-${formik.values.spaceReturnedDate || "empty"}`}
+                    value={formik.values.spaceReturnedDate || ""}
                     onChange={(englishDate) => {
                       formik.setFieldValue("spaceReturnedDate", englishDate);
                     }}

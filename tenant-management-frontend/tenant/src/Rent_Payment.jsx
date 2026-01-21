@@ -49,7 +49,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Spinner } from "@/components/ui/spinner";
+
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 const statusStyles = {
@@ -132,7 +132,6 @@ const formatNepaliDueDate = (rent) => {
 };
 
 export default function RentDashboard() {
-  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const [rents, setRents] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -154,10 +153,8 @@ export default function RentDashboard() {
     setBankAccounts(data.bankAccounts);
   };
   const getRents = async () => {
-    setIsLoading(true);
     const response = await api.get("/api/rent/get-rents");
     setRents(response.data.rents);
-    setIsLoading(false);
   };
   const getPayments = async () => {
     try {
@@ -225,6 +222,7 @@ export default function RentDashboard() {
     initialValues: {
       rentId: "",
       paymentDate: null,
+      nepaliDate: null,
       paymentMethod: selectedPaymentMethod,
       bankAccountId: "",
       amount: 0,
@@ -233,7 +231,6 @@ export default function RentDashboard() {
     },
     onSubmit: async (values) => {
       console.log(values);
-      setIsLoading(true);
       const response = await api.post("/api/payment/pay-rent", values);
       if (response.data.success) {
         toast.success(response.data.message);
@@ -249,7 +246,6 @@ export default function RentDashboard() {
       } else {
         toast.error(response.data.message);
       }
-      setIsLoading(false);
     },
   });
 
@@ -260,7 +256,7 @@ export default function RentDashboard() {
   return (
     <>
       <form onSubmit={handleSubmit}>
-        <Card className="w-full sm:max-w-5xl mx-auto mt-6">
+        <Card className="">
           <Tabs defaultValue="rent">
             <CardHeader>
               <CardTitle className="text-2xl font-bold">
@@ -359,6 +355,7 @@ export default function RentDashboard() {
                                     rent.rentAmount || 0
                                   );
                                   formik.setFieldValue("paymentDate", null);
+                                  formik.setFieldValue("nepaliDate", null);
                                 }}
                               >
                                 {rent.status === "paid"
@@ -403,24 +400,28 @@ export default function RentDashboard() {
                                   <p className="mb-2">Payment Date:</p>
                                   <DualCalendarTailwind
                                     onChange={(english, nepali) => {
-                                      // Create Date object directly from Nepali date (e.g., "2082-09-20")
-                                      // Don't convert to English date - parse Nepali date directly
-                                      if (nepali) {
-                                        const [year, month, day] = nepali
-                                          .split("-")
-                                          .map(Number);
-                                        const dateObj = new Date(
-                                          year,
-                                          month - 1,
-                                          day
+                                      // english is in YYYY-MM-DD format, nepali is in YYYY-MM-DD format
+                                      if (english && nepali) {
+                                        // Convert english date string to Date object
+                                        const englishDateObj = new Date(
+                                          english
                                         );
+                                        // Store nepali date as string - backend will convert to Date object
                                         formik.setFieldValue(
                                           "paymentDate",
-                                          dateObj
+                                          englishDateObj
+                                        );
+                                        formik.setFieldValue(
+                                          "nepaliDate",
+                                          nepali
                                         );
                                       } else {
                                         formik.setFieldValue(
                                           "paymentDate",
+                                          null
+                                        );
+                                        formik.setFieldValue(
+                                          "nepaliDate",
                                           null
                                         );
                                       }
@@ -448,8 +449,8 @@ export default function RentDashboard() {
                                           <SelectItem value="bank_transfer">
                                             Bank
                                           </SelectItem>
-                                          <SelectItem value="cash">
-                                            Cash
+                                          <SelectItem value="Cheque">
+                                            Cheque
                                           </SelectItem>
                                         </SelectContent>
                                       </Select>
@@ -516,7 +517,7 @@ export default function RentDashboard() {
                                     formik.handleSubmit();
                                   }}
                                 >
-                                  {isLoading ? <Spinner /> : "Confirm Payment"}
+                                  Confirm Payment
                                 </Button>
                               </DialogFooter>
                             </DialogContent>
