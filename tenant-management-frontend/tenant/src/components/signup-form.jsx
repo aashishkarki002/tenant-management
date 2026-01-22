@@ -26,12 +26,37 @@ export default function SignupForm({ className, ...props }) {
       password: "",
       confirmPassword: "",
     },
-    onSubmit: async (values) => {
+    onSubmit: async (values, { setFieldError }) => {
+      // Validate password confirmation
+      if (values.password !== values.confirmPassword) {
+        setFieldError("confirmPassword", "Passwords do not match");
+        return;
+      }
+
+      // Validate password length
+      if (values.password.length < 8) {
+        setFieldError("password", "Password must be at least 8 characters");
+        return;
+      }
+
       setIsLoading(true);
       try {
+        // Only send the fields the backend expects
+        const payload = {
+          name: values.name,
+          email: values.email,
+          password: values.password,
+          phone: values.phone,
+        };
+
         const response = await axios.post(
           "http://localhost:3000/api/auth/register",
-          values // send the form values directly
+          payload,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
         );
         // Check for successful status codes (200-299)
         if (response.status >= 200 && response.status < 300) {
@@ -43,6 +68,7 @@ export default function SignupForm({ className, ...props }) {
           navigate("/verify-email?email=" + encodeURIComponent(values.email));
         } else {
           toast.error(response.data?.message || "Registration failed");
+          setIsLoading(false);
         }
       } catch (error) {
         toast.error(
@@ -50,6 +76,7 @@ export default function SignupForm({ className, ...props }) {
             "An error occurred during registration"
         );
         console.error("Signup error:", error);
+        setIsLoading(false);
       }
     },
   });
@@ -115,9 +142,15 @@ export default function SignupForm({ className, ...props }) {
                       type="password"
                       required
                       onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
                       value={formik.values.password}
                       name="password"
                     />
+                    {formik.errors.password && formik.touched.password && (
+                      <div className="text-sm text-red-500 mt-1">
+                        {formik.errors.password}
+                      </div>
+                    )}
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="confirm-password">
@@ -128,9 +161,15 @@ export default function SignupForm({ className, ...props }) {
                       type="password"
                       required
                       onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
                       value={formik.values.confirmPassword}
                       name="confirmPassword"
                     />
+                    {formik.errors.confirmPassword && formik.touched.confirmPassword && (
+                      <div className="text-sm text-red-500 mt-1">
+                        {formik.errors.confirmPassword}
+                      </div>
+                    )}
                   </Field>
                 </Field>
                 <FieldDescription>

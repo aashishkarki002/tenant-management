@@ -221,6 +221,7 @@ export default function RentDashboard() {
   const formik = useFormik({
     initialValues: {
       rentId: "",
+      tenantId: "",
       paymentDate: null,
       nepaliDate: null,
       paymentMethod: selectedPaymentMethod,
@@ -230,8 +231,13 @@ export default function RentDashboard() {
       receivedBy: "",
     },
     onSubmit: async (values) => {
-      console.log(values);
-      const response = await api.post("/api/payment/pay-rent", values);
+      const payload = {
+        ...values,
+        paymentMethod: String(values.paymentMethod || "").toLowerCase(),
+        note: values.notes || "",
+      };
+
+      const response = await api.post("/api/payment/pay-rent", payload);
       if (response.data.success) {
         toast.success(response.data.message);
         formik.resetForm();
@@ -349,6 +355,10 @@ export default function RentDashboard() {
                                   formik.setFieldValue(
                                     "rentId",
                                     rent._id.toString()
+                                  );
+                                  formik.setFieldValue(
+                                    "tenantId",
+                                    rent.tenant?._id?.toString() || ""
                                   );
                                   formik.setFieldValue(
                                     "amount",

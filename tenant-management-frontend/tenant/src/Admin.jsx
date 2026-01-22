@@ -96,6 +96,7 @@ export default function Admin() {
           balance: parseFloat(values.balance) || 0,
         });
         if (response.data.success) {
+          toast.success(response.data.message || "Bank account created successfully");
           resetForm();
           setDrawerOpen(false);
           setDialogOpen(false);
@@ -103,6 +104,9 @@ export default function Admin() {
         }
       } catch (error) {
         console.error("Error creating bank account:", error);
+        toast.error(
+          error.response?.data?.message || "Failed to create bank account"
+        );
       } finally {
         setSubmitting(false);
       }
@@ -355,7 +359,7 @@ export default function Admin() {
                     </p>
                   </DrawerHeader>
                   <form
-                    onSubmit={CreateBankAccount}
+                    onSubmit={bankAccountFormik.handleSubmit}
                     className="px-4 pb-4 space-y-4"
                   >
                     <FieldGroup>
