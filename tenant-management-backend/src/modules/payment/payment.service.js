@@ -69,7 +69,10 @@ export async function createPayment(paymentData) {
     // 🔥 Side effects (non-blocking)
     emitPaymentNotification({ paymentId: payment._id }).catch(console.error);
 
-    handleReceiptSideEffects({ payment, rentId: rent._id });
+    handleReceiptSideEffects({
+      payment,
+      rentId: payment.rent || rent._id,
+    });
 
     return { success: true, payment, rent, bankAccount };
   } catch (err) {

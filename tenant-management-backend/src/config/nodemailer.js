@@ -51,7 +51,7 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
     timeoutPromise,
   ]);
 };
-export async function sendPaymentReceiptEmail({
+ async function sendPaymentReceiptEmail({
   to,
   tenantName,
   amount,
@@ -143,3 +143,4 @@ export async function sendPaymentReceiptEmail({
 
   return transporter.sendMail(mailOptions);
 }
+export { sendPaymentReceiptEmail };

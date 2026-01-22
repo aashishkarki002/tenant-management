@@ -17,6 +17,7 @@ import paymentRoute from "./modules/payment/payment.route.js";
 import ledgerRoute from "./modules/ledger/ledger.route.js";
 import { connectDB } from "./config/db.js";
 import revenueRoute from "./modules/revenue/revenue.route.js";
+import accountingRoute from "./modules/accounting/accounting.route.js";
 // 🚨 Only run cron jobs in production
 if (process.env.NODE_ENV === "production") {
   await import("./cron/monthlyRent.cron.js");
@@ -48,6 +49,7 @@ app.use("/api/notification", notificationRoute);
 app.use("/api/payment", paymentRoute);
 app.use("/api/ledger", ledgerRoute);
 app.use("/api/revenue", revenueRoute);
+app.use("/api/accounting", accountingRoute);
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });

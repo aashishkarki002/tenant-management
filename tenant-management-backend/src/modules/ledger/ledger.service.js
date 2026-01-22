@@ -720,7 +720,9 @@ return {
       // Filter by quarter (needs to match any of the quarter's months)
       if (filters.quarter) {
         const monthsInQuarter = getMonthsInQuarter(parseInt(filters.quarter));
-        query.nepaliMonth = { $in: monthsInQuarter };
+        if (Array.isArray(monthsInQuarter) && monthsInQuarter.length) {
+          query.nepaliMonth = { $in: monthsInQuarter };
+        }
       }
       const entries = await LedgerEntry.find(query)
       .populate("account", "code name type")
@@ -778,7 +780,9 @@ async getLedgerSummary(filters = {}) {
     
     if (filters.quarter) {
       const monthsInQuarter = getMonthsInQuarter(parseInt(filters.quarter));
-      query.nepaliMonth = { $in: monthsInQuarter };
+      if (Array.isArray(monthsInQuarter) && monthsInQuarter.length) {
+        query.nepaliMonth = { $in: monthsInQuarter };
+      }
     }
 
     if (filters.startDate || filters.endDate) {

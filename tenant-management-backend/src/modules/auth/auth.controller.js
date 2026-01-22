@@ -11,7 +11,21 @@ dotenv.config();
 
 export const registerUser = async (req, res) => {
   try {
+    console.log("Registration request received:", {
+      body: req.body,
+      headers: req.headers["content-type"],
+    });
+    
     const { name, email, password, phone } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !password || !phone) {
+      console.log("Missing required fields:", { name, email, password: !!password, phone });
+      return res.status(400).json({
+        success: false,
+        message: "All fields (name, email, password, phone) are required",
+      });
+    }
 
     const existingUser = await Admin.findOne({ email });
     if (existingUser) {

@@ -18,10 +18,16 @@ export const emitPaymentNotification = async (paymentData) => {
       receivedBy,
       bankAccountId,
     } = paymentData;
-    const bankName = await BankAccount.findById(bankAccountId).select("name");
-    if (!bankName) {
-      bankName = "Unknown";
+ 
+    let bankName = "Unknown";
+
+    if (bankAccountId) {
+      const bank = await BankAccount.findById(bankAccountId).select("name");
+      if (bank?.name) {
+        bankName = bank.name;
+      }
     }
+    
     const notificationMessage = `Payment of Rs. ${amount} received from tenant on ${new Date(
       paymentDate
     ).toLocaleDateString()} using ${paymentMethod}${

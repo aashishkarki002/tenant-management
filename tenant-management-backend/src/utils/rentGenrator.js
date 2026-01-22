@@ -28,7 +28,7 @@ export async function generateAndUploadRentPDF(rent) {
             url: result.secure_url,
             cloudinaryId: result.public_id,
           });
-          console.log("Uploaded PDF path:", result.secure_url);
+         
         }
       );
 
@@ -327,23 +327,11 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
     const fileName = `receipt-${receiptNo}-${Date.now()}.pdf`;
     tempFilePath = path.join(TEMP_UPLOAD_DIR, fileName);
 
-    console.log(
-      "💾 [uploadPDFBufferToCloudinary] Writing buffer to temp file:",
-      {
-        receiptNo,
-        tempFilePath,
-        bufferSize: pdfBuffer.length,
-      }
-    );
+  
 
     // Write buffer to temporary file
     fs.writeFileSync(tempFilePath, pdfBuffer);
 
-    console.log("✅ [uploadPDFBufferToCloudinary] Temp file created:", {
-      receiptNo,
-      tempFilePath,
-      fileSize: fs.statSync(tempFilePath).size,
-    });
 
     // Upload the file to Cloudinary
     const uploadOptions = {
@@ -352,26 +340,14 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
       public_id: `receipt-${receiptNo}`,
     };
 
-    console.log("☁️ [uploadPDFBufferToCloudinary] Uploading to Cloudinary:", {
-      receiptNo,
-      options: uploadOptions,
-    });
+
 
     const result = await cloudinary.uploader.upload(
       tempFilePath,
       uploadOptions
     );
 
-    console.log(
-      "📥 [uploadPDFBufferToCloudinary] Cloudinary response received:",
-      {
-        receiptNo,
-        hasResult: !!result,
-        hasSecureUrl: !!result?.secure_url,
-        hasPublicId: !!result?.public_id,
-        resultKeys: result ? Object.keys(result) : [],
-      }
-    );
+
 
     if (!result || !result.secure_url) {
       console.error(
@@ -391,14 +367,7 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
       cloudinaryId: result.public_id,
     };
 
-    console.log("✅ [uploadPDFBufferToCloudinary] Upload successful:", {
-      receiptNo,
-      fileName: uploadResult.fileName,
-      url: uploadResult.url,
-      cloudinaryId: uploadResult.cloudinaryId,
-      resultSize: result.bytes,
-      format: result.format,
-    });
+ 
 
     return uploadResult;
   } catch (error) {
@@ -415,10 +384,7 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);
-        console.log("🗑️ [uploadPDFBufferToCloudinary] Temp file deleted:", {
-          receiptNo,
-          tempFilePath,
-        });
+     
       } catch (unlinkError) {
         console.error(
           "⚠️ [uploadPDFBufferToCloudinary] Failed to delete temp file:",

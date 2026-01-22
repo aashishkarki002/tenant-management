@@ -1,6 +1,5 @@
 import { Revenue } from "./Revenue.Model.js";
 import { RevenueSource } from "./RevenueSource.Model.js";
-import { Tenant } from "../tenant/Tenant.Model.js";
 import Admin from "../auth/admin.Model.js";
 import mongoose from "mongoose";
  async function createRevenue(revenueData) {
