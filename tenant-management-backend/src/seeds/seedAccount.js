@@ -1,8 +1,8 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { Account } from "./modules/ledger/accounts/Account.Model.js";
-import { connectDB } from "./config/db.js";
+import { Account } from "../modules/ledger/accounts/Account.Model.js";
+import { connectDB } from "../config/db.js";
 import { fileURLToPath } from "url";
 
 /**

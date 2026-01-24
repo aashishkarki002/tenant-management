@@ -2,8 +2,8 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { connectDB } from "./config/db.js";
-import { RevenueSource } from "./modules/revenue/RevenueSource.Model.js";
+import { connectDB } from "../config/db.js";
+import { RevenueSource } from "../modules/revenue/RevenueSource.Model.js";
 
 const revenueSources = [
   {

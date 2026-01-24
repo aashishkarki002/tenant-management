@@ -116,4 +116,5 @@ tenantSchema.pre("save", async function () {
   this.netAmount = this.totalRent + this.camCharges;
 });
 
-export const Tenant = mongoose.model("Tenant", tenantSchema);
+export const Tenant =
+  mongoose.models.Tenant || mongoose.model("Tenant", tenantSchema);

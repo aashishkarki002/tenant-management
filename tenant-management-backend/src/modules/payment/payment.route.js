@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  payRent,
+  payRentAndCam,
   getRentSummary,
   sendReceiptEmail,
   getDashboardStats,
@@ -15,7 +15,7 @@ import {
 import { protect } from "../../middleware/protect.js";
 const router = Router();
 
-router.post("/pay-rent", protect, payRent);
+router.post("/pay-rent-and-cam", protect, payRentAndCam);
 router.get("/get-rent-summary", protect, getRentSummary);
 router.get("/dashboard-stats", protect, getDashboardStats);
 router.post("/send-receipt/:paymentId", protect, sendReceiptEmail);

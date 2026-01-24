@@ -10,10 +10,11 @@ import { Unit } from "../tenant/units/unit.model.js";
 import { Payment } from "./payment.model.js";
 import { getFilteredPaymentHistoryService } from "./payment.service.js";
 import parsePaginationParams from "../../helper/paginator.js";
-export async function payRent(req, res) {
+export async function payRentAndCam(req, res) {
   try {
     const {
       rentId,
+      camId,
       tenantId,
       amount,
       paymentDate,
@@ -23,19 +24,42 @@ export async function payRent(req, res) {
       note,
       receivedBy,
       bankAccountId,
+      allocations, // New format: supports both rent and CAM
     } = req.body;
+
+    // Build allocations object - support both old format (backward compatible) and new format
+    let paymentAllocations = allocations;
+    
+    // If allocations not provided, build from old format (backward compatibility)
+    if (!paymentAllocations) {
+      paymentAllocations = {};
+      
+      if (rentId && amount) {
+        paymentAllocations.rent = {
+          rentId,
+          amount: amount
+        };
+      }
+      
+      if (camId && amount) {
+        paymentAllocations.cam = {
+          camId,
+          paidAmount: amount
+        };
+      }
+    }
+
     const paymentData = {
       adminId: req.admin.id,
-      rentId,
       tenantId,
-      amount,
       paymentDate,
       nepaliDate,
       paymentMethod,
-      paymentStatus,
-      note,
+      paymentStatus: paymentStatus || "paid",
+      note: note || "",
       receivedBy,
       bankAccountId,
+      allocations: paymentAllocations,
     };
     const result = await createPayment(paymentData);
 

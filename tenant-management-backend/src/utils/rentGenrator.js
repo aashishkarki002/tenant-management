@@ -241,20 +241,74 @@ export async function generatePDFToBuffer(rent) {
         .lineWidth(1)
         .stroke();
 
-      // Payment row
-      const rowY = tableTop + rowHeight;
-      doc
-        .font("Helvetica")
-        .text(rent.paidFor, tableLeft + 5, rowY)
-        .text(rent.amount, tableRight - 100, rowY, {
-          width: 90,
-          align: "right",
-        });
+      // Payment rows - show rent and CAM separately if applicable
+      let rowY = tableTop + rowHeight;
+      let totalAmount = 0;
 
-      // Horizontal line below row
+      // Rent row
+      if (rent.rentAmount && rent.rentAmount > 0) {
+        doc
+          .font("Helvetica")
+          .text(`Rent - ${rent.paidFor}`, tableLeft + 5, rowY)
+          .text(rent.rentAmount.toLocaleString(), tableRight - 100, rowY, {
+            width: 90,
+            align: "right",
+          });
+        totalAmount += rent.rentAmount;
+        rowY += rowHeight;
+      }
+
+      // CAM row
+      if (rent.camAmount && rent.camAmount > 0) {
+        doc
+          .font("Helvetica")
+          .text(`CAM Charges - ${rent.paidFor}`, tableLeft + 5, rowY)
+          .text(rent.camAmount.toLocaleString(), tableRight - 100, rowY, {
+            width: 90,
+            align: "right",
+          });
+        totalAmount += rent.camAmount;
+        rowY += rowHeight;
+      }
+
+      // If no breakdown, show total amount
+      if (!rent.rentAmount && !rent.camAmount) {
+        doc
+          .font("Helvetica")
+          .text(rent.paidFor, tableLeft + 5, rowY)
+          .text(rent.amount.toLocaleString(), tableRight - 100, rowY, {
+            width: 90,
+            align: "right",
+          });
+        totalAmount = rent.amount;
+        rowY += rowHeight;
+      }
+
+      // Total row (if breakdown exists)
+      if ((rent.rentAmount || rent.camAmount) && (rent.rentAmount > 0 || rent.camAmount > 0)) {
+        // Horizontal line before total
+        doc
+          .moveTo(tableLeft, rowY - 5)
+          .lineTo(tableRight, rowY - 5)
+          .strokeColor("#aaaaaa")
+          .lineWidth(1)
+          .stroke();
+        
+        rowY += 5;
+        doc
+          .font("Helvetica-Bold")
+          .text("Total", tableLeft + 5, rowY)
+          .text(totalAmount.toLocaleString(), tableRight - 100, rowY, {
+            width: 90,
+            align: "right",
+          });
+        rowY += rowHeight;
+      }
+
+      // Horizontal line below rows
       doc
-        .moveTo(tableLeft, rowY + rowHeight - 5)
-        .lineTo(tableRight, rowY + rowHeight - 5)
+        .moveTo(tableLeft, rowY - 5)
+        .lineTo(tableRight, rowY - 5)
         .strokeColor("#aaaaaa")
         .lineWidth(1)
         .stroke();

@@ -122,6 +122,7 @@ export const createTenant = async (req, res) => {
     }
 
     // Verify units exist and are not already occupied
+    console.log(unitIds);
     const units = await Unit.find({ _id: { $in: unitIds } }).session(session);
     if (units.length !== unitIds.length) {
       throw new Error("One or more units not found");
@@ -284,11 +285,42 @@ if (!cam.success) {
 export const getTenants = async (req, res) => {
   try {
     const tenants = await Tenant.find({ isDeleted: false })
-      .populate("property")
-      .populate("block")
-      .populate("innerBlock")
-      .populate("units");
-    res.status(200).json({ success: true, tenants });
+      .populate({
+        path: "property",
+        match: { isDeleted: { $ne: true } }
+      })
+      .populate({
+        path: "block",
+        match: { isDeleted: { $ne: true } }
+      })
+      .populate({
+        path: "innerBlock",
+        match: { isDeleted: { $ne: true } }
+      })
+      .populate({
+        path: "units",
+        match: { isDeleted: { $ne: true } }
+      })
+
+    
+    // Filter out tenants where all units are null (deleted)
+    const validTenants = tenants.filter(tenant => {
+      // If units array exists and has at least one valid unit, keep the tenant
+      if (tenant.units && Array.isArray(tenant.units) && tenant.units.length > 0) {
+        const validUnits = tenant.units.filter(unit => unit !== null);
+        if (validUnits.length > 0) {
+          tenant.units = validUnits; // Replace with filtered units
+          return true;
+        }
+      }
+      // If no units or all units are null, still keep tenant but ensure units is empty array
+      if (!tenant.units || tenant.units.length === 0) {
+        tenant.units = [];
+      }
+      return true; // Keep tenant even if units are missing
+    });
+    
+    res.status(200).json({ success: true, tenants: validTenants });
   } catch (error) {
     console.log(error);
     res.status(500).json({
@@ -310,6 +342,13 @@ export const getTenantById = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Tenant not found" });
+    }
+
+    // Filter out null units
+    if (tenant.units && Array.isArray(tenant.units)) {
+      tenant.units = tenant.units.filter(unit => unit !== null && unit !== undefined);
+    } else {
+      tenant.units = [];
     }
 
     res.status(200).json({ success: true, tenant });
@@ -505,7 +544,19 @@ export const searchTenants = async (req, res) => {
       .populate("block")
       .populate("innerBlock")
       .populate("units");
-    res.status(200).json({ success: true, tenants });
+    
+    // Filter out null values from populated fields
+    const validTenants = tenants.map(tenant => {
+      // Filter out null units
+      if (tenant.units && Array.isArray(tenant.units)) {
+        tenant.units = tenant.units.filter(unit => unit !== null && unit !== undefined);
+      } else {
+        tenant.units = [];
+      }
+      return tenant;
+    });
+    
+    res.status(200).json({ success: true, tenants: validTenants });
   } catch (error) {
     console.log(error);
     res.status(500).json({

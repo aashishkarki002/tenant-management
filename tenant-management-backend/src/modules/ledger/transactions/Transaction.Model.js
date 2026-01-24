@@ -23,6 +23,7 @@ const transactionSchema = new mongoose.Schema(
         "OTHER_INCOME",
         "OTHER_EXPENSE",
         "ADJUSTMENT",
+        "CAM_PAYMENT_RECEIVED",
       ],
       required: true,
     },

@@ -40,9 +40,18 @@ function getNepaliMonthDates(year, month) {
  * Check if today is first, reminder, or last day of Nepali month
  * @returns {{ isFirstDay: boolean, isReminderDay: boolean, isLastDay: boolean }}
  */
-function checkNepaliSpecialDays() {
+function checkNepaliSpecialDays({ forceTest = false } = {}) {
+  if (forceTest) {
+    return {
+      isFirstDay: true,
+      isReminderDay: true,
+      isLastDay: true,
+    };
+  }
+
   const now = new NepaliDate();
   const { firstDay, reminderDay, lastDay } = getNepaliMonthDates();
+
   const isSameDay = (date1, date2) =>
     date1.getDate() === date2.getDate() &&
     date1.getMonth() === date2.getMonth() &&
@@ -54,5 +63,6 @@ function checkNepaliSpecialDays() {
     isLastDay: isSameDay(now, lastDay),
   };
 }
+
 
 export { getNepaliMonthDates, checkNepaliSpecialDays };

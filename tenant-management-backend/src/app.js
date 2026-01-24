@@ -18,10 +18,13 @@ import ledgerRoute from "./modules/ledger/ledger.route.js";
 import { connectDB } from "./config/db.js";
 import revenueRoute from "./modules/revenue/revenue.route.js";
 import accountingRoute from "./modules/accounting/accounting.route.js";
-// 🚨 Only run cron jobs in production
-if (process.env.NODE_ENV === "production") {
-  await import("./cron/monthlyRent.cron.js");
+// 🚨 Load cron jobs (allow in development for testing)
+try {
+  await import("./cron/monthlyRentAndCam.cron.js");
   await import("./cron/monthlyEmail.cron.js");
+  console.log("✅ Cron jobs loaded");
+} catch (error) {
+  console.error("❌ Error loading cron jobs:", error);
 }
 
 const app = express();

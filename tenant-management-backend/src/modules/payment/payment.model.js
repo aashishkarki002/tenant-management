@@ -3,7 +3,12 @@ const paymentSchema = new mongoose.Schema({
   rent: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Rent",
-    required: true,
+    required: false,
+  },
+  cam: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Cam",
+    required: false,
   },
   tenant: {
     type: mongoose.Schema.Types.ObjectId,
@@ -58,6 +63,17 @@ const paymentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin",
     required: false,
+  },
+  allocations: {
+    rent: {
+      rentId: mongoose.Schema.Types.ObjectId,
+      amount: Number,
+    },
+    cam: {
+      camId: mongoose.Schema.Types.ObjectId,
+      paidAmount: Number, // Changed from 'amount' to 'paidAmount' to match code usage
+      amount: Number, // Keep for backward compatibility
+    },
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

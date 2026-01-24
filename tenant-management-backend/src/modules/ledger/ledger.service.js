@@ -42,7 +42,7 @@ class LedgerService {
      
       fetch('http://127.0.0.1:7242/ingest/7243715a-fe6e-4715-bc75-bad5014fb3ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ledger.service.js:37',message:'Before Rent.findById call',data:{rentIdType:typeof rentId,rentIdValue:rentId?.toString?.()||(JSON.stringify(rentId) ?? 'undefined').substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
-      const rent = await Rent.findById(rentId).session(session);
+      const rent = await Rent.findById(rentId).populate('tenant').populate('property').session(session);
       console.log(rent);
       if (!rent) {
         throw new Error("Rent not found");
@@ -66,7 +66,7 @@ class LedgerService {
             type: "RENT_CHARGE",
             transactionDate: rent.createdAt,
             nepaliDate: rent.nepaliDate,
-            description: `Rent charge for ${rent.nepaliMonth} ${rent.nepaliYear}`,
+            description: `Rent charge for ${rent.nepaliMonth} ${rent.nepaliYear} of ${rent.tenant?.name || 'Unknown Tenant'}`,
             referenceType: "Rent",
             referenceId: rentId,
             totalAmount: rent.rentAmount,
@@ -81,14 +81,15 @@ class LedgerService {
       const ledgerEntries = [];
 
       // Entry 1: Debit Accounts Receivable (1200)
+      const tenantName = rent.tenant?.name || 'Unknown Tenant';
       const arEntry = new LedgerEntry({
         transaction: transaction._id,
         account: accountsReceivableAccount._id,
         debitAmount: rent.rentAmount,
         creditAmount: 0,
-        description: `Rent receivable for ${rent.nepaliMonth} ${rent.nepaliYear}`,
-        tenant: rent.tenant,
-        property: rent.property,
+        description: `Rent receivable for ${rent.nepaliMonth} ${rent.nepaliYear} of ${tenantName}`,
+        tenant: rent.tenant?._id || rent.tenant,
+        property: rent.property?._id || rent.property,
         nepaliMonth: rent.nepaliMonth,
         nepaliYear: rent.nepaliYear,
         transactionDate: rent.createdAt,
@@ -112,9 +113,9 @@ class LedgerService {
         account: revenueAccount._id,
         debitAmount: 0,
         creditAmount: rent.rentAmount,
-        description: `Rental income for ${rent.nepaliMonth} ${rent.nepaliYear}`,
-        tenant: rent.tenant,
-        property: rent.property,
+        description: `Rental income for ${rent.nepaliMonth} ${rent.nepaliYear} of ${tenantName}`,
+        tenant: rent.tenant?._id || rent.tenant,
+        property: rent.property?._id || rent.property,
         nepaliMonth: rent.nepaliMonth,
         nepaliYear: rent.nepaliYear,
         transactionDate: rent.createdAt,
@@ -154,7 +155,7 @@ class LedgerService {
    */ 
   async recordCamCharge(camId, createdBy, session = null) {
 try {
-  const cam = await Cam.findById(camId).session(session);
+  const cam = await Cam.findById(camId).populate('tenant').populate('property').session(session);
   if (!cam) {
     throw new Error("Cam not found");
   }
@@ -172,7 +173,7 @@ const [transaction] = await Transaction.create(
       type: "CAM_CHARGE",
       transactionDate: cam.createdAt,
       nepaliDate: cam.nepaliDate,
-      description: `CAM charge for ${cam.nepaliMonth} ${cam.nepaliYear}`,
+      description: `CAM charge for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || 'Unknown Tenant'}`,
       referenceType: "Cam",
       referenceId: camId,
       totalAmount: cam.amount,
@@ -188,9 +189,9 @@ const arEntry = new LedgerEntry({
   account: accountsReceivableAccount._id,
   debitAmount: cam.amount,
   creditAmount: 0,
-  description: `CAM receivable for ${cam.nepaliMonth} ${cam.nepaliYear}`,
-  tenant: cam.tenant,
-  property: cam.property,
+  description: `CAM receivable for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || 'Unknown Tenant'}`,
+  tenant: cam.tenant?._id || cam.tenant,
+  property: cam.property?._id || cam.property,
   nepaliMonth: cam.nepaliMonth,
   nepaliYear: cam.nepaliYear,
   transactionDate: cam.createdAt || new Date(),
@@ -211,9 +212,9 @@ const camRevenueEntry = new LedgerEntry({
   account: camRevenueAccount._id,
   debitAmount: 0,
   creditAmount: cam.amount,
-  description: `CAM income for ${cam.nepaliMonth} ${cam.nepaliYear}`,
-  tenant: cam.tenant,
-  property: cam.property,
+  description: `CAM income for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || 'Unknown Tenant'}`,
+  tenant: cam.tenant?._id || cam.tenant,
+  property: cam.property?._id || cam.property,
   nepaliMonth: cam.nepaliMonth,
   nepaliYear: cam.nepaliYear,
   transactionDate: cam.createdAt || new Date(),
@@ -248,7 +249,7 @@ return {
    */
   async recordSecurityDeposit(sdId, createdBy, session = null) {
     try {
-      const sd = await Sd.findById(sdId).session(session);
+      const sd = await Sd.findById(sdId).populate('tenant').session(session);
       if (!sd) {
         throw new Error("Security Deposit record not found");
       }
@@ -273,7 +274,7 @@ return {
             type: "SECURITY_DEPOSIT",
             transactionDate: sd.paidDate || sd.createdAt || new Date(),
             nepaliDate: sd.nepaliDate,
-            description: `Security deposit received from tenant`,
+            description: `Security deposit received from tenant ${sd.tenant.name}`,
             referenceType: "SecurityDeposit",
             referenceId: sdId,
             totalAmount: sd.amount,
@@ -291,7 +292,7 @@ return {
         account: cashBankAccount._id,
         debitAmount: sd.amount,
         creditAmount: 0,
-        description: `Security deposit received`,
+        description: `Security deposit received from ${sd.tenant.name}`,
         tenant: sd.tenant,
         property: sd.property,
         nepaliMonth: sd.nepaliMonth,
@@ -314,7 +315,7 @@ return {
         account: securityDepositLiabilityAccount._id,
         debitAmount: 0,
         creditAmount: sd.amount,
-        description: `Security deposit liability`,
+        description: `Security deposit liability for ${sd.tenant.name}`,
         tenant: sd.tenant,
         property: sd.property,
         nepaliMonth: sd.nepaliMonth,
@@ -344,8 +345,19 @@ return {
     }
   }
 
-  async recordPayment(payment, rent, session = null) {
+  async recordPayment(payment, rent, session = null, amount = null) {
     try {
+      // Use provided amount or fall back to payment.amount
+      const paymentAmount = amount !== null ? amount : payment.amount;
+      
+      // Ensure rent has tenant populated
+      if (!rent.tenant || typeof rent.tenant === 'string' || !rent.tenant.name) {
+        rent = await Rent.findById(rent._id || rent).populate('tenant').populate('property').session(session);
+        if (!rent) {
+          throw new Error("Rent not found");
+        }
+      }
+
       // Determine the cash/bank account code based on payment method
       // Currently using bank account (1000) for all payment methods
       // TODO: Add a separate cash account (1100) in seedAccount.js if you want to track cash separately
@@ -371,6 +383,7 @@ return {
         throw new Error("Account with code 4000 (Revenue) not found");
       }
 
+      const tenantName = rent.tenant?.name || 'Unknown Tenant';
       // Create transaction
       const [transaction] = await Transaction.create(
         [
@@ -378,10 +391,10 @@ return {
             type: "PAYMENT_RECEIVED",
             transactionDate: payment.paymentDate,
             nepaliDate: payment.nepaliDate,
-            description: `Payment received for ${rent.nepaliMonth} ${rent.nepaliYear}`,
+            description: `Payment received for ${rent.nepaliMonth} ${rent.nepaliYear} of ${tenantName}`,
             referenceType: "Payment",
             referenceId: payment._id,
-            totalAmount: payment.amount,
+            totalAmount: paymentAmount,
             createdBy: payment.createdBy,
             status: "POSTED",
           },
@@ -396,11 +409,11 @@ return {
       const cashBankEntry = new LedgerEntry({
         transaction: transaction._id,
         account: cashBankAccount._id,
-        debitAmount: payment.amount,
+        debitAmount: paymentAmount,
         creditAmount: 0,
-        description: `Payment received for ${rent.nepaliMonth} ${rent.nepaliYear}`,
-        tenant: rent.tenant,
-        property: rent.property,
+        description: `Payment received for ${rent.nepaliMonth} ${rent.nepaliYear} of ${tenantName}`,
+        tenant: rent.tenant?._id || rent.tenant,
+        property: rent.property?._id || rent.property,
         nepaliMonth: payment.nepaliMonth || rent.nepaliMonth,
         nepaliYear: payment.nepaliYear || rent.nepaliYear,
         transactionDate: payment.paymentDate,
@@ -422,10 +435,10 @@ return {
           transaction: transaction._id,
           account: accountsReceivableAccount._id,
           debitAmount: 0,
-          creditAmount: payment.amount,
-          description: `Payment received for ${rent.nepaliMonth} ${rent.nepaliYear}`,
-          tenant: rent.tenant,
-          property: rent.property,
+          creditAmount: paymentAmount,
+          description: `Payment received for ${rent.nepaliMonth} ${rent.nepaliYear} of ${tenantName}`,
+          tenant: rent.tenant?._id || rent.tenant,
+          property: rent.property?._id || rent.property,
           nepaliMonth: payment.nepaliMonth || rent.nepaliMonth,
           nepaliYear: payment.nepaliYear || rent.nepaliYear,
           transactionDate: payment.paymentDate,
@@ -437,7 +450,7 @@ return {
         const arBalanceChange = this.calculateBalanceChange(
           accountsReceivableAccount.type,
           0, // debitAmount
-          payment.amount // creditAmount
+          paymentAmount // creditAmount
         );
         accountsReceivableAccount.currentBalance += arBalanceChange;
         await accountsReceivableAccount.save({ session });
@@ -447,10 +460,10 @@ return {
           transaction: transaction._id,
           account: revenueAccount._id,
           debitAmount: 0,
-          creditAmount: payment.amount,
-          description: `Payment received for ${rent.nepaliMonth} ${rent.nepaliYear}`,
-          tenant: rent.tenant,
-          property: rent.property,
+          creditAmount: paymentAmount,
+          description: `Payment received for ${rent.nepaliMonth} ${rent.nepaliYear} of ${tenantName}`,
+          tenant: rent.tenant?._id || rent.tenant,
+          property: rent.property?._id || rent.property,
           nepaliMonth: payment.nepaliMonth || rent.nepaliMonth,
           nepaliYear: payment.nepaliYear || rent.nepaliYear,
           transactionDate: payment.paymentDate,
@@ -462,7 +475,7 @@ return {
         const revenueBalanceChange = this.calculateBalanceChange(
           revenueAccount.type,
           0, // debitAmount
-          payment.amount // creditAmount
+          paymentAmount // creditAmount
         );
         revenueAccount.currentBalance += revenueBalanceChange;
         await revenueAccount.save({ session });
@@ -471,7 +484,7 @@ return {
       // Update Cash/Bank account balance (debit increases asset)
       const cashBankBalanceChange = this.calculateBalanceChange(
         cashBankAccount.type,
-        payment.amount, // debitAmount
+        paymentAmount, // debitAmount
         0 // creditAmount
       );
       cashBankAccount.currentBalance += cashBankBalanceChange;
@@ -494,8 +507,19 @@ return {
    * DR: Cash/Bank (1000)
    * CR: Accounts Receivable (1200)
    */
-  async recordCamPayment(payment, cam, session = null) {
+  async recordCamPayment(payment, cam, session = null, amount = null) {
     try {
+      // Use provided amount or fall back to payment.amount
+      const paymentAmount = amount !== null ? amount : payment.amount;
+      
+      // Ensure cam has tenant populated
+      if (!cam.tenant || typeof cam.tenant === 'string' || !cam.tenant.name) {
+        cam = await Cam.findById(cam._id || cam).populate('tenant').populate('property').session(session);
+        if (!cam) {
+          throw new Error("CAM not found");
+        }
+      }
+
       const cashBankAccount = await Account.findOne({
         code: "1000",
       }).session(session);
@@ -510,16 +534,17 @@ return {
         throw new Error("Account with code 1200 (Accounts Receivable) not found");
       }
 
+      const tenantName = cam.tenant?.name || 'Unknown Tenant';
       const [transaction] = await Transaction.create(
         [
           {
             type: "CAM_PAYMENT_RECEIVED",
             transactionDate: payment.paymentDate || new Date(),
             nepaliDate: payment.nepaliDate || cam.nepaliDate,
-            description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear}`,
+            description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear} of ${tenantName}`,
             referenceType: "CamPayment",
             referenceId: payment._id,
-            totalAmount: payment.amount,
+            totalAmount: paymentAmount,
             createdBy: payment.createdBy,
             status: "POSTED",
           },
@@ -532,11 +557,11 @@ return {
       const cashEntry = new LedgerEntry({
         transaction: transaction._id,
         account: cashBankAccount._id,
-        debitAmount: payment.amount,
+        debitAmount: paymentAmount,
         creditAmount: 0,
-        description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear}`,
-        tenant: cam.tenant,
-        property: cam.property,
+        description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear} of ${tenantName}`,
+        tenant: cam.tenant?._id || cam.tenant,
+        property: cam.property?._id || cam.property,
         nepaliMonth: cam.nepaliMonth,
         nepaliYear: cam.nepaliYear,
         transactionDate: payment.paymentDate || new Date(),
@@ -546,7 +571,7 @@ return {
 
       const cashBalanceChange = this.calculateBalanceChange(
         cashBankAccount.type,
-        payment.amount,
+        paymentAmount,
         0
       );
       cashBankAccount.currentBalance += cashBalanceChange;
@@ -556,10 +581,10 @@ return {
         transaction: transaction._id,
         account: accountsReceivableAccount._id,
         debitAmount: 0,
-        creditAmount: payment.amount,
-        description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear}`,
-        tenant: cam.tenant,
-        property: cam.property,
+        creditAmount: paymentAmount,
+        description: `CAM payment received for ${cam.nepaliMonth} ${cam.nepaliYear} of ${tenantName}`,
+        tenant: cam.tenant?._id || cam.tenant,
+        property: cam.property?._id || cam.property,
         nepaliMonth: cam.nepaliMonth,
         nepaliYear: cam.nepaliYear,
         transactionDate: payment.paymentDate || new Date(),
@@ -570,7 +595,7 @@ return {
       const arBalanceChange = this.calculateBalanceChange(
         accountsReceivableAccount.type,
         0,
-        payment.amount
+        paymentAmount
       );
       accountsReceivableAccount.currentBalance += arBalanceChange;
       await accountsReceivableAccount.save({ session });

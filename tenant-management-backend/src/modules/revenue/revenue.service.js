@@ -117,3 +117,58 @@ export async function recordRentRevenue({
     throw error;
   }
 }
+
+/**
+ * Record revenue for a CAM payment
+ * @param {Object} params - Revenue recording parameters
+ * @param {number} params.amount - Payment amount
+ * @param {Date} params.paymentDate - Payment date
+ * @param {string} params.tenantId - Tenant ID
+ * @param {string} params.camId - CAM ID
+ * @param {string} params.note - Payment note
+ * @param {string|ObjectId} params.adminId - Admin ID who created the payment
+ * @param {Session} params.session - MongoDB session (optional)
+ */
+export async function recordCamRevenue({
+  amount,
+  paymentDate,
+  tenantId,
+  camId,
+  note,
+  adminId,
+  session = null,
+}) {
+  try {
+    // Find the CAM revenue source
+    const camRevenueSource = await RevenueSource.findOne({ code: "CAM" }).session(
+      session
+    );
+    if (!camRevenueSource) {
+      throw new Error("Revenue source CAM not configured");
+    }
+
+    // Create revenue record
+    const revenue = await Revenue.create(
+      [
+        {
+          source: camRevenueSource._id,
+          amount,
+          date: paymentDate,
+          payerType: "TENANT",
+          tenant: new mongoose.Types.ObjectId(tenantId),
+          referenceType: "CAM",
+          referenceId: new mongoose.Types.ObjectId(camId),
+          status: "RECORDED",
+          notes: note,
+          createdBy: new mongoose.Types.ObjectId(adminId),
+        },
+      ],
+      { session }
+    );
+
+    return revenue[0];
+  } catch (error) {
+    console.error("Failed to record CAM revenue:", error);
+    throw error;
+  }
+}

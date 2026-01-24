@@ -106,9 +106,19 @@ const tenantValidation = yup.object().shape({
     )
     .required("CAM rate per square feet is required"),
   units: yup
-    .array()
-    .of(yup.string().required("Unit ID is required"))
-    .min(1, "At least one unit is required")
+    .mixed()
+    .test("is-unit-or-array", "Units must be a single unit ID or an array of unit IDs", (value) => {
+      if (!value) return false;
+      // If it's a string (single unit), validate it's a valid format
+      if (typeof value === "string") {
+        return value.trim().length > 0;
+      }
+      // If it's an array, validate it has at least one element
+      if (Array.isArray(value)) {
+        return value.length > 0 && value.every((unitId) => typeof unitId === "string" && unitId.trim().length > 0);
+      }
+      return false;
+    })
     .required("Units are required"),
 });
 export default tenantValidation;

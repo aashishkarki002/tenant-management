@@ -61,6 +61,8 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
   propertyName,
   pdfBuffer,
   pdfFileName,
+  rentAmount = 0,
+  camAmount = 0,
 }) {
   const mailOptions = {
     from: `"Sallyan House" <${process.env.EMAIL_USER}>`,
@@ -98,9 +100,21 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
                 <span class="label">Receipt No:</span>
                 <span class="value">${receiptNo}</span>
               </div>
+              ${rentAmount && rentAmount > 0 ? `
               <div class="details-row">
-                <span class="label">Amount Paid:</span>
-                <span class="value">Rs. ${amount}</span>
+                <span class="label">Rent Amount:</span>
+                <span class="value">Rs. ${rentAmount.toLocaleString()}</span>
+              </div>
+              ` : ''}
+              ${camAmount && camAmount > 0 ? `
+              <div class="details-row">
+                <span class="label">CAM Charges:</span>
+                <span class="value">Rs. ${camAmount.toLocaleString()}</span>
+              </div>
+              ` : ''}
+              <div class="details-row">
+                <span class="label">Total Amount Paid:</span>
+                <span class="value"><strong>Rs. ${amount.toLocaleString()}</strong></span>
               </div>
               <div class="details-row">
                 <span class="label">Payment Date:</span>

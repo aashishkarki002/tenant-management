@@ -4,64 +4,146 @@ import { Payment } from "./payment.model.js";
 import { applyPaymentToBank } from "../banks/bank.domain.js";
 import {
   generatePDFToBuffer,
-  uploadPDFBufferToCloudinary,
 } from "../../utils/rentGenrator.js";
 import {
   sendEmail,
   sendPaymentReceiptEmail as sendPaymentReceiptEmailFromNodemailer,
 } from "../../config/nodemailer.js";
 import { applyPaymentToRent } from "../rents/rent.domain.js";
+import { applyPaymentToCam } from "../tenant/cam/cam.domain.js";
 import buildFilter from "../../utils/buildFilter.js";
-import { buildPaymentPayload, createPaymentRecord } from "./payment.domain.js";
+import { 
+
+  buildRentPaymentPayload,
+  buildCamPaymentPayload,
+  mergePaymentPayloads,
+  createPaymentRecord,
+  calculateTotalAmountFromAllocations,
+  validatePaymentAllocations,
+  getPaymentType
+} from "./payment.domain.js";
 import { ledgerService } from "../ledger/ledger.service.js";
-import { recordRentRevenue } from "../revenue/revenue.service.js";
+import { recordRentRevenue, recordCamRevenue } from "../revenue/revenue.service.js";
 import { emitPaymentNotification } from "../../utils/payment.Notification.js";
 import { handleReceiptSideEffects } from "../../reciepts/reciept.service.js";
+import { Cam } from "../tenant/cam/cam.model.js";
 
 export async function createPayment(paymentData) {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const rent = await Rent.findById(paymentData.rentId).session(session);
-    if (!rent) throw new Error("Rent not found");
+    const {allocations, ...rest} = paymentData;
+    
+    // Validate allocations
+    const validation = validatePaymentAllocations(allocations);
+    if (!validation.isValid) {
+      throw new Error(validation.error);
+    }
 
-    const tenantId = paymentData.tenantId || rent.tenant;
+    let cam = null;
+    let rent = null;
 
-    applyPaymentToRent(
-      rent,
-      paymentData.amount,
-      paymentData.paymentDate,
-      paymentData.receivedBy
-    );
-    await rent.save({ session });
+    // Handle rent payment
+    if (allocations?.rent?.rentId) {
+      rent = await Rent.findById(allocations.rent.rentId).session(session);
+      if (!rent) throw new Error("Rent not found");
+      applyPaymentToRent(
+        rent,
+        allocations.rent.amount,
+        paymentData.paymentDate,
+        paymentData.receivedBy
+      );
+      await rent.save({ session });
+    }
+
+    // Handle CAM payment
+    if (allocations?.cam?.camId) {
+      cam = await Cam.findById(allocations.cam.camId).populate('tenant').populate('property').session(session);
+      if (!cam) throw new Error("CAM not found");
+      applyPaymentToCam(cam, allocations.cam.paidAmount, paymentData.paymentDate, paymentData.receivedBy);
+      await cam.save({ session });
+    }
+
+    // Calculate total amount using helper function
+    const totalAmount = calculateTotalAmountFromAllocations(allocations);
 
     const bankAccount = await applyPaymentToBank({
       paymentMethod: paymentData.paymentMethod,
       bankAccountId: paymentData.bankAccountId,
-      amount: paymentData.amount,
+      amount: totalAmount,
       session,
     });
 
-    const payload = buildPaymentPayload({
-      rent,
-      tenantId,
-      ...paymentData,
-    });
+    // Create separate payloads for rent and CAM
+    const rentPayload = rent ? buildRentPaymentPayload({
+      tenantId: paymentData.tenantId,
+      amount: allocations.rent.amount,
+      paymentDate: paymentData.paymentDate,
+      nepaliDate: paymentData.nepaliDate,
+      paymentMethod: paymentData.paymentMethod,
+      paymentStatus: paymentData.paymentStatus,
+      receivedBy: paymentData.receivedBy,
+      note: paymentData.note,
+      adminId: paymentData.adminId,
+      bankAccountId: paymentData.bankAccountId,
+      rentId: rent._id,
+      allocations: { rent: allocations.rent },
+    }) : null;
+
+    const camPayload = cam ? buildCamPaymentPayload({
+      tenantId: paymentData.tenantId,
+      amount: allocations.cam.paidAmount,
+      paymentDate: paymentData.paymentDate,
+      nepaliDate: paymentData.nepaliDate,
+      paymentMethod: paymentData.paymentMethod,
+      paymentStatus: paymentData.paymentStatus,
+      receivedBy: paymentData.receivedBy,
+      note: paymentData.note,
+      adminId: paymentData.adminId,
+      bankAccountId: paymentData.bankAccountId,
+      camId: cam._id,
+      allocations: { cam: allocations.cam },
+    }) : null;
+
+    // Merge payloads into a single payment payload
+    const payload = mergePaymentPayloads(rentPayload, camPayload);
 
     const payment = await createPaymentRecord(payload, session);
 
-    await ledgerService.recordPayment(payment, rent, session);
+    // Record payment in ledger (handles both rent and CAM)
+    if (rent) {
+      await ledgerService.recordPayment(payment, rent, session, allocations.rent.amount);
+    }
+    if (cam) {
+      await ledgerService.recordCamPayment(payment, cam, session, allocations.cam.paidAmount);
+    }
 
-    await recordRentRevenue({
-      amount: payment.amount,
-      paymentDate: payment.paymentDate,
-      tenantId,
-      rentId: rent._id,
-      note: payment.note,
-      adminId: payment.createdBy,
-      session,
-    });
+    // Record rent revenue only if rent payment exists
+    if (rent) {
+      await recordRentRevenue({
+        amount: allocations.rent.amount,
+        paymentDate: payment.paymentDate,
+        tenantId: paymentData.tenantId,
+        rentId: rent._id,
+        note: payment.note,
+        adminId: payment.createdBy,
+        session,
+      });
+    }
+
+    // Record CAM revenue only if CAM payment exists
+    if (cam) {
+      await recordCamRevenue({
+        amount: allocations.cam.paidAmount,
+        paymentDate: payment.paymentDate,
+        tenantId: paymentData.tenantId,
+        camId: cam._id,
+        note: payment.note,
+        adminId: payment.createdBy,
+        session,
+      });
+    }
 
     await session.commitTransaction();
     session.endSession();
@@ -69,10 +151,15 @@ export async function createPayment(paymentData) {
     // 🔥 Side effects (non-blocking)
     emitPaymentNotification({ paymentId: payment._id }).catch(console.error);
 
+    // Ensure IDs are passed correctly (handle both ObjectId and string formats)
+    const rentIdToPass = rent?._id ? rent._id.toString() : (payment.rent?._id || payment.rent)?.toString() || null;
+    const camIdToPass = cam?._id ? cam._id.toString() : (payment.cam?._id || payment.cam)?.toString() || null;
+    
     handleReceiptSideEffects({
       payment,
-      rentId: payment.rent || rent._id,
-    });
+      rentId: rentIdToPass,
+      camId: camIdToPass,
+    }).catch(console.error);
 
     return { success: true, payment, rent, bankAccount };
   } catch (err) {
@@ -142,6 +229,10 @@ export async function createPayment(paymentData) {
         day: "numeric",
       });
 
+      // Get rent and CAM amounts from allocations
+      const rentAmount = payment.allocations?.rent?.amount || 0;
+      const camAmount = payment.allocations?.cam?.paidAmount || 0;
+
       const pdfData = {
         receiptNo: payment._id.toString(),
         amount: payment.amount,
@@ -152,6 +243,8 @@ export async function createPayment(paymentData) {
         paymentMethod:
           payment.paymentMethod === "cheque" ? "Cheque" : "Bank Transfer",
         receivedBy: rent.lastPaidBy || "",
+        rentAmount,
+        camAmount,
       };
 
       // 3️⃣ Generate PDF to buffer (faster and more reliable for email)
@@ -159,7 +252,7 @@ export async function createPayment(paymentData) {
 
       // 4️⃣ Prepare email content
       const tenantName = payment.tenant?.name || "Tenant";
-      const subject = "Payment Receipt - Rent Payment Confirmation";
+      const subject = "Payment Receipt - Rent and Email Payment Confirmation";
       const html = `
         <!DOCTYPE html>
         <html lang="en">
@@ -183,8 +276,10 @@ export async function createPayment(paymentData) {
                 <p style="color:#555555; font-size:14px; line-height:1.5; margin-top:20px;">
                   <strong>Receipt Details:</strong><br>
                   Receipt No: ${payment._id.toString()}<br>
+                  ${rentAmount > 0 ? `Rent Amount: Rs. ${rentAmount.toLocaleString()}<br>` : ''}
+                  ${camAmount > 0 ? `CAM Charges: Rs. ${camAmount.toLocaleString()}<br>` : ''}
+                  Total Amount: Rs. ${payment.amount.toLocaleString()}<br>
                   Payment Date: ${formattedPaymentDate}<br>
-                  Amount: Rs. ${payment.amount}<br>
                   Payment Method: ${pdfData.paymentMethod}
                 </p>
                 <p style="color:#555555; font-size:16px; line-height:1.5; margin-top:30px;">

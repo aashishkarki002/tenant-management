@@ -1,5 +1,5 @@
 import { Rent } from "./rent.Model.js";
-import { Tenant } from "../tenant/Tenant.Model.js";
+import { Tenant } from "../tenant/tenant.model.js";
 import adminModel from "../auth/admin.Model.js";
 import {
   getNepaliMonthDates,
@@ -11,6 +11,7 @@ import { ledgerService } from "../ledger/ledger.service.js";
 import Notification from "../notifications/notification.model.js";
 import NepaliDate from "nepali-datetime";
 import { getIO } from "../../config/socket.js";
+import { Cam } from "../tenant/cam/cam.model.js";
 dotenv.config();
 
 const ADMIN_ID = process.env.SYSTEM_ADMIN_ID;
@@ -106,8 +107,8 @@ export default handleMonthlyRents;
 
 export const sendEmailToTenants = async () => {
   try {
-    const { npMonth, npYear } = getNepaliMonthDates();
-    const { reminderDay } = checkNepaliSpecialDays();
+    const { npMonth, npYear, lastDay } = getNepaliMonthDates();
+    const { reminderDay } = checkNepaliSpecialDays({ forceTest: true });
     if (reminderDay) {
       return {
         success: true,
@@ -118,24 +119,32 @@ export const sendEmailToTenants = async () => {
       status: { $in: ["pending", "partially_paid"] },
       nepaliMonth: npMonth,
       nepaliYear: npYear,
+      emailReminderSent: { $ne: true },
     }).populate("tenant");
-
-    if (rents.length === 0) {
+    const cams = await Cam.find({
+      status: { $in: ["pending", "partially_paid"] },
+      nepaliMonth: npMonth,
+      nepaliYear: npYear,
+      emailReminderSent: { $ne: true },
+    }).populate("tenant");
+    const allPending = [...rents, ...cams];
+    if (allPending.length === 0) {
       return {
         success: true,
-        message: "No pending rents found for this month",
+        message: "No pending rents or cams found for this month",
       };
     }
     const io = getIO();
 
-    const pendingTenants = rents.map((rent) => ({
-      tenantId: rent.tenant?._id,
-      tenantName: rent.tenant?.name || "Unknown",
-      tenantEmail: rent.tenant?.email || "N/A",
-      rentAmount: rent.rentAmount,
-      status: rent.status,
-      dueDate: rent.nepaliDueDate,
-      rentId: rent._id,
+    const pendingTenants = allPending.map((item) => ({
+      tenantId: item.tenant?._id,
+      tenantName: item.tenant?.name || "Unknown",
+      tenantEmail: item.tenant?.email || "N/A",
+      rentAmount: item.rentAmount || item.amount,
+      status: item.status,
+      dueDate: item.nepaliDueDate || lastDay,
+      itemId: item._id,
+      type: item.rentAmount ? "rent" : "cam",
     }));
     const admins = await adminModel.find({ role: "admin" });
     const notificationPromises = admins.map(async (admin) => {
@@ -171,44 +180,113 @@ export const sendEmailToTenants = async () => {
     });
 
     await Promise.all(notificationPromises);
-    const emailPromises = rents.map(async (rent) => {
-      const tenant = rent.tenant;
+
+    // Group rents and CAMs by tenant
+    const tenantMap = new Map();
+    
+    rents.forEach((rent) => {
+      const tenantId = rent.tenant?._id?.toString();
+      if (tenantId) {
+        if (!tenantMap.has(tenantId)) {
+          tenantMap.set(tenantId, {
+            tenant: rent.tenant,
+            rents: [],
+            cams: [],
+          });
+        }
+        tenantMap.get(tenantId).rents.push(rent);
+      }
+    });
+
+    cams.forEach((cam) => {
+      const tenantId = cam.tenant?._id?.toString();
+      if (tenantId) {
+        if (!tenantMap.has(tenantId)) {
+          tenantMap.set(tenantId, {
+            tenant: cam.tenant,
+            rents: [],
+            cams: [],
+          });
+        }
+        tenantMap.get(tenantId).cams.push(cam);
+      }
+    });
+
+    const sentRentIds = [];
+    const sentCamIds = [];
+
+    const emailPromises = Array.from(tenantMap.values()).map(async ({ tenant, rents: tenantRents, cams: tenantCams }) => {
       if (!tenant?.email) {
         console.log(`No email for tenant: ${tenant?.name || "Unknown"}`);
         return;
       }
 
-      // Reconstruct NepaliDate from stored nepaliDueDate
-      // Since nepaliDueDate is stored but corrupted, extract day from it
-      let nepaliDay = 30; // default
+      // Calculate totals
+      const rentTotal = tenantRents.reduce((sum, rent) => sum + (rent.rentAmount || 0), 0);
+      const camTotal = tenantCams.reduce((sum, cam) => sum + (cam.amount || 0), 0);
+      const totalAmount = rentTotal + camTotal;
 
-      if (rent.nepaliDueDate) {
-        // Try to extract day from the stored date string
-        const dateStr = rent.nepaliDueDate.toString();
-        const match = dateStr.match(/2\d{3}-\d{2}-(\d{2})/);
-        if (match) {
-          nepaliDay = parseInt(match[1]);
-        }
+      // Skip if no pending amounts
+      if (totalAmount === 0) {
+        console.log(`Skipping email for tenant ${tenant?.name || "Unknown"} - no pending amounts`);
+        return;
       }
 
-      // Create proper NepaliDate object
-      // rent.nepaliMonth is 1-based (from DB), but NepaliDate constructor needs 0-based
-      const nepaliDueDate = new NepaliDate(
-        rent.nepaliYear,
-        rent.nepaliMonth - 1,
-        nepaliDay
-      );
+      // Get due date from rent or use lastDay
+      let nepaliDueDate;
+      
+      if (tenantRents.length > 0 && tenantRents[0].nepaliDueDate) {
+        const dateStr = tenantRents[0].nepaliDueDate.toString();
+        const match = dateStr.match(/2\d{3}-\d{2}-(\d{2})/);
+        if (match) {
+          const nepaliDay = parseInt(match[1]);
+          nepaliDueDate = new NepaliDate(
+            tenantRents[0].nepaliYear,
+            tenantRents[0].nepaliMonth - 1,
+            nepaliDay
+          );
+        } else {
+          // Fallback to lastDay if date parsing fails
+          nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
+        }
+      } else if (tenantCams.length > 0) {
+        // For CAMs, use lastDay from getNepaliMonthDates
+        nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
+      } else {
+        // Fallback
+        nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
+      }
 
       const formattedDate = nepaliDueDate.format("YYYY-MMMM-DD");
       const monthYear = nepaliDueDate.format("YYYY-MMMM");
 
-      const subject = "Reminder for Rent Payment";
+      const subject = "Reminder for Rent and CAM Payment";
+      
+      // Build payment details HTML
+      let paymentDetails = '';
+      if (tenantRents.length > 0) {
+        paymentDetails += `
+          <tr>
+            <td style="padding:8px 0; border-bottom:1px solid #e0e0e0;">
+              <strong>Rent:</strong> Rs. ${rentTotal.toLocaleString()}
+            </td>
+          </tr>`;
+      }
+      if (tenantCams.length > 0) {
+        paymentDetails += `
+          <tr>
+            <td style="padding:8px 0; border-bottom:1px solid #e0e0e0;">
+              <strong>CAM Charges:</strong> Rs. ${camTotal.toLocaleString()}
+            </td>
+          </tr>`;
+      }
+
       const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8">
-        <title>Rent Reminder</title>
+        <title>Rent and CAM Reminder</title>
       </head>
       <body style="font-family: Arial, sans-serif; background-color: #f9f9f9; margin:0; padding:0;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:20px auto; background-color:#ffffff; border:1px solid #e0e0e0; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
@@ -216,10 +294,18 @@ export const sendEmailToTenants = async () => {
             <td style="padding:20px;">
               <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${tenant.name},</h2>
               <p style="color:#555555; font-size:16px; line-height:1.5;">
-                This is a reminder for your rent payment of <strong>Rs. ${rent.rentAmount}</strong> for <strong>${monthYear}</strong>.
+                This is a reminder for your pending payments for <strong>${monthYear}</strong>.
               </p>
+              <table width="100%" style="margin:20px 0; border-collapse:collapse;">
+                ${paymentDetails}
+                <tr>
+                  <td style="padding:12px 0; border-top:2px solid #333333; border-bottom:2px solid #333333;">
+                    <strong style="font-size:18px;">Total Amount:</strong> <strong style="font-size:18px; color:#d32f2f;">Rs. ${totalAmount.toLocaleString()}</strong>
+                  </td>
+                </tr>
+              </table>
               <p style="color:#555555; font-size:16px; line-height:1.5;">
-                Please pay your rent before <strong>${formattedDate}</strong>.
+                Please pay the amount before <strong>${formattedDate}</strong>.
               </p>
               <p style="color:#555555; font-size:16px; line-height:1.5; margin-top:30px;">
                 Thank you,<br>
@@ -238,7 +324,14 @@ export const sendEmailToTenants = async () => {
 
       try {
         await sendEmail({ to: tenant.email, subject, html });
-        rent.emailReminderSent = true;
+        
+        // Track successfully sent rent and CAM IDs to toggle emailReminderSent to true
+        tenantRents.forEach((rent) => {
+          sentRentIds.push(rent._id);
+        });
+        tenantCams.forEach((cam) => {
+          sentCamIds.push(cam._id);
+        });
       } catch (emailError) {
         console.error(`Failed to send email to ${tenant.email}:`, emailError);
       }
@@ -246,17 +339,28 @@ export const sendEmailToTenants = async () => {
 
     await Promise.all(emailPromises);
 
-    // Save all updated rents
-    const savePromises = rents
-      .filter((rent) => rent.emailReminderSent)
-      .map((rent) => rent.save());
-    await Promise.all(savePromises);
+    // Toggle emailReminderSent to true for all successfully sent rents
+    if (sentRentIds.length > 0) {
+      await Rent.updateMany(
+        { _id: { $in: sentRentIds } },
+        { $set: { emailReminderSent: true } }
+      );
+    }
 
-    const sentCount = rents.filter((r) => r.emailReminderSent).length;
+    // Toggle emailReminderSent to true for all successfully sent CAMs
+    if (sentCamIds.length > 0) {
+      await Cam.updateMany(
+        { _id: { $in: sentCamIds } },
+        { $set: { emailReminderSent: true } }
+      );
+    }
+
+    const sentCount = Array.from(tenantMap.values()).filter(({ tenant }) => tenant?.email).length;
+    const totalTenants = tenantMap.size;
 
     return {
       success: true,
-      message: `Email sent to ${sentCount} out of ${rents.length} tenants successfully`,
+      message: `Email sent to ${sentCount} out of ${totalTenants} tenants successfully`,
     };
   } catch (error) {
     console.error("Error sending emails:", error);
