@@ -136,7 +136,7 @@ async function getAllRevenue() {
     }
 }
 export { getAllRevenue };
-export async function getRevenueSource() {
+ async function getRevenueSource() {
     try {
         const revenueSource = await RevenueSource.find();
         return {
@@ -153,6 +153,7 @@ export async function getRevenueSource() {
         };
     }
 }
+export { getRevenueSource };
 /**
  * Record revenue for a rent payment
  * @param {Object} params - Revenue recording parameters
