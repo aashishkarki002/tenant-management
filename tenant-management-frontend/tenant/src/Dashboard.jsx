@@ -5,7 +5,6 @@ import {
   CardHeader,
   CardTitle,
   CardContent,
-  CardFooter,
 } from "@/components/ui/card";
 import {
   DollarSign,
@@ -22,6 +21,22 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
+import NepaliDate from "nepali-datetime";
+
+/** Format ISO/Date to Nepali YYYY-MMM-DD for display. */
+function formatNepaliDate(dateInput) {
+  if (!dateInput) return "N/A";
+  try {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return "N/A";
+    const str = d.toISOString().split("T")[0];
+    const np = NepaliDate.parseEnglishDate(str, "YYYY-MM-DD");
+    return np.format("YYYY-MMM-DD");
+  } catch {
+    return "N/A";
+  }
+}
+
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -36,13 +51,16 @@ export default function Dashboard() {
     occupancyRate: 0,
     rentSummary: {
       totalCollected: 0,
-      totalDue: 0,
-      totalPending: 0,
+      totalRent: 0,
+      totalOutstanding: 0,
     },
-    totalRentDue: 0,
+    totalRevenue: 0,
     overdueRents: [],
     upcomingRents: [],
     contractsEndingSoon: [],
+    nepaliToday: "",
+    npYear: null,
+    npMonth: null,
   });
 
   useEffect(() => {
@@ -62,7 +80,7 @@ export default function Dashboard() {
     fetchDashboardData();
   }, []);
 
-  // Destructure data from backend
+  // Destructure data from backend (Nepali-date-based)
   const {
     totalTenants,
     tenantsThisMonth,
@@ -70,14 +88,19 @@ export default function Dashboard() {
     occupiedUnits,
     occupancyRate,
     rentSummary,
-    totalRentDue,
+    totalRevenue,
     overdueRents,
     upcomingRents,
     contractsEndingSoon,
+
+    npYear,
+    npMonth,
   } = dashboardData;
 
-  const monthlyRevenue = rentSummary.totalCollected || 0;
-  const totalDue = rentSummary.totalDue || 0;
+  const monthlyRevenue = totalRevenue ?? 0;
+  const totalRent = rentSummary?.totalRent ?? 0;
+  const totalOutstanding = rentSummary?.totalOutstanding ?? 0;
+  const totalRentDue = totalOutstanding;
 
   if (loading) {
     return (
@@ -96,6 +119,7 @@ export default function Dashboard() {
         <p className="text-3xl font-bold">Dashboard</p>
         <p className="text-gray-500 text-xl mt-1">
           Welcome {user?.name || "Admin"}
+          
         </p>
       </div>
 
@@ -112,7 +136,10 @@ export default function Dashboard() {
           <CardContent>
             <p className="text-black text-2xl font-bold">{totalTenants}</p>
             <p className="text-gray-500 text-sm mt-1">
-              +{tenantsThisMonth} this month
+              +{tenantsThisMonth} this Nepali month
+              {npYear != null && npMonth != null && (
+                <span> ({npYear}-{npMonth})</span>
+              )}
             </p>
           </CardContent>
         </Card>
@@ -167,7 +194,7 @@ export default function Dashboard() {
               ₹{monthlyRevenue.toLocaleString()}
             </p>
             <p className="text-gray-500 text-sm mt-1">
-              of ₹{totalDue.toLocaleString()} total
+              of ₹{totalRevenue?.toLocaleString() ?? 0} total
             </p>
           </CardContent>
         </Card>
@@ -243,9 +270,20 @@ export default function Dashboard() {
               <CardContent className="space-y-4">
                 {overdueRents.length > 0 ? (
                   overdueRents.map((rent, idx) => {
-                    const dueDate = new Date(rent.englishDueDate);
-                    const daysOverdue = Math.ceil(
-                      (new Date() - dueDate) / (1000 * 60 * 60 * 24)
+                    const dueDate = rent.nepaliDueDate
+                      ? new Date(rent.nepaliDueDate)
+                      : null;
+                    const daysOverdue = dueDate
+                      ? Math.max(
+                          0,
+                          Math.ceil(
+                            (Date.now() - dueDate.getTime()) /
+                              (1000 * 60 * 60 * 24)
+                          )
+                        )
+                      : 0;
+                    const dueFormatted = formatNepaliDate(
+                      rent.nepaliDueDate || rent.englishDueDate
                     );
                     return (
                       <div
@@ -258,8 +296,8 @@ export default function Dashboard() {
                             Rent Overdue: {rent.tenant?.name || "N/A"}
                           </p>
                           <p className="text-gray-600 text-sm">
-                            ₹{rent.remaining.toLocaleString()} due •{" "}
-                            {daysOverdue} day
+                            ₹{(rent.remaining ?? 0).toLocaleString()} due (BS:{" "}
+                            {dueFormatted}) • {daysOverdue} day
                             {daysOverdue !== 1 ? "s" : ""} overdue
                           </p>
                         </div>
@@ -282,6 +320,21 @@ export default function Dashboard() {
 
                 {upcomingRents.length > 0 &&
                   upcomingRents.map((rent, idx) => {
+                    const dueDate = rent.nepaliDueDate
+                      ? new Date(rent.nepaliDueDate)
+                      : null;
+                    const daysUntilDue = dueDate
+                      ? Math.max(
+                          0,
+                          Math.ceil(
+                            (dueDate.getTime() - Date.now()) /
+                              (1000 * 60 * 60 * 24)
+                          )
+                        )
+                      : 0;
+                    const dueFormatted = formatNepaliDate(
+                      rent.nepaliDueDate || rent.englishDueDate
+                    );
                     return (
                       <div
                         key={rent._id || idx}
@@ -293,9 +346,9 @@ export default function Dashboard() {
                             Rent Due Soon: {rent.tenant?.name || "N/A"}
                           </p>
                           <p className="text-gray-600 text-sm">
-                            ₹{rent.remaining.toLocaleString()} due in{" "}
-                            {rent.daysUntilDue} day
-                            {rent.daysUntilDue !== 1 ? "s" : ""}
+                            ₹{(rent.remaining ?? 0).toLocaleString()} due (BS:{" "}
+                            {dueFormatted}) in {daysUntilDue} day
+                            {daysUntilDue !== 1 ? "s" : ""}
                           </p>
                         </div>
                         <div className="flex items-center">
@@ -368,14 +421,16 @@ export default function Dashboard() {
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-sm text-gray-600">Rent Collection</p>
                     <p className="text-sm font-semibold">
-                      {totalDue > 0
-                        ? Math.round((monthlyRevenue / totalDue) * 100)
+                      {totalRent > 0
+                        ? Math.round((monthlyRevenue / totalRent) * 100)
                         : 0}
                       %
                     </p>
                   </div>
                   <Progress
-                    value={totalDue > 0 ? (monthlyRevenue / totalDue) * 100 : 0}
+                    value={
+                      totalRent > 0 ? (monthlyRevenue / totalRent) * 100 : 0
+                    }
                     className="h-2"
                   />
                 </div>
@@ -417,9 +472,9 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <div className="flex justify-between">
-                    <p className="text-sm text-gray-600">Pending</p>
+                    <p className="text-sm text-gray-600">Outstanding</p>
                     <p className="text-sm font-semibold text-red-600">
-                      ₹{(rentSummary.totalPending || 0).toLocaleString()}
+                      ₹{(totalOutstanding ?? 0).toLocaleString()}
                     </p>
                   </div>
                 </div>

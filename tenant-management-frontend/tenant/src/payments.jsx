@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import api from "../plugins/axios";
 import { useParams } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-
+import { useReactToPrint } from "react-to-print";
 import {
   Building2Icon,
   LightbulbIcon,
@@ -33,7 +33,6 @@ const formatTimeAgo = (date) => {
     return `${Math.floor(diffInSeconds / 3600)} hours ago`;
   return `${Math.floor(diffInSeconds / 86400)} days ago`;
 };
-
 // Helper function to get activity icon
 const getActivityIcon = (activityType) => {
   switch (activityType) {
@@ -65,6 +64,8 @@ const getActivityLabel = (activityType) => {
       return "Email Receipt Sent";
     case "LINK_COPIED":
       return "Payment Link Copied";
+    case "EXPORTED_PDF":
+      return "Page Exported as PDF";
     default:
       return "Activity";
   }
@@ -75,6 +76,7 @@ export default function payments() {
   const [payment, setPayment] = useState(null);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(false);
+  const printRef = useRef();
 
   // Log activity
   const logActivity = useCallback(
@@ -208,11 +210,60 @@ export default function payments() {
       setLoading(false);
     }
   };
+
+  // Export Page as PDF using react-to-print
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `payment-details-${id}`,
+    onBeforeGetContent: () => {
+      // Hide the Quick Actions card before printing
+      const quickActionsCard = document.getElementById('quick-actions-card');
+      if (quickActionsCard) {
+        quickActionsCard.style.display = 'none';
+      }
+      // Ensure ref is ready
+      if (!printRef.current) {
+        return Promise.reject(new Error("Content not ready"));
+      }
+      return Promise.resolve();
+    },
+    onAfterPrint: async () => {
+      // Show the Quick Actions card after printing
+      const quickActionsCard = document.getElementById('quick-actions-card');
+      if (quickActionsCard) {
+        quickActionsCard.style.display = '';
+      }
+      // Log the activity
+      try {
+        await logActivity("EXPORTED_PDF");
+        toast.success("Page printed successfully");
+      } catch (error) {
+        console.error("Error logging activity:", error);
+      }
+    },
+    onPrintError: (error) => {
+      console.error("Error printing:", error);
+      toast.error("Failed to print page");
+    },
+  });
+
+  const handleExportPageAsPDF = () => {
+    if (!printRef.current) {
+      toast.error("Content not ready for printing");
+      return;
+    }
+    if (!payment) {
+      toast.error("Payment data not loaded yet");
+      return;
+    }
+    handlePrint();
+  };
+
   return (
     <>
   <div className="flex flex-col lg:flex-row gap-4 px-2 sm:px-4 lg:px-0">
 
-  <div className="w-full lg:flex-2">
+  <div id="payment-details-container" ref={printRef} className="w-full lg:flex-2">
           <div className="w-full ">
             <Card className="w-full mt-4 sm:mt-6">
               <CardHeader>
@@ -391,7 +442,7 @@ export default function payments() {
             </Card>
           </div>
         </div>
-        <div className="w-full lg:w-1/3">
+        <div id="quick-actions-card" className="w-full lg:w-1/3">
           <Card className="mt-4 sm:mt-6">
             <CardContent className="pt-4 sm:pt-6 px-4 sm:px-6">
               {/* Quick Actions Section */}
@@ -400,7 +451,17 @@ export default function payments() {
                   <Zap className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                   <h3 className="text-base sm:text-lg font-semibold">Quick Actions</h3>
                 </div>
-                <div className="space-y-2 sm:space-y-3">
+                  <div className="space-y-2 sm:space-y-3">
+                  <Button
+    className="w-full justify-start text-xs sm:text-sm"
+    variant="outline"
+    onClick={handleExportPageAsPDF}
+  >
+    <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+    Export Page as PDF
+  </Button>
+  </div>
+                  <div className="space-y-2 sm:space-y-3 mt-2">
                   <Button
                     className="w-full justify-start text-xs sm:text-sm"
                     variant="default"

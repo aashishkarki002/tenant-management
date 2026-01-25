@@ -237,7 +237,7 @@ export default function RentDashboard() {
         note: values.notes || "",
       };
 
-      const response = await api.post("/api/payment/pay-rent", payload);
+      const response = await api.post("/api/payment/pay-rent-and-cam", payload);
       if (response.data.success) {
         toast.success(response.data.message);
         formik.resetForm();
