@@ -2,14 +2,40 @@
 import NepaliDate from "nepali-datetime";
 
 /**
+ * Add N Nepali calendar days to a NepaliDate.
+ * @param {NepaliDate} npDate - NepaliDate to add days to
+ * @param {number} days - Number of Nepali days to add
+ * @returns {NepaliDate} New NepaliDate
+ */
+function addNepaliDays(npDate, days) {
+  const d = new NepaliDate(npDate);
+  let year = d.getYear();
+  let month = d.getMonth();
+  let day = d.getDate();
+  for (let i = 0; i < days; i++) {
+    const maxDay = NepaliDate.getDaysOfMonth(year, month);
+    day += 1;
+    if (day > maxDay) {
+      day = 1;
+      month += 1;
+      if (month > 11) {
+        month = 0;
+        year += 1;
+      }
+    }
+  }
+  return new NepaliDate(year, month, day);
+}
+
+/**
  * @param {number} [year] - Nepali year (optional, defaults to current year)
  * @param {number} [month] - 0-based Nepali month (optional, defaults to current month)
- * @returns {{ firstDay: NepaliDate, reminderDay: NepaliDate, lastDay: NepaliDate }}
+ * @returns {{ firstDay: NepaliDate, reminderDay: NepaliDate, lastDay: NepaliDate, nepaliToday: NepaliDate, firstDayDate: Date, lastDayEndDate: Date, nepaliTodayDate: Date }}
  */
 function getNepaliMonthDates(year, month) {
   const now = new NepaliDate();
   const npYear = year !== undefined ? year : now.getYear();
-  const npMonth0 = month !== undefined ? month : now.getMonth(); // 0-based for nepali date according to nepali calendar api
+  const npMonth0 = month !== undefined ? month : now.getMonth(); // 0-based for nepali calendar api
   const npMonth = npMonth0 + 1; // 1-based for mongoose database
 
   const lastDayNumber = NepaliDate.getDaysOfMonth(npYear, npMonth0);
@@ -20,8 +46,18 @@ function getNepaliMonthDates(year, month) {
   const lastDay = new NepaliDate(npYear, npMonth0, lastDayNumber);
   const reminderDay = new NepaliDate(npYear, npMonth0, reminderDayNumber);
 
+  // Start of current Nepali day (for "today" in Nepali terms)
+  const nepaliToday = new NepaliDate(now.getYear(), now.getMonth(), now.getDate());
+  const nepaliTodayDate = nepaliToday.getDateObject();
+
+  // English Date range for current Nepali month (MongoDB Date queries)
+  const firstDayDate = firstDay.getDateObject();
+  const lastDayEndDate = addNepaliDays(lastDay, 1).getDateObject(); // exclusive end ($lt)
+
   return {
     nepaliDate: now.toString(),
+    nepaliToday,
+    nepaliTodayDate,
     npYear,
     npMonth,
     englishDate: now.formatEnglishDate("YYYY-MM-DD"),
@@ -30,6 +66,8 @@ function getNepaliMonthDates(year, month) {
     firstDay,
     reminderDay,
     lastDay,
+    firstDayDate,
+    lastDayEndDate,
     firstDayEnglish: firstDay.formatEnglishDate("YYYY-MM-DD"),
     reminderDayEnglish: reminderDay.formatEnglishDate("YYYY-MM-DD"),
     lastDayEnglish: lastDay.formatEnglishDate("YYYY-MM-DD"),
@@ -65,4 +103,4 @@ function checkNepaliSpecialDays({ forceTest = false } = {}) {
 }
 
 
-export { getNepaliMonthDates, checkNepaliSpecialDays };
+export { getNepaliMonthDates, checkNepaliSpecialDays, addNepaliDays };

@@ -18,6 +18,8 @@ import ledgerRoute from "./modules/ledger/ledger.route.js";
 import { connectDB } from "./config/db.js";
 import revenueRoute from "./modules/revenue/revenue.route.js";
 import accountingRoute from "./modules/accounting/accounting.route.js";
+import dashboardRoute from "./modules/dashboards/dashboard.route.js";
+import electricityRoute from "./modules/electricity/electricity.route.js";
 // 🚨 Load cron jobs (allow in development for testing)
 try {
   await import("./cron/monthlyRentAndCam.cron.js");
@@ -53,6 +55,8 @@ app.use("/api/payment", paymentRoute);
 app.use("/api/ledger", ledgerRoute);
 app.use("/api/revenue", revenueRoute);
 app.use("/api/accounting", accountingRoute);
+app.use("/api/dashboard", dashboardRoute);
+app.use("/api/electricity", electricityRoute);
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });

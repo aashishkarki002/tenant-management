@@ -2,32 +2,106 @@ import { Revenue } from "./Revenue.Model.js";
 import { RevenueSource } from "./RevenueSource.Model.js";
 import Admin from "../auth/admin.Model.js";
 import mongoose from "mongoose";
- async function createRevenue(revenueData) {
-    try {
-        const { source, amount, date, payerType, tenant, referenceType, referenceId, status, notes, createdBy ,adminId } = revenueData;
-        const revenueSource = await RevenueSource.findById(source);
-        if (!revenueSource) {
-            throw new Error("Revenue source not found");
-        }
-    
-        const existingAdmin = await Admin.findById(createdBy);
-        if (!existingAdmin) {
-            throw new Error("Admin not found");
-        }
-        const revenue = await Revenue.create({ source, amount, date, payerType, tenant, referenceType, referenceId, status, notes, createdBy });
-        return {
-            success: true,
-            message: "Revenue created successfully",
-            data: revenue,
-        };
-    } catch (error) {
-        console.error("Failed to create revenue:", error);
-        return {
-            success: false,
-            message: "Failed to create revenue",
-            error: error.message,
-        };
+import { applyPaymentToBank } from "../banks/bank.domain.js";
+import { createPaymentRecord } from "../payment/payment.domain.js";
+import { buildPaymentPayload } from "../payment/payment.domain.js";
+async function createRevenue(revenueData) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const {
+      source,
+      amount,
+      date,
+      payerType,
+      tenant,
+      referenceType,
+      referenceId,
+      status,
+      notes,
+      createdBy,
+      adminId,
+      nepaliDate,
+      paymentMethod = "bank_transfer",
+      bankAccountId,
+    } = revenueData;
+
+    // Validate revenue source
+    const revenueSource = await RevenueSource.findById(source).session(session);
+    if (!revenueSource) {
+      throw new Error("Revenue source not found");
     }
+
+    // Validate admin
+    const existingAdmin = await Admin.findById(createdBy).session(session);
+    if (!existingAdmin) {
+      throw new Error("Admin not found");
+    }
+
+    // Apply payment to bank (if not cash)
+    const bankAccount = await applyPaymentToBank({
+      paymentMethod,
+      bankAccountId,
+      amount,
+      session,
+    });
+
+    // Build payment payload
+    const paymentPayload = buildPaymentPayload({
+      tenantId: tenant,
+      amount,
+      paymentDate: date,
+      paymentMethod,
+      paymentStatus:   "paid",
+      note: notes,
+      nepaliDate:nepaliDate || date,
+      adminId: createdBy || adminId,
+      bankAccountId: bankAccount?._id || bankAccountId,
+    });
+
+    // Create payment record
+    const payment = await createPaymentRecord(paymentPayload, session);
+
+    // Create revenue record
+    const [revenue] = await Revenue.create(
+      [
+        {
+          source,
+          amount,
+          date,
+          payerType,
+          tenant,
+          referenceType,
+          referenceId,
+          status,
+          notes,
+          createdBy,
+        },
+      ],
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return {
+      success: true,
+      message: "Revenue created successfully",
+      data: revenue,
+      payment,
+      bankAccount,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Failed to create revenue:", error);
+    return {
+      success: false,
+      message: "Failed to create revenue",
+      error: error.message,
+    };
+  }
 }
 export { createRevenue };
 async function getRevenue(revenueId) {
@@ -62,7 +136,23 @@ async function getAllRevenue() {
     }
 }
 export { getAllRevenue };
-
+export async function getRevenueSource() {
+    try {
+        const revenueSource = await RevenueSource.find();
+        return {
+            success: true,
+            message: "Revenue source fetched successfully",
+            data: revenueSource,
+        };
+    } catch (error) {
+        console.error("Failed to get revenue source:", error);
+        return {
+            success: false,
+            message: "Failed to get revenue source",
+            error: error.message,
+        };
+    }
+}
 /**
  * Record revenue for a rent payment
  * @param {Object} params - Revenue recording parameters

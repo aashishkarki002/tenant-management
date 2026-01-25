@@ -15,6 +15,7 @@ const paymentActivitySchema = new mongoose.Schema(
         "SHARED",
         "EMAILED",
         "LINK_COPIED",
+        "EXPORTED_PDF",
       ],
       required: true,
     },

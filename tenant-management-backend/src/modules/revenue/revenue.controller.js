@@ -49,3 +49,18 @@ export async function getAllRevenueController(req, res) {
             message: error.message, });
     }
 }
+export async function getRevenueSourceController(req, res) {
+    try {
+        const result = await getRevenueSource();
+        res.status(200).json({
+            success: result.success,
+            message: result.message,
+            revenueSource: result.data,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+}

@@ -35,7 +35,7 @@ const revenueSchema = new mongoose.Schema(
 
     referenceType: {
       type: String,
-      enum: ["RENT", "PARKING", "AD", "CAM", "MANUAL"],
+      enum: ["RENT", "PARKING", "AD", "CAM", "MANUAL" ],
       default: "MANUAL",
     },
 
