@@ -8,6 +8,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableHeader,
@@ -380,23 +381,23 @@ export default function RentDashboard() {
                                 <DialogTitle className="text-2xl font-bold">
                                   Record Payment
                                 </DialogTitle>
-                                <div className="bg-gray-100 p-4 rounded-md mt-4">
+                                <div className="bg-gray-100 p-4 rounded-md mt-4 flex justify-between items-center">
+                                <div className="flex flex-col gap-2">
                                   <p className="text-gray-500">
-                                    Receiving From:
+                                   Billing Period:
                                   </p>
                                   <p className="text-black font-bold text-xl">
-                                    {rent.tenant?.name || "N/A"}
+                                    {rent.englishMonth || "N/A"} {rent.englishYear || "N/A"}
                                   </p>
-
-                                  <p className="text-gray-500">
-                                    {" "}
-                                    {rent.tenant?.unitNumber
-                                      ? rent.tenant.unitNumber
-                                      : rent.tenant.units
-                                          ?.map((unit) => unit.name)
-                                          .join(", ")}
-                                  </p>
-                                </div>
+                                  </div>
+                                  <div><p className="text-gray-500">Total Due</p><p className="text-black font-bold text-xl">₹{rent.rentAmount?.toLocaleString() || "0"}</p>
+                              
+                                  </div>
+                                  
+                                 
+                                  </div>
+                              
+                               
                                 <div>
                                   <p className="mb-2">Amount Received:</p>
                                   <Input
