@@ -36,6 +36,7 @@ export default function Revenue() {
   const [revenueSource, setRevenueSource] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [tenants, setTenants] = useState([]);
+
   useEffect(() => {
     const getRevenueSource = async () => {
       try {
@@ -51,36 +52,37 @@ export default function Revenue() {
       }
     };
     getRevenueSource();
+  }, []);
+
+  useEffect(() => {
     const getBankAccounts = async () => {
-      const response = await api.get("/api/bank/get-bank-accounts");
-      const data = await response.data;
-      setBankAccounts(data.bankAccounts);
+      try {
+        const response = await api.get("/api/bank/get-bank-accounts");
+        const data = await response.data;
+        setBankAccounts(data.bankAccounts ?? []);
+      } catch (error) {
+        console.error("Error fetching bank accounts:", error);
+        setBankAccounts([]);
+      }
     };
     getBankAccounts();
   }, []);
 
-  const getTenants = async () => {
-    const response = await api.get("/api/tenant/get-tenants");
-    const data = await response.data;
-    setTenants(data.tenants);
-  };
-  getTenants();
-
-  const formik = useFormik({
-    initialValues: {
-      referenceType: "",
-      referenceId: "",
-      amount: "",
-      date: "",
-      notes: "",
-      bankAccount: "",
-      paymentSchedule: "",
-
-    },
-  });
+  useEffect(() => {
+    const getTenants = async () => {
+      try {
+        const response = await api.get("/api/tenant/get-tenants");
+        const data = await response.data;
+        setTenants(data.tenants ?? []);
+      } catch (error) {
+        console.error("Error fetching tenants:", error);
+        setTenants([]);
+      }
+    };
+    getTenants();
+  }, []);
 
   const renderParkingSpot = (spot) => (
-
     <Card key={spot.id} className="mt-4 w-75 ml-4">
       <CardHeader className="flex flex-row items-start justify-between">
         <CarIcon className="w-8 h-8 bg-blue-100 rounded-md text-blue-500 p-2" />
@@ -116,7 +118,6 @@ export default function Revenue() {
     </Card>
   );
 
-  // Render brand deal card
   const renderBrandDeal = (deal) => (
     <Card key={deal.id} className="mt-4 w-75 ml-4">
       <CardHeader className="flex flex-row items-start justify-between">
@@ -169,11 +170,12 @@ export default function Revenue() {
             <TabsTrigger value="brand-deals">Brand Deals</TabsTrigger>
           </TabsList>
 
-          {/* All Streams Tab - Shows both parking and brand deals */}
           <TabsContent value="allstreams">
             <Card>
+              <div className="flex justify-between">
 
-              <div className="flex  justify-between">
+              </div>
+              <div className="flex flex-col gap-4">
                 {parkingSpots.length > 0 && parkingSpots.map(renderParkingSpot)}
                 {brandDeals.length > 0 && brandDeals.map(renderBrandDeal)}
                 {parkingSpots.length === 0 && brandDeals.length === 0 && (
@@ -241,169 +243,20 @@ export default function Revenue() {
                 )}
               </CardContent>
             </Card>
-
           </TabsContent>
         </Tabs>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add New Revenue Stream</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-6 mt-4">
-            {/* Revenue Type Tabs */}
-            <div>
-              <Label className="text-sm font-semibold mb-3 block">REVENUE TYPE:</Label>
-              <Tabs value={revenueType} onValueChange={setRevenueType} className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="parking">Parking Slot</TabsTrigger>
-                  <TabsTrigger value="brand">Brand Deal</TabsTrigger>
-                  <TabsTrigger value="other">Other Services</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="parking">
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold">General Details:</h3>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="title">Tenant ID</Label>
-                      <Select
-                        id="title"
-                        placeholder="Enter Tenant ID"
-                        value={formik.values.tenantId}
-                        onValueChange={(value) => formik.setFieldValue("tenantId", value)}
-                      >
-                        <SelectTrigger id="tenantId" className="w-full">
-                          <SelectValue placeholder="Select Tenant ID" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {tenants.map((tenant) => (
-                            <SelectItem key={tenant._id} value={tenant._id}>{tenant.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="space-y-2 w-1/2">
-                        <Label htmlFor="category">Reference Type</Label>
-                        <Select
-                          value={formik.values.referenceType}
-                          onValueChange={(value) => formik.setFieldValue("referenceType", value)}
-                        >
-                          <SelectTrigger id="category" className="w-full">
-                            <SelectValue placeholder="Select Reference Type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.isArray(revenueSource) && revenueSource.map((source) => (
-                              <SelectItem key={source._id} value={source.name}>{source.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2 w-1/2">
-                        <Label htmlFor="notes">Reference ID</Label>
-                        <Input
-                          id="referenceId"
-                          placeholder="Enter Reference ID"
-                          value={formik.values.referenceId}
-                          onChange={(e) => formik.setFieldValue("referenceId", e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="space-y-2 w-1/2">
-                        <Label htmlFor="incomeAmount">Income Amount</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
-                          <Input
-                            id="incomeAmount"
-                            type="number"
-                            placeholder="0.00"
-                            value={formik.values.amount}
-                            onChange={(e) => formik.setFieldValue("amount", e.target.value)}
-                            className="pl-8"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2 w-1/2"><Label>Bank Account</Label>
-                        <Select
-                          value={formik.values.bankAccount}
-                          onValueChange={(value) => formik.setFieldValue("bankAccount", value)}
-                        >
-                          <SelectTrigger id="bankAccount" className="w-full">
-                            <SelectValue placeholder="Select Bank Account" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="bank_transfer">{bankAccounts.map((bank) => (
-                              <SelectItem key={bank._id} value={bank._id}>{bank.bankName}</SelectItem>
-                            ))}</SelectItem>
-
-                          </SelectContent>
-                        </Select>
-                      </div></div>
-                    <div className="space-y-2">
-                      <Label htmlFor="agreementDuration">Payment Schedule</Label>
-                      <DualCalendarTailwind
-                        value={formik.values.date}
-                        onChange={(englishDate) => {
-                          formik.setFieldValue("date", englishDate);
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="notes">Notes</Label>
-                      <Textarea
-                        id="notes"
-                        placeholder="Enter Notes"
-                        value={formik.values.notes}
-                        onChange={(e) => formik.setFieldValue("notes", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </TabsContent>
-                <TabsContent value="brand">
-                  <div>
-                    <h3>Brand Deal Details</h3>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-            {/* Specific Details: Parking Slot */}
-
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={() => setIsDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="bg-blue-500 text-white hover:bg-blue-600"
-                onClick={() => {
-                  // Handle save logic here
-                  console.log("Form Data:", formData);
-                  setIsDialogOpen(false);
-                  // Reset form
-                  setFormData({
-                    title: "",
-                    category: "monthly",
-                    incomeAmount: "",
-                    agreementDuration: "",
-                    vehicleType: "car",
-                    slotFloor: "",
-                  });
-                }}
-              >
-                <Check className="w-4 h-4 mr-2" />
-                Save Revenue Stream
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AddRevenueDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        tenants={tenants}
+        revenueSource={revenueSource}
+        bankAccounts={bankAccounts}
+        onSuccess={() => {
+          // Optionally refresh lists or show toast
+        }}
+      />
     </>
   );
 }

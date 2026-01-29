@@ -9,7 +9,7 @@ import Dashboard from "./Dashboard";
 import Account from "./Accounts/Account";
 import Electricity from "./Electricity";
 import Revenue from "./Revenue";
-import Maintenance from "./Maintenance";
+import Maintenance from "./Maintenance/Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
 import Payments from "./payments";
 import AddTenants from "./addTenants";
