@@ -6,8 +6,9 @@ const bankAccountSchema = new mongoose.Schema(
     accountName: { type: String, required: true },
     bankName: { type: String, required: true },
     balance: { type: Number, required: true },
+    isDefault: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 export default mongoose.model("BankAccount", bankAccountSchema);

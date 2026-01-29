@@ -1,7 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -20,6 +19,9 @@ import revenueRoute from "./modules/revenue/revenue.route.js";
 import accountingRoute from "./modules/accounting/accounting.route.js";
 import dashboardRoute from "./modules/dashboards/dashboard.route.js";
 import electricityRoute from "./modules/electricity/electricity.route.js";
+import camRoute from "./modules/tenant/cam/cam.route.js";
+import expenseRoute from "./modules/expenses/expense.route.js";
+import maintenanceRoute from "./modules/maintenance/maintenance.route.js";
 // 🚨 Load cron jobs (allow in development for testing)
 try {
   await import("./cron/monthlyRentAndCam.cron.js");
@@ -37,7 +39,7 @@ app.use(
     origin: process.env.FRONTEND_URL ?? false,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  })
+  }),
 );
 
 app.use(cookieParser());
@@ -57,6 +59,9 @@ app.use("/api/revenue", revenueRoute);
 app.use("/api/accounting", accountingRoute);
 app.use("/api/dashboard", dashboardRoute);
 app.use("/api/electricity", electricityRoute);
+app.use("/api/cam", camRoute);
+app.use("/api/expense", expenseRoute);
+app.use("/api/maintenance", maintenanceRoute);
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });

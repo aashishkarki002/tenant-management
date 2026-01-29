@@ -1,7 +1,7 @@
 import { Cam } from "./cam.model.js";
 import { ledgerService } from "../../ledger/ledger.service.js";
 import { getNepaliMonthDates } from "../../../utils/nepaliDateHelper.js";
-import { Tenant } from "../tenant.model.js";
+import { Tenant } from "../Tenant.Model.js";
 import dotenv from "dotenv";
 dotenv.config();
 const ADMIN_ID = process.env.SYSTEM_ADMIN_ID;
@@ -73,6 +73,8 @@ export const handleMonthlyCams = async () => {
       amount: tenant.camCharges,
       year: englishYear,
       month: englishMonth,
+      nepaliDueDate: lastDay,
+      englishDueDate: englishDueDate,
       paidAmount: 0,
       status: "pending",
     }));
@@ -95,3 +97,20 @@ export const handleMonthlyCams = async () => {
         return { success: false, error: error.message };
       }
 }
+
+/**
+ * Fetch all CAMs, optionally filtered by nepaliMonth/nepaliYear.
+ * Populates tenant for frontend matching (tenant + month/year).
+ */
+export const getCams = async (filters = {}) => {
+  const query = {};
+  if (filters.nepaliMonth != null) query.nepaliMonth = filters.nepaliMonth;
+  if (filters.nepaliYear != null) query.nepaliYear = filters.nepaliYear;
+  const cams = await Cam.find(query)
+    .populate("tenant")
+    .populate("property")
+    .populate("block")
+    .populate("innerBlock")
+    .lean();
+  return cams;
+};

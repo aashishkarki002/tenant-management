@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { Account } from "./accounts/Account.Model.js";
 import { Transaction } from "./transactions/Transaction.Model.js";
-import { LedgerEntry } from "./ledger.model.js";
+import { LedgerEntry } from "./Ledger.Model.js";
 import { Rent } from "../rents/rent.Model.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
 import { Cam } from "../tenant/cam/cam.model.js";
@@ -36,24 +36,50 @@ class LedgerService {
   }
   async recordRentCharge(rentId, session = null) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/7243715a-fe6e-4715-bc75-bad5014fb3ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ledger.service.js:35',message:'recordRentCharge called with parameters',data:{rentIdType:typeof rentId,rentIdIsObject:rentId instanceof Object,rentIdValue:rentId?.toString?.()||(JSON.stringify(rentId) ?? 'undefined').substring(0,200),sessionType:typeof session,sessionIsNull:session===null,sessionIsUndefined:typeof session==='undefined'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    fetch("http://127.0.0.1:7242/ingest/7243715a-fe6e-4715-bc75-bad5014fb3ca", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "ledger.service.js:35",
+        message: "recordRentCharge called with parameters",
+        data: {
+          rentIdType: typeof rentId,
+          rentIdIsObject: rentId instanceof Object,
+          rentIdValue:
+            rentId?.toString?.() ||
+            (JSON.stringify(rentId) ?? "undefined").substring(0, 200),
+          sessionType: typeof session,
+          sessionIsNull: session === null,
+          sessionIsUndefined: typeof session === "undefined",
+        },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "run1",
+        hypothesisId: "A,B",
+      }),
+    }).catch(() => {});
     // #endregion
     try {
-     
-      fetch('http://127.0.0.1:7242/ingest/7243715a-fe6e-4715-bc75-bad5014fb3ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ledger.service.js:37',message:'Before Rent.findById call',data:{rentIdType:typeof rentId,rentIdValue:rentId?.toString?.()||(JSON.stringify(rentId) ?? 'undefined').substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      const rent = await Rent.findById(rentId).populate('tenant').populate('property').session(session);
+      const rent = await Rent.findById(rentId)
+        .populate("tenant")
+        .populate("property")
+        .session(session);
       console.log(rent);
       if (!rent) {
         throw new Error("Rent not found");
       }
 
-   
-      const accountsReceivableAccount = await Account.findOne({ code: "1200" }).session(session);
-      const revenueAccount = await Account.findOne({ code: "4000" }).session(session);
+      const accountsReceivableAccount = await Account.findOne({
+        code: "1200",
+      }).session(session);
+      const revenueAccount = await Account.findOne({ code: "4000" }).session(
+        session,
+      );
 
       if (!accountsReceivableAccount) {
-        throw new Error("Account with code 1200 (Accounts Receivable) not found");
+        throw new Error(
+          "Account with code 1200 (Accounts Receivable) not found",
+        );
       }
       if (!revenueAccount) {
         throw new Error("Account with code 4000 (Revenue) not found");
@@ -66,7 +92,7 @@ class LedgerService {
             type: "RENT_CHARGE",
             transactionDate: rent.createdAt,
             nepaliDate: rent.nepaliDate,
-            description: `Rent charge for ${rent.nepaliMonth} ${rent.nepaliYear} of ${rent.tenant?.name || 'Unknown Tenant'}`,
+            description: `Rent charge for ${rent.nepaliMonth} ${rent.nepaliYear} of ${rent.tenant?.name || "Unknown Tenant"}`,
             referenceType: "Rent",
             referenceId: rentId,
             totalAmount: rent.rentAmount,
@@ -74,14 +100,14 @@ class LedgerService {
             status: "POSTED",
           },
         ],
-        { session }
+        { session },
       );
 
       // Create ledger entries
       const ledgerEntries = [];
 
       // Entry 1: Debit Accounts Receivable (1200)
-      const tenantName = rent.tenant?.name || 'Unknown Tenant';
+      const tenantName = rent.tenant?.name || "Unknown Tenant";
       const arEntry = new LedgerEntry({
         transaction: transaction._id,
         account: accountsReceivableAccount._id,
@@ -102,7 +128,7 @@ class LedgerService {
       const arBalanceChange = this.calculateBalanceChange(
         accountsReceivableAccount.type,
         rent.rentAmount, // debitAmount
-        0 // creditAmount
+        0, // creditAmount
       );
       accountsReceivableAccount.currentBalance += arBalanceChange;
       await accountsReceivableAccount.save({ session });
@@ -128,7 +154,7 @@ class LedgerService {
       const revenueBalanceChange = this.calculateBalanceChange(
         revenueAccount.type,
         0, // debitAmount
-        rent.rentAmount // creditAmount
+        rent.rentAmount, // creditAmount
       );
       revenueAccount.currentBalance += revenueBalanceChange;
       await revenueAccount.save({ session });
@@ -141,104 +167,132 @@ class LedgerService {
       };
     } catch (error) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/7243715a-fe6e-4715-bc75-bad5014fb3ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ledger.service.js:82',message:'recordRentCharge error caught',data:{errorName:error.name,errorMessage:error.message,errorStack:error.stack?.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+      fetch(
+        "http://127.0.0.1:7242/ingest/7243715a-fe6e-4715-bc75-bad5014fb3ca",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "ledger.service.js:82",
+            message: "recordRentCharge error caught",
+            data: {
+              errorName: error.name,
+              errorMessage: error.message,
+              errorStack: error.stack?.substring(0, 500),
+            },
+            timestamp: Date.now(),
+            sessionId: "debug-session",
+            runId: "run1",
+            hypothesisId: "A,B",
+          }),
+        },
+      ).catch(() => {});
       // #endregion
       console.error("Failed to record rent charge:", error);
       throw error; // Re-throw to let the transaction rollback
     }
   }
-   /**
+  /**
    * Record CAM charge
    * Called by: CAM Service when creating a CAM charge
    * DR: Accounts Receivable (1200)
    * CR: CAM Revenue (4100)
-   */ 
+   */
   async recordCamCharge(camId, createdBy, session = null) {
-try {
-  const cam = await Cam.findById(camId).populate('tenant').populate('property').session(session);
-  if (!cam) {
-    throw new Error("Cam not found");
-  }
-  const accountsReceivableAccount = await Account.findOne({ code: "1200" }).session(session);
-  const camRevenueAccount = await Account.findOne({ code: "4000" }).session(session);
-  if (!accountsReceivableAccount) {
-    throw new Error("Account with code 1200 (Accounts Receivable) not found");
-  }
-  if (!camRevenueAccount) {
-    throw new Error("Account with code 4000 (CAM Revenue) not found");
-  }
-const [transaction] = await Transaction.create(
-  [
-    {
-      type: "CAM_CHARGE",
-      transactionDate: cam.createdAt,
-      nepaliDate: cam.nepaliDate,
-      description: `CAM charge for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || 'Unknown Tenant'}`,
-      referenceType: "Cam",
-      referenceId: camId,
-      totalAmount: cam.amount,
-      createdBy: createdBy,
-      status: "POSTED",
-    },
-  ],
-  { session }
-);
-const ledgerEntries = [];
-const arEntry = new LedgerEntry({
-  transaction: transaction._id,
-  account: accountsReceivableAccount._id,
-  debitAmount: cam.amount,
-  creditAmount: 0,
-  description: `CAM receivable for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || 'Unknown Tenant'}`,
-  tenant: cam.tenant?._id || cam.tenant,
-  property: cam.property?._id || cam.property,
-  nepaliMonth: cam.nepaliMonth,
-  nepaliYear: cam.nepaliYear,
-  transactionDate: cam.createdAt || new Date(),
-});
-await arEntry.save({ session });
-ledgerEntries.push(arEntry);
+    try {
+      const cam = await Cam.findById(camId)
+        .populate("tenant")
+        .populate("property")
+        .session(session);
+      if (!cam) {
+        throw new Error("Cam not found");
+      }
+      const accountsReceivableAccount = await Account.findOne({
+        code: "1200",
+      }).session(session);
+      const camRevenueAccount = await Account.findOne({ code: "4000" }).session(
+        session,
+      );
+      if (!accountsReceivableAccount) {
+        throw new Error(
+          "Account with code 1200 (Accounts Receivable) not found",
+        );
+      }
+      if (!camRevenueAccount) {
+        throw new Error("Account with code 4000 (CAM Revenue) not found");
+      }
+      const [transaction] = await Transaction.create(
+        [
+          {
+            type: "CAM_CHARGE",
+            transactionDate: cam.createdAt,
+            nepaliDate: cam.nepaliDate,
+            description: `CAM charge for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || "Unknown Tenant"}`,
+            referenceType: "Cam",
+            referenceId: camId,
+            totalAmount: cam.amount,
+            createdBy: createdBy,
+            status: "POSTED",
+          },
+        ],
+        { session },
+      );
+      const ledgerEntries = [];
+      const arEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: accountsReceivableAccount._id,
+        debitAmount: cam.amount,
+        creditAmount: 0,
+        description: `CAM receivable for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || "Unknown Tenant"}`,
+        tenant: cam.tenant?._id || cam.tenant,
+        property: cam.property?._id || cam.property,
+        nepaliMonth: cam.nepaliMonth,
+        nepaliYear: cam.nepaliYear,
+        transactionDate: cam.createdAt || new Date(),
+      });
+      await arEntry.save({ session });
+      ledgerEntries.push(arEntry);
 
-const arBalanceChange = this.calculateBalanceChange(
-  accountsReceivableAccount.type,
-  cam.amount,
-  0
-);
-accountsReceivableAccount.currentBalance += arBalanceChange;
-await accountsReceivableAccount.save({ session });
+      const arBalanceChange = this.calculateBalanceChange(
+        accountsReceivableAccount.type,
+        cam.amount,
+        0,
+      );
+      accountsReceivableAccount.currentBalance += arBalanceChange;
+      await accountsReceivableAccount.save({ session });
 
-const camRevenueEntry = new LedgerEntry({
-  transaction: transaction._id,
-  account: camRevenueAccount._id,
-  debitAmount: 0,
-  creditAmount: cam.amount,
-  description: `CAM income for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || 'Unknown Tenant'}`,
-  tenant: cam.tenant?._id || cam.tenant,
-  property: cam.property?._id || cam.property,
-  nepaliMonth: cam.nepaliMonth,
-  nepaliYear: cam.nepaliYear,
-  transactionDate: cam.createdAt || new Date(),
-});
-await camRevenueEntry.save({ session });
-ledgerEntries.push(camRevenueEntry);
+      const camRevenueEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: camRevenueAccount._id,
+        debitAmount: 0,
+        creditAmount: cam.amount,
+        description: `CAM income for ${cam.nepaliMonth} ${cam.nepaliYear} of ${cam.tenant?.name || "Unknown Tenant"}`,
+        tenant: cam.tenant?._id || cam.tenant,
+        property: cam.property?._id || cam.property,
+        nepaliMonth: cam.nepaliMonth,
+        nepaliYear: cam.nepaliYear,
+        transactionDate: cam.createdAt || new Date(),
+      });
+      await camRevenueEntry.save({ session });
+      ledgerEntries.push(camRevenueEntry);
 
-const camRevenueBalanceChange = this.calculateBalanceChange(
-  camRevenueAccount.type,
-  0,
-  cam.amount
-);
-camRevenueAccount.currentBalance += camRevenueBalanceChange;
-await camRevenueAccount.save({ session });
-return {
-  success: true,
-  message: "CAM charge recorded successfully",
-  transaction: transaction,
-  ledgerEntries: ledgerEntries,
-};
-} catch (error) {
-  console.error("Failed to record CAM charge:", error);
-  throw error;
-}
+      const camRevenueBalanceChange = this.calculateBalanceChange(
+        camRevenueAccount.type,
+        0,
+        cam.amount,
+      );
+      camRevenueAccount.currentBalance += camRevenueBalanceChange;
+      await camRevenueAccount.save({ session });
+      return {
+        success: true,
+        message: "CAM charge recorded successfully",
+        transaction: transaction,
+        ledgerEntries: ledgerEntries,
+      };
+    } catch (error) {
+      console.error("Failed to record CAM charge:", error);
+      throw error;
+    }
   }
 
   /**
@@ -249,23 +303,25 @@ return {
    */
   async recordSecurityDeposit(sdId, createdBy, session = null) {
     try {
-      const sd = await Sd.findById(sdId).populate('tenant').session(session);
+      const sd = await Sd.findById(sdId).populate("tenant").session(session);
       if (!sd) {
         throw new Error("Security Deposit record not found");
       }
 
-      const cashBankAccount = await Account.findOne({ 
-        code: "1000" 
+      const cashBankAccount = await Account.findOne({
+        code: "1000",
       }).session(session);
-      const securityDepositLiabilityAccount = await Account.findOne({ 
-        code: "2100" 
+      const securityDepositLiabilityAccount = await Account.findOne({
+        code: "2100",
       }).session(session);
 
       if (!cashBankAccount) {
         throw new Error("Account with code 1000 (Cash/Bank) not found");
       }
       if (!securityDepositLiabilityAccount) {
-        throw new Error("Account with code 2100 (Security Deposit Liability) not found");
+        throw new Error(
+          "Account with code 2100 (Security Deposit Liability) not found",
+        );
       }
 
       const [transaction] = await Transaction.create(
@@ -282,7 +338,7 @@ return {
             status: "POSTED",
           },
         ],
-        { session }
+        { session },
       );
 
       const ledgerEntries = [];
@@ -305,7 +361,7 @@ return {
       const cashBalanceChange = this.calculateBalanceChange(
         cashBankAccount.type,
         sd.amount,
-        0
+        0,
       );
       cashBankAccount.currentBalance += cashBalanceChange;
       await cashBankAccount.save({ session });
@@ -328,9 +384,10 @@ return {
       const sdLiabilityBalanceChange = this.calculateBalanceChange(
         securityDepositLiabilityAccount.type,
         0,
-        sd.amount
+        sd.amount,
       );
-      securityDepositLiabilityAccount.currentBalance += sdLiabilityBalanceChange;
+      securityDepositLiabilityAccount.currentBalance +=
+        sdLiabilityBalanceChange;
       await securityDepositLiabilityAccount.save({ session });
 
       return {
@@ -349,10 +406,17 @@ return {
     try {
       // Use provided amount or fall back to payment.amount
       const paymentAmount = amount !== null ? amount : payment.amount;
-      
+
       // Ensure rent has tenant populated
-      if (!rent.tenant || typeof rent.tenant === 'string' || !rent.tenant.name) {
-        rent = await Rent.findById(rent._id || rent).populate('tenant').populate('property').session(session);
+      if (
+        !rent.tenant ||
+        typeof rent.tenant === "string" ||
+        !rent.tenant.name
+      ) {
+        rent = await Rent.findById(rent._id || rent)
+          .populate("tenant")
+          .populate("property")
+          .session(session);
         if (!rent) {
           throw new Error("Rent not found");
         }
@@ -373,7 +437,7 @@ return {
         code: cashBankAccountCode,
       }).session(session);
       const revenueAccount = await Account.findOne({ code: "4000" }).session(
-        session
+        session,
       );
 
       if (!cashBankAccount) {
@@ -383,7 +447,7 @@ return {
         throw new Error("Account with code 4000 (Revenue) not found");
       }
 
-      const tenantName = rent.tenant?.name || 'Unknown Tenant';
+      const tenantName = rent.tenant?.name || "Unknown Tenant";
       // Create transaction
       const [transaction] = await Transaction.create(
         [
@@ -399,7 +463,7 @@ return {
             status: "POSTED",
           },
         ],
-        { session }
+        { session },
       );
 
       // Create ledger entries
@@ -450,7 +514,7 @@ return {
         const arBalanceChange = this.calculateBalanceChange(
           accountsReceivableAccount.type,
           0, // debitAmount
-          paymentAmount // creditAmount
+          paymentAmount, // creditAmount
         );
         accountsReceivableAccount.currentBalance += arBalanceChange;
         await accountsReceivableAccount.save({ session });
@@ -475,7 +539,7 @@ return {
         const revenueBalanceChange = this.calculateBalanceChange(
           revenueAccount.type,
           0, // debitAmount
-          paymentAmount // creditAmount
+          paymentAmount, // creditAmount
         );
         revenueAccount.currentBalance += revenueBalanceChange;
         await revenueAccount.save({ session });
@@ -485,7 +549,7 @@ return {
       const cashBankBalanceChange = this.calculateBalanceChange(
         cashBankAccount.type,
         paymentAmount, // debitAmount
-        0 // creditAmount
+        0, // creditAmount
       );
       cashBankAccount.currentBalance += cashBankBalanceChange;
       await cashBankAccount.save({ session });
@@ -511,10 +575,13 @@ return {
     try {
       // Use provided amount or fall back to payment.amount
       const paymentAmount = amount !== null ? amount : payment.amount;
-      
+
       // Ensure cam has tenant populated
-      if (!cam.tenant || typeof cam.tenant === 'string' || !cam.tenant.name) {
-        cam = await Cam.findById(cam._id || cam).populate('tenant').populate('property').session(session);
+      if (!cam.tenant || typeof cam.tenant === "string" || !cam.tenant.name) {
+        cam = await Cam.findById(cam._id || cam)
+          .populate("tenant")
+          .populate("property")
+          .session(session);
         if (!cam) {
           throw new Error("CAM not found");
         }
@@ -531,10 +598,12 @@ return {
         throw new Error("Account with code 1000 (Cash/Bank) not found");
       }
       if (!accountsReceivableAccount) {
-        throw new Error("Account with code 1200 (Accounts Receivable) not found");
+        throw new Error(
+          "Account with code 1200 (Accounts Receivable) not found",
+        );
       }
 
-      const tenantName = cam.tenant?.name || 'Unknown Tenant';
+      const tenantName = cam.tenant?.name || "Unknown Tenant";
       const [transaction] = await Transaction.create(
         [
           {
@@ -549,7 +618,7 @@ return {
             status: "POSTED",
           },
         ],
-        { session }
+        { session },
       );
 
       const ledgerEntries = [];
@@ -572,7 +641,7 @@ return {
       const cashBalanceChange = this.calculateBalanceChange(
         cashBankAccount.type,
         paymentAmount,
-        0
+        0,
       );
       cashBankAccount.currentBalance += cashBalanceChange;
       await cashBankAccount.save({ session });
@@ -595,7 +664,7 @@ return {
       const arBalanceChange = this.calculateBalanceChange(
         accountsReceivableAccount.type,
         0,
-        paymentAmount
+        paymentAmount,
       );
       accountsReceivableAccount.currentBalance += arBalanceChange;
       await accountsReceivableAccount.save({ session });
@@ -621,21 +690,153 @@ return {
       throw error;
     }
   }
+  async recordExpense(expense, session = null) {
+    try {
+      const expenseAmount = expense.amount;
+      const expenseCode = expense.expenseCode;
+
+      // Resolve payment account
+      let cashBankAccountCode = "1000"; // bank
+      // if (expense.paymentMethod === "cash") cashBankAccountCode = "1100";
+
+      const cashBankAccount = await Account.findOne({
+        code: cashBankAccountCode,
+      }).session(session);
+
+      if (!cashBankAccount) {
+        throw new Error(`Account ${cashBankAccountCode} not found`);
+      }
+
+      // Resolve expense account based on type
+      let expenseAccountCode = expenseCode; // default expense
+
+      switch (expense.referenceType) {
+        case "UTILITY":
+          expenseAccountCode = "5100";
+          break;
+        case "MAINTENANCE":
+          expenseAccountCode = "5000";
+          break;
+        case "INSURANCE":
+          expenseAccountCode = "5300";
+          break;
+      }
+
+      const expenseAccount = await Account.findOne({
+        code: expenseAccountCode,
+      }).session(session);
+
+      if (!expenseAccount) {
+        throw new Error(`Expense account ${expenseAccountCode} not found`);
+      }
+
+      // Accounts Payable (optional)
+      const accountsPayableAccount = await Account.findOne({
+        code: "2000",
+      }).session(session);
+
+      // Create transaction
+      const [transaction] = await Transaction.create(
+        [
+          {
+            type: "EXPENSE",
+            transactionDate: expense.nepaliDate,
+            nepaliDate: expense.nepaliDate,
+            description: expense.notes || "Expense recorded",
+            referenceType: "Expense",
+            referenceId: expense._id,
+            totalAmount: expenseAmount,
+            createdBy: expense.createdBy,
+            status: "POSTED",
+          },
+        ],
+        { session },
+      );
+
+      const ledgerEntries = [];
+
+      // Entry 1: Debit Expense
+      const expenseEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: expenseAccount._id,
+        debitAmount: expenseAmount,
+        creditAmount: 0,
+        description: transaction.description,
+        tenant: expense.tenant,
+        property: expense.property,
+        nepaliMonth: expense.nepaliMonth,
+        nepaliYear: expense.nepaliYear,
+        transactionDate: expense.nepaliDate,
+      });
+      await expenseEntry.save({ session });
+      ledgerEntries.push(expenseEntry);
+
+      // Entry 2: Credit Cash OR Accounts Payable
+      const creditAccount =
+        expense.status === "UNPAID" && accountsPayableAccount
+          ? accountsPayableAccount
+          : cashBankAccount;
+
+      const creditEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: creditAccount._id,
+        debitAmount: 0,
+        creditAmount: expenseAmount,
+        description: transaction.description,
+        tenant: expense.tenant,
+        property: expense.property,
+        nepaliMonth: expense.nepaliMonth,
+        nepaliYear: expense.nepaliYear,
+        transactionDate: expense.nepaliDate,
+      });
+      await creditEntry.save({ session });
+      ledgerEntries.push(creditEntry);
+
+      // Update Expense balance (debit increases expense)
+      const expenseBalanceChange = this.calculateBalanceChange(
+        expenseAccount.type,
+        expenseAmount,
+        0,
+      );
+      expenseAccount.currentBalance += expenseBalanceChange;
+      await expenseAccount.save({ session });
+
+      // Update credit account balance
+      const creditBalanceChange = this.calculateBalanceChange(
+        creditAccount.type,
+        0,
+        expenseAmount,
+      );
+      creditAccount.currentBalance += creditBalanceChange;
+      await creditAccount.save({ session });
+
+      return {
+        success: true,
+        message: "Expense recorded successfully",
+        transaction,
+        ledgerEntries,
+      };
+    } catch (error) {
+      console.error("Failed to record expense:", error);
+      throw error;
+    }
+  }
+
   async createTransaction(transactionData) {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
       const totalDebit = transactionData.entries.reduce(
         (sum, e) => sum + e.debit,
-        0
+        0,
       );
       const totalCredit = transactionData.entries.reduce(
         (sum, e) => sum + e.credit,
-        0
+        0,
       );
       if (Math.abs(totalDebit - totalCredit) > 0.01) {
         throw new Error(
-          `Transaction doesnt balance:${totalDebit - totalCredit}`
+          `Transaction doesnt balance:${totalDebit - totalCredit}`,
         );
       }
       const [transaction] = await Transaction.create(
@@ -652,7 +853,7 @@ return {
             createdBy: transactionData.createdBy,
           },
         ],
-        { session }
+        { session },
       );
       const ledgerEntries = [];
       for (const entry of transactionData.entries) {
@@ -679,7 +880,7 @@ return {
               transactionDate: transactionData.transactionDate,
             },
           ],
-          { session }
+          { session },
         );
 
         ledgerEntries.push(ledgerEntry[0]);
@@ -688,7 +889,7 @@ return {
         const balanceChange = this.calculateBalanceChange(
           account.type,
           entry.debit || 0,
-          entry.credit || 0
+          entry.credit || 0,
         );
         account.currentBalance += balanceChange;
         await account.save({ session });
@@ -704,11 +905,11 @@ return {
       session.endSession();
     }
   }
- async getLedger(filters = {}) {
-  try {
-    const query = {};
-       // Filter by tenant
-       if (filters.tenantId) {
+  async getLedger(filters = {}) {
+    try {
+      const query = {};
+      // Filter by tenant
+      if (filters.tenantId) {
         query.tenant = filters.tenantId;
       }
 
@@ -716,8 +917,6 @@ return {
       if (filters.propertyId) {
         query.property = filters.propertyId;
       }
-
-     
 
       // Filter by English date range
       if (filters.startDate || filters.endDate) {
@@ -750,12 +949,12 @@ return {
         }
       }
       const entries = await LedgerEntry.find(query)
-      .populate("account", "code name type")
-      .populate("transaction", "type description transactionDate nepaliDate")
-      .populate("tenant", "name email phone")
-      .populate("property", "name address")
-      .sort({ transactionDate: 1, createdAt: 1 })
-      .lean();
+        .populate("account", "code name type")
+        .populate("transaction", "type description transactionDate nepaliDate")
+        .populate("tenant", "name email phone")
+        .populate("property", "name address")
+        .sort({ transactionDate: 1, createdAt: 1 })
+        .lean();
       let runningBalance = 0;
       const statement = entries.map((entry) => {
         runningBalance += entry.debitAmount - entry.creditAmount;
@@ -774,7 +973,7 @@ return {
           tenant: entry.tenant,
           property: entry.property,
           transaction: entry.transaction,
-          createdAt: entry.createdAt
+          createdAt: entry.createdAt,
         };
       });
       const totalDebit = entries.reduce((sum, e) => sum + e.debitAmount, 0);
@@ -785,99 +984,94 @@ return {
           totalEntries: statement.length,
           totalDebit,
           totalCredit,
-          netBalance: totalDebit - totalCredit
+          netBalance: totalDebit - totalCredit,
         },
-        filters
+        filters,
       };
-  }
- catch (error) {
-    console.error("Failed to get ledger:", error);
-    throw error;
-  }
-}
-async getLedgerSummary(filters = {}) {
-  try {
-    const query = {};
-
-    // Apply filters
-    if (filters.tenantId) query.tenant = filters.tenantId;
-    if (filters.nepaliYear) query.nepaliYear = filters.nepaliYear;
-    
-    if (filters.quarter) {
-      const monthsInQuarter = getMonthsInQuarter(parseInt(filters.quarter));
-      if (Array.isArray(monthsInQuarter) && monthsInQuarter.length) {
-        query.nepaliMonth = { $in: monthsInQuarter };
-      }
+    } catch (error) {
+      console.error("Failed to get ledger:", error);
+      throw error;
     }
-
-    if (filters.startDate || filters.endDate) {
-      query.transactionDate = {};
-      if (filters.startDate) {
-        query.transactionDate.$gte = new Date(filters.startDate);
-      }
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        query.transactionDate.$lte = end;
-      }
-    }
-
-    const summary = await LedgerEntry.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: "$account",
-          totalDebit: { $sum: "$debitAmount" },
-          totalCredit: { $sum: "$creditAmount" },
-          entryCount: { $sum: 1 }
-        }
-      },
-      {
-        $lookup: {
-          from: "accounts",
-          localField: "_id",
-          foreignField: "_id",
-          as: "accountDetails"
-        }
-      },
-      {
-        $unwind: "$accountDetails"
-      },
-      {
-        $project: {
-          accountCode: "$accountDetails.code",
-          accountName: "$accountDetails.name",
-          accountType: "$accountDetails.type",
-          totalDebit: 1,
-          totalCredit: 1,
-          netBalance: { $subtract: ["$totalDebit", "$totalCredit"] },
-          entryCount: 1
-        }
-      },
-      {
-        $sort: { accountCode: 1 }
-      }
-    ]);
-
-    const grandTotal = {
-      totalDebit: summary.reduce((sum, acc) => sum + acc.totalDebit, 0),
-      totalCredit: summary.reduce((sum, acc) => sum + acc.totalCredit, 0),
-      totalEntries: summary.reduce((sum, acc) => sum + acc.entryCount, 0)
-    };
-
-    return {
-      accounts: summary,
-      grandTotal,
-      filters
-    };
-  } catch (error) {
-    console.error("Failed to get ledger summary:", error);
-    throw error;
   }
-}
+  async getLedgerSummary(filters = {}) {
+    try {
+      const query = {};
 
+      // Apply filters
+      if (filters.tenantId) query.tenant = filters.tenantId;
+      if (filters.nepaliYear) query.nepaliYear = filters.nepaliYear;
 
+      if (filters.quarter) {
+        const monthsInQuarter = getMonthsInQuarter(parseInt(filters.quarter));
+        if (Array.isArray(monthsInQuarter) && monthsInQuarter.length) {
+          query.nepaliMonth = { $in: monthsInQuarter };
+        }
+      }
 
+      if (filters.startDate || filters.endDate) {
+        query.transactionDate = {};
+        if (filters.startDate) {
+          query.transactionDate.$gte = new Date(filters.startDate);
+        }
+        if (filters.endDate) {
+          const end = new Date(filters.endDate);
+          end.setHours(23, 59, 59, 999);
+          query.transactionDate.$lte = end;
+        }
+      }
 
+      const summary = await LedgerEntry.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: "$account",
+            totalDebit: { $sum: "$debitAmount" },
+            totalCredit: { $sum: "$creditAmount" },
+            entryCount: { $sum: 1 },
+          },
+        },
+        {
+          $lookup: {
+            from: "accounts",
+            localField: "_id",
+            foreignField: "_id",
+            as: "accountDetails",
+          },
+        },
+        {
+          $unwind: "$accountDetails",
+        },
+        {
+          $project: {
+            accountCode: "$accountDetails.code",
+            accountName: "$accountDetails.name",
+            accountType: "$accountDetails.type",
+            totalDebit: 1,
+            totalCredit: 1,
+            netBalance: { $subtract: ["$totalDebit", "$totalCredit"] },
+            entryCount: 1,
+          },
+        },
+        {
+          $sort: { accountCode: 1 },
+        },
+      ]);
+
+      const grandTotal = {
+        totalDebit: summary.reduce((sum, acc) => sum + acc.totalDebit, 0),
+        totalCredit: summary.reduce((sum, acc) => sum + acc.totalCredit, 0),
+        totalEntries: summary.reduce((sum, acc) => sum + acc.entryCount, 0),
+      };
+
+      return {
+        accounts: summary,
+        grandTotal,
+        filters,
+      };
+    } catch (error) {
+      console.error("Failed to get ledger summary:", error);
+      throw error;
+    }
+  }
 }
 export const ledgerService = new LedgerService();

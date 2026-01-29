@@ -91,15 +91,24 @@ export async function getAccountingSummary({
 
   const accounts = ledgerSummary.accounts || [];
   const byType = (type) =>
-    accounts.filter((acc) => acc.accountType === type || acc.accountDetails?.type === type);
-  const sumNet = (list) => list.reduce((sum, acc) => sum + (acc.netBalance || 0), 0);
+    accounts.filter(
+      (acc) => acc.accountType === type || acc.accountDetails?.type === type,
+    );
+  const sumNet = (list) =>
+    list.reduce((sum, acc) => sum + (acc.netBalance || 0), 0);
 
   const expenseAccounts = byType("EXPENSE");
   const totalExpenses = sumNet(expenseAccounts);
 
   // Totals derived from models
-  const totalRevenue = revenueAggregation.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
-  const totalLiabilities = liabilityAggregation.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
+  const totalRevenue = revenueAggregation.reduce(
+    (sum, item) => sum + (item.totalAmount || 0),
+    0,
+  );
+  const totalLiabilities = liabilityAggregation.reduce(
+    (sum, item) => sum + (item.totalAmount || 0),
+    0,
+  );
 
   const netCashFlow = totalRevenue - totalExpenses;
 
@@ -129,13 +138,24 @@ export async function getAccountingSummary({
       streams[key] = (streams[key] || 0) + amount;
       return streams;
     },
-    { breakdown: [] }
+    { breakdown: [] },
   );
 
   const liabilitiesBreakdown = liabilityAggregation.map((item) => ({
     code: item.code,
     name: item.name || item.code || "liability",
     amount: Math.abs(item.totalAmount || 0),
+  }));
+
+  // Build dynamic expense breakdown from ledger summary accounts
+  // `expenseAccounts` items come from ledgerService.getLedgerSummary and have:
+  // - accountCode
+  // - accountName
+  // - accountType
+  const expensesBreakdown = expenseAccounts.map((item) => ({
+    code: item.accountCode,
+    name: item.accountName || item.accountCode || "expense",
+    amount: Math.abs(item.netBalance || 0),
   }));
 
   return {
@@ -148,6 +168,6 @@ export async function getAccountingSummary({
     incomeStreams,
     liabilitiesBreakdown,
     ledger: ledgerSummary,
+    expensesBreakdown,
   };
 }
-

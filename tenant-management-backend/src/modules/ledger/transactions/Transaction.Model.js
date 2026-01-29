@@ -23,7 +23,10 @@ const transactionSchema = new mongoose.Schema(
         "OTHER_INCOME",
         "OTHER_EXPENSE",
         "ADJUSTMENT",
+        "ELECTRICITY_CHARGE",
+        "ELECTRICITY_PAYMENT",
         "CAM_PAYMENT_RECEIVED",
+        "EXPENSE",
       ],
       required: true,
     },
@@ -46,7 +49,9 @@ const transactionSchema = new mongoose.Schema(
         "Payment",
         "Maintenance",
         "Revenue",
+        "Expense",
         "Adjustment",
+        "Electricity",
         "Other",
       ],
       required: true,
@@ -76,7 +81,7 @@ const transactionSchema = new mongoose.Schema(
       type: String,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 transactionSchema.index({ transactionDate: 1, type: 1 });
