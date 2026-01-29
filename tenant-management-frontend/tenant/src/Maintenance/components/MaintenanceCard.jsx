@@ -1,14 +1,26 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { ChevronUp, ChevronDown, User } from 'lucide-react';
-import api from '../../../../plugins/axios';
-import { toast } from 'sonner';
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+    Select,
+    SelectTrigger,
+    SelectValue,
+    SelectContent,
+    SelectItem,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ChevronUp, ChevronDown, User } from "lucide-react";
+import api from "../../../plugins/axios";
+import { toast } from "sonner";
 
 export default function MaintenanceCard({
     maintenanceItem,
@@ -18,107 +30,106 @@ export default function MaintenanceCard({
     formatStatus,
     formatDate,
     workOrderId,
-    onUpdate
+    onUpdate,
 }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [pendingStatus, setPendingStatus] = useState(null);
+
     const [formData, setFormData] = useState({
-        status: maintenanceItem.status || 'OPEN',
-        paymentStatus: maintenanceItem.paymentStatus || 'pending',
-        paidAmount: maintenanceItem.paidAmount?.toString() || '0'
+        paymentStatus: maintenanceItem.paymentStatus || "pending",
+        paidAmount: maintenanceItem.paidAmount?.toString() || "0",
     });
 
-    // Sync form data when maintenanceItem changes
     useEffect(() => {
         setFormData({
-            status: maintenanceItem.status || 'OPEN',
-            paymentStatus: maintenanceItem.paymentStatus || 'pending',
-            paidAmount: maintenanceItem.paidAmount?.toString() || '0'
+            paymentStatus: maintenanceItem.paymentStatus || "pending",
+            paidAmount: maintenanceItem.paidAmount?.toString() || "0",
         });
     }, [maintenanceItem]);
 
-    const handleStatusSelect = (newStatus) => {
-        if (!newStatus || newStatus === maintenanceItem.status) {
+    /* ---------------- STATUS CHANGE HANDLER ---------------- */
+
+    const handleStatusSelect = async (newStatus) => {
+        if (newStatus === maintenanceItem.status) return;
+
+        if (newStatus === "COMPLETED") {
+            setPendingStatus("COMPLETED");
+            setIsDialogOpen(true);
             return;
         }
 
-        setFormData(prev => ({ ...prev, status: newStatus }));
-
-        // Delay dialog opening to allow Select to close properly
-        setTimeout(() => {
-            setIsDialogOpen(true);
-        }, 100);
-    };
-
-    const handleDialogClose = () => {
-        // Reset form data to original values
-        setFormData({
-            status: maintenanceItem.status || 'OPEN',
-            paymentStatus: maintenanceItem.paymentStatus || 'pending',
-            paidAmount: maintenanceItem.paidAmount?.toString() || '0'
-        });
-        setIsDialogOpen(false);
-    };
-
-    const handleSubmit = async () => {
+        // instant update for other statuses
         try {
-            const response = await api.patch(`/api/maintenance/${maintenanceItem._id}/status`, {
-                status: formData.status,
-                paymentStatus: formData.paymentStatus,
-                paidAmount: parseFloat(formData.paidAmount) || 0
+            await api.patch(`/api/maintenance/${maintenanceItem._id}/status`, {
+                status: newStatus,
             });
-
-            if (response.data.success) {
-                toast.success("Status and payment information updated successfully");
-                setIsDialogOpen(false);
-
-                if (onUpdate) {
-                    onUpdate();
-                } else {
-                    window.location.reload();
-                }
-            } else {
-                toast.error("Failed to update status");
-            }
-        } catch (error) {
-            console.error("Error updating status:", error);
-            toast.error(error.response?.data?.message || "Failed to update status");
+            toast.success("Status updated");
+            onUpdate?.();
+        } catch (err) {
+            toast.error("Failed to update status");
         }
     };
 
-    const updateFormField = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+    /* ---------------- COMPLETE WITH PAYMENT ---------------- */
+
+    const handleCompleteSubmit = async () => {
+        try {
+            await api.patch(`/api/maintenance/${maintenanceItem._id}/status`, {
+                status: "COMPLETED",
+                paymentStatus: formData.paymentStatus,
+                paidAmount: Number(formData.paidAmount),
+            });
+
+            toast.success("Work order completed");
+            setIsDialogOpen(false);
+            setPendingStatus(null);
+            onUpdate?.();
+        } catch (err) {
+            toast.error("Failed to complete work order");
+        }
     };
+
+    const handleDialogClose = () => {
+        setIsDialogOpen(false);
+        setPendingStatus(null);
+    };
+
+    const updateFormField = (field, value) => {
+        setFormData((prev) => ({ ...prev, [field]: value }));
+    };
+
+    /* ---------------- UI ---------------- */
 
     return (
         <>
-            {/* Status Update Dialog */}
+            {/* PAYMENT CONFIRMATION DIALOG */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="bg-white text-black sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle className="text-xl font-semibold">
-                            Update Status & Payment
+                        <DialogTitle className="text-lg font-semibold">
+                            Complete Work Order
                         </DialogTitle>
+                        <p className="text-sm text-gray-500">
+                            Confirm payment details before marking this task as completed.
+                        </p>
                     </DialogHeader>
 
                     <div className="space-y-4 py-4">
                         {/* Payment Status */}
                         <div className="space-y-2">
-                            <Label htmlFor="payment-status" className="text-sm font-medium">
-                                Payment Status
-                            </Label>
+                            <Label>Payment Status</Label>
                             <Select
                                 value={formData.paymentStatus}
-                                onValueChange={(value) => updateFormField('paymentStatus', value)}
+                                onValueChange={(v) => updateFormField("paymentStatus", v)}
                             >
-                                <SelectTrigger
-                                    id="payment-status"
-                                    className="bg-white text-black border-gray-300"
-                                >
-                                    <SelectValue placeholder="Select payment status" />
+                                <SelectTrigger className="bg-white border-gray-300">
+                                    <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent className="bg-white text-black">
+                                <SelectContent>
                                     <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="partially_paid">Partially Paid</SelectItem>
+                                    <SelectItem value="partially_paid">
+                                        Partially Paid
+                                    </SelectItem>
                                     <SelectItem value="paid">Paid</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -126,180 +137,129 @@ export default function MaintenanceCard({
 
                         {/* Paid Amount */}
                         <div className="space-y-2">
-                            <Label htmlFor="paid-amount" className="text-sm font-medium">
-                                Paid Amount (₹)
-                            </Label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                                    ₹
-                                </span>
-                                <Input
-                                    id="paid-amount"
-                                    type="number"
-                                    value={formData.paidAmount}
-                                    onChange={(e) => updateFormField('paidAmount', e.target.value)}
-                                    className="bg-white text-black border-gray-300 pl-8"
-                                    placeholder="0.00"
-                                    min="0"
-                                    step="0.01"
-                                />
-                            </div>
+                            <Label>Paid Amount (₹)</Label>
+                            <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={formData.paidAmount}
+                                disabled={formData.paymentStatus === "pending"}
+                                onChange={(e) =>
+                                    updateFormField("paidAmount", e.target.value)
+                                }
+                            />
                         </div>
                     </div>
 
-                    <DialogFooter className="gap-2 sm:gap-0">
+                    <DialogFooter>
                         <Button
-                            type="button"
+                            variant="outline"
                             onClick={handleDialogClose}
-                            className="bg-gray-200 text-black hover:bg-gray-300"
                         >
                             Cancel
                         </Button>
                         <Button
-                            type="button"
-                            onClick={handleSubmit}
-                            className="bg-blue-600 text-white hover:bg-blue-700"
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            onClick={handleCompleteSubmit}
                         >
-                            Update
+                            Complete
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* Main Card */}
-            <Card className="border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            {/* MAIN CARD */}
+            <Card className="border border-gray-200 hover:shadow-md transition">
                 <CardContent className="p-4">
-                    {/* Main Row */}
                     <div className="flex items-center gap-4">
-                        {/* Work Order Description */}
-                        <div className="flex-1 min-w-0">
-                            <h3 className="text-base font-semibold text-gray-900 leading-tight">
-                                {maintenanceItem.title || 'Maintenance Task'}
+                        {/* Title */}
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900">
+                                {maintenanceItem.title}
                             </h3>
-                            <p className="text-sm text-gray-500 mt-0.5 leading-tight">
-                                {workOrderId}
-                            </p>
+                            <p className="text-sm text-gray-500">{workOrderId}</p>
                         </div>
 
-                        {/* Priority Badge */}
+                        {/* Priority */}
                         {maintenanceItem.priority && (
-                            <div className="shrink-0">
-                                <Badge
-                                    className={`${getPriorityStyle(maintenanceItem.priority)} rounded-md px-3 py-1.5 text-xs font-semibold uppercase`}
-                                >
-                                    {maintenanceItem.priority}
-                                </Badge>
-                            </div>
+                            <Badge
+                                className={`${getPriorityStyle(
+                                    maintenanceItem.priority
+                                )} uppercase`}
+                            >
+                                {maintenanceItem.priority}
+                            </Badge>
                         )}
 
-                        {/* Unit and Tenant Information */}
-                        <div className="shrink-0 min-w-[140px]">
-                            <p className="text-base text-gray-900 font-medium leading-tight">
-                                {maintenanceItem.unit?._id}
-                            </p>
-                            <p className="text-sm text-gray-500 mt-0.5 leading-tight">
-                                {maintenanceItem.tenant?._id}
-                            </p>
-                        </div>
-
-                        {/* Vendor Information */}
-                        <div className="flex items-center gap-2 shrink-0 min-w-[160px]">
-                            <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+                        {/* Vendor */}
+                        <div className="flex items-center gap-2 min-w-[160px]">
+                            <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
                                 <User className="w-4 h-4 text-teal-600" />
                             </div>
-                            <p className="text-base text-gray-900 truncate">
-                                {maintenanceItem.assignedTo?.name || 'Unassigned'}
-                            </p>
+                            <span className="truncate">
+                                {maintenanceItem.assignedTo?.name || "Unassigned"}
+                            </span>
                         </div>
 
-                        {/* Status Dropdown */}
-                        <div className="shrink-0 min-w-[140px]">
-                            <Select
-                                value={formData.status}
-                                onValueChange={handleStatusSelect}
-                            >
-                                <SelectTrigger className="bg-blue-600 text-white border-blue-600 hover:bg-blue-700 rounded-md h-9">
-                                    <SelectValue>
-                                        {formatStatus(formData.status)}
-                                    </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent className="bg-white text-black">
-                                    <SelectItem value="OPEN">Open</SelectItem>
-                                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                                    <SelectItem value="COMPLETED">Completed</SelectItem>
-                                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        {/* Status */}
+                        <Select
+                            value={maintenanceItem.status}
+                            onValueChange={handleStatusSelect}
+                        >
+                            <SelectTrigger className="bg-blue-600 text-white">
+                                <SelectValue>
+                                    {formatStatus(maintenanceItem.status)}
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="OPEN">Open</SelectItem>
+                                <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                                <SelectItem value="COMPLETED">Completed</SelectItem>
+                                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                            </SelectContent>
+                        </Select>
 
-                        {/* Expand/Collapse Button */}
+                        {/* Expand */}
                         <Button
                             variant="ghost"
-                            size="sm"
-                            className="shrink-0 h-8 w-8 p-0"
+                            size="icon"
                             onClick={toggleExpand}
                         >
-                            {isExpanded ? (
-                                <ChevronUp className="w-4 h-4 text-gray-500" />
-                            ) : (
-                                <ChevronDown className="w-4 h-4 text-gray-500" />
-                            )}
+                            {isExpanded ? <ChevronUp /> : <ChevronDown />}
                         </Button>
                     </div>
 
-                    {/* Expanded Section */}
+                    {/* EXPANDED DETAILS */}
                     {isExpanded && (
-                        <div className="mt-4 pt-4 border-t border-gray-200">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-1">Scheduled Date</p>
-                                    <p className="text-sm text-gray-900">
-                                        {formatDate(maintenanceItem.scheduledDate)}
-                                    </p>
+                        <div className="mt-4 pt-4 border-t grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <Info label="Scheduled Date" value={formatDate(maintenanceItem.scheduledDate)} />
+                            <Info label="Type" value={maintenanceItem.type} />
+                            <Info label="Amount" value={`₹${maintenanceItem.amount || 0}`} />
+                            <Info label="Paid" value={`₹${maintenanceItem.paidAmount || 0}`} />
+                            <Info
+                                label="Payment Status"
+                                value={maintenanceItem.paymentStatus?.replace("_", " ")}
+                            />
+                            {maintenanceItem.description && (
+                                <div className="col-span-2 md:col-span-4">
+                                    <p className="text-xs text-gray-500">Description</p>
+                                    <p>{maintenanceItem.description}</p>
                                 </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-1">Type</p>
-                                    <p className="text-sm text-gray-900">
-                                        {maintenanceItem.type || 'N/A'}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-1">Amount</p>
-                                    <p className="text-sm text-gray-900">
-                                        ₹{maintenanceItem.amount || 0}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-1">Paid Amount</p>
-                                    <p className="text-sm text-gray-900">
-                                        ₹{maintenanceItem.paidAmount || 0}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-1">Payment Status</p>
-                                    <p className="text-sm text-gray-900 capitalize">
-                                        {maintenanceItem.paymentStatus?.replace('_', ' ') || 'N/A'}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-1">Last Paid By</p>
-                                    <p className="text-sm text-gray-900">
-                                        {maintenanceItem.lastPaidBy?.name || 'N/A'}
-                                    </p>
-                                </div>
-                                {maintenanceItem.description && (
-                                    <div className="col-span-2 md:col-span-4">
-                                        <p className="text-xs text-gray-500 mb-1">Description</p>
-                                        <p className="text-sm text-gray-900">
-                                            {maintenanceItem.description}
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
+                            )}
                         </div>
                     )}
                 </CardContent>
             </Card>
         </>
+    );
+}
+
+/* --------- SMALL HELPER --------- */
+function Info({ label, value }) {
+    return (
+        <div>
+            <p className="text-xs text-gray-500">{label}</p>
+            <p className="text-sm">{value || "N/A"}</p>
+        </div>
     );
 }

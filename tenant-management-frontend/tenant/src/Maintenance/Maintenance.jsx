@@ -4,9 +4,7 @@ import { Plus, Search, User, ArrowRight, X, Circle, ChevronDown, ChevronUp } fro
 import { Calendar } from 'lucide-react';
 import { List } from 'lucide-react';
 import { Filter } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Clock } from 'lucide-react';
+import MaintenanceCard from './components/MaintenanceCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -529,118 +527,20 @@ export default function Maintenance() {
           };
 
           return (
-            <Card key={maintenanceItem._id} className='mt-5 bg-white border border-gray-200 shadow-sm'>
-              <CardContent className='p-4'>
-                {/* Main Row - Matching Image Layout */}
-                <div className='flex items-center gap-6'>
-                  {/* Work Order Description - Left */}
-                  <div className='flex-1 min-w-[220px]'>
-                    <h3 className='text-base font-medium text-gray-900 leading-tight'>
-                      {maintenanceItem.title || 'Maintenance Task'}
-                    </h3>
-                    <p className='text-sm text-gray-500 mt-0.5'>{workOrderId}</p>
-                  </div>
-
-                  {/* Priority Badge */}
-                  {maintenanceItem.priority && (
-                    <div className='shrink-0'>
-                      <Badge className={`${getPriorityStyle(maintenanceItem.priority)} rounded-md px-3 py-1.5 text-xs font-semibold uppercase`}>
-                        {maintenanceItem.priority}
-                      </Badge>
-                    </div>
-                  )}
-
-                  {/* Unit and Tenant Information */}
-                  <div className='shrink-0 min-w-[140px]'>
-                    <p className='text-base text-gray-900 font-medium leading-tight'>
-                      {maintenanceItem.unit?._id}
-                    </p>
-                    <p className='text-sm text-gray-500 mt-0.5 leading-tight'>
-                      {maintenanceItem.tenant?._id}
-                    </p>
-                  </div>
-
-                  {/* Vendor Information with Icon */}
-                  <div className='flex items-center gap-2 shrink-0 min-w-[160px]'>
-                    <div className='w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center shrink-0'>
-                      <User className='w-4 h-4 text-teal-600' />
-                    </div>
-                    <p className='text-base text-gray-900 truncate'>
-                      {maintenanceItem.assignedTo?.name || 'Unassigned'}
-                    </p>
-                  </div>
-
-                  {/* Status Dropdown - Right */}
-                  <div className='shrink-0 min-w-[140px]'>
-                    <Select value={maintenanceItem.status || 'OPEN'}>
-                      <SelectTrigger className='bg-blue-600 text-white border-blue-600 hover:bg-blue-700 rounded-md h-9'>
-                        <SelectValue>
-                          {formatStatus(maintenanceItem.status || 'OPEN')}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className='bg-white text-black'>
-                        <SelectItem value='OPEN'>Open</SelectItem>
-                        <SelectItem value='IN_PROGRESS'>In Progress</SelectItem>
-                        <SelectItem value='COMPLETED'>Completed</SelectItem>
-                        <SelectItem value='CANCELLED'>Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Expand/Collapse Button for Additional Info */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className='shrink-0 h-8 w-8 p-0'
-                    onClick={toggleExpand}
-                  >
-                    {isExpanded ? (
-                      <ChevronUp className='w-4 h-4 text-gray-500' />
-                    ) : (
-                      <ChevronDown className='w-4 h-4 text-gray-500' />
-                    )}
-                  </Button>
-                </div>
-
-                {/* Expanded Section - All Additional API Data */}
-                {isExpanded && (
-                  <div className='mt-4 pt-4 border-t border-gray-200'>
-                    <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-                      <div>
-                        <p className='text-xs text-gray-500 mb-1'>Scheduled Date</p>
-                        <p className='text-sm text-gray-900'>{formatDate(maintenanceItem.scheduledDate)}</p>
-                      </div>
-                      <div>
-                        <p className='text-xs text-gray-500 mb-1'>Type</p>
-                        <p className='text-sm text-gray-900'>{maintenanceItem.type || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <p className='text-xs text-gray-500 mb-1'>Amount</p>
-                        <p className='text-sm text-gray-900'>₹{maintenanceItem.amount || 0}</p>
-                      </div>
-                      <div>
-                        <p className='text-xs text-gray-500 mb-1'>Paid Amount</p>
-                        <p className='text-sm text-gray-900'>₹{maintenanceItem.paidAmount || 0}</p>
-                      </div>
-                      <div>
-                        <p className='text-xs text-gray-500 mb-1'>Payment Status</p>
-                        <p className='text-sm text-gray-900 capitalize'>{maintenanceItem.paymentStatus || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <p className='text-xs text-gray-500 mb-1'>Last Paid By</p>
-                        <p className='text-sm text-gray-900'>{maintenanceItem.lastPaidBy?.name || 'N/A'}</p>
-                      </div>
-                      {maintenanceItem.description && (
-                        <div className='col-span-2'>
-                          <p className='text-xs text-gray-500 mb-1'>Description</p>
-                          <p className='text-sm text-gray-900'>{maintenanceItem.description}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <MaintenanceCard
+              key={maintenanceItem._id}
+              maintenanceItem={maintenanceItem}
+              isExpanded={isExpanded}
+              toggleExpand={toggleExpand}
+              getPriorityStyle={getPriorityStyle}
+              formatStatus={formatStatus}
+              formatDate={formatDate}
+              workOrderId={workOrderId}
+              onUpdate={async () => {
+                const response = await api.get("/api/maintenance/all");
+                setMaintenance(response.data.maintenance);
+              }}
+            />
           );
         })}
       </div>
