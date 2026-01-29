@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
 import NepaliDate from "nepali-datetime";
+import { toNepaliDate } from "../utils/formatNepali";
 
 /** Format ISO/Date to Nepali YYYY-MMM-DD for display. */
 function formatNepaliDate(dateInput) {
@@ -92,6 +93,7 @@ export default function Dashboard() {
     overdueRents,
     upcomingRents,
     contractsEndingSoon,
+    maintenance,
 
     npYear,
     npMonth,
@@ -119,7 +121,7 @@ export default function Dashboard() {
         <p className="text-3xl font-bold">Dashboard</p>
         <p className="text-gray-500 text-xl mt-1">
           Welcome {user?.name || "Admin"}
-          
+
         </p>
       </div>
 
@@ -275,12 +277,12 @@ export default function Dashboard() {
                       : null;
                     const daysOverdue = dueDate
                       ? Math.max(
-                          0,
-                          Math.ceil(
-                            (Date.now() - dueDate.getTime()) /
-                              (1000 * 60 * 60 * 24)
-                          )
+                        0,
+                        Math.ceil(
+                          (Date.now() - dueDate.getTime()) /
+                          (1000 * 60 * 60 * 24)
                         )
+                      )
                       : 0;
                     const dueFormatted = formatNepaliDate(
                       rent.nepaliDueDate || rent.englishDueDate
@@ -325,12 +327,12 @@ export default function Dashboard() {
                       : null;
                     const daysUntilDue = dueDate
                       ? Math.max(
-                          0,
-                          Math.ceil(
-                            (dueDate.getTime() - Date.now()) /
-                              (1000 * 60 * 60 * 24)
-                          )
+                        0,
+                        Math.ceil(
+                          (dueDate.getTime() - Date.now()) /
+                          (1000 * 60 * 60 * 24)
                         )
+                      )
                       : 0;
                     const dueFormatted = formatNepaliDate(
                       rent.nepaliDueDate || rent.englishDueDate
@@ -399,6 +401,37 @@ export default function Dashboard() {
                       No upcoming deadlines
                     </p>
                   )}
+                {maintenance.filter((maintenance) => maintenance.status === "OPEN").length > 0 &&
+                  maintenance.filter((maintenance) => maintenance.status === "OPEN").map((maintenance, idx) => {
+                    return (
+                      <div key={maintenance._id || idx} className="flex gap-3 bg-green-50 p-4 rounded-md border border-green-200">
+                        <WrenchIcon className="w-10 h-10 text-green-500 shrink-0" />
+                        <div className="flex flex-col gap-1 flex-1">
+                          <p className="text-black text-sm font-semibold">
+                            Maintenance: {maintenance.title}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            {maintenance.description}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            Scheduled: {toNepaliDate(maintenance.scheduledDate)}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            Status: {maintenance.status}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            Priority: {maintenance.priority}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            Type: {maintenance.type}
+                          </p>
+                          <p className="text-gray-600 text-sm">
+                            Amount: {maintenance.amount}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
               </CardContent>
             </Card>
           </div>

@@ -1,6 +1,6 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
-import { House, Search } from "lucide-react";
+import { Send, House, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
@@ -37,7 +37,7 @@ export default function Tenants() {
 
   const navigate = useNavigate();
 
-  const fetchProperties = async () => { 
+  const fetchProperties = async () => {
     try {
       const response = await api.get("/api/property/get-property");
       const data = await response.data;
@@ -246,44 +246,44 @@ export default function Tenants() {
                   properties.flatMap((property) =>
                     property.blocks && property.blocks.length > 0
                       ? property.blocks.map((block) => (
-                              <DropdownMenuSub key={block._id}>
-                            <DropdownMenuSubTrigger
-                              className="w-full text-left"
+                        <DropdownMenuSub key={block._id}>
+                          <DropdownMenuSubTrigger
+                            className="w-full text-left"
+                          >
+                            {block.name || `Block ${block._id}`}
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent className="w-full sm:w-56">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedBlock(block);
+                                setSelectedInnerBlock(null);
+                              }}
                             >
-                              {block.name || `Block ${block._id}`}
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="w-full sm:w-56">
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedBlock(block);
-                                  setSelectedInnerBlock(null);
-                                }}
-                              >
-                                All units in {block.name || `Block ${block._id}`}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {block.innerBlocks &&
+                              All units in {block.name || `Block ${block._id}`}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {block.innerBlocks &&
                               block.innerBlocks.length > 0 ? (
-                                block.innerBlocks.map((innerBlock) => (
-                                  <DropdownMenuItem
-                                    key={innerBlock._id}
-                                    onClick={() => {
-                                      setSelectedBlock(block);
-                                      setSelectedInnerBlock(innerBlock);
-                                    }}
-                                  >
-                                    {innerBlock.name ||
-                                      `Inner Block ${innerBlock._id}`}
-                                  </DropdownMenuItem>
-                                ))
-                              ) : (
-                                <DropdownMenuItem disabled>
-                                  No inner blocks
+                              block.innerBlocks.map((innerBlock) => (
+                                <DropdownMenuItem
+                                  key={innerBlock._id}
+                                  onClick={() => {
+                                    setSelectedBlock(block);
+                                    setSelectedInnerBlock(innerBlock);
+                                  }}
+                                >
+                                  {innerBlock.name ||
+                                    `Inner Block ${innerBlock._id}`}
                                 </DropdownMenuItem>
-                              )}
-                            </DropdownMenuSubContent>
-                          </DropdownMenuSub>
-                        ))
+                              ))
+                            ) : (
+                              <DropdownMenuItem disabled>
+                                No inner blocks
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                      ))
                       : []
                   )
                 ) : (
@@ -295,7 +295,19 @@ export default function Tenants() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-
+        <div className="w-full sm:w-auto">
+          <Button className="bg-blue-600 text-blue-50 h-10 px-4 rounded-md hover:bg-blue-800 flex 
+           items-center gap-2 w-full sm:w-auto justify-center
+           cursor-pointer
+           "
+            onClick={() => {
+              navigate("/tenant/send-message");
+            }}
+          >
+            <Send className="w-5 h-5" />
+            Send Message
+          </Button>
+        </div>
         {/* Add Tenant Button */}
         <div className="w-full sm:w-auto">
           <Button
@@ -311,6 +323,7 @@ export default function Tenants() {
             Add new Tenant
           </Button>
         </div>
+
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ">

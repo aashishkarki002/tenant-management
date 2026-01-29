@@ -95,8 +95,7 @@ useEffect(() => {
       notes: "",
       bankAccount: "",
       paymentSchedule: "",
-      notes: "",
-      notes: "",
+ 
     },
   });
 

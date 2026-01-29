@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { FieldGroup } from "@/components/ui/field";
 import { toast } from "sonner";
-
+import { Label } from "@/components/ui/label";
 export default function Admin() {
   const usemobile = useIsMobile();
   const { user } = useAuth();
@@ -52,8 +52,11 @@ export default function Admin() {
       address: "",
       company: "",
     },
-    onSubmit: (values) => {
-      console.log(values);
+    onSubmit: async (values) => {
+      const res = await api.patch("/api/admin/update-admin", values);
+      if (res.data.success) {
+        toast.success(res.data.message);
+      }
     },
   });
   const [bankAccounts, setBankAccounts] = useState([]);
@@ -389,6 +392,18 @@ export default function Admin() {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">
+                          Want to make this account default?
+                        </label>
+                        <Input
+                          type="checkbox"
+                          placeholder="Default Account"
+                          value={bankAccountFormik.values.isDefault}
+                          onChange={bankAccountFormik.handleChange}
+                          name="isDefault"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700">
                           Bank Name
                         </label>
                         <Input
@@ -473,6 +488,18 @@ export default function Admin() {
                           value={bankAccountFormik.values.bankName}
                           onChange={bankAccountFormik.handleChange}
                           name="bankName"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-slate-700">
+                          Want to make this account default?
+                        </Label>
+                        <Input
+                          type="checkbox"
+                          placeholder="Default Account"
+                          value={bankAccountFormik.values.isDefault}
+                          onChange={bankAccountFormik.handleChange}
+                          name="isDefault"
                         />
                       </div>
                     </FieldGroup>

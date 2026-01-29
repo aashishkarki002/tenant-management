@@ -7,6 +7,7 @@ import {
   Wrench,
   Banknote,
   Zap,
+  CreditCard,
 } from "lucide-react";
 
 import {
@@ -42,6 +43,7 @@ const items = [
   { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
   { title: "Accounting", url: "/accounting", icon: FileText },
   { title: "Revenue Streams", url: "/revenue", icon: BarChart },
+  { title: "Expenses", url: "/expenses", icon: CreditCard },
   { title: "Maintenance", url: "/maintenance", icon: Wrench },
   { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
   { title: "Electricity", url: "/electricity", icon: Zap },

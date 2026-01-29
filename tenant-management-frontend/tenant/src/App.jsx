@@ -1,25 +1,25 @@
 import { Routes, Route, useLocation } from "react-router-dom";
 import Signup from "./Signup";
 import Login from "./Login";
-import { Toaster } from "@/components/ui/sonner";
-import Home from "./Home";
+
 import AppLayout from "./components/layout/Applayout";
 import Tenants from "./tenants";
 import Dashboard from "./Dashboard";
-import Rent_Payment from "./Rent_Payment";
-import Accounting from "./Accounting";
+
+import Account from "./Accounts/Account";
 import Electricity from "./Electricity";
 import Revenue from "./Revenue";
 import Maintenance from "./Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
 import Payments from "./payments";
 import AddTenants from "./addTenants";
-import Demo from "./demo";
+
 import VerifyEmail from "./verify_email";
 import EditTenant from "./editTenant";
 import Admin from "./Admin";
 import ProtectedRoutes from "./protectedRoutes";
 import Test from "./test";
+import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail";
 export default function App() {
   const location = useLocation();
@@ -59,7 +59,7 @@ export default function App() {
         path="/rent-payment"
         element={
           <ProtectedRoutes>
-            <Rent_Payment />
+            <RentPayment />
           </ProtectedRoutes>
         }
       />
@@ -67,7 +67,7 @@ export default function App() {
         path="/accounting"
         element={
           <ProtectedRoutes>
-            <Accounting />
+            <Account />
           </ProtectedRoutes>
         }
       />
@@ -112,14 +112,7 @@ export default function App() {
           </ProtectedRoutes>
         }
       />
-      <Route
-        path="/demo"
-        element={
-          <ProtectedRoutes>
-            <Demo />
-          </ProtectedRoutes>
-        }
-      />
+
       <Route
         path="/verify-email"
         element={
