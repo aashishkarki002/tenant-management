@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import NepaliDate from "nepali-datetime";
 import { Account } from "./accounts/Account.Model.js";
 import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
@@ -690,6 +691,117 @@ class LedgerService {
       throw error;
     }
   }
+
+  /**
+   * Record revenue received in ledger (manual or external payer).
+   * DR: Cash/Bank (1000), CR: Revenue (4000).
+   * @param {Object} params
+   * @param {number} params.amount - Amount received
+   * @param {Date} params.paymentDate - Payment date
+   * @param {Date} [params.nepaliDate] - Nepali date (optional, used for nepaliMonth/nepaliYear)
+   * @param {string} params.description - Transaction description (e.g. "Revenue from {payer name}")
+   * @param {ObjectId} params.referenceId - Revenue document _id
+   * @param {ObjectId} params.createdBy - Admin _id
+   * @param {ClientSession} [params.session] - MongoDB session
+   * @returns {{ transaction, ledgerEntries }}
+   */
+  async recordRevenueReceived(
+    { amount, paymentDate, nepaliDate, description, referenceId, createdBy },
+    session = null,
+  ) {
+    try {
+      const dateForNepali = nepaliDate || paymentDate || new Date();
+      const np = new NepaliDate(dateForNepali);
+      const nepaliMonth = np.getMonth() + 1; // 1-based for ledger
+      const nepaliYear = np.getYear();
+
+      const cashBankAccount = await Account.findOne({ code: "1000" }).session(
+        session,
+      );
+      const revenueAccount = await Account.findOne({ code: "4000" }).session(
+        session,
+      );
+
+      if (!cashBankAccount) {
+        throw new Error("Account with code 1000 (Cash/Bank) not found");
+      }
+      if (!revenueAccount) {
+        throw new Error("Account with code 4000 (Revenue) not found");
+      }
+
+      const [transaction] = await Transaction.create(
+        [
+          {
+            type: "OTHER_INCOME",
+            transactionDate: paymentDate || new Date(),
+            nepaliDate: dateForNepali,
+            description,
+            referenceType: "Revenue",
+            referenceId,
+            totalAmount: amount,
+            createdBy,
+            status: "POSTED",
+          },
+        ],
+        { session },
+      );
+
+      const ledgerEntries = [];
+
+      const cashBankEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: cashBankAccount._id,
+        debitAmount: amount,
+        creditAmount: 0,
+        description,
+        nepaliMonth,
+        nepaliYear,
+        transactionDate: paymentDate || new Date(),
+      });
+      await cashBankEntry.save({ session });
+      ledgerEntries.push(cashBankEntry);
+
+      const revenueEntry = new LedgerEntry({
+        transaction: transaction._id,
+        account: revenueAccount._id,
+        debitAmount: 0,
+        creditAmount: amount,
+        description,
+        nepaliMonth,
+        nepaliYear,
+        transactionDate: paymentDate || new Date(),
+      });
+      await revenueEntry.save({ session });
+      ledgerEntries.push(revenueEntry);
+
+      const cashBankBalanceChange = this.calculateBalanceChange(
+        cashBankAccount.type,
+        amount,
+        0,
+      );
+      cashBankAccount.currentBalance += cashBankBalanceChange;
+      await cashBankAccount.save({ session });
+
+      const revenueBalanceChange = this.calculateBalanceChange(
+        revenueAccount.type,
+        0,
+        amount,
+      );
+      revenueAccount.currentBalance += revenueBalanceChange;
+      await revenueAccount.save({ session });
+
+      return {
+        success: true,
+        message: "Revenue recorded in ledger",
+        transaction,
+        ledgerEntries,
+      };
+    } catch (error) {
+      console.error("Failed to record revenue in ledger:", error);
+      throw error;
+    }
+  }
+
   async recordExpense(expense, session = null) {
     try {
       const expenseAmount = expense.amount;

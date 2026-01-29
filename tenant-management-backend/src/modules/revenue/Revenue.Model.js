@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+
 const revenueSchema = new mongoose.Schema(
   {
     source: {
@@ -25,6 +26,7 @@ const revenueSchema = new mongoose.Schema(
       required: true,
     },
 
+    // For tenant payments
     tenant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Tenant",
@@ -33,9 +35,30 @@ const revenueSchema = new mongoose.Schema(
       },
     },
 
+    // For external payments
+    externalPayer: {
+      name: {
+        type: String,
+        required: function () {
+          return this.payerType === "EXTERNAL";
+        },
+        trim: true,
+      },
+      type: {
+        type: String,
+        enum: ["PERSON", "COMPANY"],
+        required: function () {
+          return this.payerType === "EXTERNAL";
+        },
+      },
+      contact: {
+        type: String, // phone / email (optional)
+      },
+    },
+
     referenceType: {
       type: String,
-      enum: ["RENT", "PARKING", "AD", "CAM", "MANUAL" ],
+      enum: ["RENT", "PARKING", "AD", "CAM", "MANUAL"],
       default: "MANUAL",
     },
 
@@ -60,6 +83,7 @@ const revenueSchema = new mongoose.Schema(
       required: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
 export const Revenue = mongoose.model("Revenue", revenueSchema);

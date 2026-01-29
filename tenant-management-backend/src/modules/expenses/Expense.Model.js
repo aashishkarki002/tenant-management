@@ -45,20 +45,15 @@ const expenseSchema = new mongoose.Schema(
     },
     referenceType: {
       type: String,
-      enum: [
-        "MAINTENANCE",
-        "UTILITY",
-        "SALARY",
-    
-        "MANUAL",
-      ],
+      enum: ["MAINTENANCE", "UTILITY", "SALARY", "MANUAL"],
       default: "MANUAL",
     },
     referenceId: {
       type: mongoose.Schema.Types.ObjectId,
       required: function () {
-        return ["MAINTENANCE", "UTILITY", "SALARY"]
-          .includes(this.referenceType);
+        return ["MAINTENANCE", "UTILITY", "SALARY"].includes(
+          this.referenceType,
+        );
       },
     },
     status: {
@@ -70,13 +65,17 @@ const expenseSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    expenseCode: {
+      type: String,
+      trim: true,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
       required: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // indexes
@@ -88,7 +87,6 @@ expenseSchema.pre("validate", function () {
   if (this.payeeType === "EXTERNAL") {
     this.tenant = undefined;
   }
- 
 });
 
 export const Expense = mongoose.model("Expense", expenseSchema);

@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { Payment } from "./payment.model.js";
+import { ExternalPayment } from "./externalPayment.model.js";
 
 /**
  * Merge rent and CAM payment payloads into a single payment payload
@@ -16,7 +17,8 @@ export function mergePaymentPayloads(rentPayload, camPayload) {
       paymentDate: rentPayload.paymentDate || camPayload.paymentDate,
       nepaliDate: rentPayload.nepaliDate || camPayload.nepaliDate,
       paymentMethod: rentPayload.paymentMethod || camPayload.paymentMethod,
-      paymentStatus: rentPayload.paymentStatus || camPayload.paymentStatus || "paid",
+      paymentStatus:
+        rentPayload.paymentStatus || camPayload.paymentStatus || "paid",
       note: rentPayload.note || camPayload.note,
       createdBy: rentPayload.createdBy || camPayload.createdBy,
       rent: rentPayload.rent || null,
@@ -29,17 +31,17 @@ export function mergePaymentPayloads(rentPayload, camPayload) {
       receivedBy: rentPayload.receivedBy || camPayload.receivedBy || null,
     };
   }
-  
+
   // If only rent exists
   if (rentPayload) {
     return rentPayload;
   }
-  
+
   // If only CAM exists
   if (camPayload) {
     return camPayload;
   }
-  
+
   throw new Error("At least one payload (rent or CAM) must be provided");
 }
 
@@ -53,7 +55,7 @@ export function buildPaymentPayload({
   note,
   adminId,
   bankAccountId,
-  receivedBy, 
+  receivedBy,
   rent,
   cam,
   allocations,
@@ -162,8 +164,47 @@ export function buildCamPaymentPayload({
   return payload;
 }
 
+/**
+ * Build payload for external (non-tenant) payment record
+ * @param {Object} params
+ * @param {string} params.payerName - External payer's name
+ * @param {number} params.amount - Payment amount
+ * @param {Date} params.paymentDate - Payment date
+ * @param {Object} params.other - Optional: nepaliDate, paymentMethod, paymentStatus, bankAccountId, note, adminId
+ * @returns {Object} External payment payload
+ */
+export function buildExternalPaymentPayload({
+  payerName,
+  amount,
+  paymentDate,
+  nepaliDate,
+  paymentMethod = "bank_transfer",
+  paymentStatus = "paid",
+  bankAccountId,
+  note,
+  adminId,
+}) {
+  const payload = {
+    payerName,
+    amount,
+    paymentDate,
+    paymentMethod,
+    paymentStatus,
+    note: note || undefined,
+    createdBy: adminId ? new mongoose.Types.ObjectId(adminId) : undefined,
+  };
+  if (nepaliDate) payload.nepaliDate = nepaliDate;
+  if (bankAccountId) payload.bankAccount = bankAccountId;
+  return payload;
+}
+
 export async function createPaymentRecord(paymentPayload, session) {
   const [payment] = await Payment.create([paymentPayload], { session });
+  return payment;
+}
+
+export async function createExternalPaymentRecord(paymentPayload, session) {
+  const [payment] = await ExternalPayment.create([paymentPayload], { session });
   return payment;
 }
 
@@ -189,7 +230,10 @@ export function validateCamAllocation(camAllocation) {
   }
 
   if (!camAllocation.camId) {
-    return { isValid: false, error: "CAM ID is required when CAM allocation is provided" };
+    return {
+      isValid: false,
+      error: "CAM ID is required when CAM allocation is provided",
+    };
   }
 
   if (!mongoose.Types.ObjectId.isValid(camAllocation.camId)) {
@@ -212,10 +256,10 @@ export function getPaymentType(allocations) {
   const hasRent = allocations?.rent?.rentId && allocations?.rent?.amount > 0;
   const hasCam = allocations?.cam?.camId && allocations?.cam?.paidAmount > 0;
 
-  if (hasRent && hasCam) return 'both';
-  if (hasRent) return 'rent_only';
-  if (hasCam) return 'cam_only';
-  return 'none';
+  if (hasRent && hasCam) return "both";
+  if (hasRent) return "rent_only";
+  if (hasCam) return "cam_only";
+  return "none";
 }
 
 /**
@@ -241,7 +285,8 @@ export function prepareCamDataForReceipt(cam) {
     "Chaitra",
   ];
 
-  const monthName = nepaliMonths[cam.nepaliMonth - 1] || `Month ${cam.nepaliMonth}`;
+  const monthName =
+    nepaliMonths[cam.nepaliMonth - 1] || `Month ${cam.nepaliMonth}`;
   const paidFor = `${monthName} ${cam.nepaliYear}`;
 
   return {
@@ -262,13 +307,19 @@ export function prepareCamDataForReceipt(cam) {
  */
 export function validatePaymentAllocations(allocations) {
   if (!allocations || (!allocations.rent && !allocations.cam)) {
-    return { isValid: false, error: "At least one allocation (rent or CAM) is required" };
+    return {
+      isValid: false,
+      error: "At least one allocation (rent or CAM) is required",
+    };
   }
 
   // Validate rent allocation if present
   if (allocations.rent) {
     if (!allocations.rent.rentId) {
-      return { isValid: false, error: "Rent ID is required when rent allocation is provided" };
+      return {
+        isValid: false,
+        error: "Rent ID is required when rent allocation is provided",
+      };
     }
     if (!mongoose.Types.ObjectId.isValid(allocations.rent.rentId)) {
       return { isValid: false, error: "Invalid rent ID format" };
@@ -286,4 +337,3 @@ export function validatePaymentAllocations(allocations) {
 
   return { isValid: true };
 }
-  

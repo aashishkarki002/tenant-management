@@ -3,8 +3,14 @@ import { RevenueSource } from "./RevenueSource.Model.js";
 import Admin from "../auth/admin.Model.js";
 import mongoose from "mongoose";
 import { applyPaymentToBank } from "../banks/bank.domain.js";
-import { createPaymentRecord } from "../payment/payment.domain.js";
-import { buildPaymentPayload } from "../payment/payment.domain.js";
+import {
+  createExternalPaymentRecord,
+  createPaymentRecord,
+  buildPaymentPayload,
+  buildExternalPaymentPayload,
+} from "../payment/payment.domain.js";
+import { ledgerService } from "../ledger/ledger.service.js";
+
 async function createRevenue(revenueData) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -13,12 +19,13 @@ async function createRevenue(revenueData) {
     const {
       source,
       amount,
-      date,
+      date = new Date(),
       payerType,
       tenant,
-      referenceType,
+      externalPayer,
+      referenceType = "MANUAL",
       referenceId,
-      status,
+      status = "RECORDED",
       notes,
       createdBy,
       adminId,
@@ -27,19 +34,42 @@ async function createRevenue(revenueData) {
       bankAccountId,
     } = revenueData;
 
-    // Validate revenue source
+    /* ----------------------------------
+       BASIC VALIDATIONS
+    ---------------------------------- */
+
+    if (!source) throw new Error("Revenue source is required");
+    if (!amount || amount <= 0) throw new Error("Valid amount is required");
+    if (!payerType) throw new Error("payerType is required");
+
+    if (payerType === "TENANT" && !tenant) {
+      throw new Error("Tenant is required for TENANT revenue");
+    }
+
+    if (payerType === "EXTERNAL") {
+      if (!externalPayer?.name || !externalPayer?.type) {
+        throw new Error("External payer name and type are required");
+      }
+    }
+
+    /* ----------------------------------
+       VALIDATE REFERENCES
+    ---------------------------------- */
+
     const revenueSource = await RevenueSource.findById(source).session(session);
     if (!revenueSource) {
       throw new Error("Revenue source not found");
     }
 
-    // Validate admin
-    const existingAdmin = await Admin.findById(createdBy).session(session);
-    if (!existingAdmin) {
+    const admin = await Admin.findById(createdBy || adminId).session(session);
+    if (!admin) {
       throw new Error("Admin not found");
     }
 
-    // Apply payment to bank (if not cash)
+    /* ----------------------------------
+       APPLY PAYMENT TO BANK
+    ---------------------------------- */
+
     const bankAccount = await applyPaymentToBank({
       paymentMethod,
       bankAccountId,
@@ -47,23 +77,45 @@ async function createRevenue(revenueData) {
       session,
     });
 
-    // Build payment payload
-    const paymentPayload = buildPaymentPayload({
-      tenantId: tenant,
-      amount,
-      paymentDate: date,
-      paymentMethod,
-      paymentStatus:   "paid",
-      note: notes,
-      nepaliDate:nepaliDate || date,
-      adminId: createdBy || adminId,
-      bankAccountId: bankAccount?._id || bankAccountId,
-    });
+    /* ----------------------------------
+       CREATE PAYMENT (TENANT ONLY)
+    ---------------------------------- */
 
-    // Create payment record
-    const payment = await createPaymentRecord(paymentPayload, session);
+    let payment = null;
 
-    // Create revenue record
+    if (payerType === "TENANT") {
+      const paymentPayload = buildPaymentPayload({
+        tenantId: tenant,
+        amount,
+        paymentDate: date,
+        paymentMethod,
+        paymentStatus: "paid",
+        note: notes,
+        nepaliDate: nepaliDate || date,
+        adminId: createdBy || adminId,
+        bankAccountId: bankAccount?._id || bankAccountId,
+      });
+
+      payment = await createPaymentRecord(paymentPayload, session);
+    } else if (payerType === "EXTERNAL") {
+      const externalPayload = buildExternalPaymentPayload({
+        payerName: externalPayer.name,
+        amount,
+        paymentDate: date,
+        nepaliDate: nepaliDate || date,
+        paymentMethod,
+        paymentStatus: "paid",
+        bankAccountId: bankAccount?._id || bankAccountId,
+        note: notes,
+        adminId: createdBy || adminId,
+      });
+      payment = await createExternalPaymentRecord(externalPayload, session);
+    }
+
+    /* ----------------------------------
+       CREATE REVENUE
+    ---------------------------------- */
+
     const [revenue] = await Revenue.create(
       [
         {
@@ -71,16 +123,40 @@ async function createRevenue(revenueData) {
           amount,
           date,
           payerType,
-          tenant,
+          tenant: payerType === "TENANT" ? tenant : undefined,
+          externalPayer: payerType === "EXTERNAL" ? externalPayer : undefined,
           referenceType,
           referenceId,
           status,
           notes,
-          createdBy,
+          createdBy: createdBy || adminId,
         },
       ],
-      { session }
+      { session },
     );
+
+    /* ----------------------------------
+       RECORD IN LEDGER (DR Cash/Bank, CR Revenue)
+    ---------------------------------- */
+    const ledgerDescription =
+      payerType === "EXTERNAL"
+        ? `Revenue from ${externalPayer.name}`
+        : "Manual revenue received";
+    await ledgerService.recordRevenueReceived(
+      {
+        amount,
+        paymentDate: date,
+        nepaliDate: nepaliDate || date,
+        description: ledgerDescription,
+        referenceId: revenue._id,
+        createdBy: createdBy || adminId,
+      },
+      session,
+    );
+
+    /* ----------------------------------
+       COMMIT
+    ---------------------------------- */
 
     await session.commitTransaction();
     session.endSession();
@@ -89,13 +165,15 @@ async function createRevenue(revenueData) {
       success: true,
       message: "Revenue created successfully",
       data: revenue,
-      payment,
+      payment, // null for EXTERNAL
       bankAccount,
     };
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+
     console.error("Failed to create revenue:", error);
+
     return {
       success: false,
       message: "Failed to create revenue",
@@ -103,55 +181,59 @@ async function createRevenue(revenueData) {
     };
   }
 }
+
 export { createRevenue };
 async function getRevenue(revenueId) {
-    try {
-        const revenue = await Revenue.findById(revenueId).populate("source").populate("tenant").populate("createdBy");
-        if (!revenue) {
-            throw new Error("Revenue not found");
-        }
-        return revenue;
-    } catch (error) {
-        console.error("Failed to get revenue:", error);
-        throw error;
+  try {
+    const revenue = await Revenue.findById(revenueId)
+      .populate("source")
+      .populate("tenant")
+      .populate("createdBy");
+    if (!revenue) {
+      throw new Error("Revenue not found");
     }
+    return revenue;
+  } catch (error) {
+    console.error("Failed to get revenue:", error);
+    throw error;
+  }
 }
 export { getRevenue };
 
 async function getAllRevenue() {
-    try {
-        const revenue = await Revenue.find()
-        return {
-            success: true,
-            message: "Revenue fetched successfully",
-            data: revenue,
-        };
-    } catch (error) {
-        console.error("Failed to get all revenue:", error);
-        return {
-            success: false,
-            message: "Failed to get all revenue",
-            error: error.message,
-        };
-    }
+  try {
+    const revenue = await Revenue.find();
+    return {
+      success: true,
+      message: "Revenue fetched successfully",
+      data: revenue,
+    };
+  } catch (error) {
+    console.error("Failed to get all revenue:", error);
+    return {
+      success: false,
+      message: "Failed to get all revenue",
+      error: error.message,
+    };
+  }
 }
 export { getAllRevenue };
- async function getRevenueSource() {
-    try {
-        const revenueSource = await RevenueSource.find();
-        return {
-            success: true,
-            message: "Revenue source fetched successfully",
-            data: revenueSource,
-        };
-    } catch (error) {
-        console.error("Failed to get revenue source:", error);
-        return {
-            success: false,
-            message: "Failed to get revenue source",
-            error: error.message,
-        };
-    }
+async function getRevenueSource() {
+  try {
+    const revenueSource = await RevenueSource.find();
+    return {
+      success: true,
+      message: "Revenue source fetched successfully",
+      data: revenueSource,
+    };
+  } catch (error) {
+    console.error("Failed to get revenue source:", error);
+    return {
+      success: false,
+      message: "Failed to get revenue source",
+      error: error.message,
+    };
+  }
 }
 export { getRevenueSource };
 /**
@@ -176,9 +258,9 @@ export async function recordRentRevenue({
 }) {
   try {
     // Find the RENT revenue source
-    const rentRevenueSource = await RevenueSource.findOne({ code: "RENT" }).session(
-      session
-    );
+    const rentRevenueSource = await RevenueSource.findOne({
+      code: "RENT",
+    }).session(session);
     if (!rentRevenueSource) {
       throw new Error("Revenue source RENT not configured");
     }
@@ -199,7 +281,7 @@ export async function recordRentRevenue({
           createdBy: new mongoose.Types.ObjectId(adminId),
         },
       ],
-      { session }
+      { session },
     );
 
     return revenue[0];
@@ -231,9 +313,9 @@ export async function recordCamRevenue({
 }) {
   try {
     // Find the CAM revenue source
-    const camRevenueSource = await RevenueSource.findOne({ code: "CAM" }).session(
-      session
-    );
+    const camRevenueSource = await RevenueSource.findOne({
+      code: "CAM",
+    }).session(session);
     if (!camRevenueSource) {
       throw new Error("Revenue source CAM not configured");
     }
@@ -254,7 +336,7 @@ export async function recordCamRevenue({
           createdBy: new mongoose.Types.ObjectId(adminId),
         },
       ],
-      { session }
+      { session },
     );
 
     return revenue[0];
