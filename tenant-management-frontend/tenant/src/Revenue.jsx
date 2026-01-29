@@ -3,32 +3,14 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { PlusIcon, CarIcon, TagIcon, Bike, Check } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import api from "../plugins/axios";
+import { PlusIcon, CarIcon, TagIcon } from "lucide-react";
 import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import DualCalendarTailwind from "@/components/dualDate";
-import { useFormik } from "formik";
+import api from "../plugins/axios";
+import { AddRevenueDialog } from "./Revenue/components/AddRevenueDialog";
 
-// Sample data - in a real app, this would come from an API
 const initialParkingSpots = [
   {
     id: 1,
@@ -51,10 +33,8 @@ export default function Revenue() {
   const [parkingSpots, setParkingSpots] = useState(initialParkingSpots);
   const [brandDeals, setBrandDeals] = useState(initialBrandDeals);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [revenueType, setRevenueType] = useState("parking");
   const [revenueSource, setRevenueSource] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
-  const [referenceId, setReferenceId] = useState("");
   const [tenants, setTenants] = useState([]);
   useEffect(() => {
     const getRevenueSource = async () => {
@@ -95,12 +75,10 @@ export default function Revenue() {
       notes: "",
       bankAccount: "",
       paymentSchedule: "",
-      notes: "",
-      notes: "",
+
     },
   });
 
-  // Render parking spot card
   const renderParkingSpot = (spot) => (
 
     <Card key={spot.id} className="mt-4 w-75 ml-4">
@@ -111,9 +89,7 @@ export default function Revenue() {
             <CardTitle className="text-xl font-bold text-gray-800">
               {spot.name}
             </CardTitle>
-            <p className="text-sm text-gray-500 mt-1">
-              Parking Revenue
-            </p>
+            <p className="text-sm text-gray-500 mt-1">Parking Revenue</p>
           </div>
         </div>
         <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm w-15 border border-green-400">
@@ -140,7 +116,7 @@ export default function Revenue() {
     </Card>
   );
 
-
+  // Render brand deal card
   const renderBrandDeal = (deal) => (
     <Card key={deal.id} className="mt-4 w-75 ml-4">
       <CardHeader className="flex flex-row items-start justify-between">
@@ -150,9 +126,7 @@ export default function Revenue() {
             <CardTitle className="text-xl font-bold text-gray-800">
               {deal.name}
             </CardTitle>
-            <p className="text-sm text-gray-500 mt-1">
-              Brand Deal Revenue
-            </p>
+            <p className="text-sm text-gray-500 mt-1">Brand Deal Revenue</p>
           </div>
         </div>
         <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm w-15 border border-green-400">
@@ -206,7 +180,9 @@ export default function Revenue() {
                   <Card className="mt-4 w-75 ml-4">
                     <CardContent className="flex flex-col items-center justify-center py-8">
                       <EmptyTitle>No Revenue Streams</EmptyTitle>
-                      <EmptyDescription>Add parking slots or brand deals to get started</EmptyDescription>
+                      <EmptyDescription>
+                        Add parking slots or brand deals to get started
+                      </EmptyDescription>
                     </CardContent>
                   </Card>
                 )}
@@ -222,7 +198,7 @@ export default function Revenue() {
               </div>
             </Card>
           </TabsContent>
-          {/* Parking Tab - Shows only parking spots */}
+
           <TabsContent value="parking">
             <Card>
               <CardHeader>
@@ -235,7 +211,9 @@ export default function Revenue() {
                   <Card className="mt-4 w-75 ml-4">
                     <CardContent className="flex flex-col items-center justify-center py-8">
                       <EmptyTitle>No Parking Spots</EmptyTitle>
-                      <EmptyDescription>Add a parking slot to get started</EmptyDescription>
+                      <EmptyDescription>
+                        Add a parking slot to get started
+                      </EmptyDescription>
                     </CardContent>
                   </Card>
                 )}
@@ -243,7 +221,6 @@ export default function Revenue() {
             </Card>
           </TabsContent>
 
-          {/* Brand Deals Tab - Shows only brand deals */}
           <TabsContent value="brand-deals">
             <Card>
               <CardHeader>
@@ -256,7 +233,9 @@ export default function Revenue() {
                   <Card className="mt-4 w-75 ml-4">
                     <CardContent className="flex flex-col items-center justify-center py-8">
                       <EmptyTitle>No Brand Deals</EmptyTitle>
-                      <EmptyDescription>Add a brand deal to get started</EmptyDescription>
+                      <EmptyDescription>
+                        Add a brand deal to get started
+                      </EmptyDescription>
                     </CardContent>
                   </Card>
                 )}
@@ -264,8 +243,8 @@ export default function Revenue() {
             </Card>
 
           </TabsContent>
-        </Tabs >
-      </div >
+        </Tabs>
+      </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

@@ -22,12 +22,15 @@ import { RentSummaryCard } from "./components/RentSummaryCard";
 const RentPayment = () => {
   const {
     rents,
+    filteredRents,
     payments,
     bankAccounts,
     cams,
     totalCollected,
     totalDue,
     loading,
+    filterRentMonth,
+    setFilterRentMonth,
     filterStartDate,
     filterEndDate,
     filterPaymentMethod,
@@ -85,7 +88,7 @@ const RentPayment = () => {
             <CardTitle className="text-2xl font-bold">
               Rent & Payments
             </CardTitle>
-            <TabsList className="mt-4">
+            <TabsList className="mt-4 grid w-full grid-cols-2">
               <TabsTrigger value="rent">Rent</TabsTrigger>
               <TabsTrigger value="payments">Payments</TabsTrigger>
             </TabsList>
@@ -95,10 +98,12 @@ const RentPayment = () => {
             <RentSummaryCard
               totalCollected={totalCollected}
               totalDue={totalDue}
+              filterRentMonth={filterRentMonth}
+              onMonthChange={setFilterRentMonth}
             />
             <CardContent>
               <RentTable
-                rents={rents}
+                rents={filteredRents}
                 cams={cams}
                 bankAccounts={bankAccounts}
                 formik={paymentForm.formik}

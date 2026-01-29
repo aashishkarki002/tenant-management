@@ -1,4 +1,8 @@
-import { createExpense, getAllExpenses } from "./expense.service.js";
+import {
+  createExpense,
+  getAllExpenses,
+  getExpenseSources,
+} from "./expense.service.js";
 export async function createExpenseController(req, res) {
   try {
     const adminId = req.admin.id;
@@ -42,6 +46,22 @@ export async function getAllExpensesController(req, res) {
       success: result.success,
       message: result.message,
       expenses: result.data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+export async function getExpenseSourcesController(req, res) {
+  try {
+    const result = await getExpenseSources();
+    res.status(200).json({
+      success: result.success,
+      message: result.message,
+      expenseSources: result.data,
     });
   } catch (error) {
     res.status(500).json({

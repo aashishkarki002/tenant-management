@@ -5,8 +5,6 @@ import {
   getPaymentActivities,
 } from "./payment.service.js";
 import { Rent } from "../rents/rent.Model.js";
-import { Tenant } from "../tenant/Tenant.Model.js";
-import { Unit } from "../tenant/units/unit.model.js";
 import { Payment } from "./payment.model.js";
 import { getFilteredPaymentHistoryService } from "./payment.service.js";
 import parsePaginationParams from "../../helper/paginator.js";
@@ -30,22 +28,22 @@ export async function payRentAndCam(req, res) {
 
     // Build allocations object - support both old format (backward compatible) and new format
     let paymentAllocations = allocations;
-    
+
     // If allocations not provided, build from old format (backward compatibility)
     if (!paymentAllocations) {
       paymentAllocations = {};
-      
+
       if (rentId && amount) {
         paymentAllocations.rent = {
           rentId,
-          amount: amount
+          amount: amount,
         };
       }
-      
+
       if (camId && amount) {
         paymentAllocations.cam = {
           camId,
-          paidAmount: amount
+          paidAmount: amount,
         };
       }
     }
@@ -274,7 +272,7 @@ export async function getFilteredPaymentHistory(req, res) {
       tenantId,
       startDate,
       endDate,
-      paymentMethod
+      paymentMethod,
     );
 
     if (result.success) {
@@ -395,7 +393,7 @@ export async function logActivity(req, res) {
       paymentId,
       activityType,
       adminId,
-      metadata || {}
+      metadata || {},
     );
 
     if (result.success) {

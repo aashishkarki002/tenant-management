@@ -31,6 +31,7 @@ export async function createExpense(expenseData) {
     if (!existingAdmin) {
       throw new Error("Admin not found");
     }
+    const expenseCodeToUse = expenseCode ?? expenseSource?.code ?? "5200";
     // Create expense first so we have an _id for the transaction referenceId
     const [expense] = await Expense.create(
       [
@@ -48,7 +49,7 @@ export async function createExpense(expenseData) {
           status,
           notes,
           createdBy,
-          expenseCode,
+          expenseCode: expenseCodeToUse,
         },
       ],
       { session },
@@ -91,7 +92,9 @@ export async function createExpense(expenseData) {
 
 async function getAllExpenses() {
   try {
-    const expenses = await Expense.find();
+    const expenses = await Expense.find()
+      .populate("source")
+      .sort({ EnglishDate: -1 });
     return {
       success: true,
       message: "Expenses fetched successfully",
@@ -103,4 +106,18 @@ async function getAllExpenses() {
   }
 }
 
-export { getAllExpenses };
+async function getExpenseSources() {
+  try {
+    const expenseSource = await ExpenseSource.find({ isActive: true });
+    return {
+      success: true,
+      message: "Expense sources fetched successfully",
+      data: expenseSource,
+    };
+  } catch (error) {
+    console.error("Failed to get expense sources:", error);
+    throw error;
+  }
+}
+
+export { getAllExpenses, getExpenseSources };

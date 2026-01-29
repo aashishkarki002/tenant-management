@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import api from "../../../plugins/axios";
 import { toast } from "sonner";
+import { getCurrentNepaliMonthYear } from "@/constants/nepaliMonths";
 
 /**
  * Custom hook for managing rent and payment data
@@ -17,10 +18,27 @@ export const useRentData = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Filter states
+  // Rent tab: filter by Nepali month/year (default current month)
+  const { month: defaultMonth, year: defaultYear } =
+    getCurrentNepaliMonthYear();
+  const [filterRentMonth, setFilterRentMonth] = useState(defaultMonth);
+  const [filterRentYear, setFilterRentYear] = useState(defaultYear);
+
+  // Filter states (payments tab)
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterPaymentMethod, setFilterPaymentMethod] = useState("all");
+
+  // Rents filtered by selected Nepali month/year
+  const filteredRents = useMemo(
+    () =>
+      rents.filter(
+        (r) =>
+          Number(r.nepaliMonth) === filterRentMonth &&
+          Number(r.nepaliYear) === filterRentYear,
+      ),
+    [rents, filterRentMonth, filterRentYear],
+  );
 
   /**
    * Fetches all rents from the API
@@ -133,8 +151,10 @@ export const useRentData = () => {
   const getCams = async (filters = {}) => {
     try {
       const params = new URLSearchParams();
-      if (filters.nepaliMonth != null) params.append("nepaliMonth", filters.nepaliMonth);
-      if (filters.nepaliYear != null) params.append("nepaliYear", filters.nepaliYear);
+      if (filters.nepaliMonth != null)
+        params.append("nepaliMonth", filters.nepaliMonth);
+      if (filters.nepaliYear != null)
+        params.append("nepaliYear", filters.nepaliYear);
       const qs = params.toString();
       const url = qs ? `/api/cam/get-cams?${qs}` : "/api/cam/get-cams";
       const response = await api.get(url);
@@ -162,7 +182,6 @@ export const useRentData = () => {
           getBankAccounts(),
           getUnits(),
           fetchRentSummary(),
-          getCams(),
         ]);
       } catch (error) {
         console.error("Init load failed:", error);
@@ -175,6 +194,11 @@ export const useRentData = () => {
     init();
   }, []);
 
+  // Refetch CAMs when rent month/year filter changes
+  useEffect(() => {
+    getCams({ nepaliMonth: filterRentMonth, nepaliYear: filterRentYear });
+  }, [filterRentMonth, filterRentYear]);
+
   // Refetch payments when filters change
   useEffect(() => {
     getPayments();
@@ -183,6 +207,7 @@ export const useRentData = () => {
   return {
     // Data
     rents,
+    filteredRents,
     payments,
     units,
     bankAccounts,
@@ -192,7 +217,12 @@ export const useRentData = () => {
     // State
     loading,
     error,
-    // Filters
+    // Rent tab filters (Nepali month/year)
+    filterRentMonth,
+    filterRentYear,
+    setFilterRentMonth,
+    setFilterRentYear,
+    // Payments tab filters
     filterStartDate,
     filterEndDate,
     filterPaymentMethod,
