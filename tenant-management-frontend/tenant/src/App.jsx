@@ -21,6 +21,7 @@ import ProtectedRoutes from "./protectedRoutes";
 import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail";
+import Expenses from "./Expenses";
 export default function App() {
   const location = useLocation();
   const path = location.pathname.toLowerCase();
@@ -52,6 +53,14 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <Electricity />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
+        path="/expenses"
+        element={
+          <ProtectedRoutes>
+            <Expenses />
           </ProtectedRoutes>
         }
       />
