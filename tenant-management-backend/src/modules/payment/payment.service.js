@@ -23,6 +23,7 @@ import {
   getPaymentType
 } from "./payment.domain.js";
 import { ledgerService } from "../ledger/ledger.service.js";
+import { buildPaymentReceivedJournal, buildCamPaymentReceivedJournal } from "../ledger/journal-builders/index.js";
 import { recordRentRevenue, recordCamRevenue } from "../revenue/revenue.service.js";
 import { emitPaymentNotification } from "../../utils/payment.Notification.js";
 import { handleReceiptSideEffects } from "../../reciepts/reciept.service.js";
@@ -111,12 +112,22 @@ export async function createPayment(paymentData) {
 
     const payment = await createPaymentRecord(payload, session);
 
-    // Record payment in ledger (handles both rent and CAM)
+    // Record payment in ledger (rent: DR Cash/Bank CR AR; CAM handled below when we have builder)
     if (rent) {
-      await ledgerService.recordPayment(payment, rent, session, allocations.rent.amount);
+      const rentPaymentPayload = buildPaymentReceivedJournal(
+        payment,
+        rent,
+        allocations.rent.amount
+      );
+      await ledgerService.postJournalEntry(rentPaymentPayload, session);
     }
     if (cam) {
-      await ledgerService.recordCamPayment(payment, cam, session, allocations.cam.paidAmount);
+      const camPaymentPayload = buildCamPaymentReceivedJournal(
+        payment,
+        cam,
+        allocations.cam.paidAmount
+      );
+      await ledgerService.postJournalEntry(camPaymentPayload, session);
     }
 
     // Record rent revenue only if rent payment exists

@@ -1,5 +1,5 @@
 import { Rent } from "./rent.Model.js";
-import { Tenant } from "../tenant/tenant.model.js";
+import { Tenant } from "../tenant/Tenant.Model.js";
 import adminModel from "../auth/admin.Model.js";
 import {
   getNepaliMonthDates,
@@ -8,6 +8,7 @@ import {
 import dotenv from "dotenv";
 import { sendEmail } from "../../config/nodemailer.js";
 import { ledgerService } from "../ledger/ledger.service.js";
+import { buildRentChargeJournal } from "../ledger/journal-builders/index.js";
 import Notification from "../notifications/notification.model.js";
 import NepaliDate from "nepali-datetime";
 import { getIO } from "../../config/socket.js";
@@ -37,7 +38,7 @@ const handleMonthlyRents = async () => {
           { nepaliYear: npYear, nepaliMonth: { $lt: npMonth } },
         ],
       },
-      { $set: { status: "overdue" } }
+      { $set: { status: "overdue" } },
     );
     console.log("Overdue rents updated:", overdueResult.modifiedCount);
 
@@ -54,7 +55,7 @@ const handleMonthlyRents = async () => {
     }).select("tenant");
 
     const existingTenantIds = new Set(
-      existingRents.map((r) => r.tenant.toString())
+      existingRents.map((r) => r.tenant.toString()),
     );
 
     const rentsToInsert = tenants
@@ -82,7 +83,8 @@ const handleMonthlyRents = async () => {
       const insertedRents = await Rent.insertMany(rentsToInsert);
       for (const rent of insertedRents) {
         try {
-          await ledgerService.recordRentCharge(rent._id, null);
+          const rentChargePayload = buildRentChargeJournal(rent);
+          await ledgerService.postJournalEntry(rentChargePayload, null);
         } catch (error) {
           throw error;
         }
@@ -183,7 +185,7 @@ export const sendEmailToTenants = async () => {
 
     // Group rents and CAMs by tenant
     const tenantMap = new Map();
-    
+
     rents.forEach((rent) => {
       const tenantId = rent.tenant?._id?.toString();
       if (tenantId) {
@@ -215,73 +217,84 @@ export const sendEmailToTenants = async () => {
     const sentRentIds = [];
     const sentCamIds = [];
 
-    const emailPromises = Array.from(tenantMap.values()).map(async ({ tenant, rents: tenantRents, cams: tenantCams }) => {
-      if (!tenant?.email) {
-        console.log(`No email for tenant: ${tenant?.name || "Unknown"}`);
-        return;
-      }
+    const emailPromises = Array.from(tenantMap.values()).map(
+      async ({ tenant, rents: tenantRents, cams: tenantCams }) => {
+        if (!tenant?.email) {
+          console.log(`No email for tenant: ${tenant?.name || "Unknown"}`);
+          return;
+        }
 
-      // Calculate totals
-      const rentTotal = tenantRents.reduce((sum, rent) => sum + (rent.rentAmount || 0), 0);
-      const camTotal = tenantCams.reduce((sum, cam) => sum + (cam.amount || 0), 0);
-      const totalAmount = rentTotal + camTotal;
+        // Calculate totals
+        const rentTotal = tenantRents.reduce(
+          (sum, rent) => sum + (rent.rentAmount || 0),
+          0,
+        );
+        const camTotal = tenantCams.reduce(
+          (sum, cam) => sum + (cam.amount || 0),
+          0,
+        );
+        const totalAmount = rentTotal + camTotal;
 
-      // Skip if no pending amounts
-      if (totalAmount === 0) {
-        console.log(`Skipping email for tenant ${tenant?.name || "Unknown"} - no pending amounts`);
-        return;
-      }
-
-      // Get due date from rent or use lastDay
-      let nepaliDueDate;
-      
-      if (tenantRents.length > 0 && tenantRents[0].nepaliDueDate) {
-        const dateStr = tenantRents[0].nepaliDueDate.toString();
-        const match = dateStr.match(/2\d{3}-\d{2}-(\d{2})/);
-        if (match) {
-          const nepaliDay = parseInt(match[1]);
-          nepaliDueDate = new NepaliDate(
-            tenantRents[0].nepaliYear,
-            tenantRents[0].nepaliMonth - 1,
-            nepaliDay
+        // Skip if no pending amounts
+        if (totalAmount === 0) {
+          console.log(
+            `Skipping email for tenant ${
+              tenant?.name || "Unknown"
+            } - no pending amounts`,
           );
+          return;
+        }
+
+        // Get due date from rent or use lastDay
+        let nepaliDueDate;
+
+        if (tenantRents.length > 0 && tenantRents[0].nepaliDueDate) {
+          const dateStr = tenantRents[0].nepaliDueDate.toString();
+          const match = dateStr.match(/2\d{3}-\d{2}-(\d{2})/);
+          if (match) {
+            const nepaliDay = parseInt(match[1]);
+            nepaliDueDate = new NepaliDate(
+              tenantRents[0].nepaliYear,
+              tenantRents[0].nepaliMonth - 1,
+              nepaliDay,
+            );
+          } else {
+            // Fallback to lastDay if date parsing fails
+            nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
+          }
+        } else if (tenantCams.length > 0) {
+          // For CAMs, use lastDay from getNepaliMonthDates
+          nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
         } else {
-          // Fallback to lastDay if date parsing fails
+          // Fallback
           nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
         }
-      } else if (tenantCams.length > 0) {
-        // For CAMs, use lastDay from getNepaliMonthDates
-        nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
-      } else {
-        // Fallback
-        nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
-      }
 
-      const formattedDate = nepaliDueDate.format("YYYY-MMMM-DD");
-      const monthYear = nepaliDueDate.format("YYYY-MMMM");
+        const formattedDate = nepaliDueDate.format("YYYY-MMMM-DD");
+        const monthYear = nepaliDueDate.format("YYYY-MMMM");
 
-      const subject = "Reminder for Rent and CAM Payment";
-      
-      // Build payment details HTML
-      let paymentDetails = '';
-      if (tenantRents.length > 0) {
-        paymentDetails += `
+        const subject = "Reminder for Rent and CAM Payment";
+
+        // Build payment details HTML
+        let paymentDetails = "";
+        if (tenantRents.length > 0) {
+          paymentDetails += `
           <tr>
             <td style="padding:8px 0; border-bottom:1px solid #e0e0e0;">
               <strong>Rent:</strong> Rs. ${rentTotal.toLocaleString()}
             </td>
           </tr>`;
-      }
-      if (tenantCams.length > 0) {
-        paymentDetails += `
+        }
+        if (tenantCams.length > 0) {
+          paymentDetails += `
           <tr>
             <td style="padding:8px 0; border-bottom:1px solid #e0e0e0;">
               <strong>CAM Charges:</strong> Rs. ${camTotal.toLocaleString()}
             </td>
           </tr>`;
-      }
+        }
 
-      const html = `
+        const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -292,7 +305,9 @@ export const sendEmailToTenants = async () => {
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:20px auto; background-color:#ffffff; border:1px solid #e0e0e0; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
           <tr>
             <td style="padding:20px;">
-              <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${tenant.name},</h2>
+              <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${
+                tenant.name
+              },</h2>
               <p style="color:#555555; font-size:16px; line-height:1.5;">
                 This is a reminder for your pending payments for <strong>${monthYear}</strong>.
               </p>
@@ -322,20 +337,21 @@ export const sendEmailToTenants = async () => {
       </html>
       `;
 
-      try {
-        await sendEmail({ to: tenant.email, subject, html });
-        
-        // Track successfully sent rent and CAM IDs to toggle emailReminderSent to true
-        tenantRents.forEach((rent) => {
-          sentRentIds.push(rent._id);
-        });
-        tenantCams.forEach((cam) => {
-          sentCamIds.push(cam._id);
-        });
-      } catch (emailError) {
-        console.error(`Failed to send email to ${tenant.email}:`, emailError);
-      }
-    });
+        try {
+          await sendEmail({ to: tenant.email, subject, html });
+
+          // Track successfully sent rent and CAM IDs to toggle emailReminderSent to true
+          tenantRents.forEach((rent) => {
+            sentRentIds.push(rent._id);
+          });
+          tenantCams.forEach((cam) => {
+            sentCamIds.push(cam._id);
+          });
+        } catch (emailError) {
+          console.error(`Failed to send email to ${tenant.email}:`, emailError);
+        }
+      },
+    );
 
     await Promise.all(emailPromises);
 
@@ -343,7 +359,7 @@ export const sendEmailToTenants = async () => {
     if (sentRentIds.length > 0) {
       await Rent.updateMany(
         { _id: { $in: sentRentIds } },
-        { $set: { emailReminderSent: true } }
+        { $set: { emailReminderSent: true } },
       );
     }
 
@@ -351,11 +367,13 @@ export const sendEmailToTenants = async () => {
     if (sentCamIds.length > 0) {
       await Cam.updateMany(
         { _id: { $in: sentCamIds } },
-        { $set: { emailReminderSent: true } }
+        { $set: { emailReminderSent: true } },
       );
     }
 
-    const sentCount = Array.from(tenantMap.values()).filter(({ tenant }) => tenant?.email).length;
+    const sentCount = Array.from(tenantMap.values()).filter(
+      ({ tenant }) => tenant?.email,
+    ).length;
     const totalTenants = tenantMap.size;
 
     return {
@@ -371,3 +389,20 @@ export const sendEmailToTenants = async () => {
     };
   }
 };
+const createNewRent = async (rentData, session = null) => {
+  try {
+    // Mongoose create() with a session requires an array of documents
+    const opts = session ? { session } : {};
+    const created = await Rent.create([rentData], opts);
+    const rent = created[0];
+    return { success: true, message: "Rent created successfully", data: rent };
+  } catch (error) {
+    console.error("Error creating rent:", error);
+    return {
+      success: false,
+      message: "Failed to create rent",
+      error: error.message,
+    };
+  }
+};
+export { createNewRent };

@@ -3,7 +3,7 @@ import request from "supertest";
 import mongoose from "mongoose";
 
 const applyPaymentToBankMock = jest.fn().mockResolvedValue({ _id: "bank-id" });
-const ledgerMock = { recordPayment: jest.fn().mockResolvedValue() };
+const ledgerMock = { postJournalEntry: jest.fn().mockResolvedValue({ transaction: {}, ledgerEntries: [] }) };
 const revenueMock = {
   recordRentRevenue: jest.fn().mockResolvedValue(),
   createRevenue: jest.fn().mockResolvedValue(),
@@ -152,7 +152,7 @@ describe("POST /api/payment/pay-rent", () => {
     expect(payment?.paymentMethod).toBe("bank_transfer");
 
     expect(applyPaymentToBankMock).toHaveBeenCalled();
-    expect(ledgerMock.recordPayment).toHaveBeenCalled();
+    expect(ledgerMock.postJournalEntry).toHaveBeenCalled();
     expect(revenueMock.recordRentRevenue).toHaveBeenCalled();
     expect(emitPaymentNotificationMock).toHaveBeenCalled();
     expect(handleReceiptSideEffectsMock).toHaveBeenCalled();

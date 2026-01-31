@@ -5,6 +5,7 @@ import {
   getAllMaintenanceController,
   getMaintenanceByIdController,
   updateMaintenanceStatusController,
+  updateMaintenanceAssignedToController,
 } from "./maintenance.controller.js";
 
 const router = Router();
@@ -20,5 +21,8 @@ router.get("/:id", protect, getMaintenanceByIdController);
 
 // Update maintenance status (OPEN, IN_PROGRESS, COMPLETED, CANCELLED)
 router.patch("/:id/status", protect, updateMaintenanceStatusController);
+
+// Update assigned staff
+router.patch("/:id/assign", protect, updateMaintenanceAssignedToController);
 
 export default router;

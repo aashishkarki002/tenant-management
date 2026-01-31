@@ -52,7 +52,7 @@ const ledgerEntrySchema = new mongoose.Schema(
       required: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Ensure either debit or credit is present, not both

@@ -7,8 +7,8 @@ const mockedCloudinary = {
     upload: jest.fn().mockResolvedValue({ secure_url: "https://mock.cloud/doc" }),
   },
 };
-const sendEmailMock = jest.fn().mockResolvedValue();
-const ledgerMock = { recordRentCharge: jest.fn().mockResolvedValue() };
+const sendWelcomeEmailMock = jest.fn().mockResolvedValue();
+const ledgerMock = { postJournalEntry: jest.fn().mockResolvedValue({ transaction: {}, ledgerEntries: [] }) };
 const createCamMock = jest.fn().mockResolvedValue({ success: true });
 const createSdMock = jest.fn().mockResolvedValue({ success: true });
 
@@ -16,7 +16,8 @@ jest.unstable_mockModule("../config/cloudinary.js", () => ({
   default: mockedCloudinary,
 }));
 jest.unstable_mockModule("../config/nodemailer.js", () => ({
-  sendEmail: sendEmailMock,
+  sendEmail: jest.fn().mockResolvedValue(),
+  sendWelcomeEmail: sendWelcomeEmailMock,
   sendPaymentReceiptEmail: jest.fn().mockResolvedValue(),
 }));
 jest.unstable_mockModule("../modules/ledger/ledger.service.js", () => ({
@@ -99,7 +100,7 @@ describe("POST /api/tenant/create-tenant", () => {
     const rent = await Rent.findOne({ tenant: tenant._id });
     expect(rent).toBeTruthy();
 
-    expect(ledgerMock.recordRentCharge).toHaveBeenCalled();
+    expect(ledgerMock.postJournalEntry).toHaveBeenCalled();
     expect(createCamMock).toHaveBeenCalled();
     expect(createSdMock).toHaveBeenCalled();
   });

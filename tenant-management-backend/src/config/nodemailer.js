@@ -28,6 +28,15 @@ transporter.verify((error, success) => {
   }
 });
 
+/** Email templates: return { subject, html } from data only */
+const emailTemplates = {
+  welcome: ({ tenantName }) => ({
+    subject: "Welcome to our property management system",
+    html: `Welcome to our property management system${tenantName ? `, ${tenantName}` : ""}.
+You will receive a notification via this email for any updates regarding your units.`,
+  }),
+};
+
 export const sendEmail = async ({ to, subject, html, attachments }) => {
   if (!to) throw new Error("No recipient email provided");
 
@@ -50,6 +59,14 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
     transporter.sendMail(mailOptions),
     timeoutPromise,
   ]);
+};
+
+/** Send welcome email using template; caller only passes data. */
+export const sendWelcomeEmail = async (data) => {
+  const { to, tenantName } = data;
+  if (!to) return;
+  const { subject, html } = emailTemplates.welcome({ tenantName });
+  return sendEmail({ to, subject, html });
 };
  async function sendPaymentReceiptEmail({
   to,

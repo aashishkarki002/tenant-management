@@ -14,30 +14,39 @@ import { ledgerService } from "./ledger.service.js";
  */
 export const getLedger = async (req, res) => {
   try {
-    const { 
-      startDate, 
-      endDate, 
-      tenantId, 
-      nepaliMonth, 
-      nepaliYear, 
+    const {
+      startDate,
+      endDate,
+      tenantId,
+      nepaliMonth,
+      nepaliYear,
       quarter,
       accountCode,
-      propertyId
+      propertyId,
+      type,
     } = req.query;
+
+    // Validate type if provided
+    if (type && !["all", "revenue", "expense"].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Type must be 'all', 'revenue', or 'expense'",
+      });
+    }
 
     // Validate quarter if provided
     if (quarter && (quarter < 1 || quarter > 4)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Quarter must be between 1 and 4" 
+      return res.status(400).json({
+        success: false,
+        message: "Quarter must be between 1 and 4",
       });
     }
 
     // Validate nepaliYear if provided
     if (nepaliYear && (nepaliYear < 2000 || nepaliYear > 2100)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid Nepali year" 
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Nepali year",
       });
     }
 
@@ -49,15 +58,16 @@ export const getLedger = async (req, res) => {
       nepaliYear: nepaliYear ? parseInt(nepaliYear) : undefined,
       quarter: quarter ? parseInt(quarter) : undefined,
       accountCode,
-      propertyId
+      propertyId,
+      type: type || "all", // Default to 'all' if not specified
     });
 
     res.status(200).json({ success: true, data: ledger });
   } catch (error) {
     console.error("Error in getLedger controller:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };
@@ -68,28 +78,22 @@ export const getLedger = async (req, res) => {
  */
 export const getLedgerSummary = async (req, res) => {
   try {
-    const { 
-      startDate, 
-      endDate, 
-      tenantId, 
-      nepaliYear,
-      quarter 
-    } = req.query;
+    const { startDate, endDate, tenantId, nepaliYear, quarter } = req.query;
 
     const summary = await ledgerService.getLedgerSummary({
       startDate,
       endDate,
       tenantId,
       nepaliYear: nepaliYear ? parseInt(nepaliYear) : undefined,
-      quarter: quarter ? parseInt(quarter) : undefined
+      quarter: quarter ? parseInt(quarter) : undefined,
     });
 
     res.status(200).json({ success: true, data: summary });
   } catch (error) {
     console.error("Error in getLedgerSummary controller:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };
@@ -104,9 +108,9 @@ export const getTenantLedger = async (req, res) => {
     const { startDate, endDate, nepaliYear, quarter } = req.query;
 
     if (!tenantId) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Tenant ID is required" 
+      return res.status(400).json({
+        success: false,
+        message: "Tenant ID is required",
       });
     }
 
@@ -115,15 +119,15 @@ export const getTenantLedger = async (req, res) => {
       startDate,
       endDate,
       nepaliYear: nepaliYear ? parseInt(nepaliYear) : undefined,
-      quarter: quarter ? parseInt(quarter) : undefined
+      quarter: quarter ? parseInt(quarter) : undefined,
     });
 
     res.status(200).json({ success: true, data: ledger });
   } catch (error) {
     console.error("Error in getTenantLedger controller:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };
@@ -138,9 +142,9 @@ export const getAccountLedger = async (req, res) => {
     const { startDate, endDate, tenantId } = req.query;
 
     if (!accountCode) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Account code is required" 
+      return res.status(400).json({
+        success: false,
+        message: "Account code is required",
       });
     }
 
@@ -148,15 +152,15 @@ export const getAccountLedger = async (req, res) => {
       accountCode,
       startDate,
       endDate,
-      tenantId
+      tenantId,
     });
 
     res.status(200).json({ success: true, data: ledger });
   } catch (error) {
     console.error("Error in getAccountLedger controller:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

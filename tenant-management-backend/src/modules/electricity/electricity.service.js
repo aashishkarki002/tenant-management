@@ -2,9 +2,11 @@ import mongoose from "mongoose";
 import { Electricity } from "./Electricity.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
 import { Unit } from "../tenant/units/unit.model.js";
-import { Account } from "../ledger/accounts/Account.Model.js";
-import { Transaction } from "../ledger/transactions/Transaction.Model.js";
-import { LedgerEntry } from "../ledger/Ledger.Model.js";
+import { ledgerService } from "../ledger/ledger.service.js";
+import {
+  buildElectricityChargeJournal,
+  buildElectricityPaymentJournal,
+} from "../ledger/journal-builders/electricity.js";
 
 class ElectricityService {
   /**
@@ -139,226 +141,76 @@ class ElectricityService {
    * Creates accounting entries for electricity charges
    */
   async recordElectricityCharge(electricityId, session = null) {
-    try {
-      const electricity = await Electricity.findById(electricityId)
-        .populate("tenant")
-        .populate("unit")
-        .session(session);
+    const electricity = await Electricity.findById(electricityId)
+      .populate("tenant")
+      .populate("unit")
+      .session(session);
 
-      if (!electricity) {
-        throw new Error("Electricity record not found");
-      }
-
-      // Find accounts
-      // Account 1200: Accounts Receivable (Debit)
-      // Account 4100: Utility Revenue (Credit) - You may need to create this account
-      const accountsReceivableAccount = await Account.findOne({
-        code: "1200",
-      }).session(session);
-
-      const utilityRevenueAccount = await Account.findOne({
-        code: "4100",
-      }).session(session);
-
-      if (!accountsReceivableAccount) {
-        throw new Error("Accounts Receivable account (1200) not found");
-      }
-
-      if (!utilityRevenueAccount) {
-        throw new Error(
-          "Utility Revenue account (4100) not found. Please create it first.",
-        );
-      }
-
-      // Create transaction
-      const [transaction] = await Transaction.create(
-        [
-          {
-            type: "ELECTRICITY_CHARGE",
-            transactionDate: electricity.readingDate,
-            nepaliDate: electricity.nepaliDate,
-            description: `Electricity charge for ${electricity.nepaliMonth}/${electricity.nepaliYear} - ${electricity.consumption} units`,
-            referenceType: "Electricity",
-            referenceId: electricityId,
-            totalAmount: electricity.totalAmount,
-            createdBy: electricity.createdBy,
-            status: "POSTED",
-          },
-        ],
-        { session },
-      );
-
-      const ledgerEntries = [];
-
-      // Entry 1: Debit Accounts Receivable
-      const arEntry = new LedgerEntry({
-        transaction: transaction._id,
-        account: accountsReceivableAccount._id,
-        debitAmount: electricity.totalAmount,
-        creditAmount: 0,
-        description: `Electricity receivable - ${electricity.consumption} units @ Rs.${electricity.ratePerUnit}`,
-        tenant: electricity.tenant._id,
-        property: electricity.property,
-        nepaliMonth: electricity.nepaliMonth,
-        nepaliYear: electricity.nepaliYear,
-        transactionDate: electricity.readingDate,
-      });
-      await arEntry.save({ session });
-      ledgerEntries.push(arEntry);
-
-      // Update Accounts Receivable balance
-      accountsReceivableAccount.currentBalance += electricity.totalAmount;
-      await accountsReceivableAccount.save({ session });
-
-      // Entry 2: Credit Utility Revenue
-      const revenueEntry = new LedgerEntry({
-        transaction: transaction._id,
-        account: utilityRevenueAccount._id,
-        debitAmount: 0,
-        creditAmount: electricity.totalAmount,
-        description: `Electricity revenue - ${electricity.consumption} units @ Rs.${electricity.ratePerUnit}`,
-        tenant: electricity.tenant._id,
-        property: electricity.property,
-        nepaliMonth: electricity.nepaliMonth,
-        nepaliYear: electricity.nepaliYear,
-        transactionDate: electricity.readingDate,
-      });
-      await revenueEntry.save({ session });
-      ledgerEntries.push(revenueEntry);
-
-      // Update Utility Revenue balance
-      utilityRevenueAccount.currentBalance += electricity.totalAmount;
-      await utilityRevenueAccount.save({ session });
-
-      return {
-        success: true,
-        message: "Electricity charge recorded in ledger",
-        transaction,
-        ledgerEntries,
-      };
-    } catch (error) {
-      console.error("Failed to record electricity charge:", error);
-      throw error;
+    if (!electricity) {
+      throw new Error("Electricity record not found");
     }
+
+    const payload = buildElectricityChargeJournal(electricity);
+    const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
+      payload,
+      session,
+    );
+
+    return {
+      success: true,
+      message: "Electricity charge recorded in ledger",
+      transaction,
+      ledgerEntries,
+    };
   }
 
   /**
    * Record electricity payment
    */
   async recordElectricityPayment(paymentData, session = null) {
-    try {
-      const electricity = await Electricity.findById(
-        paymentData.electricityId,
-      ).session(session);
+    const electricity = await Electricity.findById(
+      paymentData.electricityId,
+    ).session(session);
 
-      if (!electricity) {
-        throw new Error("Electricity record not found");
-      }
-
-      // Update electricity record
-      electricity.paidAmount += paymentData.amount;
-
-      if (electricity.paidAmount >= electricity.totalAmount) {
-        electricity.status = "paid";
-      } else if (electricity.paidAmount > 0) {
-        electricity.status = "partially_paid";
-      }
-
-      electricity.paidDate = paymentData.paymentDate || new Date();
-
-      // Add receipt image if provided
-      if (paymentData.receipt) {
-        electricity.receipt = {
-          url: paymentData.receipt,
-          publicId: paymentData.publicId,
-          generatedAt: new Date(),
-        };
-      }
-
-      await electricity.save({ session });
-
-      // Record in ledger (similar to rent payment)
-      const cashBankAccount = await Account.findOne({ code: "1000" }).session(
-        session,
-      );
-
-      const accountsReceivableAccount = await Account.findOne({
-        code: "1200",
-      }).session(session);
-
-      if (!cashBankAccount || !accountsReceivableAccount) {
-        throw new Error("Required accounts not found");
-      }
-
-      // Create transaction
-      const [transaction] = await Transaction.create(
-        [
-          {
-            type: "ELECTRICITY_PAYMENT",
-            transactionDate: paymentData.paymentDate || new Date(),
-            nepaliDate: paymentData.nepaliDate,
-            description: `Electricity payment - ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
-            referenceType: "Electricity",
-            referenceId: paymentData.electricityId,
-            totalAmount: paymentData.amount,
-            createdBy: paymentData.createdBy,
-            status: "POSTED",
-          },
-        ],
-        { session },
-      );
-
-      const ledgerEntries = [];
-
-      // Debit Cash/Bank
-      const cashEntry = new LedgerEntry({
-        transaction: transaction._id,
-        account: cashBankAccount._id,
-        debitAmount: paymentData.amount,
-        creditAmount: 0,
-        description: `Electricity payment received`,
-        tenant: electricity.tenant,
-        property: electricity.property,
-        nepaliMonth: electricity.nepaliMonth,
-        nepaliYear: electricity.nepaliYear,
-        transactionDate: paymentData.paymentDate || new Date(),
-      });
-      await cashEntry.save({ session });
-      ledgerEntries.push(cashEntry);
-
-      cashBankAccount.currentBalance += paymentData.amount;
-      await cashBankAccount.save({ session });
-
-      // Credit Accounts Receivable
-      const arEntry = new LedgerEntry({
-        transaction: transaction._id,
-        account: accountsReceivableAccount._id,
-        debitAmount: 0,
-        creditAmount: paymentData.amount,
-        description: `Electricity payment received`,
-        tenant: electricity.tenant,
-        property: electricity.property,
-        nepaliMonth: electricity.nepaliMonth,
-        nepaliYear: electricity.nepaliYear,
-        transactionDate: paymentData.paymentDate || new Date(),
-      });
-      await arEntry.save({ session });
-      ledgerEntries.push(arEntry);
-
-      accountsReceivableAccount.currentBalance -= paymentData.amount;
-      await accountsReceivableAccount.save({ session });
-
-      return {
-        success: true,
-        message: "Electricity payment recorded successfully",
-        electricity,
-        transaction,
-        ledgerEntries,
-      };
-    } catch (error) {
-      console.error("Failed to record electricity payment:", error);
-      throw error;
+    if (!electricity) {
+      throw new Error("Electricity record not found");
     }
+
+    // Update electricity record
+    electricity.paidAmount += paymentData.amount;
+
+    if (electricity.paidAmount >= electricity.totalAmount) {
+      electricity.status = "paid";
+    } else if (electricity.paidAmount > 0) {
+      electricity.status = "partially_paid";
+    }
+
+    electricity.paidDate = paymentData.paymentDate || new Date();
+
+    // Add receipt image if provided
+    if (paymentData.receipt) {
+      electricity.receipt = {
+        url: paymentData.receipt,
+        publicId: paymentData.publicId,
+        generatedAt: new Date(),
+      };
+    }
+
+    await electricity.save({ session });
+
+    const payload = buildElectricityPaymentJournal(paymentData, electricity);
+    const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
+      payload,
+      session,
+    );
+
+    return {
+      success: true,
+      message: "Electricity payment recorded successfully",
+      electricity,
+      transaction,
+      ledgerEntries,
+    };
   }
 
   /**

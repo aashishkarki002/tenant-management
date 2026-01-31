@@ -3,6 +3,7 @@ import ExpenseSource from "./ExpenseSource.Model.js";
 import Admin from "../auth/admin.Model.js";
 import mongoose from "mongoose";
 import { ledgerService } from "../ledger/ledger.service.js";
+import { buildExpenseJournal } from "../ledger/journal-builders/index.js";
 export async function createExpense(expenseData) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -55,10 +56,8 @@ export async function createExpense(expenseData) {
       { session },
     );
     // Record expense in ledger after creation so expense._id exists
-    const expenseEntry = await ledgerService.recordExpense(expense, session);
-    if (!expenseEntry.success) {
-      throw new Error(expenseEntry.message);
-    }
+    const expensePayload = buildExpenseJournal(expense);
+    await ledgerService.postJournalEntry(expensePayload, session);
     await session.commitTransaction();
     session.endSession();
     return {

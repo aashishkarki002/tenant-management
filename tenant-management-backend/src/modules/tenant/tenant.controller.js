@@ -3,12 +3,13 @@ import path from "path";
 import { Tenant } from "./Tenant.Model.js";
 import tenantValidation from "../../validations/tenantValidation.js";
 import cloudinary from "../../config/cloudinary.js";
-import { Rent } from "../rents/rent.Model.js";
+import { createNewRent } from "../rents/rent.service.js";
 import mongoose from "mongoose";
 import { Unit } from "./units/unit.model.js";
 import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
-import { sendEmail } from "../../config/nodemailer.js";
+import { sendWelcomeEmail } from "../../config/nodemailer.js";
 import { ledgerService } from "../ledger/ledger.service.js";
+import { buildRentChargeJournal } from "../ledger/journal-builders/index.js";
 import { createCam } from "./cam/cam.service.js";
 import { createSd } from "./securityDeposits/sd.service.js";
 const TEMP_UPLOAD_DIR = path.join(process.cwd(), "tmp");
@@ -20,10 +21,9 @@ export const createTenant = async (req, res) => {
     npMonth,
     npYear,
     nepaliDate,
-
+    nepaliTodayDate,
     englishMonth,
     englishYear,
-
     englishDueDate,
   } = getNepaliMonthDates();
   const session = await mongoose.startSession();
@@ -87,7 +87,7 @@ export const createTenant = async (req, res) => {
 
         const result = await cloudinary.uploader.upload(
           tempPath,
-          uploadOptions
+          uploadOptions,
         );
 
         fs.unlinkSync(tempPath);
@@ -100,7 +100,6 @@ export const createTenant = async (req, res) => {
         files: filesArr,
       });
     }
-
 
     let unitIds = [];
     if (req.body.units && Array.isArray(req.body.units)) {
@@ -122,7 +121,7 @@ export const createTenant = async (req, res) => {
     }
 
     // Verify units exist and are not already occupied
-    console.log(unitIds);
+
     const units = await Unit.find({ _id: { $in: unitIds } }).session(session);
     if (units.length !== unitIds.length) {
       throw new Error("One or more units not found");
@@ -134,7 +133,7 @@ export const createTenant = async (req, res) => {
       throw new Error(
         `One or more units are already occupied: ${occupiedUnits
           .map((u) => u.name)
-          .join(", ")}`
+          .join(", ")}`,
       );
     }
 
@@ -150,88 +149,103 @@ export const createTenant = async (req, res) => {
           isDeleted: false,
         },
       ],
-      { session }
+      { session },
     );
 
     // Mark units as occupied
     await Unit.updateMany(
       { _id: { $in: unitIds } },
       { $set: { isOccupied: true } },
-      { session }
+      { session },
     );
 
- const rent = await Rent.create(
-      [
-        {
-          tenant: tenant[0]._id,
-          month: englishMonth,
-          year: englishYear,
-          innerBlock: tenant[0].innerBlock,
-          block: tenant[0].block,
-          property: tenant[0].property,
-          rentAmount: tenant[0].totalRent,
-          status: "pending",
-          createdBy: req.admin.id,
-          units: tenant[0].units,
-          englishMonth: englishMonth,
-          englishYear: englishYear,
-          nepaliMonth: npMonth,
-          nepaliYear: npYear,
-          nepaliDate: nepaliDate,
-          nepaliDueDate: lastDay,
-          englishDueDate: englishDueDate,
-          dueDate: reminderDay,
-          lastPaidDate: null,
-          lastPaidBy: null,
-          lateFee: 0,
-          lateFeeDate: null,
-          lateFeeApplied: false,
-          lateFeeStatus: "pending",
-        },
-      ],
-      { session }
+    const rentResult = await createNewRent(
+      {
+        tenant: tenant[0]._id,
+        innerBlock: tenant[0].innerBlock,
+        block: tenant[0].block,
+        property: tenant[0].property,
+        rentAmount: tenant[0].totalRent,
+        paidAmount: 0,
+        tdsAmount: 0,
+        status: "pending",
+        createdBy: req.admin.id,
+        units: tenant[0].units,
+        englishMonth,
+        englishYear,
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate: nepaliTodayDate,
+        nepaliDueDate: lastDay.getDateObject(),
+        englishDueDate: new Date(englishDueDate),
+        lastPaidDate: null,
+        lastPaidBy: null,
+        lateFee: 0,
+        lateFeeDate: null,
+        lateFeeApplied: false,
+        lateFeeStatus: "pending",
+      },
+      session,
     );
-  
-    await ledgerService.recordRentCharge(rent[0]._id, session);
-const cam = await createCam({
-  tenant: tenant[0]._id,
-  property: tenant[0].property,
-  block: tenant[0].block,
-  innerBlock: tenant[0].innerBlock,
-  nepaliMonth: npMonth,
-  nepaliYear: npYear,
-  nepaliDate: nepaliDate,
-  amount: tenant[0].camCharges,
-  status: "pending",
-  paidDate: null,
-  notes: "",
-  year: englishYear,
-  month: englishMonth,
-}, req.admin.id, session
-);
-if (!cam.success) {
-  await session.abortTransaction();
-  session.endSession();
-  return res.status(500).json({
-    success: false,
-    message: cam.message,
-  });
-}
-    const sd = await createSd({
-      tenant: tenant[0]._id,
-      property: tenant[0].property,
-      block: tenant[0].block,
-      innerBlock: tenant[0].innerBlock,
-      amount: tenant[0].securityDeposit,
-      status: "paid",
-      paidDate: new Date(),
-      notes: "",
-      year: englishYear,
-      month: englishMonth,
-      nepaliMonth: npMonth,
-      nepaliYear: npYear,
-      nepaliDate: nepaliDate,
-    }, req.admin.id, session);
+
+    if (!rentResult.success) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(500).json({
+        success: false,
+        message: rentResult.message || "Failed to create rent",
+        error: rentResult.error,
+      });
+    }
+
+    const rentChargePayload = buildRentChargeJournal(rentResult.data);
+    await ledgerService.postJournalEntry(rentChargePayload, session);
+    const cam = await createCam(
+      {
+        tenant: tenant[0]._id,
+        property: tenant[0].property,
+        block: tenant[0].block,
+        innerBlock: tenant[0].innerBlock,
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate: nepaliDate,
+        amount: tenant[0].camCharges,
+        status: "pending",
+        paidDate: null,
+        notes: "",
+        year: englishYear,
+        month: englishMonth,
+      },
+      req.admin.id,
+      session,
+    );
+    if (!cam.success) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(500).json({
+        success: false,
+        message: cam.message,
+      });
+    }
+    const sd = await createSd(
+      {
+        tenant: tenant[0]._id,
+        property: tenant[0].property,
+        block: tenant[0].block,
+        innerBlock: tenant[0].innerBlock,
+        amount: tenant[0].securityDeposit,
+        status: "paid",
+        paidDate: new Date(),
+        notes: "",
+        year: englishYear,
+        month: englishMonth,
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate: nepaliTodayDate,
+      },
+      req.admin.id,
+      session,
+    );
     if (!sd.success) {
       await session.abortTransaction();
       session.endSession();
@@ -240,17 +254,15 @@ if (!cam.success) {
         message: sd.message,
       });
     }
- 
+
     await session.commitTransaction();
     session.endSession();
 
     // Send welcome email after transaction commits (non-blocking)
     if (tenant[0].email) {
-      sendEmail({
+      sendWelcomeEmail({
         to: tenant[0].email,
-        subject: "Welcome to our property management system",
-        html: `Welcome to our property management system.
-    You will receive a notification via this email for any updates regarding your units.`,
+        tenantName: tenant[0].name,
       })
         .then(() => {
           console.log(`Welcome email sent successfully to ${tenant[0].email}`);
@@ -258,7 +270,7 @@ if (!cam.success) {
         .catch((emailError) => {
           console.error(
             `Failed to send welcome email to ${tenant[0].email}:`,
-            emailError.message
+            emailError.message,
           );
           // Don't fail the request if email fails
         });
@@ -287,27 +299,30 @@ export const getTenants = async (req, res) => {
     const tenants = await Tenant.find({ isDeleted: false })
       .populate({
         path: "property",
-        match: { isDeleted: { $ne: true } }
+        match: { isDeleted: { $ne: true } },
       })
       .populate({
         path: "block",
-        match: { isDeleted: { $ne: true } }
+        match: { isDeleted: { $ne: true } },
       })
       .populate({
         path: "innerBlock",
-        match: { isDeleted: { $ne: true } }
+        match: { isDeleted: { $ne: true } },
       })
       .populate({
         path: "units",
-        match: { isDeleted: { $ne: true } }
-      })
+        match: { isDeleted: { $ne: true } },
+      });
 
-    
     // Filter out tenants where all units are null (deleted)
-    const validTenants = tenants.filter(tenant => {
+    const validTenants = tenants.filter((tenant) => {
       // If units array exists and has at least one valid unit, keep the tenant
-      if (tenant.units && Array.isArray(tenant.units) && tenant.units.length > 0) {
-        const validUnits = tenant.units.filter(unit => unit !== null);
+      if (
+        tenant.units &&
+        Array.isArray(tenant.units) &&
+        tenant.units.length > 0
+      ) {
+        const validUnits = tenant.units.filter((unit) => unit !== null);
         if (validUnits.length > 0) {
           tenant.units = validUnits; // Replace with filtered units
           return true;
@@ -319,7 +334,7 @@ export const getTenants = async (req, res) => {
       }
       return true; // Keep tenant even if units are missing
     });
-    
+
     res.status(200).json({ success: true, tenants: validTenants });
   } catch (error) {
     console.log(error);
@@ -346,7 +361,9 @@ export const getTenantById = async (req, res) => {
 
     // Filter out null units
     if (tenant.units && Array.isArray(tenant.units)) {
-      tenant.units = tenant.units.filter(unit => unit !== null && unit !== undefined);
+      tenant.units = tenant.units.filter(
+        (unit) => unit !== null && unit !== undefined,
+      );
     } else {
       tenant.units = [];
     }
@@ -418,7 +435,7 @@ export const updateTenant = async (req, res) => {
       });
       console.log(
         req.files.pdfAgreement[0].originalname,
-        req.files.pdfAgreement[0].mimetype
+        req.files.pdfAgreement[0].mimetype,
       );
 
       fs.unlinkSync(pdfTempPath);
@@ -435,14 +452,14 @@ export const updateTenant = async (req, res) => {
     const updatedTenant = await Tenant.findByIdAndUpdate(
       tenantId,
       { $set: updatedTenantData },
-      { new: true }
+      { new: true },
     )
       .populate("property")
       .populate("block")
       .populate("innerBlock");
     const updatedUnits = await Unit.updateMany(
       { _id: { $in: updatedTenant.units } },
-      { $set: { isOccupied: true } }
+      { $set: { isOccupied: true } },
     );
     if (!updatedUnits) {
       return res.status(400).json({
@@ -471,11 +488,11 @@ export const deleteTenant = async (req, res) => {
     const softDeletedTenant = await Tenant.findByIdAndUpdate(
       tenantId,
       { isDeleted: true },
-      { new: true }
+      { new: true },
     );
     await Unit.updateMany(
       { _id: { $in: softDeletedTenant.units } },
-      { $set: { isOccupied: false } }
+      { $set: { isOccupied: false } },
     );
     if (!softDeletedTenant) {
       return res
@@ -502,7 +519,7 @@ export const restoreTenant = async (req, res) => {
     const restoredTenant = await Tenant.findByIdAndUpdate(
       tenantId,
       { isDeleted: false },
-      { new: true }
+      { new: true },
     );
     if (!restoredTenant) {
       return res
@@ -544,18 +561,20 @@ export const searchTenants = async (req, res) => {
       .populate("block")
       .populate("innerBlock")
       .populate("units");
-    
+
     // Filter out null values from populated fields
-    const validTenants = tenants.map(tenant => {
+    const validTenants = tenants.map((tenant) => {
       // Filter out null units
       if (tenant.units && Array.isArray(tenant.units)) {
-        tenant.units = tenant.units.filter(unit => unit !== null && unit !== undefined);
+        tenant.units = tenant.units.filter(
+          (unit) => unit !== null && unit !== undefined,
+        );
       } else {
         tenant.units = [];
       }
       return tenant;
     });
-    
+
     res.status(200).json({ success: true, tenants: validTenants });
   } catch (error) {
     console.log(error);
