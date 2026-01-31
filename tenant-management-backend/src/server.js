@@ -9,6 +9,10 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const PORT = process.env.PORT || 3000;
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("PORT:", process.env.PORT);
+console.log("MONGO_URI loaded:", !!process.env.MONGO_URI);
+console.log("SMTP_HOST loaded:", !!process.env.SMTP_HOST);
 
 const server = http.createServer(app);
 initializeSocket(server);
