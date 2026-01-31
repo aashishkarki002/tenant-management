@@ -4,9 +4,6 @@ import { Plus, Search, User, ArrowRight, X, Circle, ChevronDown, ChevronUp } fro
 import { Calendar } from 'lucide-react';
 import { List } from 'lucide-react';
 import { Filter } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Clock } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -17,6 +14,7 @@ import { useFormik } from 'formik';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import MaintenanceCard from './Maintenance/components/MaintenanceCard';
+
 export default function Maintenance() {
   const [priority, setPriority] = useState("medium");
   const [tenant, setTenant] = useState([]);
@@ -70,21 +68,21 @@ export default function Maintenance() {
       setMaintenance(response.data.maintenance);
 
       // Extract unique staffs from maintenance data (assignedTo field)
-      const uniqueStaffs = [];
-      const staffMap = new Map();
+
 
       response.data.maintenance.forEach(item => {
         if (item.assignedTo && item.assignedTo._id) {
-          if (!staffMap.has(item.assignedTo._id)) {
-            staffMap.set(item.assignedTo._id, item.assignedTo);
-            uniqueStaffs.push(item.assignedTo);
-          }
         }
       });
-
-      setStaffs(uniqueStaffs);
     };
     getMaintenance();
+  }, []);
+  useEffect(() => {
+    const getStaffs = async () => {
+      const response = await api.get("/api/staff/get-staffs");
+      setStaffs(response.data.staffs);
+    };
+    getStaffs();
   }, []);
 
 
@@ -509,25 +507,8 @@ export default function Maintenance() {
             ).join(' ');
           };
 
-          // Format date
-          const formatDate = (date) => {
-            if (!date) return 'N/A';
-            try {
-              return new Date(date).toLocaleDateString();
-            } catch {
-              return date;
-            }
-          };
 
-          const toggleExpand = () => {
-            const newExpanded = new Set(expandedCards);
-            if (isExpanded) {
-              newExpanded.delete(maintenanceItem._id);
-            } else {
-              newExpanded.add(maintenanceItem._id);
-            }
-            setExpandedCards(newExpanded);
-          };
+
 
           return (
             <MaintenanceCard key={maintenanceItem._id} maintenanceItem={maintenanceItem} />

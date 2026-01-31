@@ -1,10 +1,9 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from "react";
 import api from "../../../plugins/axios";
 
-
-export const useAccounting = (selectedQuarter) => {
+export const useAccounting = (selectedQuarter, ledgerType = "all") => {
   const [summary, setSummary] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [ledgerEntries, setLedgerEntries] = useState([]);
@@ -34,6 +33,7 @@ export const useAccounting = (selectedQuarter) => {
         setLoadingLedger(true);
         const params = {};
         if (selectedQuarter) params.quarter = selectedQuarter;
+        if (ledgerType && ledgerType !== "all") params.type = ledgerType;
         const response = await api.get("/api/ledger/get-ledger", { params });
         setLedgerEntries(response.data.data?.entries || []);
       } catch (error) {
@@ -44,7 +44,7 @@ export const useAccounting = (selectedQuarter) => {
     };
 
     fetchLedger();
-  }, [selectedQuarter]);
+  }, [selectedQuarter, ledgerType]);
 
   return {
     summary,

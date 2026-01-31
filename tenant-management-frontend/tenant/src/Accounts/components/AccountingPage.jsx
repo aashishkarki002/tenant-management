@@ -26,9 +26,13 @@ export default function AccountingPage(
 ) {
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [selectedQuarter, setSelectedQuarter] = useState(null);
+    const [activeTab, setActiveTab] = useState("summary");
+
+    // Map tab to ledger API type: summary/dashboard → all, Revenue → revenue, Expenses → expense
+    const ledgerType = activeTab === "summary" ? "all" : activeTab === "Revenue" ? "revenue" : "expense";
 
     const { summary, loadingSummary, ledgerEntries, loadingLedger } =
-        useAccounting(selectedQuarter);
+        useAccounting(selectedQuarter, ledgerType);
     const { bankAccounts, selectedBank, setSelectedBank } = useBankAccounts();
 
     const totals = summary?.totals || {
@@ -62,28 +66,30 @@ export default function AccountingPage(
                 <div className="w-full sm:w-80">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Card className="cursor-pointer hover:bg-muted transition">
-                                <CardHeader className="flex flex-row items-center justify-between gap-3">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-xs text-muted-foreground truncate">
-                                            {selectedBank?.bankName || "Select Bank"}
-                                        </p>
-                                        <p className="text-lg font-bold text-foreground truncate">
-                                            ₹{selectedBank?.balance?.toLocaleString() ?? "0"}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground truncate">
-                                            {selectedBank?.accountNumber}
-                                        </p>
-                                    </div>
-                                    <ChevronDownIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                </CardHeader>
-                            </Card>
+                            <div className="cursor-pointer">
+                                <Card className="hover:bg-muted transition">
+                                    <CardHeader className="flex flex-row items-center justify-between gap-3">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs text-muted-foreground truncate">
+                                                {selectedBank?.bankName || "Select Bank"}
+                                            </p>
+                                            <p className="text-lg font-bold text-foreground truncate">
+                                                ₹{selectedBank?.balance?.toLocaleString() ?? "0"}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground truncate">
+                                                {selectedBank?.accountNumber}
+                                            </p>
+                                        </div>
+                                        <ChevronDownIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    </CardHeader>
+                                </Card>
+                            </div>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="w-80">
                             {bankAccounts.map((account) => (
                                 <DropdownMenuItem
                                     key={account._id}
-                                    onClick={() => setSelectedBank(account)}
+                                    onSelect={() => setSelectedBank(account)}
                                     className="p-0"
                                 >
                                     <Card className="w-full border-none shadow-none">
@@ -101,7 +107,7 @@ export default function AccountingPage(
                 </div>
             </div>
             <div>
-                <Tabs defaultValue="summary" className="w-full">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <TabsList className="grid w-full grid-cols-3 gap-2">
                         <TabsTrigger value="summary">Summary</TabsTrigger>
                         <TabsTrigger value="Revenue">Revenue</TabsTrigger>

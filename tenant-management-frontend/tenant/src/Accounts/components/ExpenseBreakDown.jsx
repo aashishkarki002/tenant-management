@@ -41,12 +41,14 @@ export default function ExpenseBreakDown({
         // Ledger entries
         csvContent += "\nExpense Ledger Entries\n";
         csvContent += "Date,Description,Amount,Type\n";
-        const expenseLedger = ledgerEntries.filter((entry) => entry.type === "EXPENSE");
+        // On Expenses tab, API already returns only expense entries
+        const expenseLedger = ledgerEntries;
         expenseLedger.forEach((entry) => {
             const date = entry.date ? new Date(entry.date).toLocaleDateString() : "—";
-            const description = entry.description || "—";
-            const amount = entry.amount ? `₹${entry.amount.toLocaleString()}` : "—";
-            csvContent += `${date},${description},${amount},${entry.type}\n`;
+            const description = entry.description || entry.account?.name || "—";
+            const amount = (entry.debit || entry.credit) ? `₹${(entry.debit || entry.credit).toLocaleString()}` : "—";
+            const typeLabel = entry.account?.type || "EXPENSE";
+            csvContent += `${date},${description},${amount},${typeLabel}\n`;
         });
 
         // Create blob and download
@@ -111,8 +113,8 @@ export default function ExpenseBreakDown({
                 headStyles: { fillColor: [239, 68, 68] }
             });
 
-            // Ledger entries table
-            const expenseLedger = ledgerEntries.filter((entry) => entry.type === "EXPENSE");
+            // Ledger entries table (on Expenses tab, API already returns only expense entries)
+            const expenseLedger = ledgerEntries;
             if (expenseLedger.length > 0) {
                 const finalY = doc.lastAutoTable.finalY || 80;
 
@@ -122,9 +124,9 @@ export default function ExpenseBreakDown({
 
                 const ledgerData = expenseLedger.slice(0, 20).map((entry) => [
                     entry.date ? new Date(entry.date).toLocaleDateString() : "—",
-                    entry.description || "—",
-                    entry.amount ? `₹${entry.amount.toLocaleString()}` : "—",
-                    entry.type
+                    entry.description || entry.account?.name || "—",
+                    (entry.debit || entry.credit) ? `₹${(entry.debit || entry.credit).toLocaleString()}` : "—",
+                    entry.account?.type || "EXPENSE"
                 ]);
 
                 doc.autoPrint({
@@ -262,7 +264,6 @@ export default function ExpenseBreakDown({
                 <CardContent>
                     <LedgerTable
                         entries={ledgerEntries}
-                        type="EXPENSE"
                         loading={loadingLedger}
                         itemsPerPage={20}
                     />
