@@ -1,13 +1,13 @@
 import axios from "axios";
 const api = axios.create({
-  baseURL: "http://localhost:3000",
+  baseURL: "https://api.aashish.maaniish.com.np",
   withCredentials: true,
 });
 let isRefreshing = false;
 let failedQueue = [];
 
 const processQueue = (error) => {
-  failedQueue.forEach(prom => {
+  failedQueue.forEach((prom) => {
     if (error) prom.reject(error);
     else prom.resolve();
   });
@@ -29,7 +29,6 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-
   (response) => response,
 
   async (error) => {
@@ -40,10 +39,12 @@ api.interceptors.response.use(
     // 2. The request was to logout (should not refresh on logout)
     // 3. The request was already retried
     // 4. We're on login/signup pages
-    const isRefreshTokenRequest = originalRequest.url?.includes("/refresh-token");
+    const isRefreshTokenRequest =
+      originalRequest.url?.includes("/refresh-token");
     const isLogoutRequest = originalRequest.url?.includes("/logout");
     const path = window.location.pathname.toLowerCase();
-    const isPublicRoute = path.startsWith("/login") || path.startsWith("/signup");
+    const isPublicRoute =
+      path.startsWith("/login") || path.startsWith("/signup");
 
     // If access token expired and we should try to refresh
     if (
@@ -67,7 +68,7 @@ api.interceptors.response.use(
       try {
         // 🔄 call refresh-token
         const refreshResponse = await api.post("/api/auth/refresh-token");
-        
+
         // Update token in localStorage if returned in response
         if (refreshResponse.data?.token) {
           localStorage.setItem("token", refreshResponse.data.token);

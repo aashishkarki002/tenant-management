@@ -296,7 +296,7 @@ export default function Tenants() {
           </DropdownMenu>
         </div>
         <div className="w-full sm:w-auto">
-          <Button className="bg-blue-600 text-blue-50 h-10 px-4 rounded-md hover:bg-blue-800 flex 
+          <Button className=" text-blue-50 h-10 px-4 rounded-md hover:bg-blue-800 flex 
            items-center gap-2 w-full sm:w-auto justify-center
            cursor-pointer
            "
@@ -311,7 +311,7 @@ export default function Tenants() {
         {/* Add Tenant Button */}
         <div className="w-full sm:w-auto">
           <Button
-            className="bg-blue-600 text-blue-50 h-10 px-4 rounded-md hover:bg-blue-800 flex 
+            className="bg-primary text-primary-foreground h-10 px-4 rounded-md hover:bg-primary/90 flex 
            items-center gap-2 w-full sm:w-auto justify-center
            cursor-pointer
            "

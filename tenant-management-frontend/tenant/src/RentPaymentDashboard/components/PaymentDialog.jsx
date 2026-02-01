@@ -142,7 +142,9 @@ export const PaymentDialog = ({
             >
               <SelectTrigger id="method-quick">
                 <SelectValue placeholder="Select payment method" />
+
               </SelectTrigger>
+
               <SelectContent>
 
                 <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
