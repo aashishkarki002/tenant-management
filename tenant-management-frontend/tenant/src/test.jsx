@@ -1,21 +1,13 @@
 import React from "react";
-import DualCalendarTailwind from "./components/dualDate";
-import { useFormik } from "formik";
+import useUnits from "./hooks/use-units";
+import useProperty from "./hooks/use-property";
 export default function TestFormik() {
-  const formik = useFormik({
-    initialValues: {
-      email: "test@test.com",
-      password: "",
-    },
-    onSubmit: (values) => {
-      console.log(values)
-    }
-  });
-  return (
-    <>
-      <h2>hello</h2>
-      <DualCalendarTailwind />
 
-    </>
-  );
+  const { units } = useUnits();
+  console.log(units);
+  const { property, block, innerBlock } = useProperty();
+  console.log(property);
+  console.log(block);
+  console.log(innerBlock);
+  return <div>TestFormik</div>;
 }

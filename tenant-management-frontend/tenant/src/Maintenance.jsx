@@ -5,8 +5,7 @@ import { Calendar } from 'lucide-react';
 import { List } from 'lucide-react';
 import { Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Clock } from 'lucide-react';
+import useUnits from './hooks/use-units';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -16,11 +15,12 @@ import api from '../plugins/axios';
 import { useFormik } from 'formik';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
+import useProperty from './hooks/use-property';
 import MaintenanceCard from './Maintenance/components/MaintenanceCard';
 export default function Maintenance() {
   const [priority, setPriority] = useState("medium");
   const [tenant, setTenant] = useState([]);
-  const [unit, setUnit] = useState([]);
+  const { units } = useUnits();
   const [maintenance, setMaintenance] = useState([]);
   const [expandedCards, setExpandedCards] = useState(new Set());
   const [selectedTenant, setSelectedTenant] = useState(null);
@@ -45,21 +45,7 @@ export default function Maintenance() {
       });
 
       // Get unoccupied units
-      const getUnits = async () => {
-        const unitResponse = await api.get("/api/unit/get-units");
-        const unoccupiedUnits = unitResponse.data.units || [];
 
-        // Combine occupied and unoccupied units, removing duplicates
-        const allUnits = [...occupiedUnits];
-        unoccupiedUnits.forEach(unit => {
-          if (!allUnits.find(u => u._id === unit._id)) {
-            allUnits.push(unit);
-          }
-        });
-
-        setUnit(allUnits);
-      };
-      getUnits();
     };
     getTenants();
   }, []);
@@ -316,7 +302,7 @@ export default function Maintenance() {
                         </Button>
                       </div>
                     </div>
-                    <div className="space-y-2"><Label>Status</Label>
+                    <div className="space-y-2 "><Label>Status</Label>
                       <Select name="status" onValueChange={(value) => formik.setFieldValue("status", value)} value={formik.values.status}>
                         <SelectTrigger className="bg-white text-black border-gray-300">
                           <SelectValue placeholder="Select Status" />

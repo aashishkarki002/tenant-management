@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PlusIcon, Calendar } from "lucide-react";
+import useProperty from "./hooks/use-property";
+import useUnits from "./hooks/use-units";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -14,15 +16,12 @@ import { Zap, AlertTriangle, Home, Eye, Upload, FileText, ChevronLeft, ChevronRi
 import api from "../plugins/axios";
 import { useEffect } from "react";
 export default function Electricity() {
-  const [building, setBuilding] = useState("Building A");
-  const [block, setBlock] = useState("Block 1");
   const [nepaliMonth, setNepaliMonth] = useState("Ashwin 2081");
   const [compareWithPrevious, setCompareWithPrevious] = useState(true);
-  const [properties, setProperties] = useState([]);
-
+  const { property } = useProperty();
+  const { units } = useUnits();
 
   const [tenants, setTenants] = useState([]);
-  const [units, setUnits] = useState([]);
   const [activeTab, setActiveTab] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [electricityData, setElectricityData] = useState({
@@ -46,19 +45,6 @@ export default function Electricity() {
       setTenants(data.tenants);
     };
     getTenants();
-  }, []);
-
-  useEffect(() => {
-    const getUnits = async () => {
-      try {
-        const response = await api.get("/api/unit/get-units");
-        setUnits(response.data.units || []);
-      } catch (error) {
-        console.error("Error fetching units:", error);
-        setUnits([]);
-      }
-    };
-    getUnits();
   }, []);
 
   useEffect(() => {
@@ -112,8 +98,8 @@ export default function Electricity() {
   const readings = electricityData.readings || [];
   const formik = useFormik({
     initialValues: {
-      propertyId: "",
       blockId: "",
+      innerBlockId: "",
       nepaliMonth: "",
       compareWithPrevious: true,
       totalConsumption: 0,
@@ -124,6 +110,16 @@ export default function Electricity() {
       console.log(values);
     },
   });
+
+  // Get all blocks from all properties (flatten)
+  const allBlocks = property && Array.isArray(property) && property.length > 0
+    ? property.flatMap(prop => prop.blocks || [])
+    : [];
+
+  // Get innerBlocks from selected block
+  const selectedBlock = allBlocks.find(block => block._id === formik.values.blockId);
+  const availableInnerBlocks = selectedBlock?.innerBlocks || [];
+
   const exportReport = () => {
     // Export report functionality
     console.log("Export report");
@@ -150,7 +146,7 @@ export default function Electricity() {
 
         // When unit is selected, auto-populate previous unit from most recent electricity record
         if (field === 'unitId' && value) {
-          const selectedUnit = units.find(u => u._id === value);
+          const selectedUnit = units && Array.isArray(units) ? units.find(u => u._id === value) : null;
           if (selectedUnit) {
             updated.unitName = selectedUnit.name;
             updated.unitId = value;
@@ -224,36 +220,62 @@ export default function Electricity() {
             <Card className="  rounded-lg shadow-lg">
               <CardContent className="p-5 ">
                 <div className="flex items-center gap-6 flex-wrap">
-                  {/* BUILDING Dropdown */}
+                  {/* BLOCK Dropdown */}
                   <div className="flex flex-col gap-1.5">
                     <label className=" text-xs font-semibold uppercase tracking-wide">
                       BLOCK:
                     </label>
-                    <Select value={formik.values.propertyId} onValueChange={(value) => formik.setFieldValue("propertyId", value)}>
+                    <Select
+                      value={formik.values.blockId}
+                      onValueChange={(value) => {
+                        formik.setFieldValue("blockId", value);
+                        formik.setFieldValue("innerBlockId", ""); // Reset innerBlock when block changes
+                      }}
+                    >
                       <SelectTrigger className="w-[150px] h-9 bg-gray-100 text-black hover:bg-gray-200">
-                        <SelectValue />
+                        <SelectValue placeholder="Select block" />
                       </SelectTrigger>
                       <SelectContent className="bg-gray-100 text-black hover:bg-gray-200">
-                        {tenants.map((tenant) => (
-                          <SelectItem key={tenant._id} value={tenant._id}>{tenant.property.name}</SelectItem>
-                        ))}
+                        {allBlocks.length > 0 ? (
+                          allBlocks.map((block) => (
+                            <SelectItem key={block._id} value={block._id}>
+                              {block.name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no-block" disabled>
+                            No blocks available
+                          </SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
 
-                  {/* BLOCK Dropdown */}
+                  {/* INNER BLOCK Dropdown */}
                   <div className="flex flex-col gap-1.5">
                     <label className=" text-xs font-semibold uppercase tracking-wide">
                       INNER BLOCK:
                     </label>
-                    <Select value={formik.values.blockId} onValueChange={(value) => formik.setFieldValue("blockId", value)}>
+                    <Select
+                      value={formik.values.innerBlockId}
+                      onValueChange={(value) => formik.setFieldValue("innerBlockId", value)}
+                      disabled={!formik.values.blockId}
+                    >
                       <SelectTrigger className="w-[130px] h-9 bg-gray-100 text-black hover:bg-gray-200">
-                        <SelectValue />
+                        <SelectValue placeholder="Select inner block" />
                       </SelectTrigger>
                       <SelectContent className="bg-gray-100 text-black hover:bg-gray-200">
-                        {tenants.map((tenant) => (
-                          <SelectItem key={tenant._id} value={tenant._id}>{tenant.block.name}</SelectItem>
-                        ))}
+                        {availableInnerBlocks.length > 0 ? (
+                          availableInnerBlocks.map((innerBlock) => (
+                            <SelectItem key={innerBlock._id} value={innerBlock._id}>
+                              {innerBlock.name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no-inner-block" disabled>
+                            {formik.values.blockId ? "No inner blocks available" : "Select block first"}
+                          </SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -457,11 +479,17 @@ export default function Electricity() {
                                         <SelectValue placeholder="Select unit" />
                                       </SelectTrigger>
                                       <SelectContent className="bg-white">
-                                        {units.map((unit) => (
-                                          <SelectItem key={unit._id} value={unit._id}>
-                                            {unit.name}
+                                        {units && Array.isArray(units) && units.length > 0 ? (
+                                          units.map((unit) => (
+                                            <SelectItem key={unit._id} value={unit._id}>
+                                              {unit.name}
+                                            </SelectItem>
+                                          ))
+                                        ) : (
+                                          <SelectItem value="no-units" disabled>
+                                            No units available
                                           </SelectItem>
-                                        ))}
+                                        )}
                                       </SelectContent>
                                     </Select>
                                   </td>

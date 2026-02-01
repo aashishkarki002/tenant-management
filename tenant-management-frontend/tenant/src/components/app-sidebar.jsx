@@ -3,11 +3,12 @@ import {
   Users,
   DollarSign,
   FileText,
-  BarChart,
   Wrench,
   Banknote,
   Zap,
   CreditCard,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 import {
@@ -19,6 +20,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -36,14 +40,12 @@ import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
+import { useState } from "react";
 // Menu items
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Tenants", url: "/tenants", icon: Users },
   { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
-  { title: "Accounting", url: "/accounting", icon: FileText },
-  { title: "Revenue Streams", url: "/revenue", icon: BarChart },
-  { title: "Expenses", url: "/expenses", icon: CreditCard },
   { title: "Maintenance", url: "/maintenance", icon: Wrench },
   { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
   { title: "Electricity", url: "/electricity", icon: Zap },
@@ -51,11 +53,20 @@ const items = [
 
 export default function AppSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
+  const [isAccountingOpen, setIsAccountingOpen] = useState(false);
 
   const navigate = useNavigate();
 
   const handleNav = () => {
     if (isMobile) setOpenMobile(false);
+  };
+
+  const handleAccountingEnter = () => {
+    setIsAccountingOpen(true);
+  };
+
+  const handleAccountingLeave = () => {
+    setIsAccountingOpen(false);
   };
   const { user, logout } = useAuth();
   const SignOut = async () => {
@@ -107,6 +118,62 @@ export default function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+
+              {/* Accounting Dropdown Menu */}
+              <SidebarMenuItem
+                className="mb-2 text-gray-500"
+                onMouseEnter={handleAccountingEnter}
+                onMouseLeave={handleAccountingLeave}
+              >
+                <SidebarMenuButton
+                  className="hover:bg-blue-100 hover:text-blue-600 rounded-md flex items-center gap-2"
+                >
+                  <FileText className="w-5 h-5" />
+                  <span>Accounting</span>
+                  {isAccountingOpen ? (
+                    <ChevronDown className="w-4 h-4 ml-auto" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 ml-auto" />
+                  )}
+                </SidebarMenuButton>
+                {isAccountingOpen && (
+                  <SidebarMenuSub>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        asChild
+                        className="hover:bg-blue-100 hover:text-blue-600"
+                        onClick={handleNav}
+                      >
+                        <Link to="/expenses">
+                          <span>Expense</span>
+                        </Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        asChild
+                        className="hover:bg-blue-100 hover:text-blue-600"
+                        onClick={handleNav}
+                      >
+                        <Link to="/revenue">
+                          <span>Revenue</span>
+                        </Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        asChild
+                        className="hover:bg-blue-100 hover:text-blue-600"
+                        onClick={handleNav}
+                      >
+                        <Link to="/accounting">
+                          <span>Summary</span>
+                        </Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  </SidebarMenuSub>
+                )}
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

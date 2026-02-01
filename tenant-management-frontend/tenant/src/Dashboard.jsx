@@ -43,6 +43,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+
   const [dashboardData, setDashboardData] = useState({
     totalTenants: 0,
     activeTenants: 0,
@@ -83,6 +84,7 @@ export default function Dashboard() {
 
   // Destructure data from backend (Nepali-date-based)
   const {
+
     totalTenants,
     tenantsThisMonth,
     totalUnits,
@@ -94,7 +96,10 @@ export default function Dashboard() {
     upcomingRents,
     contractsEndingSoon,
     maintenance,
-
+    overdueRentsCount,
+    upcomingRentsCount,
+    contractsEndingSoonCount,
+    maintenanceCount,
     npYear,
     npMonth,
   } = dashboardData;
@@ -270,7 +275,7 @@ export default function Dashboard() {
                 <CardTitle>Upcoming Deadlines</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {overdueRents.length > 0 ? (
+                {overdueRentsCount > 0 ? (
                   overdueRents.map((rent, idx) => {
                     const dueDate = rent.nepaliDueDate
                       ? new Date(rent.nepaliDueDate)
@@ -315,12 +320,14 @@ export default function Dashboard() {
                     );
                   })
                 ) : (
-                  <p className="text-gray-500 text-sm text-center py-4">
-                    No overdue rents
-                  </p>
+                  overdueRentsCount === 0 && (
+                    <p className="text-gray-500 text-sm text-center py-4">
+                      No overdue rents
+                    </p>
+                  )
                 )}
 
-                {upcomingRents.length > 0 &&
+                {upcomingRentsCount > 0 &&
                   upcomingRents.map((rent, idx) => {
                     const dueDate = rent.nepaliDueDate
                       ? new Date(rent.nepaliDueDate)
@@ -394,13 +401,9 @@ export default function Dashboard() {
                     );
                   })}
 
-                {overdueRents.length === 0 &&
-                  upcomingRents.length === 0 &&
-                  contractsEndingSoon.length === 0 && (
-                    <p className="text-gray-500 text-sm text-center py-8">
-                      No upcoming deadlines
-                    </p>
-                  )}
+                {maintenance.filter((maintenance) => maintenance.status === "OPEN").length === 0 && (
+                  <p className="text-gray-500 text-sm text-center py-8" >No maintenance requests</p>
+                )}
                 {maintenance.filter((maintenance) => maintenance.status === "OPEN").length > 0 &&
                   maintenance.filter((maintenance) => maintenance.status === "OPEN").map((maintenance, idx) => {
                     return (

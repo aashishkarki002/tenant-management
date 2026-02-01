@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
@@ -29,39 +29,24 @@ import { useState, useEffect, useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Spinner } from "@/components/ui/spinner";
+
+
+import useUnits from "./hooks/use-units";
+import useProperty from "./hooks/use-property";
 function AddTenants() {
-  const [properties, setProperties] = useState([]);
-  const [units, setUnits] = useState([]);
+
+  const { units } = useUnits();
+  const { property } = useProperty();
   const [activeTab, setActiveTab] = useState("personalInfo");
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    const getUnits = async () => {
-      const response = await api.get("/api/unit/get-units");
-      setUnits(response.data.units);
-    };
-    const fetchProperties = async () => {
-      try {
-        const response = await api.get(
-          "http://localhost:3000/api/property/get-property"
-        );
-        const data = await response.data;
-        setProperties(data.property || []);
-      } catch (error) {
-        console.error("Error fetching properties:", error);
-      }
-    };
-    fetchProperties();
-    getUnits();
-  }, []);
-
   // Helper function to get innerBlocks for selected block
   const getInnerBlocksForBlock = (blockId) => {
-    if (!blockId || !properties || properties.length === 0) return [];
+    if (!blockId || !property || property.length === 0) return [];
 
-    for (const property of properties) {
-      if (property.blocks && property.blocks.length > 0) {
-        const selectedBlock = property.blocks.find(
+    for (const propertyItem of property) {
+      if (propertyItem.blocks && propertyItem.blocks.length > 0) {
+        const selectedBlock = propertyItem.blocks.find(
           (block) => block._id === blockId
         );
         if (selectedBlock && selectedBlock.innerBlocks) {
@@ -72,19 +57,17 @@ function AddTenants() {
     return [];
   };
 
-  // Memoize innerBlocks based on selected block
-
   // Helper function to get property ID from selected block
   const getPropertyIdFromBlock = (blockId) => {
-    if (!blockId || !properties || properties.length === 0) return null;
+    if (!blockId || !property || property.length === 0) return null;
 
-    for (const property of properties) {
-      if (property.blocks && property.blocks.length > 0) {
-        const selectedBlock = property.blocks.find(
+    for (const propertyItem of property) {
+      if (propertyItem.blocks && propertyItem.blocks.length > 0) {
+        const selectedBlock = propertyItem.blocks.find(
           (block) => block._id === blockId
         );
         if (selectedBlock) {
-          return property._id;
+          return propertyItem._id;
         }
       }
     }
@@ -238,12 +221,20 @@ function AddTenants() {
             error?.response?.data?.message || "Failed to create tenant";
           toast.error(errorMessage);
         }
+        setIsLoading(false);
       }
     },
   });
+
+  // Get all blocks from all properties
+  const allBlocks = useMemo(() => {
+    if (!property || property.length === 0) return [];
+    return property.flatMap((prop) => prop.blocks || []);
+  }, [property]);
+
   const innerBlocks = useMemo(() => {
     return getInnerBlocksForBlock(formik.values.block);
-  }, [formik.values.block, properties]);
+  }, [formik.values.block, property]);
 
   function handleClose() {
     if (typeof window !== "undefined") {
@@ -272,6 +263,7 @@ function AddTenants() {
       setActiveTab(tabs[currentIndex - 1]);
     }
   };
+
   const totalFields = Object.keys(formik.initialValues).length;
   const filledFields = Object.values(formik.values).filter(
     (value) =>
@@ -364,7 +356,7 @@ function AddTenants() {
                       <SelectValue placeholder="Select Unit" />
                     </SelectTrigger>
                     <SelectContent>
-                      {units.map((unit) => (
+                      {units && units.map((unit) => (
                         <SelectItem key={unit._id} value={unit._id}>
                           {unit.name}
                         </SelectItem>
@@ -399,7 +391,7 @@ function AddTenants() {
                   {formik.values.leaseStartDate &&
                     formik.values.leaseEndDate &&
                     new Date(formik.values.leaseEndDate) <
-                      new Date(formik.values.leaseStartDate) && (
+                    new Date(formik.values.leaseStartDate) && (
                       <p className="text-red-500 text-sm mt-1">
                         Lease end date must be after start date
                       </p>
@@ -455,12 +447,16 @@ function AddTenants() {
                       <SelectValue placeholder="Select block" />
                     </SelectTrigger>
                     <SelectContent>
-                      {properties.flatMap((property) =>
-                        property.blocks.map((block) => (
+                      {allBlocks && allBlocks.length > 0 ? (
+                        allBlocks.map((block) => (
                           <SelectItem key={block._id} value={block._id}>
                             {block.name}
                           </SelectItem>
                         ))
+                      ) : (
+                        <SelectItem value="no-blocks" disabled>
+                          No blocks available
+                        </SelectItem>
                       )}
                     </SelectContent>
                   </Select>
@@ -478,11 +474,17 @@ function AddTenants() {
                       <SelectValue placeholder="Select inner block" />
                     </SelectTrigger>
                     <SelectContent>
-                      {innerBlocks.map((ib) => (
-                        <SelectItem key={ib._id} value={ib._id}>
-                          {ib.name}
+                      {innerBlocks && innerBlocks.length > 0 ? (
+                        innerBlocks.map((ib) => (
+                          <SelectItem key={ib._id} value={ib._id}>
+                            {ib.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-inner-blocks" disabled>
+                          No inner blocks available
                         </SelectItem>
-                      ))}
+                      )}
                     </SelectContent>
                   </Select>
                   <div className="flex justify-between mt-6">
@@ -532,7 +534,7 @@ function AddTenants() {
                         const files = Array.from(e.target.files || []);
                         const currentFiles =
                           formik.values.documents?.[
-                            formik.values.documentType
+                          formik.values.documentType
                           ] || [];
                         formik.setFieldValue("documents", {
                           ...formik.values.documents,
