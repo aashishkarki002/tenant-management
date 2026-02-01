@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PlusIcon, CarIcon, TagIcon } from "lucide-react";
 import {
+  Empty,
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
@@ -172,15 +173,15 @@ export default function Revenue() {
 
           <TabsContent value="allstreams">
             <Card>
-              <div className="flex justify-between">
 
-              </div>
-              <div className="flex flex-col gap-4">
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 items-stretch">
                 {parkingSpots.length > 0 && parkingSpots.map(renderParkingSpot)}
                 {brandDeals.length > 0 && brandDeals.map(renderBrandDeal)}
+
                 {parkingSpots.length === 0 && brandDeals.length === 0 && (
-                  <Card className="mt-4 w-75 ml-4">
-                    <CardContent className="flex flex-col items-center justify-center py-8">
+                  <Card className="w-full h-full">
+                    <CardContent className="flex flex-col items-center justify-center h-full py-8">
                       <EmptyTitle>No Revenue Streams</EmptyTitle>
                       <EmptyDescription>
                         Add parking slots or brand deals to get started
@@ -188,16 +189,25 @@ export default function Revenue() {
                     </CardContent>
                   </Card>
                 )}
-                <div
+
+                <Empty
+                  className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg p-8
+               flex flex-col items-center justify-center cursor-pointer
+               hover:border-gray-400 transition-colors bg-white"
                   onClick={() => setIsDialogOpen(true)}
-                  className="mt-4 w-75 ml-4 border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:border-gray-400 transition-colors bg-white"
                 >
-                  <button className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                  <Button
+                    variant="outline"
+                    className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200"
+                  >
                     <PlusIcon className="w-6 h-6 text-gray-600" />
-                  </button>
-                  <p className="mt-4 text-gray-700 font-medium">Add New Stream</p>
-                </div>
+                  </Button>
+                  <p className="mt-4 text-gray-700 font-medium text-sm">
+                    Add New Stream
+                  </p>
+                </Empty>
               </div>
+
             </Card>
           </TabsContent>
 

@@ -144,7 +144,7 @@ export const PaymentDialog = ({
                 <SelectValue placeholder="Select payment method" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="cash">Cash</SelectItem>
+
                 <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                 <SelectItem value="cheque">Cheque</SelectItem>
               </SelectContent>
@@ -166,8 +166,8 @@ export const PaymentDialog = ({
                       formik.setFieldValue("bankAccountId", bank._id);
                     }}
                     className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${selectedBankAccountId === bank._id
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 hover:border-gray-300"
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200 hover:border-gray-300"
                       }`}
                   >
                     <div className="flex items-center justify-between">
@@ -395,8 +395,8 @@ export const PaymentDialog = ({
                       formik.setFieldValue("bankAccountId", bank._id);
                     }}
                     className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${selectedBankAccountId === bank._id
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 hover:border-gray-300"
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200 hover:border-gray-300"
                       }`}
                   >
                     <div className="flex items-center justify-between">

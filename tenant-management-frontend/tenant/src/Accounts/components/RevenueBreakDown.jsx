@@ -59,7 +59,7 @@ export default function RevenueBreakDown({ totals, incomeStreams, ledgerEntries,
                 </CardHeader>
                 <CardContent>
                     <LedgerTable
-                        entries={ledgerEntries.filter(e => e.type === "REVENUE")}
+                        entries={ledgerEntries}
                         loading={loadingLedger}
                         itemsPerPage={20}
                     />

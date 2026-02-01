@@ -177,3 +177,30 @@ export async function updateMaintenanceStatus(
     expense,
   };
 }
+
+export async function updateMaintenanceAssignedTo(id, assignedTo) {
+  const existing = await Maintenance.findById(id);
+  if (!existing) {
+    return {
+      success: false,
+      message: "Maintenance task not found",
+      data: null,
+    };
+  }
+  const updated = await Maintenance.findByIdAndUpdate(
+    id,
+    { $set: { assignedTo: assignedTo || null } },
+    { new: true },
+  )
+    .populate("assignedTo", "name email phone")
+    .populate("tenant")
+    .populate("unit")
+    .populate("property")
+    .populate("block")
+    .populate("createdBy");
+  return {
+    success: true,
+    message: "Assignment updated successfully",
+    data: updated,
+  };
+}

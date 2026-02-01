@@ -34,6 +34,22 @@ export default function MaintenanceCard({
 }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [pendingStatus, setPendingStatus] = useState(null);
+    const [staffs, setStaffs] = useState([]);
+    const [assigning, setAssigning] = useState(false);
+
+    useEffect(() => {
+        const fetchStaffs = async () => {
+            try {
+                const res = await api.get("/api/staff/get-staffs");
+                const data = res.data?.data;
+                const list = Array.isArray(data) ? data : data?.data ?? [];
+                setStaffs(list);
+            } catch {
+                setStaffs([]);
+            }
+        };
+        fetchStaffs();
+    }, []);
 
     const [formData, setFormData] = useState({
         paymentStatus: maintenanceItem.paymentStatus || "pending",
@@ -98,6 +114,27 @@ export default function MaintenanceCard({
         setFormData((prev) => ({ ...prev, [field]: value }));
     };
 
+    /* ---------------- ASSIGN STAFF ---------------- */
+
+    const handleAssignStaff = async (staffId) => {
+        const value = staffId === "__unassigned__" ? null : staffId;
+        setAssigning(true);
+        try {
+            await api.patch(`/api/maintenance/${maintenanceItem._id}/assign`, {
+                assignedTo: value,
+            });
+            toast.success(value ? "Staff assigned" : "Assignment cleared");
+            onUpdate?.();
+        } catch {
+            toast.error("Failed to update assignment");
+        } finally {
+            setAssigning(false);
+        }
+    };
+
+    const assignedStaffId =
+        maintenanceItem.assignedTo?._id ?? maintenanceItem.assignedTo ?? "";
+
     /* ---------------- UI ---------------- */
 
     return (
@@ -115,6 +152,34 @@ export default function MaintenanceCard({
                     </DialogHeader>
 
                     <div className="space-y-4 py-4">
+                        {/* Assign staff */}
+                        <div className="space-y-2">
+                            <Label>Assign to</Label>
+                            <Select
+                                value={assignedStaffId || "__unassigned__"}
+                                onValueChange={handleAssignStaff}
+                                disabled={assigning}
+                            >
+                                <SelectTrigger className="bg-white border-gray-300">
+                                    <SelectValue placeholder="Assign staff">
+                                        {assignedStaffId
+                                            ? staffs.find((s) => s._id === assignedStaffId)?.name ?? "Assigned"
+                                            : "Unassigned"}
+                                    </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__unassigned__">
+                                        Unassigned
+                                    </SelectItem>
+                                    {staffs.map((staff) => (
+                                        <SelectItem key={staff._id} value={staff._id}>
+                                            {staff.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         {/* Payment Status */}
                         <div className="space-y-2">
                             <Label>Payment Status</Label>
@@ -191,14 +256,34 @@ export default function MaintenanceCard({
                             </Badge>
                         )}
 
-                        {/* Vendor */}
-                        <div className="flex items-center gap-2 min-w-[160px]">
-                            <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
+                        {/* Assign staff */}
+                        <div className="flex items-center gap-2 min-w-[180px]">
+                            <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center shrink-0">
                                 <User className="w-4 h-4 text-teal-600" />
                             </div>
-                            <span className="truncate">
-                                {maintenanceItem.assignedTo?.name || "Unassigned"}
-                            </span>
+                            <Select
+                                value={assignedStaffId || "__unassigned__"}
+                                onValueChange={handleAssignStaff}
+                                disabled={assigning}
+                            >
+                                <SelectTrigger className="bg-white border-gray-300 min-w-[140px]">
+                                    <SelectValue placeholder="Assign staff">
+                                        {assignedStaffId
+                                            ? staffs.find((s) => s._id === assignedStaffId)?.name ?? "Assigned"
+                                            : "Unassigned"}
+                                    </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__unassigned__">
+                                        Unassigned
+                                    </SelectItem>
+                                    {staffs.map((staff) => (
+                                        <SelectItem key={staff._id} value={staff._id}>
+                                            {staff.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         {/* Status */}

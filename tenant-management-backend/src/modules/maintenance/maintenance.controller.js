@@ -3,6 +3,7 @@ import {
   getAllMaintenance,
   getMaintenanceById,
   updateMaintenanceStatus,
+  updateMaintenanceAssignedTo,
 } from "./maintenance.service.js";
 
 export async function createMaintenanceController(req, res) {
@@ -108,6 +109,25 @@ export async function updateMaintenanceStatusController(req, res) {
       message: result.message,
       maintenance: result.data,
       expense: result.expense || null,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+export async function updateMaintenanceAssignedToController(req, res) {
+  try {
+    const { id } = req.params;
+    const { assignedTo } = req.body;
+    const result = await updateMaintenanceAssignedTo(id, assignedTo || null);
+    const statusCode = result.success ? 200 : 404;
+    return res.status(statusCode).json({
+      success: result.success,
+      message: result.message,
+      maintenance: result.data,
     });
   } catch (error) {
     return res.status(500).json({

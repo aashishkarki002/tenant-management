@@ -21,6 +21,8 @@ export const loginUserService = async (email, password) => {
     id: admin._id,
     role: admin.role,
   });
+  admin.refreshToken = refreshToken;
+  await admin.save({ validateBeforeSave: false });
 
   return { success: true, admin, accessToken, refreshToken };
 };

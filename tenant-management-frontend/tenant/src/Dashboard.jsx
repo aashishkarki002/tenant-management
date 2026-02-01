@@ -458,7 +458,7 @@ export default function Dashboard() {
                     <p className="text-sm text-gray-600">Rent Collection</p>
                     <p className="text-sm font-semibold">
                       {totalRent > 0
-                        ? Math.round((monthlyRevenue / totalRent) * 100)
+                        ? Math.round((rentSummary.totalCollected / totalRent) * 100)
                         : 0}
                       %
                     </p>

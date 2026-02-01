@@ -22,6 +22,7 @@ import electricityRoute from "./modules/electricity/electricity.route.js";
 import camRoute from "./modules/tenant/cam/cam.route.js";
 import expenseRoute from "./modules/expenses/expense.route.js";
 import maintenanceRoute from "./modules/maintenance/maintenance.route.js";
+import staffRoute from "./modules/staffs/staffs.route.js";
 // 🚨 Load cron jobs (allow in development for testing)
 try {
   await import("./cron/monthlyRentAndCam.cron.js");
@@ -62,6 +63,7 @@ app.use("/api/electricity", electricityRoute);
 app.use("/api/cam", camRoute);
 app.use("/api/expense", expenseRoute);
 app.use("/api/maintenance", maintenanceRoute);
+app.use("/api/staff", staffRoute);
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });

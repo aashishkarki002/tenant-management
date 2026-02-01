@@ -1,33 +1,38 @@
 import { Sd } from "./sd.model.js";
 import { ledgerService } from "../../ledger/ledger.service.js";
+import { buildSecurityDepositJournal } from "../../ledger/journal-builders/index.js";
 import { createLiability } from "../.././liabilities/liabilty.service.js";
 async function createSd(sdData, createdBy, session = null) {
-    try {
-        const sd = await Sd.create([sdData], session ? { session } : {});
-        await ledgerService.recordSecurityDeposit(sd[0]._id, createdBy, session);
+  try {
+    // Mongoose create() with a session requires an array of documents
+    const opts = session ? { session } : {};
+    const created = await Sd.create([sdData], opts);
+    const sd = created[0];
+    const sdPayload = buildSecurityDepositJournal(sd, { createdBy });
+    await ledgerService.postJournalEntry(sdPayload, session);
 
-        await createLiability({
-            source: "SECURITY_DEPOSIT",
-            amount: sd[0].amount,
-            date: sd[0].paidDate,
-            payeeType: "TENANT",
-            tenant: sd[0].tenant,
-            referenceType: "SECURITY_DEPOSIT",
-            referenceId: sd[0]._id,
-            createdBy: createdBy,
-        });
-        return {
-            success: true,
-            message: "Sd created successfully",
-            data: sd[0],
-        };
-    } catch (error) {
-        console.error("Failed to create sd:", error);
-        return {
-            success: false,
-            message: "Failed to create sd",
-            error: error.message,
-        };
-    }
+    await createLiability({
+      source: "SECURITY_DEPOSIT",
+      amount: sd.amount,
+      date: sd.paidDate,
+      payeeType: "TENANT",
+      tenant: sd.tenant,
+      referenceType: "SECURITY_DEPOSIT",
+      referenceId: sd._id,
+      createdBy: createdBy,
+    });
+    return {
+      success: true,
+      message: "Sd created successfully",
+      data: sd,
+    };
+  } catch (error) {
+    console.error("Failed to create sd:", error);
+    return {
+      success: false,
+      message: "Failed to create sd",
+      error: error.message,
+    };
+  }
 }
 export { createSd };

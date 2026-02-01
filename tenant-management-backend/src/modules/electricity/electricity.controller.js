@@ -124,6 +124,7 @@ export const getElectricityReadings = async (req, res) => {
       tenantId,
       unitId,
       propertyId,
+
       nepaliYear: nepaliYear ? parseInt(nepaliYear) : undefined,
       nepaliMonth: nepaliMonth ? parseInt(nepaliMonth) : undefined,
       status,

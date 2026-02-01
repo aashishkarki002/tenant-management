@@ -135,24 +135,21 @@ async function createRevenue(revenueData) {
       { session },
     );
 
-    /* ----------------------------------
+     /* ----------------------------------
        RECORD IN LEDGER (DR Cash/Bank, CR Revenue)
     ---------------------------------- */
     const ledgerDescription =
       payerType === "EXTERNAL"
         ? `Revenue from ${externalPayer.name}`
         : "Manual revenue received";
-    await ledgerService.recordRevenueReceived(
-      {
-        amount,
-        paymentDate: date,
-        nepaliDate: nepaliDate || date,
-        description: ledgerDescription,
-        referenceId: revenue._id,
-        createdBy: createdBy || adminId,
-      },
-      session,
-    );
+    const revenuePayload = buildRevenueReceivedJournal(revenue, {
+      amount,
+      paymentDate: date,
+      nepaliDate: nepaliDate || date,
+      description: ledgerDescription,
+      createdBy: createdBy || adminId,
+    });
+    await ledgerService.postJournalEntry(revenuePayload, session);
 
     /* ----------------------------------
        COMMIT
