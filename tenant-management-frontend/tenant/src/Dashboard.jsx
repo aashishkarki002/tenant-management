@@ -347,9 +347,9 @@ export default function Dashboard() {
                     return (
                       <div
                         key={rent._id || idx}
-                        className="flex gap-3 bg-blue-50 p-4 rounded-md border border-blue-200"
+                        className="flex gap-3 bg-gray-50 p-4 rounded-md border border-gray-200"
                       >
-                        <CalendarDaysIcon className="w-10 h-10 text-blue-500 shrink-0" />
+                        <CalendarDaysIcon className="w-10 h-10 text-blue-500 bg-blue-100 rounded-3xl p-2" />
                         <div className="flex flex-col gap-1 flex-1">
                           <p className="text-black text-sm font-semibold">
                             Rent Due Soon: {rent.tenant?.name || "N/A"}
@@ -377,9 +377,9 @@ export default function Dashboard() {
                     return (
                       <div
                         key={tenant._id || idx}
-                        className="flex gap-3 bg-yellow-50 p-4 rounded-md border border-yellow-200"
+                        className="flex gap-3 bg-gray-50 p-4 rounded-md border border-gray-200"
                       >
-                        <CalendarDaysIcon className="w-10 h-10 text-yellow-600 shrink-0" />
+                        <CalendarDaysIcon className="w-10 h-10 text-yellow-600  rounded-3xl p-2" />
                         <div className="flex flex-col gap-1 flex-1">
                           <p className="text-black text-sm font-semibold">
                             Contract Ending: {tenant.name}
@@ -391,7 +391,7 @@ export default function Dashboard() {
                         </div>
                         <div className="flex items-center">
                           <Button
-                            className="bg-gray-50 text-black hover:bg-black hover:text-white"
+                            className="bg-gray-50 text-black hover:bg-gray-800 hover:text-white"
                             onClick={() => navigate("/tenant/tenants")}
                           >
                             View
@@ -407,30 +407,32 @@ export default function Dashboard() {
                 {maintenance.filter((maintenance) => maintenance.status === "OPEN").length > 0 &&
                   maintenance.filter((maintenance) => maintenance.status === "OPEN").map((maintenance, idx) => {
                     return (
-                      <div key={maintenance._id || idx} className="flex gap-3 bg-green-50 p-4 rounded-md border border-green-200">
-                        <WrenchIcon className="w-10 h-10 text-green-500 shrink-0" />
+                      <div key={maintenance._id || idx} className="flex gap-3 bg-gray-50 p-4 rounded-md border border-gray-200">
+                        <WrenchIcon className="w-10 h-10 text-green-500 bg-green-100 rounded-3xl p-2" />
                         <div className="flex flex-col gap-1 flex-1">
                           <p className="text-black text-sm font-semibold">
-                            Maintenance: {maintenance.title}
+                            {maintenance.title}:{maintenance.tenant?.unit?.unitNumber}
                           </p>
-                          <p className="text-gray-600 text-sm">
+                          <p className="text-gray-600 text-sm mt-0 mb-0">
                             {maintenance.description}
                           </p>
-                          <p className="text-gray-600 text-sm">
+                          <p className="text-gray-600 text-sm mt-0 mb-0">
                             Scheduled: {toNepaliDate(maintenance.scheduledDate)}
                           </p>
-                          <p className="text-gray-600 text-sm">
-                            Status: {maintenance.status}
-                          </p>
-                          <p className="text-gray-600 text-sm">
-                            Priority: {maintenance.priority}
-                          </p>
-                          <p className="text-gray-600 text-sm">
+
+
+                          <p className="text-gray-600 text-sm mt-0 mb-0">
                             Type: {maintenance.type}
                           </p>
-                          <p className="text-gray-600 text-sm">
-                            Amount: {maintenance.amount}
-                          </p>
+
+                        </div>
+                        <div className="flex items-center">
+                          <Button
+                            className="bg-gray-200 text-black hover:bg-gray-500 hover:text-white"
+                            onClick={() => navigate("/maintenance")}
+                          >
+                            View
+                          </Button>
                         </div>
                       </div>
                     );
