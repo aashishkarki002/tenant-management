@@ -1,3 +1,7 @@
+# Env (use .env.example as template; .env is for local overrides)
+.env
+.env.local
+
 # Logs
 logs
 *.log

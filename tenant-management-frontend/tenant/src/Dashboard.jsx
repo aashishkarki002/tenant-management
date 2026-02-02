@@ -123,7 +123,7 @@ export default function Dashboard() {
   return (
     <div className="p-4 sm:p-6">
       <div className="mb-6">
-        <p className="text-3xl font-bold">Dashboard</p>
+        <p className="text-3xl font-bold" >Dashboard</p>
         <p className="text-gray-500 text-xl mt-1">
           Welcome {user?.name || "Admin"}
 

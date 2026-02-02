@@ -21,6 +21,7 @@ import ProtectedRoutes from "./protectedRoutes";
 import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail";
+import BroadCast from "./BroadCast";
 import Expenses from "./Expenses";
 export default function App() {
   const location = useLocation();
@@ -159,6 +160,14 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <ViewDetail />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
+        path="/tenant/send-message"
+        element={
+          <ProtectedRoutes>
+            <BroadCast />
           </ProtectedRoutes>
         }
       />

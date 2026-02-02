@@ -10,6 +10,7 @@ import {
   buildExternalPaymentPayload,
 } from "../payment/payment.domain.js";
 import { ledgerService } from "../ledger/ledger.service.js";
+import { buildRevenueReceivedJournal } from "../ledger/journal-builders/index.js";
 
 async function createRevenue(revenueData) {
   const session = await mongoose.startSession();
@@ -132,10 +133,10 @@ async function createRevenue(revenueData) {
           createdBy: createdBy || adminId,
         },
       ],
-      { session },
+      { session }
     );
 
-     /* ----------------------------------
+    /* ----------------------------------
        RECORD IN LEDGER (DR Cash/Bank, CR Revenue)
     ---------------------------------- */
     const ledgerDescription =
@@ -199,7 +200,10 @@ export { getRevenue };
 
 async function getAllRevenue() {
   try {
-    const revenue = await Revenue.find();
+    const revenue = await Revenue.find()
+      .populate("source", "name code")
+      .populate("tenant", "name")
+      .sort({ date: -1 });
     return {
       success: true,
       message: "Revenue fetched successfully",
@@ -278,7 +282,7 @@ export async function recordRentRevenue({
           createdBy: new mongoose.Types.ObjectId(adminId),
         },
       ],
-      { session },
+      { session }
     );
 
     return revenue[0];
@@ -333,7 +337,7 @@ export async function recordCamRevenue({
           createdBy: new mongoose.Types.ObjectId(adminId),
         },
       ],
-      { session },
+      { session }
     );
 
     return revenue[0];

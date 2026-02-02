@@ -27,6 +27,7 @@ import {
   ZoomIn,
   ZoomOut,
   FolderOpen,
+  Wrench,
 } from "lucide-react";
 import { toNepaliDate } from "../utils/formatNepali";
 import { Separator } from "@/components/ui/separator";
@@ -54,6 +55,7 @@ function ViewDetail() {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [viewMode, setViewMode] = useState("grid"); // "grid" or "timeline"
+  const [maintenanceHistory, setMaintenanceHistory] = useState([]);
   const { id } = useParams();
 
   const getTenant = async () => {
@@ -114,6 +116,22 @@ function ViewDetail() {
 
     return { progress, remainingMonths };
   };
+  const getMaintenanceHistory = async () => {
+    if (!id) return;
+    try {
+      const response = await api.get(`/api/maintenance/get-maintenance/${id}`);
+      const list = response.data?.maintenance;
+      setMaintenanceHistory(Array.isArray(list) ? list : []);
+    } catch (err) {
+      setMaintenanceHistory([]);
+    }
+  };
+  useEffect(() => {
+    getMaintenanceHistory();
+  }, [id]);
+
+  // Maintenance for this tenant (fetched by tenant id from API)
+  const tenantMaintenance = maintenanceHistory ?? [];
 
   const { progress, remainingMonths } = calculateLeaseProgress();
 
@@ -159,8 +177,8 @@ function ViewDetail() {
                   {remainingMonths === 0
                     ? "Lease completed"
                     : remainingMonths === 1
-                    ? "1 month remaining"
-                    : `${remainingMonths} months remaining`}
+                      ? "1 month remaining"
+                      : `${remainingMonths} months remaining`}
                 </p>
               </div>
             )}
@@ -298,8 +316,8 @@ function ViewDetail() {
                                 <span className="font-medium break-words text-right">
                                   {tenant?.leaseStartDate
                                     ? new Date(
-                                        tenant.leaseStartDate
-                                      ).toDateString()
+                                      tenant.leaseStartDate
+                                    ).toDateString()
                                     : "—"}
                                 </span>
                               </div>
@@ -336,8 +354,8 @@ function ViewDetail() {
                                 <span className="font-medium break-words text-right">
                                   {tenant?.leaseEndDate
                                     ? new Date(
-                                        tenant.leaseEndDate
-                                      ).toDateString()
+                                      tenant.leaseEndDate
+                                    ).toDateString()
                                     : "—"}
                                 </span>
                               </div>
@@ -369,8 +387,8 @@ function ViewDetail() {
                             <span className="text-xs sm:text-sm font-medium">
                               {tenant?.keyHandoverDate
                                 ? new Date(
-                                    tenant.keyHandoverDate
-                                  ).toDateString()
+                                  tenant.keyHandoverDate
+                                ).toDateString()
                                 : "—"}
                             </span>
                           </div>
@@ -463,21 +481,19 @@ function ViewDetail() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setViewMode("grid")}
-                    className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
-                      viewMode === "grid"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
+                    className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors ${viewMode === "grid"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
                   >
                     Grid View
                   </button>
                   <button
                     onClick={() => setViewMode("timeline")}
-                    className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
-                      viewMode === "timeline"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
+                    className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors ${viewMode === "timeline"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
                   >
                     Timeline
                   </button>
@@ -509,10 +525,10 @@ function ViewDetail() {
                             document.type === "citizenShip"
                               ? "Citizenship"
                               : document.type === "pdfAgreement"
-                              ? "Lease Agreement"
-                              : document.type === "image"
-                              ? "Property Photos"
-                              : document.type;
+                                ? "Lease Agreement"
+                                : document.type === "image"
+                                  ? "Property Photos"
+                                  : document.type;
 
                           // Generate file name from URL or use type
                           const urlParts = file.url.split("/");
@@ -521,9 +537,8 @@ function ViewDetail() {
                           const fileName =
                             urlFileName && urlFileName.length > 5
                               ? urlFileName
-                              : `${documentTypeLabel.replace(/\s+/g, "_")}_${
-                                  fileIndex + 1
-                                }.${fileType}`;
+                              : `${documentTypeLabel.replace(/\s+/g, "_")}_${fileIndex + 1
+                              }.${fileType}`;
 
                           return (
                             <div
@@ -532,11 +547,10 @@ function ViewDetail() {
                                 setSelectedDocument(document);
                                 setSelectedFile(file);
                               }}
-                              className={`p-3 rounded-lg border cursor-pointer transition-all hover:bg-accent ${
-                                isSelected
-                                  ? "border-primary bg-primary/5 shadow-sm"
-                                  : "border-border bg-background"
-                              }`}
+                              className={`p-3 rounded-lg border cursor-pointer transition-all hover:bg-accent ${isSelected
+                                ? "border-primary bg-primary/5 shadow-sm"
+                                : "border-border bg-background"
+                                }`}
                             >
                               <div className="flex items-start gap-3">
                                 <div className="flex-shrink-0 mt-1">
@@ -632,7 +646,7 @@ function ViewDetail() {
                       {/* Preview Content */}
                       <div className="flex-1 overflow-auto bg-gray-100 p-2 sm:p-4 md:p-8 flex items-center justify-center">
                         {selectedFile.url.split(".").pop().toLowerCase() ===
-                        "pdf" ? (
+                          "pdf" ? (
                           <iframe
                             src={selectedFile.url}
                             className="w-full h-full min-h-[300px] sm:min-h-[400px] md:min-h-[500px] border border-border rounded-lg shadow-lg bg-white"
@@ -664,6 +678,114 @@ function ViewDetail() {
                   )}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="propertyDetails" className="mt-4">
+          <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
+            <CardHeader className="p-4 sm:p-6">
+              <div className="flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-muted-foreground" />
+                <CardTitle className="text-lg sm:text-xl">Maintenance</CardTitle>
+              </div>
+              <CardDescription className="text-xs sm:text-sm">
+                Maintenance tasks and requests for this tenant
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              {tenantMaintenance?.length > 0 ? (
+                <div className="rounded-lg border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-xs font-semibold">Title</TableHead>
+                        <TableHead className="text-xs font-semibold">Type</TableHead>
+                        <TableHead className="text-xs font-semibold">Priority</TableHead>
+                        <TableHead className="text-xs font-semibold">Status</TableHead>
+                        <TableHead className="text-xs font-semibold">Scheduled</TableHead>
+                        <TableHead className="text-xs font-semibold">Amount</TableHead>
+                        <TableHead className="text-xs font-semibold">Payment</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tenantMaintenance.map((task) => (
+                        <TableRow key={task._id} className="text-xs sm:text-sm">
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{task.title}</p>
+                              {task.description && (
+                                <p className="text-muted-foreground truncate max-w-[180px]" title={task.description}>
+                                  {task.description}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{task.type ?? "—"}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                task.priority === "Urgent"
+                                  ? "border-red-600 text-red-700 bg-red-50"
+                                  : task.priority === "High"
+                                    ? "border-orange-600 text-orange-700 bg-orange-50"
+                                    : task.priority === "Medium"
+                                      ? "border-amber-600 text-amber-700 bg-amber-50"
+                                      : "border-gray-500 text-gray-600 bg-gray-50"
+                              }
+                            >
+                              {task.priority ?? "—"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                task.status === "COMPLETED"
+                                  ? "border-green-600 text-green-700 bg-green-50"
+                                  : task.status === "IN_PROGRESS"
+                                    ? "border-blue-600 text-blue-700 bg-blue-50"
+                                    : task.status === "CANCELLED"
+                                      ? "border-gray-500 text-gray-600 bg-gray-50"
+                                      : "border-amber-600 text-amber-700 bg-amber-50"
+                              }
+                            >
+                              {task.status?.replace("_", " ") ?? "—"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {task.scheduledDate
+                              ? new Date(task.scheduledDate).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </TableCell>
+                          <TableCell>
+                            {task.amount != null
+                              ? `₹${Number(task.amount).toLocaleString()}`
+                              : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <span className="capitalize">
+                              {task.paymentStatus?.replace("_", " ") ?? "—"}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <Wrench className="w-12 h-12 mb-3 opacity-50" />
+                  <p className="text-sm font-medium">No maintenance records</p>
+                  <p className="text-xs mt-1">
+                    Tasks for this tenant or their unit/property will appear here
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

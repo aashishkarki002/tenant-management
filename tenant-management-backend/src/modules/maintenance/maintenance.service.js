@@ -77,7 +77,7 @@ export async function updateMaintenanceStatus(
   paymentStatus,
   paidAmount = null,
   lastPaidBy = null,
-  options = {},
+  options = {}
 ) {
   // 1. Verify maintenance exists
   const existing = await Maintenance.findById(id);
@@ -98,7 +98,7 @@ export async function updateMaintenanceStatus(
   const updatedTask = await Maintenance.findByIdAndUpdate(
     id,
     { $set: updateFields },
-    { new: true },
+    { new: true }
   );
 
   // 3. Handle expense creation if completed and paid
@@ -126,7 +126,7 @@ export async function updateMaintenanceStatus(
 
         if (!maintenanceSource) {
           throw new Error(
-            "Maintenance ExpenseSource with code MAINTENANCE not found",
+            "Maintenance ExpenseSource with code MAINTENANCE not found"
           );
         }
 
@@ -158,10 +158,10 @@ export async function updateMaintenanceStatus(
 
         // Create expense
         const result = await createExpense(expenseData);
-
+        console.log("create expense result", result);
         if (!result.success) {
           throw new Error(
-            result.error || result.message || "Failed to create expense",
+            result.error || result.message || "Failed to create expense"
           );
         }
 
@@ -190,7 +190,7 @@ export async function updateMaintenanceAssignedTo(id, assignedTo) {
   const updated = await Maintenance.findByIdAndUpdate(
     id,
     { $set: { assignedTo: assignedTo || null } },
-    { new: true },
+    { new: true }
   )
     .populate("assignedTo", "name email phone")
     .populate("tenant")
@@ -202,5 +202,18 @@ export async function updateMaintenanceAssignedTo(id, assignedTo) {
     success: true,
     message: "Assignment updated successfully",
     data: updated,
+  };
+}
+export async function getMaintenanceByTenantId(tenantId) {
+  const maintenance = await Maintenance.find({ tenant: tenantId })
+    .populate("tenant")
+    .populate("unit")
+    .populate("property")
+    .populate("block")
+    .populate("createdBy");
+  return {
+    success: true,
+    message: "Maintenance tasks fetched successfully",
+    data: maintenance,
   };
 }

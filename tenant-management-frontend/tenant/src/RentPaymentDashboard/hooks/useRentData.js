@@ -16,6 +16,7 @@ export const useRentData = () => {
   const [totalCollected, setTotalCollected] = useState(0);
   const [totalDue, setTotalDue] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Rent tab: filter by Nepali month/year (default current month)
@@ -67,7 +68,7 @@ export const useRentData = () => {
    */
   const getPayments = async () => {
     try {
-      setLoading(true);
+      setPaymentsLoading(true);
       setError(null);
       // Build query parameters for filtering
       const params = new URLSearchParams();
@@ -97,7 +98,7 @@ export const useRentData = () => {
       setError(error);
       toast.error("Failed to fetch payments. Please try again.");
     } finally {
-      setLoading(false);
+      setPaymentsLoading(false);
     }
   };
 
@@ -216,6 +217,7 @@ export const useRentData = () => {
     totalDue,
     // State
     loading,
+    paymentsLoading,
     error,
     // Rent tab filters (Nepali month/year)
     filterRentMonth,

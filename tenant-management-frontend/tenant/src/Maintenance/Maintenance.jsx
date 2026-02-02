@@ -11,9 +11,11 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import DualCalendarTailwind from '@/components/dualDate'
 import api from '../../plugins/axios';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useFormik } from 'formik';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
+import FullCalendarView from '../components/fullCalendar';
 export default function Maintenance() {
   const [priority, setPriority] = useState("medium");
   const [tenant, setTenant] = useState([]);
@@ -185,6 +187,7 @@ export default function Maintenance() {
           <h1 className='text-2xl font-bold'>Maintenance</h1>
           <p className='text-gray-500 text-sm'>Schedule repairs and manage tasks</p></div>
         <div>
+
           <Dialog>
             <DialogTrigger asChild>
               <Button className='bg-blue-600 text-blue-50 mr-2 w-45 mt-2 p-2 rounded-md hover:bg-blue-800 '><Plus className="w-5 h-5 text-blue-50 " />Schedule Repair</Button>
@@ -474,76 +477,89 @@ export default function Maintenance() {
         </div>
 
       </div>
-      <div className='flex mt-10 border rounded-b-sm p-2'>
-        <Button className='bg-gray-50 text-black mr-2 w-20 hover:bg-gray-200'><List className="w-5 h-5 text-gray-500 mr-2" />List</Button>
-        <p className='text-gray-500 text-sm flex p-2'><Calendar className="w-5 h-4 text-gray-500 mr-2" />Calender</p>
-        <p className='text-gray-500 text-sm flex p-2 ml-180'><Filter className="w-5 h-4 text-gray-500 mr-2" />Filter</p>
-      </div>
-      <div >
-        {maintenance.map((maintenanceItem) => {
-          const isExpanded = expandedCards.has(maintenanceItem._id);
 
-          // Generate work order ID from maintenance._id
-          const workOrderId = `#WO-${String(maintenanceItem._id || '').slice(-4).toUpperCase()}`;
+      <Tabs defaultValue="list">
+        <TabsList className="flex justify-between w-full ">
+          <TabsTrigger value="list" className='w-1/2'>List</TabsTrigger>
+          <TabsTrigger value="calendar">Calendar</TabsTrigger>
 
-          // Get priority styling - match image with red for urgent
-          const getPriorityStyle = (priority) => {
-            const priorityUpper = priority?.toUpperCase() || '';
-            if (priorityUpper === 'HIGH' || priorityUpper === 'URGENT') {
-              return 'bg-red-600 text-red-100';
-            } else if (priorityUpper === 'MEDIUM') {
-              return 'bg-orange-500 text-orange-100';
-            } else {
-              return 'bg-gray-500 text-gray-100';
-            }
-          };
+        </TabsList>
 
-          // Format status for display
-          const formatStatus = (status) => {
-            if (!status) return 'Open';
-            return status.split('_').map(word =>
-              word.charAt(0) + word.slice(1).toLowerCase()
-            ).join(' ');
-          };
 
-          // Format date
-          const formatDate = (date) => {
-            if (!date) return 'N/A';
-            try {
-              return new Date(date).toLocaleDateString();
-            } catch {
-              return date;
-            }
-          };
+        <TabsContent value="list" className='w-full p-2 '>
+          <div className='w-full flex flex-col gap-4'>
+            {maintenance.map((maintenanceItem) => {
+              const isExpanded = expandedCards.has(maintenanceItem._id);
 
-          const toggleExpand = () => {
-            const newExpanded = new Set(expandedCards);
-            if (isExpanded) {
-              newExpanded.delete(maintenanceItem._id);
-            } else {
-              newExpanded.add(maintenanceItem._id);
-            }
-            setExpandedCards(newExpanded);
-          };
+              // Generate work order ID from maintenance._id
+              const workOrderId = `#WO-${String(maintenanceItem._id || '').slice(-4).toUpperCase()}`;
 
-          return (
-            <MaintenanceCard
-              key={maintenanceItem._id}
-              maintenanceItem={maintenanceItem}
-              isExpanded={isExpanded}
-              toggleExpand={toggleExpand}
-              getPriorityStyle={getPriorityStyle}
-              formatStatus={formatStatus}
-              formatDate={formatDate}
-              workOrderId={workOrderId}
-              onUpdate={async () => {
-                const response = await api.get("/api/maintenance/all");
-                setMaintenance(response.data.maintenance);
-              }}
-            />
-          );
-        })}
-      </div>
+              // Get priority styling - match image with red for urgent
+              const getPriorityStyle = (priority) => {
+                const priorityUpper = priority?.toUpperCase() || '';
+                if (priorityUpper === 'HIGH' || priorityUpper === 'URGENT') {
+                  return 'bg-red-600 text-red-100';
+                } else if (priorityUpper === 'MEDIUM') {
+                  return 'bg-orange-500 text-orange-100';
+                } else {
+                  return 'bg-gray-500 text-gray-100';
+                }
+              };
+
+              // Format status for display
+              const formatStatus = (status) => {
+                if (!status) return 'Open';
+                return status.split('_').map(word =>
+                  word.charAt(0) + word.slice(1).toLowerCase()
+                ).join(' ');
+              };
+
+              // Format date
+              const formatDate = (date) => {
+                if (!date) return 'N/A';
+                try {
+                  return new Date(date).toLocaleDateString();
+                } catch {
+                  return date;
+                }
+              };
+
+              const toggleExpand = () => {
+                const newExpanded = new Set(expandedCards);
+                if (isExpanded) {
+                  newExpanded.delete(maintenanceItem._id);
+                } else {
+                  newExpanded.add(maintenanceItem._id);
+                }
+                setExpandedCards(newExpanded);
+              };
+
+              return (
+                <MaintenanceCard
+                  className='w-full'
+                  key={maintenanceItem._id}
+                  maintenanceItem={maintenanceItem}
+                  isExpanded={isExpanded}
+                  toggleExpand={toggleExpand}
+                  getPriorityStyle={getPriorityStyle}
+                  formatStatus={formatStatus}
+                  formatDate={formatDate}
+                  workOrderId={workOrderId}
+                  onUpdate={async () => {
+                    const response = await api.get("/api/maintenance/all");
+                    setMaintenance(response.data.maintenance);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </TabsContent>
+        <TabsContent value="calendar" className='w-full'>
+          <div className='w-full'>
+            <FullCalendarView maintenance={maintenance} />
+          </div>
+        </TabsContent>
+      </Tabs>
 
     </>
   );

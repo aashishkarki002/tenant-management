@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ArrowDown } from "lucide-react";
 import { Plus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import TenantCard from "./components/TenantCard";
 import api from "../plugins/axios";
 import { toast } from "sonner";
@@ -36,6 +36,7 @@ export default function Tenants() {
   const isInitialMount = useRef(true);
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const fetchProperties = async () => {
     try {
@@ -59,13 +60,14 @@ export default function Tenants() {
     }
   };
 
-  const filterTenants = async () => {
+  const filterTenants = async (override = {}) => {
     setLoading(true);
     try {
       const params = {};
+      const searchVal = override.search !== undefined ? override.search : search;
 
-      if (search && search.trim()) {
-        params.search = search.trim();
+      if (searchVal && String(searchVal).trim()) {
+        params.search = String(searchVal).trim();
       }
 
       if (selectedBlock && selectedBlock._id) {
@@ -138,8 +140,27 @@ export default function Tenants() {
     }
   };
 
+  // Initial load: if URL has ?search=, filter by it; otherwise fetch all tenants
   useEffect(() => {
-    fetchData();
+    const q = searchParams.get("search");
+    let searchFromUrl = "";
+    if (q != null && q !== "") {
+      try {
+        searchFromUrl = decodeURIComponent(q).trim();
+      } catch {
+        searchFromUrl = q.trim();
+      }
+    }
+
+    if (searchFromUrl) {
+      setSearch(searchFromUrl);
+      Promise.all([
+        fetchProperties(),
+        filterTenants({ search: searchFromUrl }),
+      ]);
+    } else {
+      fetchData();
+    }
   }, []);
 
   useEffect(() => {
@@ -185,9 +206,9 @@ export default function Tenants() {
   return (
     <div>
       <div className="flex justify-between">
-        <h1 className="text-2xl font-bold">Tenants</h1>
+        <h1 className="text-3xl font-bold">Tenants</h1>
       </div>
-      <p className="text-gray-500">Manage your residents and their details</p>
+      <p className="text-gray-500 text-xl">Manage your residents and their details</p>
       <div className="flex flex-wrap justify-between items-center my-4 gap-2 sm:gap-4 w-full">
         {/* Search Input */}
         <div className="relative w-full sm:flex-1 max-w-md">
@@ -296,7 +317,7 @@ export default function Tenants() {
           </DropdownMenu>
         </div>
         <div className="w-full sm:w-auto">
-          <Button className=" text-blue-50 h-10 px-4 rounded-md hover:bg-blue-800 flex 
+          <Button className=" text-blue-50 h-10 px-4 rounded-md  flex 
            items-center gap-2 w-full sm:w-auto justify-center
            cursor-pointer
            "

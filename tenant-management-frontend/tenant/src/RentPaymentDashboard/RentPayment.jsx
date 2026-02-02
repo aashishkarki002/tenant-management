@@ -29,6 +29,7 @@ const RentPayment = () => {
     totalCollected,
     totalDue,
     loading,
+    paymentsLoading,
     filterRentMonth,
     setFilterRentMonth,
     filterStartDate,
@@ -85,7 +86,7 @@ const RentPayment = () => {
       <Card className="">
         <Tabs defaultValue="rent">
           <CardHeader>
-            <CardTitle className="text-2xl font-bold">
+            <CardTitle className="text-3xl font-bold">
               Rent & Payments
             </CardTitle>
             <TabsList className="mt-4 grid w-full grid-cols-2">
@@ -123,9 +124,9 @@ const RentPayment = () => {
 
           <TabsContent value="payments">
             <div className="px-6 pt-6">
-              <CardDescription className="text-gray-500 text-sm">
+              <CardTitle className=" font-bold text-xl">
                 View all payment history
-              </CardDescription>
+              </CardTitle>
             </div>
             <CardContent>
               <PaymentFilters
@@ -138,7 +139,13 @@ const RentPayment = () => {
                 datePickerResetKey={datePickerResetKey}
                 onReset={handleClearFilters}
               />
-              <PaymentsTable payments={payments} />
+              {paymentsLoading ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground">
+                  Loading payments...
+                </div>
+              ) : (
+                <PaymentsTable payments={payments} />
+              )}
             </CardContent>
           </TabsContent>
         </Tabs>

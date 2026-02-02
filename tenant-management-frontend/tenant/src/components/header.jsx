@@ -147,11 +147,10 @@ export default function Header() {
                 notifications.map((notification) => (
                   <div
                     key={notification._id || notification.id}
-                    className={`flex items-start gap-3 mb-2 rounded-md border  p-3 ml-3 mr-3 ${
-                      !notification.isRead
+                    className={`flex items-start gap-3 mb-2 rounded-md border  p-3 ml-3 mr-3 ${!notification.isRead
                         ? "bg-gray-50 border-gray-200"
                         : "bg-gray-50 border-gray-200"
-                    }`}
+                      }`}
                     onClick={() => {
                       navigate(
                         `/notifications/${notification._id || notification.id}`
@@ -159,11 +158,10 @@ export default function Header() {
                     }}
                   >
                     <Bell
-                      className={`w-5 h-5 mt-0.5 ${
-                        !notification.isRead
+                      className={`w-5 h-5 mt-0.5 ${!notification.isRead
                           ? "text-primary-500"
                           : "text-gray-400"
-                      }`}
+                        }`}
                     />
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-black">

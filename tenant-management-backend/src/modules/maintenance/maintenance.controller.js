@@ -4,6 +4,7 @@ import {
   getMaintenanceById,
   updateMaintenanceStatus,
   updateMaintenanceAssignedTo,
+  getMaintenanceByTenantId,
 } from "./maintenance.service.js";
 
 export async function createMaintenanceController(req, res) {
@@ -100,7 +101,7 @@ export async function updateMaintenanceStatusController(req, res) {
         nepaliDate,
         nepaliMonth,
         nepaliYear,
-      },
+      }
     );
 
     const statusCode = result.success ? 200 : 404;
@@ -125,6 +126,23 @@ export async function updateMaintenanceAssignedToController(req, res) {
     const result = await updateMaintenanceAssignedTo(id, assignedTo || null);
     const statusCode = result.success ? 200 : 404;
     return res.status(statusCode).json({
+      success: result.success,
+      message: result.message,
+      maintenance: result.data,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+export async function getMaintenanceByTenantIdController(req, res) {
+  try {
+    const tenantId = req.params.id; // route: get-maintenance/:id
+    const result = await getMaintenanceByTenantId(tenantId);
+    return res.status(200).json({
       success: result.success,
       message: result.message,
       maintenance: result.data,

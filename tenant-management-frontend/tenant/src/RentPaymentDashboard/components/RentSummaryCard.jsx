@@ -15,9 +15,9 @@ export const RentSummaryCard = ({
 
   return (
     <div className="px-6 pt-6">
-      <CardDescription className="text-gray-500 text-sm">
+      <CardDescription className="text-gray-500 font-bold text-xl">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-black text-sm font-bold">
+          <div className="text-black font-bold text-xl">
             Track monthly rent collection
           </div>
           <RentFilter value={filterRentMonth} onMonthChange={onMonthChange} />

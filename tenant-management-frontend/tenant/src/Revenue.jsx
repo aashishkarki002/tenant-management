@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -12,31 +12,16 @@ import {
 import api from "../plugins/axios";
 import { AddRevenueDialog } from "./Revenue/components/AddRevenueDialog";
 
-const initialParkingSpots = [
-  {
-    id: 1,
-    name: "Parking Spot #22",
-    monthlyIncome: 150,
-    status: "Active",
-  },
-];
-
-const initialBrandDeals = [
-  {
-    id: 1,
-    name: "Brand Deal #1",
-    monthlyIncome: 500,
-    status: "Active",
-  },
-];
+const PARKING_CODES = ["PARKING"];
+const BRAND_DEAL_CODES = ["BRAND_AD", "AD"];
 
 export default function Revenue() {
-  const [parkingSpots, setParkingSpots] = useState(initialParkingSpots);
-  const [brandDeals, setBrandDeals] = useState(initialBrandDeals);
+  const [revenueList, setRevenueList] = useState([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [revenueSource, setRevenueSource] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [tenants, setTenants] = useState([]);
+  const [loadingRevenue, setLoadingRevenue] = useState(true);
 
   useEffect(() => {
     const getRevenueSource = async () => {
@@ -53,6 +38,23 @@ export default function Revenue() {
       }
     };
     getRevenueSource();
+  }, []);
+
+  useEffect(() => {
+    const fetchRevenue = async () => {
+      try {
+        setLoadingRevenue(true);
+        const response = await api.get("/api/revenue/get-all");
+        const data = response.data?.revenue ?? response.data?.data ?? [];
+        setRevenueList(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Error fetching revenue:", error);
+        setRevenueList([]);
+      } finally {
+        setLoadingRevenue(false);
+      }
+    };
+    fetchRevenue();
   }, []);
 
   useEffect(() => {
@@ -83,20 +85,70 @@ export default function Revenue() {
     getTenants();
   }, []);
 
-  const renderParkingSpot = (spot) => (
-    <Card key={spot.id} className="mt-4 w-75 ml-4">
+  const parkingSpots = useMemo(() => {
+    return revenueList.filter((r) => {
+      const code = r.source?.code ?? r.source;
+      return typeof code === "string" && PARKING_CODES.includes(code);
+    });
+  }, [revenueList]);
+
+  const brandDeals = useMemo(() => {
+    return revenueList.filter((r) => {
+      const code = r.source?.code ?? r.source;
+      return typeof code === "string" && BRAND_DEAL_CODES.includes(code);
+    });
+  }, [revenueList]);
+
+  const allStreams = useMemo(() => {
+    return revenueList.filter((r) => {
+      const code = r.source?.code ?? r.source;
+      return (
+        typeof code === "string" &&
+        (PARKING_CODES.includes(code) || BRAND_DEAL_CODES.includes(code))
+      );
+    });
+  }, [revenueList]);
+
+  const refetchRevenue = async () => {
+    try {
+      setLoadingRevenue(true);
+      const response = await api.get("/api/revenue/get-all");
+      const data = response.data?.revenue ?? response.data?.data ?? [];
+      setRevenueList(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching revenue:", error);
+    } finally {
+      setLoadingRevenue(false);
+    }
+  };
+
+  const getRevenueDisplayName = (item) => {
+    if (item.payerType === "EXTERNAL" && item.externalPayer?.name)
+      return item.externalPayer.name;
+    if (item.payerType === "TENANT" && item.tenant?.name) return item.tenant.name;
+    return item.source?.name ?? "Revenue";
+  };
+
+  const formatDate = (date) => {
+    if (!date) return "";
+    const d = new Date(date);
+    return d.toLocaleDateString();
+  };
+
+  const renderRevenueCard = (item, icon, subtitle) => (
+    <Card key={item._id} className="mt-4 w-75 ml-4">
       <CardHeader className="flex flex-row items-start justify-between">
-        <CarIcon className="w-8 h-8 bg-blue-100 rounded-md text-blue-500 p-2" />
-        <div className="flex items-start gap-3 ">
+        {icon}
+        <div className="flex items-start gap-3">
           <div>
             <CardTitle className="text-xl font-bold text-gray-800">
-              {spot.name}
+              {getRevenueDisplayName(item)}
             </CardTitle>
-            <p className="text-sm text-gray-500 mt-1">Parking Revenue</p>
+            <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
           </div>
         </div>
         <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm w-15 border border-green-400">
-          {spot.status}
+          {item.status ?? "RECORDED"}
         </span>
       </CardHeader>
       <CardContent>
@@ -104,56 +156,31 @@ export default function Revenue() {
           <div className="flex items-end justify-between">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                Monthly Income
+                Amount · {formatDate(item.date)}
               </p>
               <p className="text-2xl font-bold text-gray-800">
-                ${spot.monthlyIncome}
+                Rs. {Number(item.amount ?? 0).toLocaleString()}
               </p>
             </div>
-            <button className="text-gray-500 hover:text-gray-700 text-sm">
-              Edit
-            </button>
           </div>
         </div>
       </CardContent>
     </Card>
   );
 
-  const renderBrandDeal = (deal) => (
-    <Card key={deal.id} className="mt-4 w-75 ml-4">
-      <CardHeader className="flex flex-row items-start justify-between">
-        <TagIcon className="w-8 h-8 bg-purple-100 rounded-md text-purple-500 p-2" />
-        <div className="flex items-start gap-3">
-          <div>
-            <CardTitle className="text-xl font-bold text-gray-800">
-              {deal.name}
-            </CardTitle>
-            <p className="text-sm text-gray-500 mt-1">Brand Deal Revenue</p>
-          </div>
-        </div>
-        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm w-15 border border-green-400">
-          {deal.status}
-        </span>
-      </CardHeader>
-      <CardContent>
-        <div className="border-t border-gray-200 pt-4 mt-2">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                Monthly Income
-              </p>
-              <p className="text-2xl font-bold text-gray-800">
-                ${deal.monthlyIncome}
-              </p>
-            </div>
-            <button className="text-gray-500 hover:text-gray-700 text-sm">
-              Edit
-            </button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const renderParkingSpot = (item) =>
+    renderRevenueCard(
+      item,
+      <CarIcon className="w-8 h-8 bg-blue-100 rounded-md text-blue-500 p-2" />,
+      "Parking Revenue"
+    );
+
+  const renderBrandDeal = (item) =>
+    renderRevenueCard(
+      item,
+      <TagIcon className="w-8 h-8 bg-purple-100 rounded-md text-purple-500 p-2" />,
+      "Brand Deal Revenue"
+    );
 
   return (
     <>
@@ -173,41 +200,51 @@ export default function Revenue() {
 
           <TabsContent value="allstreams">
             <Card>
-
-
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 items-stretch">
-                {parkingSpots.length > 0 && parkingSpots.map(renderParkingSpot)}
-                {brandDeals.length > 0 && brandDeals.map(renderBrandDeal)}
-
-                {parkingSpots.length === 0 && brandDeals.length === 0 && (
+                {loadingRevenue ? (
                   <Card className="w-full h-full">
                     <CardContent className="flex flex-col items-center justify-center h-full py-8">
-                      <EmptyTitle>No Revenue Streams</EmptyTitle>
-                      <EmptyDescription>
-                        Add parking slots or brand deals to get started
-                      </EmptyDescription>
+                      <p className="text-gray-500">Loading revenue...</p>
                     </CardContent>
                   </Card>
-                )}
+                ) : (
+                  <>
+                    {allStreams.map((item) =>
+                      PARKING_CODES.includes(item.source?.code)
+                        ? renderParkingSpot(item)
+                        : renderBrandDeal(item)
+                    )}
 
-                <Empty
-                  className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg p-8
+                    {allStreams.length === 0 && (
+                      <Card className="w-full h-full">
+                        <CardContent className="flex flex-col items-center justify-center h-full py-8">
+                          <EmptyTitle>No Revenue Streams</EmptyTitle>
+                          <EmptyDescription>
+                            Add parking or brand deal revenue to get started
+                          </EmptyDescription>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    <Empty
+                      className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg p-8
                flex flex-col items-center justify-center cursor-pointer
                hover:border-gray-400 transition-colors bg-white"
-                  onClick={() => setIsDialogOpen(true)}
-                >
-                  <Button
-                    variant="outline"
-                    className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200"
-                  >
-                    <PlusIcon className="w-6 h-6 text-gray-600" />
-                  </Button>
-                  <p className="mt-4 text-gray-700 font-medium text-sm">
-                    Add New Stream
-                  </p>
-                </Empty>
+                      onClick={() => setIsDialogOpen(true)}
+                    >
+                      <Button
+                        variant="outline"
+                        className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200"
+                      >
+                        <PlusIcon className="w-6 h-6 text-gray-600" />
+                      </Button>
+                      <p className="mt-4 text-gray-700 font-medium text-sm">
+                        Add New Stream
+                      </p>
+                    </Empty>
+                  </>
+                )}
               </div>
-
             </Card>
           </TabsContent>
 
@@ -217,14 +254,18 @@ export default function Revenue() {
                 <CardTitle>Parking</CardTitle>
               </CardHeader>
               <CardContent>
-                {parkingSpots.length > 0 ? (
-                  parkingSpots.map(renderParkingSpot)
+                {loadingRevenue ? (
+                  <p className="text-gray-500 py-4">Loading...</p>
+                ) : parkingSpots.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {parkingSpots.map(renderParkingSpot)}
+                  </div>
                 ) : (
                   <Card className="mt-4 w-75 ml-4">
                     <CardContent className="flex flex-col items-center justify-center py-8">
-                      <EmptyTitle>No Parking Spots</EmptyTitle>
+                      <EmptyTitle>No Parking Revenue</EmptyTitle>
                       <EmptyDescription>
-                        Add a parking slot to get started
+                        Add parking revenue to get started
                       </EmptyDescription>
                     </CardContent>
                   </Card>
@@ -239,14 +280,18 @@ export default function Revenue() {
                 <CardTitle>Brand Deals</CardTitle>
               </CardHeader>
               <CardContent>
-                {brandDeals.length > 0 ? (
-                  brandDeals.map(renderBrandDeal)
+                {loadingRevenue ? (
+                  <p className="text-gray-500 py-4">Loading...</p>
+                ) : brandDeals.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {brandDeals.map(renderBrandDeal)}
+                  </div>
                 ) : (
                   <Card className="mt-4 w-75 ml-4">
                     <CardContent className="flex flex-col items-center justify-center py-8">
-                      <EmptyTitle>No Brand Deals</EmptyTitle>
+                      <EmptyTitle>No Brand Deal Revenue</EmptyTitle>
                       <EmptyDescription>
-                        Add a brand deal to get started
+                        Add brand deal revenue to get started
                       </EmptyDescription>
                     </CardContent>
                   </Card>
@@ -263,9 +308,7 @@ export default function Revenue() {
         tenants={tenants}
         revenueSource={revenueSource}
         bankAccounts={bankAccounts}
-        onSuccess={() => {
-          // Optionally refresh lists or show toast
-        }}
+        onSuccess={refetchRevenue}
       />
     </>
   );

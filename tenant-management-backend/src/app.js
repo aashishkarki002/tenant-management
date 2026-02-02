@@ -23,14 +23,15 @@ import camRoute from "./modules/tenant/cam/cam.route.js";
 import expenseRoute from "./modules/expenses/expense.route.js";
 import maintenanceRoute from "./modules/maintenance/maintenance.route.js";
 import staffRoute from "./modules/staffs/staffs.route.js";
-// 🚨 Load cron jobs (allow in development for testing)
-try {
-  await import("./cron/monthlyRentAndCam.cron.js");
-  await import("./cron/monthlyEmail.cron.js");
-  console.log("✅ Cron jobs loaded");
-} catch (error) {
-  console.error("❌ Error loading cron jobs:", error);
+
+// Load cron jobs asynchronously (no top-level await — required for cPanel/LiteSpeed which uses require())
+function loadCronJobs() {
+  import("./cron/monthlyRentAndCam.cron.js")
+    .then(() => import("./cron/monthlyEmail.cron.js"))
+    .then(() => console.log("✅ Cron jobs loaded"))
+    .catch((err) => console.error("❌ Error loading cron jobs:", err));
 }
+loadCronJobs();
 
 const app = express();
 

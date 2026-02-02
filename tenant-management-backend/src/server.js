@@ -2,11 +2,7 @@ import app from "./app.js";
 import http from "http";
 import { initializeSocket } from "./config/socket.js";
 
-// Load dotenv ONLY in local/dev
-if (process.env.NODE_ENV !== "production") {
-  const dotenv = await import("dotenv");
-  dotenv.config();
-}
+// dotenv is loaded in app.js (no top-level await here — required for cPanel/LiteSpeed)
 
 const PORT = process.env.PORT || 3000;
 console.log("NODE_ENV:", process.env.NODE_ENV);

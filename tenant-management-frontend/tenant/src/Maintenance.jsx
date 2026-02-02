@@ -4,11 +4,11 @@ import { Plus, Search, User, ArrowRight, X, Circle, ChevronDown, ChevronUp } fro
 import { Calendar } from 'lucide-react';
 import { List } from 'lucide-react';
 import { Filter } from 'lucide-react';
-<<<<<<< HEAD
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import useUnits from './hooks/use-units';
-=======
->>>>>>> f9f947cda52dba73ff99154cf359bfec537c9522
+
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -20,6 +20,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import useProperty from './hooks/use-property';
 import MaintenanceCard from './Maintenance/components/MaintenanceCard';
+import fullCalendar from './components/fullCalendar';
 
 export default function Maintenance() {
   const [priority, setPriority] = useState("medium");

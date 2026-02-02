@@ -37,7 +37,7 @@ import {
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useNavigate } from "react-router-dom";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -98,7 +98,7 @@ export default function AppSidebar() {
             EasyManage
           </SidebarGroupLabel>
           <Separator className="w-full h-px md:h-1 bg-gray-200 my-2" />
-          <SidebarGroupLabel className="">Main Menu</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-gray-500 font-bold text-xl">Main Menu</SidebarGroupLabel>
           <SidebarGroupContent className="p-3">
             <SidebarMenu>
               {items.map((item) => (
@@ -108,25 +108,25 @@ export default function AppSidebar() {
                 >
                   <SidebarMenuButton
                     asChild
-                    className="hover:bg-blue-100 hover:text-blue-600 rounded-md flex items-center gap-2"
-                    onClick={handleNav}
+                    className="hover:bg-gray-100 hover:text-gray-800 rounded-md flex items-center gap-2"
                   >
-                    <Link to={item.url}>
+                    <NavLink to={item.url} onClick={handleNav}>
                       <item.icon className="w-5 h-5" />
                       <span>{item.title}</span>
-                    </Link>
+                    </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
 
-              {/* Accounting Dropdown Menu */}
+              {/* Accounting Dropdown Menu - hover only on desktop; on mobile use tap to toggle */}
               <SidebarMenuItem
                 className="mb-2 text-gray-500"
-                onMouseEnter={handleAccountingEnter}
-                onMouseLeave={handleAccountingLeave}
+                onMouseEnter={!isMobile ? handleAccountingEnter : undefined}
+                onMouseLeave={!isMobile ? handleAccountingLeave : undefined}
               >
                 <SidebarMenuButton
-                  className="hover:bg-blue-100 hover:text-blue-600 rounded-md flex items-center gap-2"
+                  className="hover:bg-gray-100 hover:text-gray-800 rounded-md flex items-center gap-2"
+                  onClick={() => setIsAccountingOpen((prev) => !prev)}
                 >
                   <FileText className="w-5 h-5" />
                   <span>Accounting</span>
@@ -141,7 +141,7 @@ export default function AppSidebar() {
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton
                         asChild
-                        className="hover:bg-blue-100 hover:text-blue-600"
+                        className="hover:bg-gray-100 hover:text-gray-800"
                         onClick={handleNav}
                       >
                         <Link to="/expenses">
@@ -152,7 +152,7 @@ export default function AppSidebar() {
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton
                         asChild
-                        className="hover:bg-blue-100 hover:text-blue-600"
+                        className="hover:bg-gray-100 hover:text-gray-800"
                         onClick={handleNav}
                       >
                         <Link to="/revenue">
@@ -163,7 +163,7 @@ export default function AppSidebar() {
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton
                         asChild
-                        className="hover:bg-blue-100 hover:text-blue-600"
+                        className="hover:bg-gray-100 hover:text-gray-800"
                         onClick={handleNav}
                       >
                         <Link to="/accounting">
@@ -179,21 +179,31 @@ export default function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="p-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="w-full  cursor-pointer outline-none border-none bg-transparent text-left">
-              <Card className="w-full cursor-pointer hover:bg-gray-200 bg-gray-50 transition-colors">
-                <CardHeader className="flex flex-row md:flex-col items-center gap-2 p-3">
-                  <Avatar>
+            <button className="w-full focus:outline-none">
+              <Card className="w-full bg-gray-50 hover:bg-gray-200 transition-colors">
+                <CardHeader
+                  className="
+              flex flex-row items-center gap-3 p-2
+              md:flex-col md:items-center md:p-3
+            "
+                >
+                  <Avatar className="h-9 w-9">
                     <AvatarImage src="https://github.com/shadcn.png" />
-                    <AvatarFallback>CN</AvatarFallback>
+                    <AvatarFallback>AD</AvatarFallback>
                   </Avatar>
-                  <div className="text-center font-semibold">
-                    {user?.name ?? "Admin"}
-                  </div>
-                  <div className="text-center text-gray-500 text-sm">
-                    {user?.email ?? "admin@gmail.com"}
+
+                  <div className="flex flex-col text-left md:text-center leading-tight">
+                    <span className="font-semibold text-sm truncate max-w-[140px]">
+                      {user?.name ?? "Admin"}
+                    </span>
+
+                    {/* Hide email on mobile */}
+                    <span className="hidden md:block text-xs text-gray-500 truncate">
+                      {user?.email ?? "admin@gmail.com"}
+                    </span>
                   </div>
                 </CardHeader>
               </Card>
@@ -202,18 +212,26 @@ export default function AppSidebar() {
 
           <DropdownMenuContent
             side="top"
-            align="center"
-            className="min-w-[10rem] w-auto"
+            align="start"
+            className="w-44"
           >
-            <DropdownMenuItem onClick={() => navigate("/admin")}>
-              <span>Account</span>
+            <DropdownMenuItem
+              onClick={() => navigate("/admin")}
+              className="cursor-pointer"
+            >
+              Account
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={SignOut}>
-              <span>Sign out</span>
+
+            <DropdownMenuItem
+              onClick={SignOut}
+              className="cursor-pointer text-red-600 focus:text-red-600"
+            >
+              Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarFooter>
+
     </Sidebar>
   );
 }

@@ -16,8 +16,17 @@ export function buildExpenseJournal(
   const tenantName = expense?.tenant?.name;
   const description = `Expense recorded - ${expense.amount}${tenantName ? ` from ${tenantName}` : ""}`;
 
+  // Map expense referenceType to Transaction model type enum (no plain "EXPENSE")
+  const typeMap = {
+    MAINTENANCE: "MAINTENANCE_EXPENSE",
+    UTILITY: "UTILITY_EXPENSE",
+    SALARY: "OTHER_EXPENSE",
+    MANUAL: "OTHER_EXPENSE",
+  };
+  const transactionType = typeMap[expense.referenceType] ?? "OTHER_EXPENSE";
+
   return {
-    transactionType: "EXPENSE",
+    transactionType,
     referenceType: "Expense",
     referenceId: expense._id,
     transactionDate,

@@ -234,7 +234,7 @@ export default function MaintenanceCard({
             </Dialog>
 
             {/* MAIN CARD */}
-            <Card className="border border-gray-200 hover:shadow-md transition">
+            <Card className="border border-gray-200 hover:shadow-md transition w-full h-full min-w-0">
                 <CardContent className="p-4">
                     <div className="flex items-center gap-4">
                         {/* Title */}
