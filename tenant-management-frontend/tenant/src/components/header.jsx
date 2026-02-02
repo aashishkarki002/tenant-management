@@ -161,10 +161,10 @@ export default function Header() {
     <div className="flex flex-wrap sm:flex-nowrap justify-between items-center  sm:p-4 w-full gap-4">
       {!isTenantsPage && (
         <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <Input
             type="text"
-            className="w-full sm:pl-10 pl-4 h-10 text-sm border-gray-300 rounded-md"
+            className="w-full sm:pl-10 pl-4 h-10 text-sm border-gray-300 rounded-md pl-8"
             placeholder={
               isMobile
                 ? "Search..."

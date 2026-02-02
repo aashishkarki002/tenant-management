@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/empty";
 import api from "../plugins/axios";
 import { AddRevenueDialog } from "./Revenue/components/AddRevenueDialog";
+import { Badge } from "@/components/ui/badge";
 
 const PARKING_CODES = ["PARKING"];
 const BRAND_DEAL_CODES = ["BRAND_AD", "AD"];
@@ -147,9 +148,9 @@ export default function Revenue() {
             <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
           </div>
         </div>
-        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm w-15 border border-green-400">
-          {item.status ?? "RECORDED"}
-        </span>
+        <Badge className="bg-green-100 text-green-700 px-3 py-0.5 rounded-full text-sm w-20 border border-green-400">
+          {item.status?.toUpperCase() ?? "RECORDED"}
+        </Badge>
       </CardHeader>
       <CardContent>
         <div className="border-t border-gray-200 pt-4 mt-2">

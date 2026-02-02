@@ -4,11 +4,8 @@ import { Plus, Search, User, ArrowRight, X, Circle, ChevronDown, ChevronUp } fro
 import { Calendar } from 'lucide-react';
 import { List } from 'lucide-react';
 import { Filter } from 'lucide-react';
-
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import useUnits from './hooks/use-units';
-
-
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -20,8 +17,6 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import useProperty from './hooks/use-property';
 import MaintenanceCard from './Maintenance/components/MaintenanceCard';
-import fullCalendar from './components/fullCalendar';
-
 export default function Maintenance() {
   const [priority, setPriority] = useState("medium");
   const [tenant, setTenant] = useState([]);
@@ -61,21 +56,21 @@ export default function Maintenance() {
       setMaintenance(response.data.maintenance);
 
       // Extract unique staffs from maintenance data (assignedTo field)
-
+      const uniqueStaffs = [];
+      const staffMap = new Map();
 
       response.data.maintenance.forEach(item => {
         if (item.assignedTo && item.assignedTo._id) {
+          if (!staffMap.has(item.assignedTo._id)) {
+            staffMap.set(item.assignedTo._id, item.assignedTo);
+            uniqueStaffs.push(item.assignedTo);
+          }
         }
       });
+
+      setStaffs(uniqueStaffs);
     };
     getMaintenance();
-  }, []);
-  useEffect(() => {
-    const getStaffs = async () => {
-      const response = await api.get("/api/staff/get-staffs");
-      setStaffs(response.data.staffs);
-    };
-    getStaffs();
   }, []);
 
 
@@ -308,7 +303,7 @@ export default function Maintenance() {
                       </div>
                     </div>
                     <div className="space-y-2 "><Label>Status</Label>
-                      <Select name="status" onValueChange={(value) => formik.setFieldValue("status", value)} value={formik.values.status}>
+                      <Select name="status" onValueChange={(value) => formik.setFieldValue("status", value)} value={formik.values.status} className="bg-white text-black border-gray-300 pl-2">
                         <SelectTrigger className="bg-white text-black border-gray-300">
                           <SelectValue placeholder="Select Status" />
                         </SelectTrigger>
@@ -337,7 +332,7 @@ export default function Maintenance() {
                           <SelectValue placeholder="Select Unit" />
                         </SelectTrigger>
                         <SelectContent className="bg-white text-black">
-                          {unit.map((unitItem) => (
+                          {units.map((unitItem) => (
                             <SelectItem key={unitItem._id} value={unitItem._id}>
                               {unitItem.name}
                             </SelectItem>
@@ -500,8 +495,25 @@ export default function Maintenance() {
             ).join(' ');
           };
 
+          // Format date
+          const formatDate = (date) => {
+            if (!date) return 'N/A';
+            try {
+              return new Date(date).toLocaleDateString();
+            } catch {
+              return date;
+            }
+          };
 
-
+          const toggleExpand = () => {
+            const newExpanded = new Set(expandedCards);
+            if (isExpanded) {
+              newExpanded.delete(maintenanceItem._id);
+            } else {
+              newExpanded.add(maintenanceItem._id);
+            }
+            setExpandedCards(newExpanded);
+          };
 
           return (
             <MaintenanceCard key={maintenanceItem._id} maintenanceItem={maintenanceItem} />
