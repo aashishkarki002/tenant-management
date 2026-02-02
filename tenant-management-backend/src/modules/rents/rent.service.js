@@ -15,9 +15,9 @@ import { getIO } from "../../config/socket.js";
 import { Cam } from "../tenant/cam/cam.model.js";
 dotenv.config();
 
-const ADMIN_ID = process.env.SYSTEM_ADMIN_ID;
-
-const handleMonthlyRents = async () => {
+const handleMonthlyRents = async (adminId) => {
+  // When called from API, adminId comes from req.admin.id; when called from cron, fallback to env
+  const createdBy = adminId || process.env.SYSTEM_ADMIN_ID;
   const {
     npMonth,
     npYear,
@@ -70,7 +70,7 @@ const handleMonthlyRents = async () => {
         nepaliDate,
         rentAmount: tenant.totalRent,
         units: tenant.units,
-        createdBy: ADMIN_ID,
+        createdBy,
         nepaliDueDate: lastDay,
         englishDueDate,
         paidAmount: 0,

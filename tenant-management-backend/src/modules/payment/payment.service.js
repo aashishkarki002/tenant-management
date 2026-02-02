@@ -159,8 +159,21 @@ export async function createPayment(paymentData) {
     await session.commitTransaction();
     session.endSession();
 
-    // 🔥 Side effects (non-blocking)
-    emitPaymentNotification({ paymentId: payment._id }).catch(console.error);
+    // 🔥 Side effects (non-blocking) — use created payment record so notification has correct values
+    emitPaymentNotification(
+      {
+        paymentId: payment._id,
+        tenantId: payment.tenant,
+        amount: payment.amount,
+        paymentDate: payment.paymentDate,
+        paymentMethod: payment.paymentMethod,
+        paymentStatus: payment.paymentStatus,
+        note: payment.note,
+        receivedBy: payment.receivedBy,
+        bankAccountId: payment.bankAccount,
+      },
+      paymentData.adminId
+    ).catch(console.error);
 
     // Ensure IDs are passed correctly (handle both ObjectId and string formats)
     const rentIdToPass = rent?._id ? rent._id.toString() : (payment.rent?._id || payment.rent)?.toString() || null;

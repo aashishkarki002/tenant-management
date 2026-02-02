@@ -23,7 +23,7 @@ export async function getRents(req, res) {
 }
 export async function processMonthlyRents(req, res) {
   try {
-    const result = await handleMonthlyRents();
+    const result = await handleMonthlyRents(req.admin?.id);
 
     res.status(200).json({
       success: result.success,

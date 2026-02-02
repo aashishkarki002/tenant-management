@@ -3,9 +3,11 @@ import Notification from "../modules/notifications/notification.model.js";
 import dotenv from "dotenv";
 import BankAccount from "../modules/banks/BankAccountModel.js";
 dotenv.config();
-const ADMIN_ID = process.env.SYSTEM_ADMIN_ID;
-export const emitPaymentNotification = async (paymentData) => {
+
+export const emitPaymentNotification = async (paymentData, adminId) => {
   const io = getIO();
+  // When called from API, adminId comes from req.admin.id; fallback to env when omitted (e.g. cron)
+  const targetAdminId = adminId || process.env.SYSTEM_ADMIN_ID;
   try {
     const {
       paymentId,
@@ -18,7 +20,7 @@ export const emitPaymentNotification = async (paymentData) => {
       receivedBy,
       bankAccountId,
     } = paymentData;
- 
+
     let bankName = "Unknown";
 
     if (bankAccountId) {
@@ -27,15 +29,23 @@ export const emitPaymentNotification = async (paymentData) => {
         bankName = bank.name;
       }
     }
-    
-    const notificationMessage = `Payment of Rs. ${amount} received from tenant on ${new Date(
-      paymentDate
-    ).toLocaleDateString()} using ${paymentMethod}${
+
+    const dateStr =
+      paymentDate instanceof Date
+        ? paymentDate.toLocaleDateString()
+        : paymentDate
+          ? new Date(paymentDate).toLocaleDateString()
+          : "N/A";
+    const amountStr =
+      amount != null ? Number(amount).toLocaleString() : "0";
+    const methodStr = paymentMethod || "N/A";
+
+    const notificationMessage = `Payment of Rs. ${amountStr} received from tenant on ${dateStr} using ${methodStr}${
       bankAccountId ? ` (Bank Account: ${bankName})` : ""
     }`;
 
     const notification = await Notification.create({
-      admin: ADMIN_ID,
+      admin: targetAdminId,
       type: "PAYMENT_NOTIFICATION",
       title: "Payment Notification",
       message: notificationMessage,
@@ -52,7 +62,7 @@ export const emitPaymentNotification = async (paymentData) => {
       },
     });
 
-    io.to(`admin:${ADMIN_ID}`).emit("new-notification", {
+    io.to(`admin:${targetAdminId}`).emit("new-notification", {
       notification: {
         _id: notification._id,
         type: notification.type,

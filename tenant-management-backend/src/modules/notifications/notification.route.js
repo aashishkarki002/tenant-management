@@ -3,6 +3,6 @@ import { getNotifications } from "./notification.controller.js";
 import { protect } from "../../middleware/protect.js";
 const router = Router();
 
-router.get("/get-notifications/:id", protect, getNotifications);
+router.get("/get-notifications", protect, getNotifications);
 
 export default router;

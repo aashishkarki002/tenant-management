@@ -5,7 +5,6 @@ import { getNepaliMonthDates } from "../../../utils/nepaliDateHelper.js";
 import { Tenant } from "../Tenant.Model.js";
 import dotenv from "dotenv";
 dotenv.config();
-const ADMIN_ID = process.env.SYSTEM_ADMIN_ID;
 async function createCam(camData, createdBy, session = null) {
   try {
     const cam = await Cam.create([camData], session ? { session } : {});
@@ -44,7 +43,7 @@ export const handleMonthlyCams = async () => {
           { nepaliYear: npYear, nepaliMonth: { $lt: npMonth } },
         ],
       },
-      { $set: { status: "overdue" } },
+      { $set: { status: "overdue" } }
     );
     console.log("Overdue cams updated:", overdueResult.modifiedCount);
     const tenants = await Tenant.find({ status: "active" }).lean();
@@ -56,7 +55,7 @@ export const handleMonthlyCams = async () => {
       nepaliYear: npYear,
     }).select("tenant");
     const existingTenantIds = new Set(
-      existingCams.map((c) => c.tenant.toString()),
+      existingCams.map((c) => c.tenant.toString())
     );
     const camsToInsert = tenants
       .filter((tenant) => !existingTenantIds.has(tenant._id.toString()))

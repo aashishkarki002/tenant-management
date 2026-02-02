@@ -2,8 +2,8 @@ import Notification from "./notification.model.js";
 
 export const getNotifications = async (req, res) => {
   try {
-    // Use admin ID from authenticated user (from protect middleware)
-    const notifications = await Notification.find({ admin: req.admin.id })
+    console.log("admin id", req.admin.id);
+    const notifications = await Notification.find()
       .populate("admin", "name email")
       .sort({ createdAt: -1 }); // Sort by newest first
     res.status(200).json({ success: true, notifications });
