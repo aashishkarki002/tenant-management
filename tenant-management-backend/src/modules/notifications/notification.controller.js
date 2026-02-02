@@ -15,3 +15,33 @@ export const getNotifications = async (req, res) => {
     });
   }
 };
+export const markAllNotificationsAsRead = async (req, res) => {
+  try {
+    await Notification.updateMany({}, { isRead: true });
+    res
+      .status(200)
+      .json({ success: true, message: "Notifications marked as read" });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark notifications as read",
+      error: error,
+    });
+  }
+};
+export const markNotificationAsRead = async (req, res) => {
+  try {
+    await Notification.findByIdAndUpdate(req.params.id, {
+      isRead: true,
+    });
+    res
+      .status(200)
+      .json({ success: true, message: "Notification marked as read" });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark notification as read",
+      error: error,
+    });
+  }
+};

@@ -59,6 +59,10 @@ const paymentSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  transactionRef: {
+    type: String,
+    required: false,
+  },
   receivedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin",

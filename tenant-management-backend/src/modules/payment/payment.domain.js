@@ -20,6 +20,7 @@ export function mergePaymentPayloads(rentPayload, camPayload) {
       paymentStatus:
         rentPayload.paymentStatus || camPayload.paymentStatus || "paid",
       note: rentPayload.note || camPayload.note,
+      transactionRef: rentPayload.transactionRef || camPayload.transactionRef || null,
       createdBy: rentPayload.createdBy || camPayload.createdBy,
       rent: rentPayload.rent || null,
       cam: camPayload.cam || null,
@@ -93,6 +94,7 @@ export function buildRentPaymentPayload({
   paymentMethod,
   paymentStatus,
   note,
+  transactionRef,
   adminId,
   bankAccountId,
   receivedBy,
@@ -118,6 +120,7 @@ export function buildRentPaymentPayload({
 
   if (bankAccountId) payload.bankAccount = bankAccountId;
   if (receivedBy) payload.receivedBy = receivedBy;
+  if (transactionRef) payload.transactionRef = transactionRef;
 
   return payload;
 }
@@ -135,6 +138,7 @@ export function buildCamPaymentPayload({
   paymentMethod,
   paymentStatus,
   note,
+  transactionRef,
   adminId,
   bankAccountId,
   receivedBy,
@@ -160,6 +164,7 @@ export function buildCamPaymentPayload({
 
   if (bankAccountId) payload.bankAccount = bankAccountId;
   if (receivedBy) payload.receivedBy = receivedBy;
+  if (transactionRef) payload.transactionRef = transactionRef;
 
   return payload;
 }

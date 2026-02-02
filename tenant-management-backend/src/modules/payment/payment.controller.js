@@ -23,6 +23,7 @@ export async function payRentAndCam(req, res) {
       note,
       receivedBy,
       bankAccountId,
+      transactionRef,
       allocations, // New format: supports both rent and CAM
     } = req.body;
 
@@ -51,6 +52,7 @@ export async function payRentAndCam(req, res) {
     const paymentData = {
       adminId: req.admin.id,
       tenantId,
+      amount,
       paymentDate,
       nepaliDate,
       paymentMethod,
@@ -58,6 +60,7 @@ export async function payRentAndCam(req, res) {
       note: note || "",
       receivedBy,
       bankAccountId,
+      transactionRef: transactionRef || undefined,
       allocations: paymentAllocations,
     };
     const result = await createPayment(paymentData);

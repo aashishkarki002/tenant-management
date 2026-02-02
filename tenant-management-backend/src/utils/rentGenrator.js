@@ -313,7 +313,14 @@ export async function generatePDFToBuffer(rent) {
         .lineWidth(1)
         .stroke();
 
-      doc.moveDown(3);
+      doc.moveDown(2);
+
+      // ---------- PAYMENT METHOD (and ref when present) ----------
+      doc.font("Helvetica").text(`Payment Method: ${rent.paymentMethod || "N/A"}`);
+      if (rent.transactionRef) {
+        doc.text(`Reference: ${rent.transactionRef}`, { continued: false });
+      }
+      doc.moveDown(1);
 
       // ---------- RECEIVED BY ----------
       doc.font("Helvetica").text(`Received By: ${rent.receivedBy}`);

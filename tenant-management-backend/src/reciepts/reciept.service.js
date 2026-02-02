@@ -110,6 +110,7 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
     property: property?.name || "N/A",
     paidFor,
     paymentMethod: paymentMethodDisplay,
+    transactionRef: paymentData.transactionRef || payment.transactionRef || null,
     receivedBy: rent?.lastPaidBy || paymentData.receivedBy || payment.receivedBy || "",
     rentAmount,
     camAmount,
