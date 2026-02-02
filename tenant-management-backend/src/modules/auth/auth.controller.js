@@ -76,6 +76,64 @@ export const registerUser = async (req, res) => {
       .json({ success: false, message: "User creation failed" });
   }
 };
+
+/** Same as register but for staff: creates user with role "staff" and sends verification email. Protected - admin only. */
+export const registerStaff = async (req, res) => {
+  try {
+    const { name, email, password, phone, role } = req.body;
+
+    if (!name || !email || !password || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields (name, email, password, phone) are required",
+      });
+    }
+
+    const existingUser = await Admin.findOne({ email });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User already exists" });
+    }
+
+    const { rawToken, hashedToken, expires } = generateEmailVerificationToken();
+
+    await Admin.create({
+      name,
+      email,
+      password,
+      phone,
+      role: role || "staff",
+      emailVerificationToken: hashedToken,
+      emailVerificationTokenExpiresAt: expires,
+      isEmailVerified: false,
+    });
+
+    const verificationUrl = `${process.env.BACKEND_URL}/api/auth/verify-email?token=${rawToken}`;
+
+    await sendEmail({
+      to: email,
+      subject: "Verify your email",
+      html: `
+        <h2>Verify your email</h2>
+        <p>Click the link below to verify your account:</p>
+        <a href="${verificationUrl}">${verificationUrl}</a>
+        <p>This link expires in 10 minutes.</p>
+      `,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Staff account created. Verification link sent to their email.",
+    });
+  } catch (error) {
+    console.error("Register staff error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Staff creation failed" });
+  }
+};
+
 export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;

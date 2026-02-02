@@ -13,7 +13,7 @@ export function buildPaymentReceivedJournal(
   payment,
   rent,
   amount = undefined,
-  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK,
+  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK
 ) {
   const recordedAmount = amount ?? payment.amount;
   const transactionDate = payment.paymentDate || new Date();
@@ -22,7 +22,10 @@ export function buildPaymentReceivedJournal(
     rent?.nepaliMonth ?? new Date(transactionDate).getMonth() + 1;
   const nepaliYear =
     rent?.nepaliYear ?? new Date(transactionDate).getFullYear();
-  const description = `Rent payment received for ${nepaliMonth} ${nepaliYear} from ${rent?.tenant?.name}`;
+  const tenantName = rent?.tenant?.name ?? (rent?.tenant ? "Tenant" : "");
+  const description = tenantName
+    ? `Rent payment received for ${nepaliMonth} ${nepaliYear} from ${tenantName}`
+    : `Rent payment received for ${nepaliMonth} ${nepaliYear}`;
   const createdBy = payment.createdBy ?? payment.receivedBy;
 
   return {

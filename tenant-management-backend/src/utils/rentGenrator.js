@@ -28,7 +28,6 @@ export async function generateAndUploadRentPDF(rent) {
             url: result.secure_url,
             cloudinaryId: result.public_id,
           });
-         
         }
       );
 
@@ -144,7 +143,7 @@ export async function generateAndUploadRentPDF(rent) {
           "This is an official receipt for your payment. Please keep it for your records.",
           { align: "center" }
         );
-      doc.text("Contact us: info@cup-o-joy.com | +977-9812345678", {
+      doc.text("Contact us: info@sallyanhouse.com | +977-9812345678", {
         align: "center",
       });
 
@@ -285,7 +284,10 @@ export async function generatePDFToBuffer(rent) {
       }
 
       // Total row (if breakdown exists)
-      if ((rent.rentAmount || rent.camAmount) && (rent.rentAmount > 0 || rent.camAmount > 0)) {
+      if (
+        (rent.rentAmount || rent.camAmount) &&
+        (rent.rentAmount > 0 || rent.camAmount > 0)
+      ) {
         // Horizontal line before total
         doc
           .moveTo(tableLeft, rowY - 5)
@@ -293,7 +295,7 @@ export async function generatePDFToBuffer(rent) {
           .strokeColor("#aaaaaa")
           .lineWidth(1)
           .stroke();
-        
+
         rowY += 5;
         doc
           .font("Helvetica-Bold")
@@ -316,7 +318,9 @@ export async function generatePDFToBuffer(rent) {
       doc.moveDown(2);
 
       // ---------- PAYMENT METHOD (and ref when present) ----------
-      doc.font("Helvetica").text(`Payment Method: ${rent.paymentMethod || "N/A"}`);
+      doc
+        .font("Helvetica")
+        .text(`Payment Method: ${rent.paymentMethod || "N/A"}`);
       if (rent.transactionRef) {
         doc.text(`Reference: ${rent.transactionRef}`, { continued: false });
       }
@@ -342,7 +346,7 @@ export async function generatePDFToBuffer(rent) {
           "This is an official receipt for your payment. Please keep it for your records.",
           { align: "center" }
         );
-      doc.text("Contact us: info@cup-o-joy.com | +977-9812345678", {
+      doc.text("Contact us: info@sallyanhouse.com | +977-9812345678", {
         align: "center",
       });
 
@@ -388,11 +392,8 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
     const fileName = `receipt-${receiptNo}-${Date.now()}.pdf`;
     tempFilePath = path.join(TEMP_UPLOAD_DIR, fileName);
 
-  
-
     // Write buffer to temporary file
     fs.writeFileSync(tempFilePath, pdfBuffer);
-
 
     // Upload the file to Cloudinary
     const uploadOptions = {
@@ -401,14 +402,10 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
       public_id: `receipt-${receiptNo}`,
     };
 
-
-
     const result = await cloudinary.uploader.upload(
       tempFilePath,
       uploadOptions
     );
-
-
 
     if (!result || !result.secure_url) {
       console.error(
@@ -428,8 +425,6 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
       cloudinaryId: result.public_id,
     };
 
- 
-
     return uploadResult;
   } catch (error) {
     console.error("❌ [uploadPDFBufferToCloudinary] Upload failed:", {
@@ -445,7 +440,6 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);
-     
       } catch (unlinkError) {
         console.error(
           "⚠️ [uploadPDFBufferToCloudinary] Failed to delete temp file:",
