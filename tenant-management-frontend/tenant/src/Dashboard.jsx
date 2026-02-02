@@ -275,6 +275,7 @@ export default function Dashboard() {
                 <CardTitle>Upcoming Deadlines</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+
                 {overdueRentsCount > 0 ? (
                   overdueRents.map((rent, idx) => {
                     const dueDate = rent.nepaliDueDate
@@ -362,7 +363,7 @@ export default function Dashboard() {
                         </div>
                         <div className="flex items-center">
                           <Button
-                            className="bg-gray-50 text-black hover:bg-black hover:text-white"
+                            className="bg-gray-50 text-black hover:bg-gray-500 hover:text-white"
                             onClick={() => navigate("/rent-payment")}
                           >
                             View
@@ -391,7 +392,7 @@ export default function Dashboard() {
                         </div>
                         <div className="flex items-center">
                           <Button
-                            className="bg-gray-50 text-black hover:bg-gray-800 hover:text-white"
+                            className="bg-gray-50 text-black hover:bg-gray-500 hover:text-white"
                             onClick={() => navigate("/tenant/tenants")}
                           >
                             View
@@ -402,7 +403,7 @@ export default function Dashboard() {
                   })}
 
                 {maintenance.filter((maintenance) => maintenance.status === "OPEN").length === 0 && (
-                  <p className="text-gray-500 text-sm text-center py-8" >No maintenance requests</p>
+                  <p className="text-gray-500 text-sm text-center py-8" >No pending requests</p>
                 )}
                 {maintenance.filter((maintenance) => maintenance.status === "OPEN").length > 0 &&
                   maintenance.filter((maintenance) => maintenance.status === "OPEN").map((maintenance, idx) => {

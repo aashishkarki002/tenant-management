@@ -164,11 +164,25 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
           </div>
           <Separator className="my-2" />
           <div className="flex justify-between items-center w-full ">
-            <Button className="bg-gray-50 text-black mr-2 w-30  hover:bg-green-100 hover:text-green-600">
+            <Button 
+              className="bg-gray-50 text-black mr-2 w-30  hover:bg-green-100 hover:text-green-600"
+              onClick={() => {
+                if (tenant?.phone) {
+                  window.location.href = `tel:${tenant.phone}`;
+                }
+              }}
+            >
               <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
               Call
             </Button>
-            <Button className="bg-gray-50 text-black mr-2 w-30 hover:bg-blue-100 hover:text-blue-600">
+            <Button 
+              className="bg-gray-50 text-black mr-2 w-30 hover:bg-blue-100 hover:text-blue-600"
+              onClick={() => {
+                if (tenant?.email) {
+                  window.location.href = `mailto:${tenant.email}`;
+                }
+              }}
+            >
               <Mail className="w-5 h-5 text-black mr-2  " />
               Email
             </Button>
