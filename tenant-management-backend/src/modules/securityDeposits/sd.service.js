@@ -1,13 +1,14 @@
 import { Sd } from "./sd.model.js";
-import { ledgerService } from "../../ledger/ledger.service.js";
-import { buildSecurityDepositJournal } from "../../ledger/journal-builders/index.js";
-import { createLiability } from "../.././liabilities/liabilty.service.js";
-async function createSd(sdData, createdBy, session = null) {
+import { ledgerService } from "../ledger/ledger.service.js";
+import { buildSecurityDepositJournal } from "../ledger/journal-builders/index.js";
+import { createLiability } from "../liabilities/liabilty.service.js";
+export async function createSd(sdData, createdBy, session = null) {
   try {
     // Mongoose create() with a session requires an array of documents
     const opts = session ? { session } : {};
     const created = await Sd.create([sdData], opts);
     const sd = created[0];
+    await sd.populate("tenant", "name");
     const sdPayload = buildSecurityDepositJournal(sd, { createdBy });
     await ledgerService.postJournalEntry(sdPayload, session);
 
@@ -35,4 +36,3 @@ async function createSd(sdData, createdBy, session = null) {
     };
   }
 }
-export { createSd };

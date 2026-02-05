@@ -1,8 +1,8 @@
 import { Cam } from "./cam.model.js";
-import { ledgerService } from "../../ledger/ledger.service.js";
-import { buildCamChargeJournal } from "../../ledger/journal-builders/index.js";
-import { getNepaliMonthDates } from "../../../utils/nepaliDateHelper.js";
-import { Tenant } from "../Tenant.Model.js";
+import { ledgerService } from "../ledger/ledger.service.js";
+import { buildCamChargeJournal } from "../ledger/journal-builders/index.js";
+import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
+import { Tenant } from "../tenant/Tenant.Model.js";
 import dotenv from "dotenv";
 dotenv.config();
 async function createCam(camData, createdBy, session = null) {

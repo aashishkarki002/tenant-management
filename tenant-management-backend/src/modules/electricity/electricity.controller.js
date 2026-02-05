@@ -71,14 +71,14 @@ export const createElectricityReading = async (req, res) => {
           : undefined,
         createdBy: req.admin.id,
       },
-      session,
+      session
     );
 
     // Record in ledger if amount > 0
     if (result.data.totalAmount > 0) {
       await electricityService.recordElectricityCharge(
         result.data._id,
-        session,
+        session
       );
     }
 
@@ -113,6 +113,8 @@ export const getElectricityReadings = async (req, res) => {
       tenantId,
       unitId,
       propertyId,
+      blockId,
+      innerBlockId,
       nepaliYear,
       nepaliMonth,
       status,
@@ -124,7 +126,8 @@ export const getElectricityReadings = async (req, res) => {
       tenantId,
       unitId,
       propertyId,
-
+      blockId: blockId || undefined,
+      innerBlockId: innerBlockId || undefined,
       nepaliYear: nepaliYear ? parseInt(nepaliYear) : undefined,
       nepaliMonth: nepaliMonth ? parseInt(nepaliMonth) : undefined,
       status,
@@ -232,7 +235,7 @@ export const recordElectricityPayment = async (req, res) => {
           fs.unlinkSync(tempPath);
         }
         throw new Error(
-          `Failed to upload receipt image: ${uploadError.message}`,
+          `Failed to upload receipt image: ${uploadError.message}`
         );
       }
     }
@@ -246,7 +249,7 @@ export const recordElectricityPayment = async (req, res) => {
         receipt: receiptImageUrl,
         createdBy: req.admin.id,
       },
-      session,
+      session
     );
 
     await session.commitTransaction();
@@ -276,7 +279,7 @@ export const getUnitConsumptionHistory = async (req, res) => {
 
     const result = await electricityService.getUnitConsumptionHistory(
       unitId,
-      limit ? parseInt(limit) : 12,
+      limit ? parseInt(limit) : 12
     );
 
     res.status(200).json(result);
@@ -404,7 +407,7 @@ export const deleteElectricityReading = async (req, res) => {
     const electricity = await Electricity.findByIdAndUpdate(
       id,
       { status: "cancelled" },
-      { new: true },
+      { new: true }
     );
 
     if (!electricity) {

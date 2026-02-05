@@ -10,19 +10,22 @@ import { ACCOUNT_CODES } from "../config/accounts.js";
 export function buildSecurityDepositJournal(
   sd,
   options = {},
-  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK,
+  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK
 ) {
   const {
     createdBy,
     nepaliMonth: optNepaliMonth,
     nepaliYear: optNepaliYear,
+    tenantName: optTenantName,
   } = options;
   const transactionDate = sd.paidDate || new Date();
   const d = new Date(transactionDate);
   const nepaliMonth = optNepaliMonth ?? d.getMonth() + 1;
   const nepaliYear = optNepaliYear ?? d.getFullYear();
   const nepaliDate = transactionDate;
-  const description = `Security deposit received from ${sd?.tenant?.name} for ${nepaliMonth}/${nepaliYear}`;
+  const tenantName =
+    optTenantName ?? sd?.tenant?.name ?? (sd?.tenant ? "Tenant" : "Unknown");
+  const description = `Security deposit received from ${tenantName} for ${nepaliMonth}/${nepaliYear}`;
 
   return {
     transactionType: "SECURITY_DEPOSIT",

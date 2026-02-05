@@ -16,4 +16,4 @@ const unitSchema = new mongoose.Schema({
   isOccupied: { type: Boolean, default: false }, // optional, to filter available units
 });
 
-export const Unit = mongoose.model("Unit", unitSchema);
+export const Unit = mongoose.models.Unit || mongoose.model("Unit", unitSchema);

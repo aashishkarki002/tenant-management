@@ -1,6 +1,6 @@
 import { Router } from "express";
-import createBlock from "./block.controller.js";
-import createInnerBlock from "./innerBlock.controller.js";
+import createBlock from "../blocks/block.controller.js";
+import createInnerBlock from "../blocks/innerBlocks/innerBlock.controller.js";
 import getProperty from "./property.controller.js";
 import createProperty from "./property.controller.js";
 

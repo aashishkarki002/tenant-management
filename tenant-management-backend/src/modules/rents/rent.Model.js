@@ -54,6 +54,12 @@ const rentSchema = new mongoose.Schema(
       enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
       default: "pending",
     },
+    rentFrequency: {
+      type: String,
+      enum: ["monthly", "quarterly"],
+      default: "monthly",
+      required: true,
+    },
     units: [
       {
         type: mongoose.Schema.Types.ObjectId,

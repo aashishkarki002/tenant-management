@@ -13,6 +13,15 @@ export function buildRentChargeJournal(rent) {
   const nepaliYear = rent.nepaliYear;
   const description = `Rent charge for ${nepaliMonth} ${nepaliYear} from ${rent?.tenant?.name}`;
 
+  // Derive billing frequency and quarter (if applicable) so that
+  // the Transaction & ledger clearly know whether this is a
+  // monthly or quarterly rent.
+  const billingFrequency = rent.rentFrequency || "monthly";
+  const quarter =
+    billingFrequency === "quarterly" && typeof nepaliMonth === "number"
+      ? Math.ceil(nepaliMonth / 3)
+      : undefined;
+
   return {
     transactionType: "RENT_CHARGE",
     referenceType: "Rent",
@@ -26,6 +35,9 @@ export function buildRentChargeJournal(rent) {
     totalAmount: rent.rentAmount,
     tenant: rent.tenant,
     property: rent.property,
+     // Custom metadata used by ledger/transaction
+    billingFrequency,
+    quarter,
     entries: [
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
