@@ -52,6 +52,42 @@ const tenantSchema = new mongoose.Schema(
     camCharges: { type: Number, default: 0 },
     netAmount: { type: Number, default: 0 }, // total tenant pays including CAM
     securityDeposit: { type: Number, required: true },
+    tdsPercentage: {
+      type: Number,
+      default: 10, // %
+    },
+
+    rentPaymentFrequency: {
+      type: String,
+      enum: ["monthly", "quarterly"],
+      default: "monthly",
+      required: true,
+    },
+    quarterlyRentAmount: {
+      type: Number,
+      default: 0,
+    },
+    nextRentDueDate: {
+      type: Date,
+      required: false,
+    },
+    lastRentChargedDate: {
+      type: Date,
+      required: false,
+    },
+    rentFrequencyChangedAt: {
+      type: Date,
+      required: false,
+    },
+    rentFrequencyChangedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      required: false,
+    },
+    rentFrequencyChangedReason: {
+      type: String,
+      required: false,
+    },
 
     // Status
     status: {
@@ -81,38 +117,55 @@ const tenantSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-// Pre-save hook to calculate rent amounts
-tenantSchema.pre("save", async function () {
+tenantSchema.pre("save", function () {
   // Only calculate if new or relevant fields changed
   if (
     !this.isNew &&
     !(
       this.isModified("leasedSquareFeet") ||
       this.isModified("pricePerSqft") ||
-      this.isModified("camRatePerSqft")
+      this.isModified("camRatePerSqft") ||
+      this.isModified("tdsPercentage") ||
+      this.isModified("rentPaymentFrequency")
     )
-  )
+  ) {
     return;
+  }
 
-  const baseRate = this.pricePerSqft;
+  const A = this.leasedSquareFeet; // Area in sqft
+  const P = this.pricePerSqft; // Gross price per sqft (includes TDS)
+  const rate = this.tdsPercentage / 100; // TDS rate (0.10 for 10%)
 
-  // TDS = 10% of baseRate
-  this.tds = baseRate * 0.1;
+  // TDS Calculation (Reverse method)
+  // T = P - (P / (1 + rate))
+  // This calculates TDS when P is the gross amount (includes TDS)
+  this.tds = P - P / (1 + rate);
 
-  // Rent per sqft after TDS
-  this.rentalRate = baseRate - this.tds;
+  // Rental Rate per sqft (Net to landlord after TDS)
+  // RR = P - T
+  this.rentalRate = P - this.tds;
 
-  // Gross amount = total rent before TDS
-  this.grossAmount = baseRate * this.leasedSquareFeet;
+  // Gross Amount (what tenant pays BEFORE TDS deduction)
+  // GA = A × P
+  this.grossAmount = A * P;
 
-  // Total rent after TDS but before CAM
-  this.totalRent = this.rentalRate * this.leasedSquareFeet;
+  // MONTHLY Total Rent (Net to landlord after TDS)
+  // RA = A × RR
+  // This is ALWAYS monthly rent
+  this.totalRent = A * this.rentalRate;
 
-  // CAM charges
-  this.camCharges = this.camRatePerSqft * this.leasedSquareFeet;
+  // Quarterly Rent Amount (for quarterly tenants only)
+  if (this.rentPaymentFrequency === "quarterly") {
+    this.quarterlyRentAmount = this.totalRent * 3;
+  } else {
+    this.quarterlyRentAmount = 0;
+  }
 
-  // Net amount tenant pays
+  //  MONTHLY CAM Charges (always monthly for all tenants)
+  this.camCharges = this.camRatePerSqft * A;
+
+  // MONTHLY Net Amount (total to landlord monthly)
+  // NA = RA + CAM
   this.netAmount = this.totalRent + this.camCharges;
 });
 

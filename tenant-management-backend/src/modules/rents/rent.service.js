@@ -9,10 +9,10 @@ import dotenv from "dotenv";
 import { sendEmail } from "../../config/nodemailer.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildRentChargeJournal } from "../ledger/journal-builders/index.js";
-import Notification from "../notifications/notification.model.js";
+import Notification from "../notifications/Notification.Model.js";
 import NepaliDate from "nepali-datetime";
 import { getIO } from "../../config/socket.js";
-import { Cam } from "../tenant/cam/cam.model.js";
+import { Cam } from "../cam/cam.model.js";
 dotenv.config();
 
 const handleMonthlyRents = async (adminId) => {
@@ -38,7 +38,7 @@ const handleMonthlyRents = async (adminId) => {
           { nepaliYear: npYear, nepaliMonth: { $lt: npMonth } },
         ],
       },
-      { $set: { status: "overdue" } },
+      { $set: { status: "overdue" } }
     );
     console.log("Overdue rents updated:", overdueResult.modifiedCount);
 
@@ -55,7 +55,7 @@ const handleMonthlyRents = async (adminId) => {
     }).select("tenant");
 
     const existingTenantIds = new Set(
-      existingRents.map((r) => r.tenant.toString()),
+      existingRents.map((r) => r.tenant.toString())
     );
 
     const rentsToInsert = tenants
@@ -227,11 +227,11 @@ export const sendEmailToTenants = async () => {
         // Calculate totals
         const rentTotal = tenantRents.reduce(
           (sum, rent) => sum + (rent.rentAmount || 0),
-          0,
+          0
         );
         const camTotal = tenantCams.reduce(
           (sum, cam) => sum + (cam.amount || 0),
-          0,
+          0
         );
         const totalAmount = rentTotal + camTotal;
 
@@ -240,7 +240,7 @@ export const sendEmailToTenants = async () => {
           console.log(
             `Skipping email for tenant ${
               tenant?.name || "Unknown"
-            } - no pending amounts`,
+            } - no pending amounts`
           );
           return;
         }
@@ -256,7 +256,7 @@ export const sendEmailToTenants = async () => {
             nepaliDueDate = new NepaliDate(
               tenantRents[0].nepaliYear,
               tenantRents[0].nepaliMonth - 1,
-              nepaliDay,
+              nepaliDay
             );
           } else {
             // Fallback to lastDay if date parsing fails
@@ -350,7 +350,7 @@ export const sendEmailToTenants = async () => {
         } catch (emailError) {
           console.error(`Failed to send email to ${tenant.email}:`, emailError);
         }
-      },
+      }
     );
 
     await Promise.all(emailPromises);
@@ -359,7 +359,7 @@ export const sendEmailToTenants = async () => {
     if (sentRentIds.length > 0) {
       await Rent.updateMany(
         { _id: { $in: sentRentIds } },
-        { $set: { emailReminderSent: true } },
+        { $set: { emailReminderSent: true } }
       );
     }
 
@@ -367,12 +367,12 @@ export const sendEmailToTenants = async () => {
     if (sentCamIds.length > 0) {
       await Cam.updateMany(
         { _id: { $in: sentCamIds } },
-        { $set: { emailReminderSent: true } },
+        { $set: { emailReminderSent: true } }
       );
     }
 
     const sentCount = Array.from(tenantMap.values()).filter(
-      ({ tenant }) => tenant?.email,
+      ({ tenant }) => tenant?.email
     ).length;
     const totalTenants = tenantMap.size;
 
@@ -406,3 +406,23 @@ const createNewRent = async (rentData, session = null) => {
   }
 };
 export { createNewRent };
+
+export async function getRentsService() {
+  try {
+    const rents = await Rent.find()
+      .sort({ nepaliDueDate: 1 })
+      .populate({
+        path: "tenant",
+        match: { isDeleted: false },
+      })
+      .populate("innerBlock")
+      .populate("block")
+      .populate("property")
+      .populate("units");
+    const filteredRents = rents.filter((rent) => rent.tenant !== null);
+    return { success: true, rents: filteredRents };
+  } catch (error) {
+    console.log(error);
+    return { success: false, message: "Rents fetching failed", error: error };
+  }
+}

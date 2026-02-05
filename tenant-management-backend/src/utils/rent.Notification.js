@@ -3,7 +3,7 @@ import {
   getNepaliMonthDates,
   checkNepaliSpecialDays,
 } from "./nepaliDateHelper.js";
-import Notification from "../modules/notifications/notification.model.js";
+import Notification from "../modules/notifications/Notification.Model.js";
 import { getIO } from "../config/socket.js";
 import dotenv from "dotenv";
 dotenv.config();
@@ -13,7 +13,10 @@ dotenv.config();
  * @param {boolean} manualTrigger - if true, ignores reminderDay check
  * @param {string} [adminId] - admin id from req.admin.id; when omitted (e.g. cron), uses SYSTEM_ADMIN_ID
  */
-export const sendRentReminderNotification = async (manualTrigger = false, adminId = null) => {
+export const sendRentReminderNotification = async (
+  manualTrigger = false,
+  adminId = null
+) => {
   try {
     const io = getIO();
     const targetAdminId = adminId || process.env.SYSTEM_ADMIN_ID;
@@ -42,7 +45,11 @@ export const sendRentReminderNotification = async (manualTrigger = false, adminI
           },
         });
       } else {
-        io.emit("notification", { type: "RENT_REMINDER", message: `No pending rents for ${npMonth}-${npYear}`, count: 0 });
+        io.emit("notification", {
+          type: "RENT_REMINDER",
+          message: `No pending rents for ${npMonth}-${npYear}`,
+          count: 0,
+        });
       }
       return {
         success: true,

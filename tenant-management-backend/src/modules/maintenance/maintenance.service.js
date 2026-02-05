@@ -32,7 +32,8 @@ export async function getAllMaintenance() {
       .populate("unit")
       .populate("property")
       .populate("block")
-      .populate("createdBy");
+      .populate("createdBy")
+      .populate("assignedTo", "name email phone");
 
     return {
       success: true,
@@ -51,7 +52,8 @@ export async function getMaintenanceById(id) {
       .populate("unit")
       .populate("property")
       .populate("block")
-      .populate("createdBy");
+      .populate("createdBy")
+      .populate("assignedTo", "name email phone");
 
     if (!maintenance) {
       return {

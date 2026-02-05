@@ -2,7 +2,7 @@ import cron from "node-cron";
 import { CronLog } from "./model/CronLog.js";
 import handleMonthlyRents from "../modules/rents/rent.service.js";
 import { checkNepaliSpecialDays } from "../utils/nepaliDateHelper.js";
-import { handleMonthlyCams } from "../modules/tenant/cam/cam.service.js";
+import { handleMonthlyCams } from "../modules/cam/cam.service.js";
 
 export async function monthlyRentAndCamCron() {
   try {

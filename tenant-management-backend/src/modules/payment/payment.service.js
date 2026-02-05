@@ -8,7 +8,7 @@ import {
   sendPaymentReceiptEmail as sendPaymentReceiptEmailFromNodemailer,
 } from "../../config/nodemailer.js";
 import { applyPaymentToRent } from "../rents/rent.domain.js";
-import { applyPaymentToCam } from "../tenant/cam/cam.domain.js";
+import { applyPaymentToCam } from "../cam/cam.domain.js";
 import buildFilter from "../../utils/buildFilter.js";
 import {
   buildRentPaymentPayload,
@@ -29,7 +29,7 @@ import {
 } from "../revenue/revenue.service.js";
 import { emitPaymentNotification } from "../../utils/payment.Notification.js";
 import { handleReceiptSideEffects } from "../../reciepts/reciept.service.js";
-import { Cam } from "../tenant/cam/cam.model.js";
+import { Cam } from "../cam/cam.model.js";
 
 export async function createPayment(paymentData) {
   const session = await mongoose.startSession();

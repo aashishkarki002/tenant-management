@@ -1,6 +1,7 @@
 import { Tenant } from "../tenant/Tenant.Model.js";
+import { Block } from "../blocks/Block.Model.js";
 import { Rent } from "../rents/rent.Model.js";
-import { Unit } from "../tenant/units/unit.model.js";
+import { Unit } from "../units/Unit.Model.js";
 import {
   getNepaliMonthDates,
   addNepaliDays,
@@ -106,7 +107,7 @@ export async function getDashboardStatsData() {
       rents.map((rent) => ({
         ...rent,
         remaining: rent.rentAmount - rent.paidAmount,
-      })),
+      }))
     );
 
   const maintenance = await Maintenance.find({
@@ -139,7 +140,7 @@ export async function getDashboardStatsData() {
           ...rent,
           remaining: rent.rentAmount - rent.paidAmount,
         };
-      }),
+      })
     );
 
   /* ===============================
@@ -165,14 +166,14 @@ export async function getDashboardStatsData() {
       tenants.map((tenant) => {
         const endDate = new Date(tenant.leaseEndDate);
         const daysUntilEnd = Math.ceil(
-          (endDate - nepaliTodayDate) / (1000 * 60 * 60 * 24),
+          (endDate - nepaliTodayDate) / (1000 * 60 * 60 * 24)
         );
 
         return {
           ...tenant,
           daysUntilEnd,
         };
-      }),
+      })
     );
 
   /* ===============================

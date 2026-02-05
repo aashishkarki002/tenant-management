@@ -65,6 +65,21 @@ const transactionSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    // Indicates whether the underlying charge is monthly or quarterly.
+    // This is especially useful for rent transactions so we can
+    // differentiate them easily in reports.
+    billingFrequency: {
+      type: String,
+      enum: ["monthly", "quarterly"],
+      default: "monthly",
+    },
+    // Optional quarter number (1-4) for quarterly transactions.
+    // For monthly transactions this will typically be null/undefined.
+    quarter: {
+      type: Number,
+      min: 1,
+      max: 4,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",

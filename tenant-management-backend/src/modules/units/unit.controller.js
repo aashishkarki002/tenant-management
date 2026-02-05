@@ -1,6 +1,5 @@
-import mongoose from "mongoose";
-import { Unit } from "./unit.model.js";
-import { connectDB } from "../../../config/db.js";
+import { Unit } from "./Unit.Model.js";
+import { connectDB } from "../../config/db.js";
 
 connectDB();
 
@@ -50,7 +49,11 @@ const createUnit = async (req, res) => {
 };
 export default async function getUnits(req, res) {
   try {
-    const units = await Unit.find({ isOccupied: false });
+    const occupiedFilter =
+      req.query.occupied === "true"
+        ? { isOccupied: true }
+        : { isOccupied: false };
+    const units = await Unit.find(occupiedFilter);
     res.status(200).json({ success: true, units: units });
   } catch (error) {
     console.log(error);

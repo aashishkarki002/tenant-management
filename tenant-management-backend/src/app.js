@@ -1,16 +1,14 @@
 import dotenv from "dotenv";
 dotenv.config();
-
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-
 import authRoute from "./modules/auth/auth.route.js";
-import propertyRoute from "./modules/tenant/property.route.js";
+import propertyRoute from "./modules/property/property.route.js";
 import tenantRoute from "./modules/tenant/tenant.route.js";
 import rentRoute from "./modules/rents/rent.route.js";
 import bankRoute from "./modules/banks/bank.route.js";
-import unitRoute from "./modules/tenant/units/unit.route.js";
+import unitRoute from "./modules/units/unit.route.js";
 import notificationRoute from "./modules/notifications/notification.route.js";
 import paymentRoute from "./modules/payment/payment.route.js";
 import ledgerRoute from "./modules/ledger/ledger.route.js";
@@ -19,10 +17,11 @@ import revenueRoute from "./modules/revenue/revenue.route.js";
 import accountingRoute from "./modules/accounting/accounting.route.js";
 import dashboardRoute from "./modules/dashboards/dashboard.route.js";
 import electricityRoute from "./modules/electricity/electricity.route.js";
-import camRoute from "./modules/tenant/cam/cam.route.js";
+import camRoute from "./modules/cam/cam.route.js";
 import expenseRoute from "./modules/expenses/expense.route.js";
 import maintenanceRoute from "./modules/maintenance/maintenance.route.js";
 import staffRoute from "./modules/staffs/staffs.route.js";
+import broadcastRoute from "./modules/broadcasts/broadcast.route.js";
 
 // Load cron jobs asynchronously (no top-level await — required for cPanel/LiteSpeed which uses require())
 function loadCronJobs() {
@@ -41,7 +40,7 @@ app.use(
     origin: process.env.FRONTEND_URL ?? false,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  }),
+  })
 );
 
 app.use(cookieParser());
@@ -65,6 +64,7 @@ app.use("/api/cam", camRoute);
 app.use("/api/expense", expenseRoute);
 app.use("/api/maintenance", maintenanceRoute);
 app.use("/api/staff", staffRoute);
+app.use("/api/broadcast", broadcastRoute);
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });

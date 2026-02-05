@@ -1,24 +1,22 @@
-import { Rent } from "./rent.Model.js";
+import { getRentsService } from "./rent.service.js";
 import handleMonthlyRents from "./rent.service.js";
 import { sendEmailToTenants } from "./rent.service.js";
-export async function getRents(req, res) {
+
+export async function getRentsController(req, res) {
   try {
-    const rents = await Rent.find()
-      .populate({
-        path: "tenant",
-        match: { isDeleted: false },
-      })
-      .populate("innerBlock")
-      .populate("block")
-      .populate("property")
-      .populate("units");
-    const filteredRents = rents.filter((rent) => rent.tenant !== null);
-    res.status(200).json({ success: true, rents: filteredRents });
+    const result = await getRentsService();
+    return res.status(200).json({
+      success: result.success,
+      rents: result.rents || [],
+      message: result.message || "Rents fetched successfully",
+    });
   } catch (error) {
-    console.log(error);
-    res
-      .status(500)
-      .json({ success: false, message: "Rents fetching failed", error: error });
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Rents fetching failed",
+      error: error.message,
+    });
   }
 }
 export async function processMonthlyRents(req, res) {

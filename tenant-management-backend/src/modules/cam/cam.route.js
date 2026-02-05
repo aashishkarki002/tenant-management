@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { protect } from "../../../middleware/protect.js";
+import { protect } from "../../middleware/protect.js";
 import { createCamController, getCamsController } from "./cam.controller.js";
 
 const router = Router();

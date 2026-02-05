@@ -82,20 +82,25 @@ class LedgerService {
       entries,
       tenant: payloadTenant,
       property: payloadProperty,
+      billingFrequency,
+      quarter,
     } = payload;
 
     if (!entries?.length) {
       throw new Error("Journal payload must have at least one entry");
     }
 
-    const totalDebit = entries.reduce((sum, e) => sum + (e.debitAmount || 0), 0);
+    const totalDebit = entries.reduce(
+      (sum, e) => sum + (e.debitAmount || 0),
+      0
+    );
     const totalCredit = entries.reduce(
       (sum, e) => sum + (e.creditAmount || 0),
-      0,
+      0
     );
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
       throw new Error(
-        `Journal entries do not balance: debits ${totalDebit} vs credits ${totalCredit}`,
+        `Journal entries do not balance: debits ${totalDebit} vs credits ${totalCredit}`
       );
     }
 
@@ -103,9 +108,7 @@ class LedgerService {
     const accounts = await Account.find({ code: { $in: accountCodes } })
       .session(session)
       .lean();
-    const accountByCode = Object.fromEntries(
-      accounts.map((a) => [a.code, a]),
-    );
+    const accountByCode = Object.fromEntries(accounts.map((a) => [a.code, a]));
     for (const code of accountCodes) {
       if (!accountByCode[code]) {
         throw new Error(`Account with code ${code} not found`);
@@ -124,9 +127,12 @@ class LedgerService {
           totalAmount,
           createdBy,
           status: "POSTED",
+          // Optional metadata for downstream reporting/filters.
+          billingFrequency,
+          quarter,
         },
       ],
-      { session },
+      { session }
     );
 
     const ledgerEntries = [];
@@ -150,19 +156,19 @@ class LedgerService {
             transactionDate,
           },
         ],
-        { session },
+        { session }
       );
       ledgerEntries.push(ledgerEntry);
 
       const balanceChange = this.calculateBalanceChange(
         account.type,
         debitAmount,
-        creditAmount,
+        creditAmount
       );
       await Account.findByIdAndUpdate(
         account._id,
         { $inc: { currentBalance: balanceChange } },
-        { session },
+        { session }
       ).exec();
     }
 
@@ -175,15 +181,15 @@ class LedgerService {
       session.startTransaction();
       const totalDebit = transactionData.entries.reduce(
         (sum, e) => sum + e.debit,
-        0,
+        0
       );
       const totalCredit = transactionData.entries.reduce(
         (sum, e) => sum + e.credit,
-        0,
+        0
       );
       if (Math.abs(totalDebit - totalCredit) > 0.01) {
         throw new Error(
-          `Transaction doesnt balance:${totalDebit - totalCredit}`,
+          `Transaction doesnt balance:${totalDebit - totalCredit}`
         );
       }
       const [transaction] = await Transaction.create(
@@ -200,7 +206,7 @@ class LedgerService {
             createdBy: transactionData.createdBy,
           },
         ],
-        { session },
+        { session }
       );
       const ledgerEntries = [];
       for (const entry of transactionData.entries) {
@@ -227,7 +233,7 @@ class LedgerService {
               transactionDate: transactionData.transactionDate,
             },
           ],
-          { session },
+          { session }
         );
 
         ledgerEntries.push(ledgerEntry[0]);
@@ -236,7 +242,7 @@ class LedgerService {
         const balanceChange = this.calculateBalanceChange(
           account.type,
           entry.debit || 0,
-          entry.credit || 0,
+          entry.credit || 0
         );
         account.currentBalance += balanceChange;
         await account.save({ session });
@@ -293,6 +299,22 @@ class LedgerService {
         const monthsInQuarter = getMonthsInQuarter(parseInt(filters.quarter));
         query.nepaliMonth = { $in: monthsInQuarter };
       }
+
+      // Filter by ledger type: revenue → REVENUE accounts, expense → EXPENSE accounts
+      if (filters.type && filters.type !== "all") {
+        const accountType = filters.type === "revenue" ? "REVENUE" : "EXPENSE";
+        const accounts = await Account.find({ type: accountType })
+          .select("_id")
+          .lean();
+        const accountIds = accounts.map((a) => a._id);
+        if (accountIds.length > 0) {
+          query.account = { $in: accountIds };
+        } else {
+          // No accounts of this type — return no entries
+          query.account = { $in: [] };
+        }
+      }
+
       const entries = await LedgerEntry.find(query)
         .populate("account", "code name type")
         .populate("transaction", "type description transactionDate nepaliDate")

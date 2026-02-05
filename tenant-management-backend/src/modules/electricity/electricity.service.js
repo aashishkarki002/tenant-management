@@ -1,7 +1,6 @@
-import mongoose from "mongoose";
 import { Electricity } from "./Electricity.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
-import { Unit } from "../tenant/units/unit.model.js";
+import { Unit } from "../units/Unit.Model.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import {
   buildElectricityChargeJournal,
@@ -53,7 +52,7 @@ class ElectricityService {
       // Get last reading for this unit
       const lastReading = await this.getLastReadingForUnit(
         data.unitId,
-        session,
+        session
       );
 
       let previousReading = 0;
@@ -86,7 +85,7 @@ class ElectricityService {
       // Validate current reading
       if (data.currentReading < previousReading) {
         throw new Error(
-          `Current reading (${data.currentReading}) cannot be less than previous reading (${previousReading})`,
+          `Current reading (${data.currentReading}) cannot be less than previous reading (${previousReading})`
         );
       }
 
@@ -153,7 +152,7 @@ class ElectricityService {
     const payload = buildElectricityChargeJournal(electricity);
     const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
       payload,
-      session,
+      session
     );
 
     return {
@@ -169,7 +168,7 @@ class ElectricityService {
    */
   async recordElectricityPayment(paymentData, session = null) {
     const electricity = await Electricity.findById(
-      paymentData.electricityId,
+      paymentData.electricityId
     ).session(session);
 
     if (!electricity) {
@@ -201,7 +200,7 @@ class ElectricityService {
     const payload = buildElectricityPaymentJournal(paymentData, electricity);
     const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
       payload,
-      session,
+      session
     );
 
     return {
@@ -226,6 +225,20 @@ class ElectricityService {
       if (filters.nepaliYear) query.nepaliYear = filters.nepaliYear;
       if (filters.nepaliMonth) query.nepaliMonth = filters.nepaliMonth;
       if (filters.status) query.status = filters.status;
+
+      // Filter by block and/or inner block via unit lookup
+      if (filters.blockId || filters.innerBlockId) {
+        const unitQuery = {};
+        if (filters.blockId) unitQuery.block = filters.blockId;
+        if (filters.innerBlockId) unitQuery.innerBlock = filters.innerBlockId;
+        const units = await Unit.find(unitQuery).select("_id").lean();
+        const unitIds = units.map((u) => u._id);
+        if (unitIds.length === 0) {
+          query.unit = { $in: [] };
+        } else {
+          query.unit = { $in: unitIds };
+        }
+      }
 
       if (filters.startDate || filters.endDate) {
         query.readingDate = {};
@@ -252,7 +265,7 @@ class ElectricityService {
       const totalPending = totalAmount - totalPaid;
       const totalConsumption = readings.reduce(
         (sum, r) => sum + r.consumption,
-        0,
+        0
       );
 
       const averageConsumption =
