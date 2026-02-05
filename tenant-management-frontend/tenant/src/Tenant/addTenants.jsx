@@ -1,4 +1,4 @@
-"use client";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -96,6 +96,10 @@ function AddTenants() {
       keyHandoverDate: "",
       spaceHandoverDate: "",
       spaceReturnedDate: "",
+      paymentMethod: "",
+      bankGuaranteePhoto: null,
+      chequeAmount: "",
+      chequeNumber: "",
     },
     // Update the onSubmit function in your formik configuration
 
@@ -110,6 +114,19 @@ function AddTenants() {
           }
         }
 
+        // Validate payment method specific fields
+        if (values.paymentMethod === "bank_guarantee" && !values.bankGuaranteePhoto) {
+          toast.error("Please upload bank guarantee photo");
+          return;
+        }
+
+        if (values.paymentMethod === "cheque") {
+          if (!values.chequeAmount || !values.chequeNumber) {
+            toast.error("Please provide cheque amount and cheque number");
+            return;
+          }
+        }
+
         const formData = new FormData();
 
         const propertyId = getPropertyIdFromBlock(values.block);
@@ -118,16 +135,32 @@ function AddTenants() {
           return;
         }
 
+        // Handle unitNumber array separately - convert to units field
+        if (values.unitNumber && Array.isArray(values.unitNumber) && values.unitNumber.length > 0) {
+          values.unitNumber.forEach((unitId) => {
+            formData.append("units", unitId);
+          });
+        }
+
         // Add all form fields except files and documents
         Object.entries(values).forEach(([key, value]) => {
           if (
             key !== "documents" &&
             key !== "documentType" &&
+            key !== "unitNumber" && // Exclude unitNumber as it's handled above
             key !== "spaceHandoverDate" &&
-            key !== "spaceReturnedDate"
+            key !== "spaceReturnedDate" &&
+            key !== "bankGuaranteePhoto"
           ) {
             if (value !== null && value !== "" && value !== undefined) {
-              formData.append(key, value);
+              // Handle arrays properly
+              if (Array.isArray(value)) {
+                value.forEach((item) => {
+                  formData.append(key, item);
+                });
+              } else {
+                formData.append(key, value);
+              }
             }
           }
         });
@@ -140,19 +173,28 @@ function AddTenants() {
           formData.append("spaceReturnedDate", values.spaceReturnedDate);
         }
 
-        // Map document types to backend field names
+        // Handle bank guarantee photo
+        if (values.bankGuaranteePhoto) {
+          formData.append("bankGuaranteePhoto", values.bankGuaranteePhoto);
+        }
+
+        // Map document types (from UI) to backend field names
+        // NOTE:
+        // - "tenantPhoto" is treated as citizenship document
+        // - "leaseAgreement" is treated as PDF agreement
+        // - "photo" is treated as a general image
+        // - "companyDocument" and "tds" are sent as "other" docs,
+        //   which the backend accepts and counts as valid documents
         const fieldMapping = {
           tenantPhoto: "citizenShip",
           leaseAgreement: "pdfAgreement",
-          other: "image",
+          photo: "image",
+          companyDocument: "other",
+          tds: "other",
         };
 
-        // Track what file types we have
-        let hasRequiredFiles = {
-          image: false,
-          pdfAgreement: false,
-          citizenShip: false,
-        };
+        // Track if we have at least one document to satisfy backend requirement
+        let hasAnyDocument = false;
 
         // Process documents and append to FormData with correct field names
         if (values.documents && Object.keys(values.documents).length > 0) {
@@ -162,15 +204,15 @@ function AddTenants() {
             if (backendFieldName && files && files.length > 0) {
               files.forEach((file) => {
                 formData.append(backendFieldName, file);
-                hasRequiredFiles[backendFieldName] = true;
+                hasAnyDocument = true;
               });
             }
           });
         }
 
-        // Validate required files
-        if (!hasRequiredFiles.image || !hasRequiredFiles.pdfAgreement) {
-          toast.error("Please upload at least one image and one PDF agreement");
+        // Let backend enforce detailed rules, but ensure at least one doc is selected
+        if (!hasAnyDocument) {
+          toast.error("Please upload at least one document");
           return;
         }
 
@@ -355,12 +397,21 @@ function AddTenants() {
                     }
                   >
                     <ComboboxTrigger>
-                      <ComboboxValue placeholder="Select Unit" />
+                      <ComboboxValue placeholder="Select Unit">
+                        {formik.values.unitNumber && Array.isArray(formik.values.unitNumber) && units
+                          ? formik.values.unitNumber
+                            .map((id) => {
+                              const unit = units.find((u) => u._id === id);
+                              return unit ? unit.name : id;
+                            })
+                            .join(", ")
+                          : formik.values.unitNumber}
+                      </ComboboxValue>
                     </ComboboxTrigger>
                     <ComboboxContent>
                       <ComboboxList>
                         {units && units.map((unit) => (
-                          <ComboboxItem key={unit._id} value={unit.name}>
+                          <ComboboxItem key={unit._id} value={unit._id}>
                             {unit.name}
                           </ComboboxItem>
                         ))}
@@ -537,6 +588,11 @@ function AddTenants() {
                       type="file"
                       multiple
                       onChange={(e) => {
+                        if (!formik.values.documentType) {
+                          toast.error("Please select a document type first");
+                          e.target.value = "";
+                          return;
+                        }
                         const files = Array.from(e.target.files || []);
                         const currentFiles =
                           formik.values.documents?.[
@@ -647,6 +703,22 @@ function AddTenants() {
                     value={formik.values.pricePerSqft}
                     onChange={formik.handleChange}
                   />
+                  <Label>Frequency Type</Label>
+                  <Select
+                    name="rentPaymentFrequency"
+                    value={formik.values.rentPaymentFrequency}
+                    onValueChange={(value) => {
+                      formik.setFieldValue("rentPaymentFrequency", value);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Frequency Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="quarterly">Quarterly</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Label>CAM Rate Per Sqft (₹)</Label>
                   <Input
                     type="number"
@@ -658,27 +730,94 @@ function AddTenants() {
                   <Select
                     name="paymentMethod"
                     value={formik.values.paymentMethod}
-                    onValueChange={(value) =>
-                      formik.setFieldValue("paymentMethod", value)
-                    }
+                    onValueChange={(value) => {
+                      formik.setFieldValue("paymentMethod", value);
+                      // Clear payment method specific fields when changing method
+                      formik.setFieldValue("bankGuaranteePhoto", null);
+                      formik.setFieldValue("chequeAmount", "");
+                      formik.setFieldValue("chequeNumber", "");
+                    }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder=" Payment Method" />
+                      <SelectValue placeholder="Payment Method" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="cash">Cash</SelectItem>
                       <SelectItem value="bank">Bank</SelectItem>
                       <SelectItem value="cheque">Cheque</SelectItem>
-                      <SelectItem value="other">Transfer</SelectItem>
+                      <SelectItem value="bank_guarantee">Bank guarantee</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Label>Security Deposit (₹)</Label>
-                  <Input
-                    type="number"
-                    name="securityDeposit"
-                    value={formik.values.securityDeposit}
-                    onChange={formik.handleChange}
-                  />
+
+                  {/* Conditional fields based on payment method */}
+                  {formik.values.paymentMethod === "bank_guarantee" && (
+                    <>
+                      <Label>Bank Guarantee Photo</Label>
+                      <div className="flex flex-col gap-2 border-2 border-gray-300 border-dashed rounded-md p-4">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              formik.setFieldValue("bankGuaranteePhoto", file);
+                            }
+                          }}
+                        />
+                      </div>
+                      {formik.values.bankGuaranteePhoto && (
+                        <div className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-md">
+                          <span className="flex-1 text-sm truncate">
+                            {formik.values.bankGuaranteePhoto.name}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              formik.setFieldValue("bankGuaranteePhoto", null);
+                            }}
+                          >
+                            <XIcon className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {formik.values.paymentMethod === "cheque" && (
+                    <>
+                      <Label>Cheque Amount (₹)</Label>
+                      <Input
+                        type="number"
+                        name="chequeAmount"
+                        value={formik.values.chequeAmount}
+                        onChange={formik.handleChange}
+                        placeholder="Enter cheque amount"
+                      />
+                      <Label>Cheque Number</Label>
+                      <Input
+                        type="text"
+                        name="chequeNumber"
+                        value={formik.values.chequeNumber}
+                        onChange={formik.handleChange}
+                        placeholder="Enter cheque number"
+                      />
+                    </>
+                  )}
+
+                  {formik.values.paymentMethod !== "bank_guarantee" && (
+                    <>
+                      <Label>Security Deposit (₹)</Label>
+                      <Input
+                        type="number"
+                        name="securityDeposit"
+                        value={formik.values.securityDeposit}
+                        onChange={formik.handleChange}
+                      />
+                    </>
+                  )}
                   <Label>Status</Label>
                   <Select
                     name="status"

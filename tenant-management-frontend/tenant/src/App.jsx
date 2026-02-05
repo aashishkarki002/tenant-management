@@ -1,13 +1,13 @@
 import { Routes, Route, useLocation } from "react-router-dom";
-import Signup from "./Signup";
-import Login from "./Login";
+import Signup from "./Auth/Signup";
+import Login from "./Auth/Login";
 
 import AppLayout from "./components/layout/Applayout";
 import Tenants from "./Tenant/tenants";
 import Dashboard from "./Dashboard/Dashboard";
 
 import Account from "./Accounts/Account";
-import ElectricityPage from "./electricity/ElectricityPage";
+import ElectricityPage from "./Electricity";
 import Revenue from "./Revenue";
 import Maintenance from "./Maintenance/Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
@@ -18,7 +18,7 @@ import VerifyEmail from "./verify_email";
 import EditTenant from "./Tenant/editTenant";
 import Admin from "./Admin";
 import ProtectedRoutes from "./protectedRoutes";
-import GuestRoute from "./GuestRoute";
+import GuestRoute from "./protectedRoutes";
 import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail";

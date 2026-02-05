@@ -6,8 +6,7 @@ import {
   TableHead,
   TableBody,
 } from "@/components/ui/table";
-import { Dialog, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { RentTableRow } from "./RentTableRow";
 import { PaymentDialog } from "./PaymentDialog";
 
