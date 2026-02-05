@@ -7,7 +7,7 @@ import Tenants from "./tenants";
 import Dashboard from "./Dashboard";
 
 import Account from "./Accounts/Account";
-import Electricity from "./Electricity";
+import ElectricityPage from "./electricity/ElectricityPage";
 import Revenue from "./Revenue";
 import Maintenance from "./Maintenance/Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
@@ -18,6 +18,7 @@ import VerifyEmail from "./verify_email";
 import EditTenant from "./editTenant";
 import Admin from "./Admin";
 import ProtectedRoutes from "./protectedRoutes";
+import GuestRoute from "./GuestRoute";
 import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail";
@@ -30,8 +31,8 @@ export default function App() {
 
   const routedContent = (
     <Routes>
-      <Route path="/signup" element={<Signup />} />
-      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
+      <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
 
       <Route
         path="/tenants"
@@ -53,7 +54,7 @@ export default function App() {
         path="/electricity"
         element={
           <ProtectedRoutes>
-            <Electricity />
+            <ElectricityPage />
           </ProtectedRoutes>
         }
       />
