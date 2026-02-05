@@ -21,10 +21,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
 import { Separator } from "@/components/ui/separator";
-import DualCalendarTailwind from "./components/dualDate";
+import DualCalendarTailwind from "../components/dualDate";
 import "nepali-datepicker-reactjs/dist/index.css";
 import { useParams, useNavigate } from "react-router-dom";
-import api from "../plugins/axios";
+
+
+import api from "../../plugins/axios";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
@@ -59,7 +61,7 @@ function EditTenant() {
       if (response.data.success) {
         const tenantData = response.data.tenant;
         setTenant(tenantData);
-        
+
         // Format dates for form inputs (YYYY-MM-DD format)
         const formatDateForInput = (date) => {
           if (!date) return "";
@@ -330,7 +332,7 @@ function EditTenant() {
       const { docType, fileIndex } = fileToDelete;
       const updatedDocs = [...formik.values.existingDocuments];
       const docIndex = updatedDocs.findIndex((doc) => doc.type === docType);
-      
+
       if (docIndex !== -1) {
         updatedDocs[docIndex].files.splice(fileIndex, 1);
         if (updatedDocs[docIndex].files.length === 0) {
@@ -479,7 +481,7 @@ function EditTenant() {
                   {formik.values.leaseStartDate &&
                     formik.values.leaseEndDate &&
                     new Date(formik.values.leaseEndDate) <
-                      new Date(formik.values.leaseStartDate) && (
+                    new Date(formik.values.leaseStartDate) && (
                       <p className="text-red-500 text-sm mt-1">
                         Lease end date must be after start date
                       </p>

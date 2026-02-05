@@ -22,8 +22,8 @@ import {
 import { ArrowDown } from "lucide-react";
 import { Plus } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import TenantCard from "./components/TenantCard";
-import api from "../plugins/axios";
+import TenantCard from "../components/TenantCard";
+import api from "../../plugins/axios";
 import { toast } from "sonner";
 
 export default function Tenants() {
