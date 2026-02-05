@@ -25,6 +25,9 @@ export async function createTenant(body, files, adminId) {
       "citizenShip",
       "company_docs",
       "tax_certificate",
+      "bank_guarantee",
+      "cheque",
+      "other",
     ];
     const hasDocuments =
       files &&

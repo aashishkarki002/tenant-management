@@ -25,6 +25,9 @@ router.post(
     { name: "image", maxCount: 5 },
     { name: "pdfAgreement", maxCount: 5 },
     { name: "citizenShip", maxCount: 5 },
+    { name: "bank_guarantee", maxCount: 5 },
+    { name: "cheque", maxCount: 5 },
+    { name: "other", maxCount: 5 },
   ]),
   multerErrorHandler,
   createTenant

@@ -185,51 +185,46 @@ export async function createTenantTransaction(body, files, adminId, session) {
   await ledgerService.postJournalEntry(camChargePayload, session);
 
   // Security deposit creation
-  const sd = await createSd(
-    {
-      tenant: tenant[0]._id,
-      property: tenant[0].property,
-      block: tenant[0].block,
-      innerBlock: tenant[0].innerBlock,
-      amount: tenant[0].securityDeposit,
-      status: "paid",
-      paidDate: new Date(),
-      notes: "",
-      year: englishYear,
-      month: englishMonth,
-      nepaliMonth: npMonth,
-      nepaliYear: npYear,
-      nepaliDate: nepaliDate,
-      createdBy: adminId,
+  // When security deposit mode is "bank_guarantee", we skip creating
+  // a security deposit record and its related ledger/liability entries.
+  if (body.securityDepositMode !== "bank_guarantee") {
+    const sd = await createSd(
+      {
+        tenant: tenant[0]._id,
+        property: tenant[0].property,
+        block: tenant[0].block,
+        innerBlock: tenant[0].innerBlock,
+        amount: tenant[0].securityDeposit,
+        status: "paid",
+        paidDate: new Date(),
+        notes: "",
+        year: englishYear,
+        month: englishMonth,
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate: nepaliDate,
+        createdBy: adminId,
 
-      mode: body.securityDepositMode,
-    },
-    adminId,
-    session
-  );
-  if ([body.securityDepositMode].includes("cash", "bank_transfer")) {
-    sd.amount = body.securityDepositAmount;
-  }
+        mode: body.securityDepositMode,
+      },
+      adminId,
+      session
+    );
 
-  if ([body.securityDepositMode].includes("cheque")) {
-    sd.chequeDetails = {
-      chequeNumber: body.chequeNumber,
-      chequeDate: body.chequeDate,
-      bankName: body.bankName,
-    };
-  }
-  if ([body.securityDepositMode].includes("bank_guarantee")) {
-    sd.bankGuaranteeDetails = {
-      bgNumber: body.bgNumber,
-      bankName: body.bankName,
-      issueDate: body.issueDate,
-      expiryDate: body.expiryDate,
-      files: body.bankGuaranteeFiles,
-      uploadedAt: new Date(),
-    };
-  }
+    if ([body.securityDepositMode].includes("cash", "bank_transfer")) {
+      sd.amount = body.securityDepositAmount;
+    }
 
-  if (!sd.success) throw new Error(sd.message);
+    if ([body.securityDepositMode].includes("cheque")) {
+      sd.chequeDetails = {
+        chequeNumber: body.chequeNumber,
+        chequeDate: body.chequeDate,
+        bankName: body.bankName,
+      };
+    }
+
+    if (!sd.success) throw new Error(sd.message);
+  }
 
   return tenant[0];
 }

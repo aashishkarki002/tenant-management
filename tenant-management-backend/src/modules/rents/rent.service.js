@@ -414,11 +414,24 @@ export async function getRentsService() {
       .populate({
         path: "tenant",
         match: { isDeleted: false },
+        select: "name email",
       })
-      .populate("innerBlock")
-      .populate("block")
-      .populate("property")
-      .populate("units");
+      .populate({
+        path: "innerBlock",
+        select: "name",
+      })
+      .populate({
+        path: "block",
+        select: "name",
+      })
+      .populate({
+        path: "property",
+        select: "name",
+      })
+      .populate({
+        path: "units",
+        select: "name",
+      });
     const filteredRents = rents.filter((rent) => rent.tenant !== null);
     return { success: true, rents: filteredRents };
   } catch (error) {
