@@ -21,18 +21,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
 import { Separator } from "@/components/ui/separator";
-import DualCalendarTailwind from "./components/dualDate";
+import DualCalendarTailwind from "../components/dualDate";
 import "nepali-datepicker-reactjs/dist/index.css";
-import api from "../plugins/axios";
+import api from "../../plugins/axios";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Spinner } from "@/components/ui/spinner";
+import { Combobox, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxValue, ComboboxList } from "@/components/ui/combobox.jsx";
 
-
-import useUnits from "./hooks/use-units";
-import useProperty from "./hooks/use-property";
+import useUnits from "../hooks/use-units";
+import useProperty from "../hooks/use-property";
 function AddTenants() {
 
   const { units } = useUnits();
@@ -345,24 +345,28 @@ function AddTenants() {
                     placeholder="Enter Address"
                   />
                   <Label>Unit Number</Label>
-                  <Select
+                  <Combobox
+                    multiple={true}
                     name="unitNumber"
                     value={formik.values.unitNumber}
                     onValueChange={(value) =>
                       formik.setFieldValue("unitNumber", value)
+
                     }
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Unit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {units && units.map((unit) => (
-                        <SelectItem key={unit._id} value={unit._id}>
-                          {unit.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <ComboboxTrigger>
+                      <ComboboxValue placeholder="Select Unit" />
+                    </ComboboxTrigger>
+                    <ComboboxContent>
+                      <ComboboxList>
+                        {units && units.map((unit) => (
+                          <ComboboxItem key={unit._id} value={unit.name}>
+                            {unit.name}
+                          </ComboboxItem>
+                        ))}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
                   <div className="flex justify-end mt-6">
                     <Button type="button" onClick={handleNext}>
                       Next
@@ -521,7 +525,9 @@ function AddTenants() {
                     <SelectContent>
                       <SelectItem value="tenantPhoto">Citizenship</SelectItem>
                       <SelectItem value="leaseAgreement">Agreement</SelectItem>
-                      <SelectItem value="other">Photo</SelectItem>
+                      <SelectItem value="photo">Photo</SelectItem>
+                      <SelectItem value="companyDocument">Company document</SelectItem>
+                      <SelectItem value="tds">TDS</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -648,6 +654,24 @@ function AddTenants() {
                     value={formik.values.camRatePerSqft}
                     onChange={formik.handleChange}
                   />
+                  <Label>Payment Method</Label>
+                  <Select
+                    name="paymentMethod"
+                    value={formik.values.paymentMethod}
+                    onValueChange={(value) =>
+                      formik.setFieldValue("paymentMethod", value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder=" Payment Method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank">Bank</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                      <SelectItem value="other">Transfer</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Label>Security Deposit (₹)</Label>
                   <Input
                     type="number"

@@ -45,7 +45,9 @@ export const RentTable = ({
         <TableHeader>
           <TableRow>
             <TableHead>Tenant / Unit</TableHead>
+            <TableHead>Frequency</TableHead>
             <TableHead>Rent Amount</TableHead>
+
             <TableHead>CAM Amount</TableHead>
             <TableHead>Total Amount</TableHead>
             <TableHead>Due Date</TableHead>
