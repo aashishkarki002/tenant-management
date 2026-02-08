@@ -16,7 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFormik } from "formik";
@@ -29,7 +36,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Spinner } from "@/components/ui/spinner";
-import { Combobox, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxValue, ComboboxList } from "@/components/ui/combobox.jsx";
+import { Combobox, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxValue, ComboboxList, ComboboxInput } from "@/components/ui/combobox.jsx";
 
 import useUnits from "../hooks/use-units";
 import useProperty from "../hooks/use-property";
@@ -100,6 +107,9 @@ function AddTenants() {
       bankGuaranteePhoto: null,
       chequeAmount: "",
       chequeNumber: "",
+      unitFinancials: {}, // Store financial data per unit: { unitId: { sqft, pricePerSqft, camPerSqft, securityDeposit } }
+      tdsPercentage: "0",
+      rentPaymentFrequency: "",
     },
     // Update the onSubmit function in your formik configuration
 
@@ -127,6 +137,56 @@ function AddTenants() {
           }
         }
 
+        // Validate unit financials
+        if (!values.unitNumber || !Array.isArray(values.unitNumber) || values.unitNumber.length === 0) {
+          toast.error("Please select at least one unit");
+          return;
+        }
+
+        // Validate that all selected units have financial data
+        const missingFinancials = values.unitNumber.filter((unitId) => {
+          const unitFinancial = values.unitFinancials?.[unitId];
+          const isBankGuarantee = values.paymentMethod === "bank_guarantee";
+          return !unitFinancial ||
+            !unitFinancial.sqft ||
+            !unitFinancial.pricePerSqft ||
+            !unitFinancial.camPerSqft ||
+            (!isBankGuarantee && !unitFinancial.securityDeposit);
+        });
+
+        if (missingFinancials.length > 0) {
+          toast.error("Please fill in all financial details for all selected units");
+          return;
+        }
+
+        // Calculate aggregated totals from unit financials for backward compatibility
+        const totals = Object.values(values.unitFinancials || {}).reduce(
+          (acc, unitFinancial) => {
+            const sqft = parseFloat(unitFinancial.sqft) || 0;
+            const pricePerSqft = parseFloat(unitFinancial.pricePerSqft) || 0;
+            const camPerSqft = parseFloat(unitFinancial.camPerSqft) || 0;
+            const securityDeposit = parseFloat(unitFinancial.securityDeposit) || 0;
+
+            acc.totalSqft += sqft;
+            acc.totalPricePerSqft += pricePerSqft;
+            acc.totalCamPerSqft += camPerSqft;
+            acc.totalSecurityDeposit += securityDeposit;
+
+            return acc;
+          },
+          {
+            totalSqft: 0,
+            totalPricePerSqft: 0,
+            totalCamPerSqft: 0,
+            totalSecurityDeposit: 0,
+          }
+        );
+
+        // Calculate average price per sqft and cam per sqft
+        const unitCount = values.unitNumber.length;
+        const avgPricePerSqft = unitCount > 0 ? totals.totalPricePerSqft / unitCount : 0;
+        const avgCamPerSqft = unitCount > 0 ? totals.totalCamPerSqft / unitCount : 0;
+
         const formData = new FormData();
 
         const propertyId = getPropertyIdFromBlock(values.block);
@@ -142,15 +202,37 @@ function AddTenants() {
           });
         }
 
-        // Add all form fields except files and documents
+        // Add aggregated financial totals for backward compatibility
+        formData.append("leasedSquareFeet", totals.totalSqft.toString());
+        formData.append("pricePerSqft", avgPricePerSqft.toString());
+        formData.append("camRatePerSqft", avgCamPerSqft.toString());
+        formData.append("securityDeposit", totals.totalSecurityDeposit.toString());
+
+        // Add unit financials as JSON string
+        if (values.unitFinancials && Object.keys(values.unitFinancials).length > 0) {
+          formData.append("unitFinancials", JSON.stringify(values.unitFinancials));
+        }
+
+        // Map paymentMethod to securityDepositMode (backend expects securityDepositMode)
+        if (values.paymentMethod) {
+          formData.append("securityDepositMode", values.paymentMethod);
+        }
+
+        // Add all form fields except files, documents, and unit financials
         Object.entries(values).forEach(([key, value]) => {
           if (
             key !== "documents" &&
             key !== "documentType" &&
             key !== "unitNumber" && // Exclude unitNumber as it's handled above
+            key !== "unitFinancials" && // Exclude unitFinancials as it's handled above
             key !== "spaceHandoverDate" &&
             key !== "spaceReturnedDate" &&
-            key !== "bankGuaranteePhoto"
+            key !== "bankGuaranteePhoto" &&
+            key !== "leasedSquareFeet" && // Exclude legacy fields as we use aggregated values
+            key !== "pricePerSqft" &&
+            key !== "camRatePerSqft" &&
+            key !== "securityDeposit" &&
+            key !== "paymentMethod" // Exclude paymentMethod as it's mapped to securityDepositMode above
           ) {
             if (value !== null && value !== "" && value !== undefined) {
               // Handle arrays properly
@@ -344,14 +426,15 @@ function AddTenants() {
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
-            className="space-y-6"
+            className="space-y-6 "
           >
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="personalInfo">Personal Info</TabsTrigger>
-              <TabsTrigger value="leaseInfo">Lease Info</TabsTrigger>
-              <TabsTrigger value="propertyDetails">Property</TabsTrigger>
-              <TabsTrigger value="documents">Documents</TabsTrigger>
-              <TabsTrigger value="financials">Financials</TabsTrigger>
+            <TabsList className=" w-full grid-cols-5 sm:grid-cols-5 sm:w-full sm:overflow-x-auto sm:flex-nowrap ">
+              <TabsTrigger value="personalInfo" className="text-xs sm:text-sm px-2 py-2">Personal Info</TabsTrigger>
+              <TabsTrigger value="leaseInfo" className="text-xs sm:text-sm px-2 py-2">Lease Info</TabsTrigger>
+              <TabsTrigger value="propertyDetails" className="text-xs sm:text-sm px-2 py-2">Property</TabsTrigger>
+
+              <TabsTrigger value="financials" className="text-xs sm:text-sm px-2 py-2">Financials</TabsTrigger>
+              <TabsTrigger value="documents" className="text-xs sm:text-sm px-2 py-2">Documents</TabsTrigger>
             </TabsList>
 
             {/* ------------------ Personal Info ------------------ */}
@@ -386,38 +469,7 @@ function AddTenants() {
                     onChange={formik.handleChange}
                     placeholder="Enter Address"
                   />
-                  <Label>Unit Number</Label>
-                  <Combobox
-                    multiple={true}
-                    name="unitNumber"
-                    value={formik.values.unitNumber}
-                    onValueChange={(value) =>
-                      formik.setFieldValue("unitNumber", value)
 
-                    }
-                  >
-                    <ComboboxTrigger>
-                      <ComboboxValue placeholder="Select Unit">
-                        {formik.values.unitNumber && Array.isArray(formik.values.unitNumber) && units
-                          ? formik.values.unitNumber
-                            .map((id) => {
-                              const unit = units.find((u) => u._id === id);
-                              return unit ? unit.name : id;
-                            })
-                            .join(", ")
-                          : formik.values.unitNumber}
-                      </ComboboxValue>
-                    </ComboboxTrigger>
-                    <ComboboxContent>
-                      <ComboboxList>
-                        {units && units.map((unit) => (
-                          <ComboboxItem key={unit._id} value={unit._id}>
-                            {unit.name}
-                          </ComboboxItem>
-                        ))}
-                      </ComboboxList>
-                    </ComboboxContent>
-                  </Combobox>
                   <div className="flex justify-end mt-6">
                     <Button type="button" onClick={handleNext}>
                       Next
@@ -491,6 +543,7 @@ function AddTenants() {
                 <CardContent className="p-6 space-y-5">
                   <Label>Building</Label>
                   <Select
+
                     name="block"
                     value={formik.values.block}
                     onValueChange={(value) => {
@@ -498,7 +551,7 @@ function AddTenants() {
                       formik.setFieldValue("innerBlock", "");
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-1/4">
                       <SelectValue placeholder="Select block" />
                     </SelectTrigger>
                     <SelectContent>
@@ -525,7 +578,7 @@ function AddTenants() {
                     }
                     disabled={!formik.values.block}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-1/4">
                       <SelectValue placeholder="Select inner block" />
                     </SelectTrigger>
                     <SelectContent>
@@ -542,6 +595,59 @@ function AddTenants() {
                       )}
                     </SelectContent>
                   </Select>
+                  <Label>Unit Number</Label>
+                  <Combobox
+                    className="w-1/2"
+                    items={units}
+                    multiple
+                    name="unitNumber"
+                    value={formik.values.unitNumber}
+                    onValueChange={(value) => {
+                      formik.setFieldValue("unitNumber", value);
+
+                      // Initialize unitFinancials for newly selected units
+                      const currentUnitFinancials = formik.values.unitFinancials || {};
+                      const newUnitFinancials = { ...currentUnitFinancials };
+
+                      // Initialize financials for new units
+                      if (Array.isArray(value)) {
+                        value.forEach((unitId) => {
+                          if (!newUnitFinancials[unitId]) {
+                            newUnitFinancials[unitId] = {
+                              sqft: "",
+                              pricePerSqft: "",
+                              camPerSqft: "",
+                              securityDeposit: "",
+                            };
+                          }
+                        });
+
+                        // Remove financials for deselected units
+                        Object.keys(newUnitFinancials).forEach((unitId) => {
+                          if (!value.includes(unitId)) {
+                            delete newUnitFinancials[unitId];
+                          }
+                        });
+                      }
+
+                      formik.setFieldValue("unitFinancials", newUnitFinancials);
+                    }}
+                  >
+                    <ComboboxInput
+                      placeholder="Select Unit"
+                      showTrigger={true}
+                      className="w-1/4"
+                    />
+                    <ComboboxContent>
+                      <ComboboxList>
+                        {units && units.map((unit) => (
+                          <ComboboxItem key={unit._id} value={unit._id}>
+                            {unit.name}
+                          </ComboboxItem>
+                        ))}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
                   <div className="flex justify-between mt-6">
                     <Button
                       type="button"
@@ -558,6 +664,355 @@ function AddTenants() {
               </Card>
             </TabsContent>
 
+
+            {/* ------------------ Financials ------------------ */}
+            <TabsContent value="financials" className="mt-4 space-y-5">
+              <Card className="shadow-lg">
+                <CardContent className="p-6 space-y-6">
+                  <h2 className="text-xl font-semibold">Unit-wise Financial Configuration</h2>
+                  {/* Payment Method */}
+                  <div className="space-y-2">
+                    <Label>Security Deposit Payment Method</Label>
+                    <Select
+                      name="paymentMethod"
+                      value={formik.values.paymentMethod}
+                      onValueChange={(value) => {
+                        formik.setFieldValue("paymentMethod", value);
+                        // Clear payment method specific fields when changing method
+                        formik.setFieldValue("bankGuaranteePhoto", null);
+                        formik.setFieldValue("chequeAmount", "");
+                        formik.setFieldValue("chequeNumber", "");
+
+                        // Clear security deposits for all units when bank guarantee is selected
+                        if (value === "bank_guarantee") {
+                          const updatedUnitFinancials = { ...formik.values.unitFinancials };
+                          Object.keys(updatedUnitFinancials).forEach((unitId) => {
+                            updatedUnitFinancials[unitId] = {
+                              ...updatedUnitFinancials[unitId],
+                              securityDeposit: "",
+                            };
+                          });
+                          formik.setFieldValue("unitFinancials", updatedUnitFinancials);
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Payment Method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                        <SelectItem value="cheque">Cheque</SelectItem>
+                        <SelectItem value="bank_guarantee">Bank guarantee</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formik.errors.paymentMethod && <p className="text-red-500 text-sm">{formik.errors.paymentMethod}</p>}
+                  </div>
+                  {/* Conditional fields based on payment method */}
+                  {formik.values.paymentMethod === "bank_guarantee" && (
+                    <div className="space-y-2">
+                      <Label>Bank Guarantee Photo</Label>
+                      <div className="flex flex-col gap-2 border-2 border-gray-300 border-dashed rounded-md p-4">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              formik.setFieldValue("bankGuaranteePhoto", file);
+                            }
+                          }}
+                        />
+                      </div>
+                      {formik.values.bankGuaranteePhoto && (
+                        <div className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-md">
+                          <span className="flex-1 text-sm truncate">
+                            {formik.values.bankGuaranteePhoto.name}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              formik.setFieldValue("bankGuaranteePhoto", null);
+                            }}
+                          >
+                            <XIcon className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {formik.values.paymentMethod === "cheque" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Cheque Amount (₹)</Label>
+                        <Input
+                          type="number"
+                          name="chequeAmount"
+                          value={formik.values.chequeAmount}
+                          onChange={formik.handleChange}
+                          placeholder="Enter cheque amount"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Cheque Number</Label>
+                        <Input
+                          type="text"
+                          name="chequeNumber"
+                          value={formik.values.chequeNumber}
+                          onChange={formik.handleChange}
+                          placeholder="Enter cheque number"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Unit Financials Table */}
+                  {formik.values.unitNumber && Array.isArray(formik.values.unitNumber) && formik.values.unitNumber.length > 0 ? (
+                    <div className="border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Unit Name</TableHead>
+                            <TableHead>Sqft*</TableHead>
+                            <TableHead>₹/Sqft*</TableHead>
+                            <TableHead>CAM/Sqft*</TableHead>
+                            <TableHead>Security Deposit*</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {formik.values.unitNumber.map((unitId) => {
+                            const unit = units?.find((u) => u._id === unitId);
+                            const unitFinancial = formik.values.unitFinancials[unitId] || {
+                              sqft: "",
+                              pricePerSqft: "",
+                              camPerSqft: "",
+                              securityDeposit: "",
+                            };
+
+                            return (
+                              <TableRow key={unitId}>
+                                <TableCell className="font-medium">
+                                  {unit?.name || unitId}
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    placeholder="0"
+                                    value={unitFinancial.sqft}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      formik.setFieldValue("unitFinancials", {
+                                        ...formik.values.unitFinancials,
+                                        [unitId]: {
+                                          ...unitFinancial,
+                                          sqft: value,
+                                        },
+                                      });
+                                    }}
+                                    className="w-full"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    placeholder="0"
+                                    value={unitFinancial.pricePerSqft}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      formik.setFieldValue("unitFinancials", {
+                                        ...formik.values.unitFinancials,
+                                        [unitId]: {
+                                          ...unitFinancial,
+                                          pricePerSqft: value,
+                                        },
+                                      });
+                                    }}
+                                    className="w-full"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    placeholder="0"
+                                    value={unitFinancial.camPerSqft}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      formik.setFieldValue("unitFinancials", {
+                                        ...formik.values.unitFinancials,
+                                        [unitId]: {
+                                          ...unitFinancial,
+                                          camPerSqft: value,
+                                        },
+                                      });
+                                    }}
+                                    className="w-full"
+                                  />
+                                </TableCell>
+                                <TableCell>
+
+                                  <Input
+                                    type="number"
+                                    placeholder="0"
+                                    value={unitFinancial.securityDeposit}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      formik.setFieldValue("unitFinancials", {
+                                        ...formik.values.unitFinancials,
+                                        [unitId]: {
+                                          ...unitFinancial,
+                                          securityDeposit: value,
+                                        },
+                                      });
+                                    }}
+                                    className="w-full"
+                                    disabled={formik.values.paymentMethod === "bank_guarantee"}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg p-8 text-center text-muted-foreground">
+                      Please select units in the Property Details tab first
+                    </div>
+                  )}
+                  {/* TDS Percentage */}
+                  <div className="flex justify-between mt-6">
+                    <div className="space-y-2">
+                      <Label>TDS Percentage</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          name="tdsPercentage"
+                          value={formik.values.tdsPercentage}
+                          onChange={formik.handleChange}
+                          className="w-32"
+                          min="0"
+                          max="100"
+
+                        />
+                        <span className="text-muted-foreground">%</span>
+                      </div>
+                    </div>
+
+                    {/* Frequency Type */}
+                    <div className="space-y-2">
+                      <Label>Frequency Type</Label>
+                      <Select
+                        name="rentPaymentFrequency"
+                        value={formik.values.rentPaymentFrequency}
+                        onValueChange={(value) => {
+                          formik.setFieldValue("rentPaymentFrequency", value);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Frequency Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="quarterly">Quarterly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+
+
+
+                    {/* Status */}
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select
+                        name="status"
+                        value={formik.values.status}
+                        onValueChange={(value) =>
+                          formik.setFieldValue("status", value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                          <SelectItem value="vacated">Vacated</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <Separator />
+                  {/* Calculated Totals */}
+                  {(() => {
+                    const totals = Object.values(formik.values.unitFinancials || {}).reduce(
+                      (acc, unitFinancial) => {
+                        const sqft = parseFloat(unitFinancial.sqft) || 0;
+                        const pricePerSqft = parseFloat(unitFinancial.pricePerSqft) || 0;
+                        const camPerSqft = parseFloat(unitFinancial.camPerSqft) || 0;
+                        const securityDeposit = parseFloat(unitFinancial.securityDeposit) || 0;
+
+                        acc.totalSqft += sqft;
+                        acc.grossMonthlyRent += sqft * pricePerSqft;
+                        acc.monthlyCAM += sqft * camPerSqft;
+                        acc.totalSecurityDeposit += securityDeposit;
+
+                        return acc;
+                      },
+                      {
+                        totalSqft: 0,
+                        grossMonthlyRent: 0,
+                        monthlyCAM: 0,
+                        totalSecurityDeposit: 0,
+                      }
+                    );
+
+                    return (
+                      <div className="space-y-3 border rounded-lg p-4">
+                        <h3 className="font-semibold mb-3">Calculated Totals</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label className="text-sm text-muted-foreground">Total Square Feet:</Label>
+                            <p className="text-lg font-medium">{totals.totalSqft.toFixed(2)} sqft</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-muted-foreground">Gross Monthly Rent:</Label>
+                            <p className="text-lg font-medium">₹{totals.grossMonthlyRent.toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-muted-foreground">Monthly CAM:</Label>
+                            <p className="text-lg font-medium">₹{totals.monthlyCAM.toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-muted-foreground">Total Security Deposit:</Label>
+                            <p className="text-lg font-medium">₹{totals.totalSecurityDeposit.toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+
+                  <div className="flex justify-between mt-6">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handlePrevious}
+                    >
+                      Previous
+                    </Button>
+                    <Button type="button" onClick={handleNext}>
+                      Next
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
             {/* ------------------ Documents ------------------ */}
             <TabsContent value="documents" className="mt-4 space-y-5">
               <Card className="shadow-sm">
@@ -669,174 +1124,6 @@ function AddTenants() {
                       );
                     }}
                   />
-                  <div className="flex justify-between mt-6">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handlePrevious}
-                    >
-                      Previous
-                    </Button>
-                    <Button type="button" onClick={handleNext}>
-                      Next
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* ------------------ Financials ------------------ */}
-            <TabsContent value="financials" className="mt-4 space-y-5">
-              <Card className="shadow-lg">
-                <CardContent className="p-6 space-y-5">
-                  <Label>Leased Square Feet</Label>
-                  <Input
-                    type="number"
-                    name="leasedSquareFeet"
-                    value={formik.values.leasedSquareFeet}
-                    onChange={formik.handleChange}
-                  />
-                  <Label>Price Per Sqft (₹)</Label>
-                  <Input
-                    type="number"
-                    name="pricePerSqft"
-                    value={formik.values.pricePerSqft}
-                    onChange={formik.handleChange}
-                  />
-                  <Label>Frequency Type</Label>
-                  <Select
-                    name="rentPaymentFrequency"
-                    value={formik.values.rentPaymentFrequency}
-                    onValueChange={(value) => {
-                      formik.setFieldValue("rentPaymentFrequency", value);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Frequency Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Label>CAM Rate Per Sqft (₹)</Label>
-                  <Input
-                    type="number"
-                    name="camRatePerSqft"
-                    value={formik.values.camRatePerSqft}
-                    onChange={formik.handleChange}
-                  />
-                  <Label>Payment Method</Label>
-                  <Select
-                    name="paymentMethod"
-                    value={formik.values.paymentMethod}
-                    onValueChange={(value) => {
-                      formik.setFieldValue("paymentMethod", value);
-                      // Clear payment method specific fields when changing method
-                      formik.setFieldValue("bankGuaranteePhoto", null);
-                      formik.setFieldValue("chequeAmount", "");
-                      formik.setFieldValue("chequeNumber", "");
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Payment Method" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="bank">Bank</SelectItem>
-                      <SelectItem value="cheque">Cheque</SelectItem>
-                      <SelectItem value="bank_guarantee">Bank guarantee</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {/* Conditional fields based on payment method */}
-                  {formik.values.paymentMethod === "bank_guarantee" && (
-                    <>
-                      <Label>Bank Guarantee Photo</Label>
-                      <div className="flex flex-col gap-2 border-2 border-gray-300 border-dashed rounded-md p-4">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              formik.setFieldValue("bankGuaranteePhoto", file);
-                            }
-                          }}
-                        />
-                      </div>
-                      {formik.values.bankGuaranteePhoto && (
-                        <div className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-md">
-                          <span className="flex-1 text-sm truncate">
-                            {formik.values.bankGuaranteePhoto.name}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => {
-                              formik.setFieldValue("bankGuaranteePhoto", null);
-                            }}
-                          >
-                            <XIcon className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {formik.values.paymentMethod === "cheque" && (
-                    <>
-                      <Label>Cheque Amount (₹)</Label>
-                      <Input
-                        type="number"
-                        name="chequeAmount"
-                        value={formik.values.chequeAmount}
-                        onChange={formik.handleChange}
-                        placeholder="Enter cheque amount"
-                      />
-                      <Label>Cheque Number</Label>
-                      <Input
-                        type="text"
-                        name="chequeNumber"
-                        value={formik.values.chequeNumber}
-                        onChange={formik.handleChange}
-                        placeholder="Enter cheque number"
-                      />
-                    </>
-                  )}
-
-                  {formik.values.paymentMethod !== "bank_guarantee" && (
-                    <>
-                      <Label>Security Deposit (₹)</Label>
-                      <Input
-                        type="number"
-                        name="securityDeposit"
-                        value={formik.values.securityDeposit}
-                        onChange={formik.handleChange}
-                      />
-                    </>
-                  )}
-                  <Label>Status</Label>
-                  <Select
-                    name="status"
-                    value={formik.values.status}
-                    onValueChange={(value) =>
-                      formik.setFieldValue("status", value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="vacated">Vacated</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Separator />
                   <div className="flex gap-3">
                     <Button
                       type="button"
@@ -864,6 +1151,7 @@ function AddTenants() {
                 </CardContent>
               </Card>
             </TabsContent>
+
           </Tabs>
         </form>
       </div>

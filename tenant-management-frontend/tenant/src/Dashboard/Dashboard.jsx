@@ -203,6 +203,8 @@ export default function Dashboard() {
                         <p className="text-gray-500 text-sm mt-1">
                             of ₹{totalRevenue?.toLocaleString() ?? 0} total
                         </p>
+                        <Progress value={monthlyRevenue / totalRevenue} className="h-2" />
+
                     </CardContent>
                 </Card>
             </div>
