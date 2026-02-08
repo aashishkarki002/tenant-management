@@ -115,59 +115,130 @@ const tenantSchema = new mongoose.Schema(
       required: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 tenantSchema.pre("save", function () {
-  // Only calculate if new or relevant fields changed
-  if (
-    !this.isNew &&
-    !(
-      this.isModified("leasedSquareFeet") ||
-      this.isModified("pricePerSqft") ||
-      this.isModified("camRatePerSqft") ||
-      this.isModified("tdsPercentage") ||
-      this.isModified("rentPaymentFrequency")
-    )
-  ) {
-    return;
+  // Only set defaults, no calculations
+
+  // Ensure cam.ratePerSqft matches camRatePerSqft for backward compatibility
+  if (this.camRatePerSqft && !this.cam?.ratePerSqft) {
+    this.cam = { ratePerSqft: this.camRatePerSqft };
   }
 
-  const A = this.leasedSquareFeet; // Area in sqft
-  const P = this.pricePerSqft; // Gross price per sqft (includes TDS)
-  const rate = this.tdsPercentage / 100; // TDS rate (0.10 for 10%)
-
-  // TDS Calculation (Reverse method)
-  // T = P - (P / (1 + rate))
-  // This calculates TDS when P is the gross amount (includes TDS)
-  this.tds = P - P / (1 + rate);
-
-  // Rental Rate per sqft (Net to landlord after TDS)
-  // RR = P - T
-  this.rentalRate = P - this.tds;
-
-  // Gross Amount (what tenant pays BEFORE TDS deduction)
-  // GA = A × P
-  this.grossAmount = A * P;
-
-  // MONTHLY Total Rent (Net to landlord after TDS)
-  // RA = A × RR
-  // This is ALWAYS monthly rent
-  this.totalRent = A * this.rentalRate;
-
-  // Quarterly Rent Amount (for quarterly tenants only)
+  // Validate quarterly amount consistency
   if (this.rentPaymentFrequency === "quarterly") {
-    this.quarterlyRentAmount = this.totalRent * 3;
-  } else {
-    this.quarterlyRentAmount = 0;
+    const expectedQuarterly = this.totalRent * 3;
+    if (Math.abs(this.quarterlyRentAmount - expectedQuarterly) > 0.01) {
+      console.warn(
+        `⚠️  Quarterly amount mismatch. Expected: ${expectedQuarterly}, Got: ${this.quarterlyRentAmount}`,
+      );
+    }
   }
-
-  //  MONTHLY CAM Charges (always monthly for all tenants)
-  this.camCharges = this.camRatePerSqft * A;
-
-  // MONTHLY Net Amount (total to landlord monthly)
-  // NA = RA + CAM
-  this.netAmount = this.totalRent + this.camCharges;
 });
+
+// ============================================
+// VIRTUAL FIELDS
+// ============================================
+// Provide calculated fields for queries/responses
+tenantSchema.virtual("monthlyTotal").get(function () {
+  return this.totalRent + this.camCharges;
+});
+
+tenantSchema.virtual("effectiveRatePerSqft").get(function () {
+  return this.leasedSquareFeet > 0 ? this.totalRent / this.leasedSquareFeet : 0;
+});
+
+// ============================================
+// INSTANCE METHODS
+// ============================================
+
+/**
+ * Recalculate financials using the calculator service
+ * Use this when updating lease terms
+ */
+tenantSchema.methods.recalculateFinancials = async function (
+  calculatorService,
+) {
+  // This would be called from a service when updating tenant
+  // e.g., when changing sqft or rates
+
+  // For now, this is a placeholder showing the pattern
+  throw new Error("Use tenant.service.updateTenantFinancials() instead");
+};
+
+/**
+ * Get breakdown for reporting
+ */
+tenantSchema.methods.getFinancialSummary = function () {
+  return {
+    monthly: {
+      gross: this.grossAmount,
+      tds: this.tds * this.leasedSquareFeet,
+      rentNet: this.totalRent,
+      cam: this.camCharges,
+      total: this.netAmount,
+    },
+    quarterly:
+      this.rentPaymentFrequency === "quarterly"
+        ? {
+            rent: this.quarterlyRentAmount,
+            cam: this.camCharges * 3,
+            total: this.quarterlyRentAmount + this.camCharges * 3,
+          }
+        : null,
+    rates: {
+      grossPerSqft: this.pricePerSqft,
+      tdsPerSqft: this.tds,
+      netPerSqft: this.rentalRate,
+      camPerSqft: this.camRatePerSqft,
+    },
+    area: {
+      sqft: this.leasedSquareFeet,
+      units: this.units.length,
+    },
+  };
+};
+
+// ============================================
+// STATIC METHODS
+// ============================================
+
+/**
+ * Find tenants with upcoming rent due
+ */
+tenantSchema.statics.findUpcomingDue = function (daysAhead = 7) {
+  const futureDate = new Date();
+  futureDate.setDate(futureDate.getDate() + daysAhead);
+
+  return this.find({
+    status: "active",
+    nextRentDueDate: {
+      $gte: new Date(),
+      $lte: futureDate,
+    },
+  });
+};
+
+/**
+ * Find overdue tenants
+ */
+tenantSchema.statics.findOverdue = function () {
+  return this.find({
+    status: "active",
+    nextRentDueDate: {
+      $lt: new Date(),
+    },
+  });
+};
+
+// ============================================
+// INDEXES
+// ============================================
+tenantSchema.index({ email: 1 });
+tenantSchema.index({ status: 1, isDeleted: 1 });
+tenantSchema.index({ property: 1, block: 1, innerBlock: 1 });
+tenantSchema.index({ nextRentDueDate: 1 });
+tenantSchema.index({ rentPaymentFrequency: 1 });
 
 export const Tenant =
   mongoose.models.Tenant || mongoose.model("Tenant", tenantSchema);

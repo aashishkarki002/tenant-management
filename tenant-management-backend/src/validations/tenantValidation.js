@@ -62,23 +62,11 @@ const tenantValidation = yup.object().shape({
     .transform((value) =>
       value !== null && value !== undefined && value !== ""
         ? Number(value)
-        : null
+        : null,
     )
     .required("Size square feet is required"),
   unitNumber: yup.string().optional(),
-  securityDeposit: yup
-    .mixed()
-    .test("is-number", "Security deposit must be a number", (value) => {
-      if (value === null || value === undefined || value === "") return false;
-      const num = Number(value);
-      return !isNaN(num) && isFinite(num);
-    })
-    .transform((value) =>
-      value !== null && value !== undefined && value !== ""
-        ? Number(value)
-        : null
-    )
-    .required("Security deposit is required"),
+
   pricePerSqft: yup
     .mixed()
     .test("is-number", "Price per square feet must be a number", (value) => {
@@ -89,7 +77,7 @@ const tenantValidation = yup.object().shape({
     .transform((value) =>
       value !== null && value !== undefined && value !== ""
         ? Number(value)
-        : null
+        : null,
     )
     .required("Price per square feet is required"),
   camRatePerSqft: yup
@@ -102,23 +90,33 @@ const tenantValidation = yup.object().shape({
     .transform((value) =>
       value !== null && value !== undefined && value !== ""
         ? Number(value)
-        : null
+        : null,
     )
     .required("CAM rate per square feet is required"),
   units: yup
     .mixed()
-    .test("is-unit-or-array", "Units must be a single unit ID or an array of unit IDs", (value) => {
-      if (!value) return false;
-      // If it's a string (single unit), validate it's a valid format
-      if (typeof value === "string") {
-        return value.trim().length > 0;
-      }
-      // If it's an array, validate it has at least one element
-      if (Array.isArray(value)) {
-        return value.length > 0 && value.every((unitId) => typeof unitId === "string" && unitId.trim().length > 0);
-      }
-      return false;
-    })
+    .test(
+      "is-unit-or-array",
+      "Units must be a single unit ID or an array of unit IDs",
+      (value) => {
+        if (!value) return false;
+        // If it's a string (single unit), validate it's a valid format
+        if (typeof value === "string") {
+          return value.trim().length > 0;
+        }
+        // If it's an array, validate it has at least one element
+        if (Array.isArray(value)) {
+          return (
+            value.length > 0 &&
+            value.every(
+              (unitId) =>
+                typeof unitId === "string" && unitId.trim().length > 0,
+            )
+          );
+        }
+        return false;
+      },
+    )
     .required("Units are required"),
 });
 export default tenantValidation;
