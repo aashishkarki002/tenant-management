@@ -14,6 +14,12 @@ export const RentTableRow = ({ rent, cams, onOpenPaymentDialog }) => {
   const { rentAmount, camAmount, totalDue } = getPaymentAmounts(rent, cams);
   const status = normalizeStatus(rent.status);
 
+  // Prefer rent-level frequency, fall back to tenant's configured frequency
+  const rawFrequency = rent.rentFrequency || rent.tenant?.rentPaymentFrequency;
+  const displayFrequency = rawFrequency
+    ? rawFrequency.charAt(0).toUpperCase() + rawFrequency.slice(1)
+    : "N/A";
+
   return (
     <TableRow key={rent._id}>
       <TableCell>
@@ -25,16 +31,16 @@ export const RentTableRow = ({ rent, cams, onOpenPaymentDialog }) => {
           {rent.units?.map((unit) => unit.name).join(", ")}
         </div>
       </TableCell>
+      <TableCell>{displayFrequency}</TableCell>
       <TableCell>₹{rentAmount.toLocaleString()}</TableCell>
       <TableCell>₹{camAmount.toLocaleString()}</TableCell>
       <TableCell>₹{totalDue.toLocaleString()}</TableCell>
       <TableCell>{formatNepaliDueDate(rent)}</TableCell>
       <TableCell>
         <Badge
-          className={`capitalize border ${
-            statusStyles[status] ||
+          className={`capitalize border ${statusStyles[status] ||
             "bg-gray-100 text-gray-700 border-gray-300"
-          }`}
+            }`}
         >
           {status === "partial" ? "Partially Paid" : status}
         </Badge>
