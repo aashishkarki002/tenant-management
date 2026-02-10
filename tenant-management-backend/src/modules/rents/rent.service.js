@@ -18,6 +18,7 @@ import {
   paisaToRupees,
   formatMoney,
 } from "../../utils/moneyUtil.js";
+import { calculateRentTotals } from "./helpers/rentTotal.helper.js";
 
 dotenv.config();
 
@@ -490,7 +491,9 @@ const createNewRent = async (rentData, session = null) => {
     const rent = created[0];
 
     // Access raw paisa value without getter (getters convert to rupees)
-    const rentAmountPaisaRaw = rent.get('rentAmountPaisa', null, { getters: false });
+    const rentAmountPaisaRaw = rent.get("rentAmountPaisa", null, {
+      getters: false,
+    });
 
     console.log("✅ Rent created:", {
       id: rent._id,
@@ -526,59 +529,35 @@ export async function getRentsService() {
         path: "tenant",
         match: { isDeleted: false },
         select: "name email",
-        options: { virtuals: false }, // Exclude virtual fields to avoid getter errors
       })
-      .populate({
-        path: "innerBlock",
-        select: "name",
-      })
-      .populate({
-        path: "block",
-        select: "name",
-      })
-      .populate({
-        path: "property",
-        select: "name",
-      })
-      .populate({
-        path: "units",
-        select: "name",
+      .populate({ path: "innerBlock", select: "name" })
+      .populate({ path: "block", select: "name" })
+      .populate({ path: "property", select: "name" })
+      .populate({ path: "units", select: "name" });
+
+    const filteredRents = rents.filter((rent) => rent.tenant);
+
+    const rentsWithFormatted = filteredRents.map((rent) => {
+      const rentObj = rent.toObject({ virtuals: false });
+
+      const totals = calculateRentTotals(rent);
+      console.log("DEBUG RENT TOTALS", {
+        rentId: rent._id.toString(),
+        rentAmountPaisa: totals.rentAmountPaisa,
+        type: typeof totals.rentAmountPaisa,
       });
 
-    const filteredRents = rents.filter((rent) => rent.tenant !== null);
-
-    // ✅ Add formatted money values to response
-    const rentsWithFormatted = filteredRents.map((rent) => {
-      try {
-        const rentObj = rent.toObject();
-        return {
-          ...rentObj,
-          formatted: {
-            rentAmount: formatMoney(rent.rentAmountPaisa),
-            paidAmount: formatMoney(rent.paidAmountPaisa),
-            remainingAmount: formatMoney(
-              rent.rentAmountPaisa - rent.paidAmountPaisa,
-            ),
-            tdsAmount: formatMoney(rent.tdsAmountPaisa),
-            lateFee: formatMoney(rent.lateFeePaisa || 0),
-          },
-        };
-      } catch (error) {
-        // If toObject fails due to virtual field errors, create a safe version
-        const rentObj = rent.toObject({ virtuals: false });
-        return {
-          ...rentObj,
-          formatted: {
-            rentAmount: formatMoney(rent.rentAmountPaisa),
-            paidAmount: formatMoney(rent.paidAmountPaisa),
-            remainingAmount: formatMoney(
-              rent.rentAmountPaisa - rent.paidAmountPaisa,
-            ),
-            tdsAmount: formatMoney(rent.tdsAmountPaisa),
-            lateFee: formatMoney(rent.lateFeePaisa || 0),
-          },
-        };
-      }
+      return {
+        ...rentObj,
+        totals, // raw paisa (great for frontend logic)
+        formatted: {
+          rentAmount: formatMoney(totals.rentAmountPaisa),
+          paidAmount: formatMoney(totals.paidAmountPaisa),
+          remainingAmount: formatMoney(totals.remainingAmountPaisa),
+          tdsAmount: formatMoney(totals.tdsAmountPaisa),
+          lateFee: formatMoney(rent.lateFeePaisa || 0),
+        },
+      };
     });
 
     return {
