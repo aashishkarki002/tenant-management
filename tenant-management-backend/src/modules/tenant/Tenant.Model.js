@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-
+import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 const tenantSchema = new mongoose.Schema(
   {
     // Basic tenant info
@@ -51,10 +51,80 @@ const tenantSchema = new mongoose.Schema(
     totalRent: { type: Number, default: 0 }, // rent after TDS, before CAM
     camCharges: { type: Number, default: 0 },
     netAmount: { type: Number, default: 0 }, // total tenant pays including CAM
-    securityDeposit: { type: Number, required: true },
+    securityDeposit: { type: Number, required: false },
+    tdsPaisa: {
+      type: Number, // Integer paisa
+      default: 0,
+      get: paisaToRupees, // Auto-convert to rupees when reading
+    },
+
+    // Rental rate after TDS per sqft in paisa
+    rentalRatePaisa: {
+      type: Number,
+      default: 0,
+      get: paisaToRupees,
+    },
+
+    // Gross amount before TDS in paisa
+    grossAmountPaisa: {
+      type: Number,
+      default: 0,
+      get: paisaToRupees,
+    },
+
+    // Total rent after TDS, before CAM in paisa
+    totalRentPaisa: {
+      type: Number,
+      default: 0,
+      get: paisaToRupees,
+    },
+
+    // CAM charges in paisa
+    camChargesPaisa: {
+      type: Number,
+      default: 0,
+      get: paisaToRupees,
+    },
+
+    // Net amount (total tenant pays) in paisa
+    netAmountPaisa: {
+      type: Number,
+      default: 0,
+      get: paisaToRupees,
+    },
+
+    // Security deposit in paisa
+    securityDepositPaisa: {
+      type: Number,
+      required: true,
+      get: paisaToRupees,
+    },
+
+    // Quarterly rent amount in paisa
+    quarterlyRentAmountPaisa: {
+      type: Number,
+      default: 0,
+      get: paisaToRupees,
+    },
+
+    // Price per sqft in paisa
+    pricePerSqftPaisa: {
+      type: Number,
+      required: true,
+      get: paisaToRupees,
+    },
+
+    // CAM rate per sqft in paisa
+    camRatePerSqftPaisa: {
+      type: Number,
+      required: true,
+      get: paisaToRupees,
+    },
+
+    // TDS percentage (still a percentage, not money)
     tdsPercentage: {
       type: Number,
-      default: 10, // %
+      default: 10,
     },
 
     rentPaymentFrequency: {
@@ -116,6 +186,7 @@ const tenantSchema = new mongoose.Schema(
     },
   },
   { timestamps: true },
+  { toJSON: { getters: true }, toObject: { getters: true } },
 );
 tenantSchema.pre("save", function () {
   // Only set defaults, no calculations
@@ -140,8 +211,19 @@ tenantSchema.pre("save", function () {
 // VIRTUAL FIELDS
 // ============================================
 // Provide calculated fields for queries/responses
+tenantSchema.virtual("monthlyTotalPaisa").get(function () {
+  // Access raw values without getters to avoid conversion errors
+  const totalRentPaisaRaw = this.get("totalRentPaisa", null, { getters: false }) || 0;
+  const camChargesPaisaRaw = this.get("camChargesPaisa", null, { getters: false }) || 0;
+  return totalRentPaisaRaw + camChargesPaisaRaw;
+});
+
 tenantSchema.virtual("monthlyTotal").get(function () {
-  return this.totalRent + this.camCharges;
+  const monthlyTotalPaisa = this.monthlyTotalPaisa;
+  if (monthlyTotalPaisa === undefined || monthlyTotalPaisa === null) {
+    return 0;
+  }
+  return paisaToRupees(monthlyTotalPaisa);
 });
 
 tenantSchema.virtual("effectiveRatePerSqft").get(function () {
@@ -172,29 +254,27 @@ tenantSchema.methods.recalculateFinancials = async function (
 tenantSchema.methods.getFinancialSummary = function () {
   return {
     monthly: {
-      gross: this.grossAmount,
-      tds: this.tds * this.leasedSquareFeet,
-      rentNet: this.totalRent,
-      cam: this.camCharges,
-      total: this.netAmount,
+      gross: formatMoney(this.grossAmountPaisa),
+      tds: formatMoney(this.tdsPaisa * this.leasedSquareFeet),
+      rentNet: formatMoney(this.totalRentPaisa),
+      cam: formatMoney(this.camChargesPaisa),
+      total: formatMoney(this.netAmountPaisa),
     },
     quarterly:
       this.rentPaymentFrequency === "quarterly"
         ? {
-            rent: this.quarterlyRentAmount,
-            cam: this.camCharges * 3,
-            total: this.quarterlyRentAmount + this.camCharges * 3,
+            rent: formatMoney(this.quarterlyRentAmountPaisa),
+            cam: formatMoney(this.camChargesPaisa * 3),
+            total: formatMoney(
+              this.quarterlyRentAmountPaisa + this.camChargesPaisa * 3,
+            ),
           }
         : null,
     rates: {
-      grossPerSqft: this.pricePerSqft,
-      tdsPerSqft: this.tds,
-      netPerSqft: this.rentalRate,
-      camPerSqft: this.camRatePerSqft,
-    },
-    area: {
-      sqft: this.leasedSquareFeet,
-      units: this.units.length,
+      grossPerSqft: formatMoney(this.pricePerSqftPaisa),
+      tdsPerSqft: formatMoney(this.tdsPaisa),
+      netPerSqft: formatMoney(this.rentalRatePaisa),
+      camPerSqft: formatMoney(this.camRatePerSqftPaisa),
     },
   };
 };

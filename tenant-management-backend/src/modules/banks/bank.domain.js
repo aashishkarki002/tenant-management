@@ -1,9 +1,21 @@
 import BankAccount from "./BankAccountModel.js";
 
+/**
+ * Apply payment to bank account (using integer paisa)
+ * 
+ * @param {Object} params
+ * @param {string} params.paymentMethod - Payment method (cash, bank_transfer, cheque)
+ * @param {string} params.bankAccountId - Bank account ID
+ * @param {number} params.amountPaisa - Amount in paisa (integer)
+ * @param {number} [params.amount] - Amount in rupees (backward compatibility)
+ * @param {mongoose.ClientSession} [params.session] - MongoDB session
+ * @returns {Promise<BankAccount|null>} Updated bank account or null for cash
+ */
 async function applyPaymentToBank({
   paymentMethod,
   bankAccountId,
-  amount,
+  amountPaisa,
+  amount, // Backward compatibility
   session,
 }) {
   // Cash payments don't require bank account
@@ -20,13 +32,23 @@ async function applyPaymentToBank({
     throw new Error("Bank account ID is required");
   }
 
+  // Use paisa if provided, otherwise convert from rupees
+  const finalAmountPaisa = amountPaisa !== undefined
+    ? amountPaisa
+    : (amount ? Math.round(amount * 100) : 0);
+
+  if (!Number.isInteger(finalAmountPaisa)) {
+    throw new Error(`Payment amount must be integer paisa, got: ${finalAmountPaisa}`);
+  }
+
   const bankAccount =
     await BankAccount.findById(bankAccountId).session(session);
   if (!bankAccount) {
     throw new Error("Bank account not found");
   }
 
-  bankAccount.balance += amount;
+  // Increment balance in paisa (integer addition - no float errors!)
+  bankAccount.balancePaisa += finalAmountPaisa;
   await bankAccount.save({ session });
   return bankAccount;
 }

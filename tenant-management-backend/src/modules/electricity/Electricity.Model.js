@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { paisaToRupees, rupeesToPaisa } from "../../utils/moneyUtil.js";
 
 const electricitySchema = new mongoose.Schema(
   {
@@ -38,17 +39,52 @@ const electricitySchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
-    // Rate per unit
+    
+    // ============================================
+    // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
+    // ============================================
+    // Rate per unit in paisa
+    ratePerUnitPaisa: {
+      type: Number,
+      required: true,
+      min: 0,
+      get: paisaToRupees,
+    },
+    
+    // Total amount to be charged in paisa
+    totalAmountPaisa: {
+      type: Number,
+      required: true,
+      min: 0,
+      get: paisaToRupees,
+    },
+    
+    // Paid amount in paisa
+    paidAmountPaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+      get: paisaToRupees,
+    },
+    
+    // Backward compatibility getters
     ratePerUnit: {
       type: Number,
-      required: true,
-      min: 0,
+      get: function () {
+        return this.ratePerUnitPaisa ? paisaToRupees(this.ratePerUnitPaisa) : 0;
+      },
     },
-    // Total amount to be charged
     totalAmount: {
       type: Number,
-      required: true,
-      min: 0,
+      get: function () {
+        return this.totalAmountPaisa ? paisaToRupees(this.totalAmountPaisa) : 0;
+      },
+    },
+    paidAmount: {
+      type: Number,
+      get: function () {
+        return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
+      },
     },
     // Nepali date information
     nepaliMonth: {
@@ -87,11 +123,6 @@ const electricitySchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "paid", "partially_paid", "overdue"],
       default: "pending",
-    },
-    paidAmount: {
-      type: Number,
-      default: 0,
-      min: 0,
     },
     paidDate: {
       type: Date,
@@ -145,11 +176,35 @@ electricitySchema.pre("save", async function () {
   // Calculate consumption
   this.consumption = this.currentReading - this.previousReading;
 
-  // Calculate total amount
-  this.totalAmount = this.consumption * this.ratePerUnit;
+  // Ensure ratePerUnitPaisa is set (convert if needed)
+  if (!this.ratePerUnitPaisa && this.ratePerUnit) {
+    this.ratePerUnitPaisa = rupeesToPaisa(this.ratePerUnit);
+  }
 
-  // Validate paid amount doesn't exceed total
-  if (this.paidAmount > this.totalAmount) {
+  // Calculate total amount in paisa: consumption * ratePerUnitPaisa
+  if (this.ratePerUnitPaisa && this.consumption) {
+    this.totalAmountPaisa = Math.round(this.consumption * this.ratePerUnitPaisa);
+  }
+
+  // Ensure amounts are integers
+  if (this.ratePerUnitPaisa && !Number.isInteger(this.ratePerUnitPaisa)) {
+    throw new Error(
+      `Rate per unit must be integer paisa, got: ${this.ratePerUnitPaisa}`,
+    );
+  }
+  if (this.totalAmountPaisa && !Number.isInteger(this.totalAmountPaisa)) {
+    throw new Error(
+      `Total amount must be integer paisa, got: ${this.totalAmountPaisa}`,
+    );
+  }
+  if (this.paidAmountPaisa && !Number.isInteger(this.paidAmountPaisa)) {
+    throw new Error(
+      `Paid amount must be integer paisa, got: ${this.paidAmountPaisa}`,
+    );
+  }
+
+  // Validate paid amount doesn't exceed total (in paisa)
+  if (this.paidAmountPaisa > this.totalAmountPaisa) {
     throw new Error("Paid amount cannot exceed total amount");
   }
 });

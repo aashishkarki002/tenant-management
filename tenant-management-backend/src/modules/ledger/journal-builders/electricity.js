@@ -1,8 +1,10 @@
 import { ACCOUNT_CODES } from "../config/accounts.js";
+import { rupeesToPaisa, paisaToRupees } from "../../../utils/moneyUtil.js";
 
 /**
  * Build journal payload for an electricity charge (DR Accounts Receivable, CR Utility Revenue).
- * @param {Object} electricity - Electricity document with _id, readingDate, nepaliDate, nepaliMonth, nepaliYear, consumption, ratePerUnit, totalAmount, createdBy, tenant, property
+ * Uses paisa for all amounts.
+ * @param {Object} electricity - Electricity document with _id, readingDate, nepaliDate, nepaliMonth, nepaliYear, consumption, ratePerUnitPaisa, totalAmountPaisa, createdBy, tenant, property
  * @returns {Object} Journal payload for postJournalEntry
  */
 export function buildElectricityChargeJournal(electricity) {
@@ -10,8 +12,18 @@ export function buildElectricityChargeJournal(electricity) {
   const transactionDate = electricity.readingDate || new Date();
   const nepaliDate = electricity.nepaliDate || transactionDate;
   const tenantName = electricity?.tenant?.name;
+  
+  // Get amounts in paisa (use paisa fields if available, otherwise convert)
+  const totalAmountPaisa = electricity.totalAmountPaisa !== undefined
+    ? electricity.totalAmountPaisa
+    : (electricity.totalAmount ? rupeesToPaisa(electricity.totalAmount) : 0);
+  
+  const ratePerUnitPaisa = electricity.ratePerUnitPaisa !== undefined
+    ? electricity.ratePerUnitPaisa
+    : (electricity.ratePerUnit ? rupeesToPaisa(electricity.ratePerUnit) : 0);
+
   const description = `Electricity charge for ${electricity.nepaliMonth}/${electricity.nepaliYear} - ${electricity.consumption} units${tenantName ? ` from ${tenantName}` : ""}`;
-  const lineDescription = `Electricity receivable - ${electricity.consumption} units @ Rs.${electricity.ratePerUnit}`;
+  const lineDescription = `Electricity receivable - ${electricity.consumption} units @ Rs.${paisaToRupees(ratePerUnitPaisa)}`;
   const tenantId = electricity.tenant?._id ?? electricity.tenant;
   const propertyId = electricity.property?._id ?? electricity.property;
 
@@ -25,21 +37,26 @@ export function buildElectricityChargeJournal(electricity) {
     nepaliYear: electricity.nepaliYear,
     description,
     createdBy: electricity.createdBy,
-    totalAmount: electricity.totalAmount,
+    totalAmountPaisa: totalAmountPaisa,
+    totalAmount: totalAmountPaisa / 100, // Backward compatibility
     tenant: tenantId,
     property: propertyId,
     entries: [
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
-        debitAmount: electricity.totalAmount,
+        debitAmountPaisa: totalAmountPaisa,
+        debitAmount: totalAmountPaisa / 100, // Backward compatibility
+        creditAmountPaisa: 0,
         creditAmount: 0,
         description: lineDescription,
       },
       {
         accountCode: ACCOUNT_CODES.UTILITY_REVENUE,
+        debitAmountPaisa: 0,
         debitAmount: 0,
-        creditAmount: electricity.totalAmount,
-        description: `Electricity revenue - ${electricity.consumption} units @ Rs.${electricity.ratePerUnit}`,
+        creditAmountPaisa: totalAmountPaisa,
+        creditAmount: totalAmountPaisa / 100, // Backward compatibility
+        description: `Electricity revenue - ${electricity.consumption} units @ Rs.${paisaToRupees(ratePerUnitPaisa)}`,
       },
     ],
   };
@@ -47,7 +64,8 @@ export function buildElectricityChargeJournal(electricity) {
 
 /**
  * Build journal payload for an electricity payment received (DR Cash/Bank, CR Accounts Receivable).
- * @param {Object} paymentData - { electricityId, amount, paymentDate, nepaliDate, createdBy }
+ * Uses paisa for all amounts.
+ * @param {Object} paymentData - { electricityId, amountPaisa or amount, paymentDate, nepaliDate, createdBy }
  * @param {Object} electricity - Electricity document with tenant, property, nepaliMonth, nepaliYear
  * @returns {Object} Journal payload for postJournalEntry
  */
@@ -61,6 +79,11 @@ export function buildElectricityPaymentJournal(paymentData, electricity) {
   const tenantId = electricity.tenant?._id ?? electricity.tenant;
   const propertyId = electricity.property?._id ?? electricity.property;
 
+  // Use paisa if provided, otherwise convert from rupees
+  const amountPaisa = paymentData.amountPaisa !== undefined
+    ? paymentData.amountPaisa
+    : (paymentData.amount ? rupeesToPaisa(paymentData.amount) : 0);
+
   return {
     transactionType: "ELECTRICITY_PAYMENT",
     referenceType: "Electricity",
@@ -71,20 +94,25 @@ export function buildElectricityPaymentJournal(paymentData, electricity) {
     nepaliYear,
     description,
     createdBy: paymentData.createdBy,
-    totalAmount: paymentData.amount,
+    totalAmountPaisa: amountPaisa,
+    totalAmount: amountPaisa / 100, // Backward compatibility
     tenant: tenantId,
     property: propertyId,
     entries: [
       {
         accountCode: ACCOUNT_CODES.CASH_BANK,
-        debitAmount: paymentData.amount,
+        debitAmountPaisa: amountPaisa,
+        debitAmount: amountPaisa / 100, // Backward compatibility
+        creditAmountPaisa: 0,
         creditAmount: 0,
         description: "Electricity payment received",
       },
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+        debitAmountPaisa: 0,
         debitAmount: 0,
-        creditAmount: paymentData.amount,
+        creditAmountPaisa: amountPaisa,
+        creditAmount: amountPaisa / 100, // Backward compatibility
         description: "Electricity payment received",
       },
     ],

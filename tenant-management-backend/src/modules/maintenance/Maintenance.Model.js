@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 const maintenanceSchema = new mongoose.Schema(
   {
@@ -51,9 +52,36 @@ const maintenanceSchema = new mongoose.Schema(
       ref: "Admin",
       required: true,
     },
-    amount: { type: Number, default: 0, min: 0 },
-
-    paidAmount: { type: Number, default: 0, min: 0 },
+    
+    // ============================================
+    // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
+    // ============================================
+    amountPaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+      get: paisaToRupees,
+    },
+    paidAmountPaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+      get: paisaToRupees,
+    },
+    
+    // Backward compatibility getters
+    amount: {
+      type: Number,
+      get: function () {
+        return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
+      },
+    },
+    paidAmount: {
+      type: Number,
+      get: function () {
+        return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
+      },
+    },
     paymentStatus: {
       type: String,
       enum: ["pending", "partially_paid", "paid"],
@@ -74,5 +102,24 @@ const maintenanceSchema = new mongoose.Schema(
 maintenanceSchema.index({ status: 1, priority: 1, scheduledDate: -1 });
 maintenanceSchema.index({ tenant: 1 });
 maintenanceSchema.index({ property: 1, unit: 1 });
+
+maintenanceSchema.pre("save", function () {
+  // Ensure amounts are integers
+  if (this.amountPaisa && !Number.isInteger(this.amountPaisa)) {
+    throw new Error(
+      `Maintenance amount must be integer paisa, got: ${this.amountPaisa}`,
+    );
+  }
+  if (this.paidAmountPaisa && !Number.isInteger(this.paidAmountPaisa)) {
+    throw new Error(
+      `Paid amount must be integer paisa, got: ${this.paidAmountPaisa}`,
+    );
+  }
+
+  // Validate paid amount doesn't exceed amount (in paisa)
+  if (this.paidAmountPaisa > this.amountPaisa) {
+    throw new Error("Paid amount cannot exceed maintenance amount");
+  }
+});
 
 export const Maintenance = mongoose.model("Maintenance", maintenanceSchema);

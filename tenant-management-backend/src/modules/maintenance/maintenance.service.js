@@ -3,9 +3,18 @@ import { Expense } from "../expenses/Expense.Model.js";
 import ExpenseSource from "../expenses/ExpenseSource.Model.js";
 import { createExpense } from "../expenses/expense.service.js";
 import { ACCOUNTING_CONFIG } from "../../config/accounting.config.js";
+import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 
 export async function createMaintenance(maintenanceData) {
   try {
+    // ✅ Convert amounts to paisa if needed
+    if (maintenanceData.amountPaisa === undefined && maintenanceData.amount !== undefined) {
+      maintenanceData.amountPaisa = rupeesToPaisa(maintenanceData.amount);
+    }
+    if (maintenanceData.paidAmountPaisa === undefined && maintenanceData.paidAmount !== undefined) {
+      maintenanceData.paidAmountPaisa = rupeesToPaisa(maintenanceData.paidAmount);
+    }
+    
     const maintenance = await Maintenance.create(maintenanceData);
     return {
       success: true,
@@ -77,7 +86,8 @@ export async function updateMaintenanceStatus(
   id,
   status,
   paymentStatus,
-  paidAmount = null,
+  paidAmountPaisa = null,
+  paidAmount = null, // Backward compatibility
   lastPaidBy = null,
   options = {}
 ) {
@@ -93,8 +103,16 @@ export async function updateMaintenanceStatus(
   }
 
   // 2. Update maintenance task
+  // ✅ Convert to paisa if needed
+  const finalPaidAmountPaisa = paidAmountPaisa !== undefined
+    ? paidAmountPaisa
+    : (paidAmount !== null ? rupeesToPaisa(paidAmount) : null);
+  
   const updateFields = { status, paymentStatus };
-  if (paidAmount !== null) updateFields.paidAmount = paidAmount;
+  if (finalPaidAmountPaisa !== null) {
+    updateFields.paidAmountPaisa = finalPaidAmountPaisa;
+    updateFields.paidAmount = finalPaidAmountPaisa / 100; // Backward compatibility
+  }
   if (lastPaidBy) updateFields.lastPaidBy = lastPaidBy;
 
   const updatedTask = await Maintenance.findByIdAndUpdate(
@@ -109,9 +127,11 @@ export async function updateMaintenanceStatus(
   const isPaid = updatedTask?.paymentStatus === "paid";
 
   if (isCompleted && isPaid) {
-    const finalPaidAmount = updatedTask.paidAmount ?? 0;
+    // ✅ Use paisa field if available, otherwise convert from rupees
+    const finalPaidAmountPaisa = updatedTask.paidAmountPaisa || 
+      (updatedTask.paidAmount ? rupeesToPaisa(updatedTask.paidAmount) : 0);
 
-    if (finalPaidAmount > 0) {
+    if (finalPaidAmountPaisa > 0) {
       // Check for existing expense to avoid duplicates
       const existingExpense = await Expense.findOne({
         referenceType: "MAINTENANCE",
@@ -139,7 +159,8 @@ export async function updateMaintenanceStatus(
 
         const expenseData = {
           source: maintenanceSource._id,
-          amount: finalPaidAmount,
+          amountPaisa: finalPaidAmountPaisa,
+          amount: finalPaidAmountPaisa / 100, // Backward compatibility
           EnglishDate: now,
           nepaliDate: nepaliDate ? new Date(nepaliDate) : now,
           nepaliMonth:

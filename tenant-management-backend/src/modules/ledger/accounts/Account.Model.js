@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { paisaToRupees } from "../../../utils/moneyUtil.js";
 
 const accountSchema = new mongoose.Schema(
   {
@@ -23,10 +24,24 @@ const accountSchema = new mongoose.Schema(
       ref: "Account",
       default: null,
     },
-    currentBalance: {
+    
+    // ============================================
+    // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
+    // ============================================
+    currentBalancePaisa: {
       type: Number,
       default: 0,
+      get: paisaToRupees,
     },
+    
+    // Backward compatibility getter
+    currentBalance: {
+      type: Number,
+      get: function () {
+        return this.currentBalancePaisa ? paisaToRupees(this.currentBalancePaisa) : 0;
+      },
+    },
+    
     isActive: {
       type: Boolean,
       default: true,

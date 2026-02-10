@@ -46,16 +46,13 @@ export default async function buildDocumentsFromFiles(files) {
           folder: config.folder,
         });
 
-        // ✅ Add each uploaded file as a separate document with 'type'
-        uploaded.forEach((file) => {
-          documents.push({
-            type: fieldName, // ✅ REQUIRED by Mongoose schema
+        // ✅ Schema expects documents[].files[].url (not documents[].url)
+        documents.push({
+          type: fieldName,
+          files: uploaded.map((file) => ({
             url: file.url,
             uploadedAt: file.uploadedAt,
-            name: config.label, // Optional: human-readable name
-            format: file.format,
-            resourceType: file.resourceType,
-          });
+          })),
         });
       } catch (error) {
         console.error(`[${fieldName}] Upload failed:`, error.message);

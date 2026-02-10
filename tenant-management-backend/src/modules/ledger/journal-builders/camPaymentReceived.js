@@ -1,20 +1,32 @@
 import { ACCOUNT_CODES } from "../config/accounts.js";
+import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
 
 /**
  * Build journal payload for a CAM payment received (DR Cash/Bank, CR Accounts Receivable).
- * @param {Object} payment - Payment document with _id, paymentDate, nepaliDate, createdBy/receivedBy
+ * Uses paisa for all amounts.
+ * @param {Object} payment - Payment document with _id, paymentDate, nepaliDate, amountPaisa, createdBy/receivedBy
  * @param {Object} cam - Cam document with tenant, property, nepaliMonth, nepaliYear
- * @param {number} [amount] - Amount to record (defaults to payment.amount)
+ * @param {number} [amountPaisa] - Amount in paisa to record (defaults to payment.amountPaisa)
+ * @param {number} [amount] - Amount in rupees (backward compatibility)
  * @param {string} [cashBankAccountCode] - Account code for DR (default CASH_BANK 1000)
  * @returns {Object} Journal payload for postJournalEntry
  */
 export function buildCamPaymentReceivedJournal(
   payment,
   cam,
-  amount = undefined,
+  amountPaisa = undefined,
+  amount = undefined, // Backward compatibility
   cashBankAccountCode = ACCOUNT_CODES.CASH_BANK,
 ) {
-  const recordedAmount = amount ?? payment.amount;
+  // Use paisa if provided, otherwise convert from payment or amount parameter
+  const recordedAmountPaisa = amountPaisa !== undefined
+    ? amountPaisa
+    : (payment.amountPaisa !== undefined
+        ? payment.amountPaisa
+        : (amount !== undefined
+            ? rupeesToPaisa(amount)
+            : (payment.amount ? rupeesToPaisa(payment.amount) : 0)));
+
   const transactionDate = payment.paymentDate || new Date();
   const nepaliDate = payment.nepaliDate || transactionDate;
   const nepaliMonth =
@@ -33,20 +45,25 @@ export function buildCamPaymentReceivedJournal(
     nepaliYear,
     description,
     createdBy,
-    totalAmount: recordedAmount,
+    totalAmountPaisa: recordedAmountPaisa,
+    totalAmount: recordedAmountPaisa / 100, // Backward compatibility
     tenant: cam?.tenant,
     property: cam?.property,
     entries: [
       {
         accountCode: cashBankAccountCode,
-        debitAmount: recordedAmount,
+        debitAmountPaisa: recordedAmountPaisa,
+        debitAmount: recordedAmountPaisa / 100, // Backward compatibility
+        creditAmountPaisa: 0,
         creditAmount: 0,
         description,
       },
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+        debitAmountPaisa: 0,
         debitAmount: 0,
-        creditAmount: recordedAmount,
+        creditAmountPaisa: recordedAmountPaisa,
+        creditAmount: recordedAmountPaisa / 100, // Backward compatibility
         description,
       },
     ],

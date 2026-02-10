@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 const revenueSchema = new mongoose.Schema(
   {
@@ -8,10 +9,22 @@ const revenueSchema = new mongoose.Schema(
       required: true,
     },
 
-    amount: {
+    // ============================================
+    // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
+    // ============================================
+    amountPaisa: {
       type: Number,
       required: true,
       min: 0,
+      get: paisaToRupees,
+    },
+    
+    // Backward compatibility getter
+    amount: {
+      type: Number,
+      get: function () {
+        return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
+      },
     },
 
     date: {
@@ -85,5 +98,14 @@ const revenueSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+revenueSchema.pre("save", function () {
+  // Ensure amount is an integer
+  if (this.amountPaisa && !Number.isInteger(this.amountPaisa)) {
+    throw new Error(
+      `Revenue amount must be integer paisa, got: ${this.amountPaisa}`,
+    );
+  }
+});
 
 export const Revenue = mongoose.model("Revenue", revenueSchema);

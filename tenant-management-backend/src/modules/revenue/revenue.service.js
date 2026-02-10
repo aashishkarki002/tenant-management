@@ -11,6 +11,7 @@ import {
 } from "../payment/payment.domain.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildRevenueReceivedJournal } from "../ledger/journal-builders/index.js";
+import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 
 async function createRevenue(revenueData) {
   const session = await mongoose.startSession();
@@ -19,7 +20,8 @@ async function createRevenue(revenueData) {
   try {
     const {
       source,
-      amount,
+      amountPaisa,
+      amount, // Backward compatibility
       date = new Date(),
       payerType,
       tenant,
@@ -35,12 +37,18 @@ async function createRevenue(revenueData) {
       bankAccountId,
     } = revenueData;
 
+    // ✅ Convert to paisa if needed
+    const finalAmountPaisa = amountPaisa !== undefined
+      ? amountPaisa
+      : (amount ? rupeesToPaisa(amount) : 0);
+    const finalAmount = finalAmountPaisa / 100; // For backward compatibility
+
     /* ----------------------------------
        BASIC VALIDATIONS
     ---------------------------------- */
 
     if (!source) throw new Error("Revenue source is required");
-    if (!amount || amount <= 0) throw new Error("Valid amount is required");
+    if (!finalAmountPaisa || finalAmountPaisa <= 0) throw new Error("Valid amount is required");
     if (!payerType) throw new Error("payerType is required");
 
     if (payerType === "TENANT" && !tenant) {
@@ -74,7 +82,7 @@ async function createRevenue(revenueData) {
     const bankAccount = await applyPaymentToBank({
       paymentMethod,
       bankAccountId,
-      amount,
+      amountPaisa: finalAmountPaisa,
       session,
     });
 
@@ -87,7 +95,7 @@ async function createRevenue(revenueData) {
     if (payerType === "TENANT") {
       const paymentPayload = buildPaymentPayload({
         tenantId: tenant,
-        amount,
+        amountPaisa: finalAmountPaisa,
         paymentDate: date,
         paymentMethod,
         paymentStatus: "paid",
@@ -101,7 +109,7 @@ async function createRevenue(revenueData) {
     } else if (payerType === "EXTERNAL") {
       const externalPayload = buildExternalPaymentPayload({
         payerName: externalPayer.name,
-        amount,
+        amountPaisa: finalAmountPaisa,
         paymentDate: date,
         nepaliDate: nepaliDate || date,
         paymentMethod,
@@ -121,7 +129,8 @@ async function createRevenue(revenueData) {
       [
         {
           source,
-          amount,
+          amountPaisa: finalAmountPaisa,
+          amount: finalAmount, // Backward compatibility
           date,
           payerType,
           tenant: payerType === "TENANT" ? tenant : undefined,
@@ -144,7 +153,7 @@ async function createRevenue(revenueData) {
         ? `Revenue from ${externalPayer.name}`
         : "Manual revenue received";
     const revenuePayload = buildRevenueReceivedJournal(revenue, {
-      amount,
+      amountPaisa: finalAmountPaisa,
       paymentDate: date,
       nepaliDate: nepaliDate || date,
       description: ledgerDescription,
@@ -249,7 +258,8 @@ export { getRevenueSource };
  * @param {Session} params.session - MongoDB session (optional)
  */
 export async function recordRentRevenue({
-  amount,
+  amountPaisa,
+  amount, // Backward compatibility
   paymentDate,
   tenantId,
   rentId,
@@ -258,6 +268,11 @@ export async function recordRentRevenue({
   session = null,
 }) {
   try {
+    // ✅ Convert to paisa if needed
+    const finalAmountPaisa = amountPaisa !== undefined
+      ? amountPaisa
+      : (amount ? rupeesToPaisa(amount) : 0);
+
     // Find the RENT revenue source
     const rentRevenueSource = await RevenueSource.findOne({
       code: "RENT",
@@ -271,7 +286,8 @@ export async function recordRentRevenue({
       [
         {
           source: rentRevenueSource._id,
-          amount,
+          amountPaisa: finalAmountPaisa,
+          amount: finalAmountPaisa / 100, // Backward compatibility
           date: paymentDate,
           payerType: "TENANT",
           tenant: new mongoose.Types.ObjectId(tenantId),
@@ -304,7 +320,8 @@ export async function recordRentRevenue({
  * @param {Session} params.session - MongoDB session (optional)
  */
 export async function recordCamRevenue({
-  amount,
+  amountPaisa,
+  amount, // Backward compatibility
   paymentDate,
   tenantId,
   camId,
@@ -313,6 +330,11 @@ export async function recordCamRevenue({
   session = null,
 }) {
   try {
+    // ✅ Convert to paisa if needed
+    const finalAmountPaisa = amountPaisa !== undefined
+      ? amountPaisa
+      : (amount ? rupeesToPaisa(amount) : 0);
+
     // Find the CAM revenue source
     const camRevenueSource = await RevenueSource.findOne({
       code: "CAM",
@@ -326,7 +348,8 @@ export async function recordCamRevenue({
       [
         {
           source: camRevenueSource._id,
-          amount,
+          amountPaisa: finalAmountPaisa,
+          amount: finalAmountPaisa / 100, // Backward compatibility
           date: paymentDate,
           payerType: "TENANT",
           tenant: new mongoose.Types.ObjectId(tenantId),

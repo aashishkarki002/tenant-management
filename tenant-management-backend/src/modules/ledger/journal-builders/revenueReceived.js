@@ -1,9 +1,11 @@
 import { ACCOUNT_CODES } from "../config/accounts.js";
+import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
 
 /**
  * Build journal payload for manual revenue received (DR Cash/Bank, CR Revenue).
+ * Uses paisa for all amounts.
  * @param {Object} revenue - Revenue document with _id
- * @param {Object} options - amount, paymentDate, nepaliDate, description, createdBy; optional nepaliMonth, nepaliYear, tenantName or tenant (for description)
+ * @param {Object} options - amountPaisa or amount, paymentDate, nepaliDate, description, createdBy; optional nepaliMonth, nepaliYear, tenantName or tenant (for description)
  * @param {string} [cashBankAccountCode] - Account code for DR (default CASH_BANK 1000)
  * @returns {Object} Journal payload for postJournalEntry
  */
@@ -13,7 +15,8 @@ export function buildRevenueReceivedJournal(
   cashBankAccountCode = ACCOUNT_CODES.CASH_BANK
 ) {
   const {
-    amount,
+    amountPaisa,
+    amount, // Backward compatibility
     paymentDate,
     nepaliDate,
     description,
@@ -23,6 +26,12 @@ export function buildRevenueReceivedJournal(
     tenantName,
     tenant,
   } = options;
+  
+  // Use paisa if provided, otherwise convert from rupees
+  const finalAmountPaisa = amountPaisa !== undefined
+    ? amountPaisa
+    : (amount ? rupeesToPaisa(amount) : 0);
+
   const transactionDate = paymentDate || new Date();
   const npDate = nepaliDate || transactionDate;
   const d = new Date(npDate);
@@ -42,18 +51,23 @@ export function buildRevenueReceivedJournal(
     nepaliYear,
     description: fullDescription,
     createdBy,
-    totalAmount: amount,
+    totalAmountPaisa: finalAmountPaisa,
+    totalAmount: finalAmountPaisa / 100, // Backward compatibility
     entries: [
       {
         accountCode: cashBankAccountCode,
-        debitAmount: amount,
+        debitAmountPaisa: finalAmountPaisa,
+        debitAmount: finalAmountPaisa / 100, // Backward compatibility
+        creditAmountPaisa: 0,
         creditAmount: 0,
         description: fullDescription,
       },
       {
         accountCode: ACCOUNT_CODES.REVENUE,
+        debitAmountPaisa: 0,
         debitAmount: 0,
-        creditAmount: amount,
+        creditAmountPaisa: finalAmountPaisa,
+        creditAmount: finalAmountPaisa / 100, // Backward compatibility
         description: fullDescription,
       },
     ],

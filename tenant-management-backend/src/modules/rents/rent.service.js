@@ -13,10 +13,23 @@ import Notification from "../notifications/Notification.Model.js";
 import NepaliDate from "nepali-datetime";
 import { getIO } from "../../config/socket.js";
 import { Cam } from "../cam/cam.model.js";
+import {
+  rupeesToPaisa,
+  paisaToRupees,
+  formatMoney,
+} from "../../utils/moneyUtil.js";
+
 dotenv.config();
 
+/**
+ * ✅ REFACTORED: Handle monthly rents with integer paisa
+ *
+ * Key changes:
+ * - All rent amounts stored as paisa (integers)
+ * - No floating point calculations
+ * - Precise financial data
+ */
 const handleMonthlyRents = async (adminId) => {
-  // When called from API, adminId comes from req.admin.id; when called from cron, fallback to env
   const createdBy = adminId || process.env.SYSTEM_ADMIN_ID;
   const {
     npMonth,
@@ -38,7 +51,7 @@ const handleMonthlyRents = async (adminId) => {
           { nepaliYear: npYear, nepaliMonth: { $lt: npMonth } },
         ],
       },
-      { $set: { status: "overdue" } }
+      { $set: { status: "overdue" } },
     );
     console.log("Overdue rents updated:", overdueResult.modifiedCount);
 
@@ -55,41 +68,76 @@ const handleMonthlyRents = async (adminId) => {
     }).select("tenant");
 
     const existingTenantIds = new Set(
-      existingRents.map((r) => r.tenant.toString())
+      existingRents.map((r) => r.tenant.toString()),
     );
 
+    // ✅ NEW: Create rents with PAISA values
     const rentsToInsert = tenants
       .filter((tenant) => !existingTenantIds.has(tenant._id.toString()))
-      .map((tenant) => ({
-        tenant: tenant._id,
-        innerBlock: tenant.innerBlock,
-        block: tenant.block,
-        property: tenant.property,
-        nepaliMonth: npMonth,
-        nepaliYear: npYear,
-        nepaliDate,
-        rentAmount: tenant.totalRent,
-        units: tenant.units,
-        createdBy,
-        nepaliDueDate: lastDay,
-        englishDueDate,
-        paidAmount: 0,
-        englishMonth,
-        englishYear,
-        status: "pending",
-      }));
+      .map((tenant) => {
+        // Get paisa values from tenant (if available), otherwise convert from rupees
+        const rentAmountPaisa =
+          tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0);
+        const tdsAmountPaisa = tenant.tdsPaisa
+          ? tenant.tdsPaisa * tenant.leasedSquareFeet
+          : rupeesToPaisa((tenant.tds || 0) * tenant.leasedSquareFeet);
+
+        return {
+          tenant: tenant._id,
+          innerBlock: tenant.innerBlock,
+          block: tenant.block,
+          property: tenant.property,
+          nepaliMonth: npMonth,
+          nepaliYear: npYear,
+          nepaliDate,
+
+          // ✅ Store as PAISA (integers)
+          rentAmountPaisa,
+          tdsAmountPaisa,
+          paidAmountPaisa: 0,
+          lateFeePaisa: 0,
+
+          // Backward compatibility (can remove later)
+          rentAmount: paisaToRupees(rentAmountPaisa),
+          tdsAmount: paisaToRupees(tdsAmountPaisa),
+          paidAmount: 0,
+          lateFee: 0,
+
+          units: tenant.units,
+          createdBy,
+          nepaliDueDate: lastDay,
+          englishDueDate,
+          englishMonth,
+          englishYear,
+          status: "pending",
+          rentFrequency: tenant.rentPaymentFrequency || "monthly",
+        };
+      });
 
     if (rentsToInsert.length) {
       const insertedRents = await Rent.insertMany(rentsToInsert);
+
+      // Create ledger entries for each rent
       for (const rent of insertedRents) {
         try {
           const rentChargePayload = buildRentChargeJournal(rent);
           await ledgerService.postJournalEntry(rentChargePayload, null);
         } catch (error) {
+          console.error(
+            `Failed to create ledger entry for rent ${rent._id}:`,
+            error,
+          );
           throw error;
         }
       }
-      console.log("Monthly rents created:", rentsToInsert.length);
+
+      console.log("✅ Monthly rents created:", rentsToInsert.length);
+      console.log(
+        "   Total rent amount:",
+        formatMoney(
+          rentsToInsert.reduce((sum, r) => sum + r.rentAmountPaisa, 0),
+        ),
+      );
     } else {
       console.log("All rents for this month already exist");
     }
@@ -101,53 +149,76 @@ const handleMonthlyRents = async (adminId) => {
       updatedOverdueCount: overdueResult.modifiedCount,
     };
   } catch (error) {
-    console.error(error);
-    return { success: false, message: "Rents processing failed", error };
+    console.error("Error in handleMonthlyRents:", error);
+    return {
+      success: false,
+      message: "Rents processing failed",
+      error: error.message,
+    };
   }
 };
+
 export default handleMonthlyRents;
 
+/**
+ * ✅ REFACTORED: Send email to tenants with proper money formatting
+ */
 export const sendEmailToTenants = async () => {
   try {
     const { npMonth, npYear, lastDay } = getNepaliMonthDates();
     const { reminderDay } = checkNepaliSpecialDays({ forceTest: true });
+
     if (reminderDay) {
       return {
         success: true,
-        message: "today is not reminder day",
+        message: "Today is not reminder day",
       };
     }
+
     const rents = await Rent.find({
       status: { $in: ["pending", "partially_paid"] },
       nepaliMonth: npMonth,
       nepaliYear: npYear,
       emailReminderSent: { $ne: true },
     }).populate("tenant");
+
     const cams = await Cam.find({
       status: { $in: ["pending", "partially_paid"] },
       nepaliMonth: npMonth,
       nepaliYear: npYear,
       emailReminderSent: { $ne: true },
     }).populate("tenant");
+
     const allPending = [...rents, ...cams];
+
     if (allPending.length === 0) {
       return {
         success: true,
         message: "No pending rents or cams found for this month",
       };
     }
+
     const io = getIO();
 
+    // ✅ Use paisa values for accurate amounts
     const pendingTenants = allPending.map((item) => ({
       tenantId: item.tenant?._id,
       tenantName: item.tenant?.name || "Unknown",
       tenantEmail: item.tenant?.email || "N/A",
-      rentAmount: item.rentAmount || item.amount,
+
+      // Get amount in paisa (precise)
+      amountPaisa: item.rentAmountPaisa || item.amountPaisa || 0,
+
+      // Formatted for display
+      amount: formatMoney(item.rentAmountPaisa || item.amountPaisa || 0),
+
       status: item.status,
       dueDate: item.nepaliDueDate || lastDay,
       itemId: item._id,
-      type: item.rentAmount ? "rent" : "cam",
+      type: item.rentAmountPaisa ? "rent" : "cam",
     }));
+
+    // Create notifications for admins
     const admins = await adminModel.find({ role: "admin" });
     const notificationPromises = admins.map(async (admin) => {
       const notification = await Notification.create({
@@ -164,6 +235,7 @@ export const sendEmailToTenants = async () => {
         },
         isRead: false,
       });
+
       if (io) {
         io.to(`admin:${admin._id}`).emit("new-notification", {
           notification: {
@@ -217,6 +289,7 @@ export const sendEmailToTenants = async () => {
     const sentRentIds = [];
     const sentCamIds = [];
 
+    // ✅ Send emails with properly formatted money amounts
     const emailPromises = Array.from(tenantMap.values()).map(
       async ({ tenant, rents: tenantRents, cams: tenantCams }) => {
         if (!tenant?.email) {
@@ -224,30 +297,29 @@ export const sendEmailToTenants = async () => {
           return;
         }
 
-        // Calculate totals
-        const rentTotal = tenantRents.reduce(
-          (sum, rent) => sum + (rent.rentAmount || 0),
-          0
+        // ✅ Calculate totals in PAISA (precise integer arithmetic)
+        const rentTotalPaisa = tenantRents.reduce(
+          (sum, rent) =>
+            sum + (rent.rentAmountPaisa || rupeesToPaisa(rent.rentAmount || 0)),
+          0,
         );
-        const camTotal = tenantCams.reduce(
-          (sum, cam) => sum + (cam.amount || 0),
-          0
+        const camTotalPaisa = tenantCams.reduce(
+          (sum, cam) =>
+            sum + (cam.amountPaisa || rupeesToPaisa(cam.amount || 0)),
+          0,
         );
-        const totalAmount = rentTotal + camTotal;
+        const totalAmountPaisa = rentTotalPaisa + camTotalPaisa;
 
         // Skip if no pending amounts
-        if (totalAmount === 0) {
+        if (totalAmountPaisa === 0) {
           console.log(
-            `Skipping email for tenant ${
-              tenant?.name || "Unknown"
-            } - no pending amounts`
+            `Skipping email for tenant ${tenant?.name || "Unknown"} - no pending amounts`,
           );
           return;
         }
 
-        // Get due date from rent or use lastDay
+        // Get due date
         let nepaliDueDate;
-
         if (tenantRents.length > 0 && tenantRents[0].nepaliDueDate) {
           const dateStr = tenantRents[0].nepaliDueDate.toString();
           const match = dateStr.match(/2\d{3}-\d{2}-(\d{2})/);
@@ -256,32 +328,28 @@ export const sendEmailToTenants = async () => {
             nepaliDueDate = new NepaliDate(
               tenantRents[0].nepaliYear,
               tenantRents[0].nepaliMonth - 1,
-              nepaliDay
+              nepaliDay,
             );
           } else {
-            // Fallback to lastDay if date parsing fails
             nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
           }
         } else if (tenantCams.length > 0) {
-          // For CAMs, use lastDay from getNepaliMonthDates
           nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
         } else {
-          // Fallback
           nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
         }
 
         const formattedDate = nepaliDueDate.format("YYYY-MMMM-DD");
         const monthYear = nepaliDueDate.format("YYYY-MMMM");
-
         const subject = "Reminder for Rent and CAM Payment";
 
-        // Build payment details HTML
+        // ✅ Build payment details with formatted amounts
         let paymentDetails = "";
         if (tenantRents.length > 0) {
           paymentDetails += `
           <tr>
             <td style="padding:8px 0; border-bottom:1px solid #e0e0e0;">
-              <strong>Rent:</strong> Rs. ${rentTotal.toLocaleString()}
+              <strong>Rent:</strong> ${formatMoney(rentTotalPaisa)}
             </td>
           </tr>`;
         }
@@ -289,7 +357,7 @@ export const sendEmailToTenants = async () => {
           paymentDetails += `
           <tr>
             <td style="padding:8px 0; border-bottom:1px solid #e0e0e0;">
-              <strong>CAM Charges:</strong> Rs. ${camTotal.toLocaleString()}
+              <strong>CAM Charges:</strong> ${formatMoney(camTotalPaisa)}
             </td>
           </tr>`;
         }
@@ -305,9 +373,7 @@ export const sendEmailToTenants = async () => {
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:20px auto; background-color:#ffffff; border:1px solid #e0e0e0; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
           <tr>
             <td style="padding:20px;">
-              <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${
-                tenant.name
-              },</h2>
+              <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${tenant.name},</h2>
               <p style="color:#555555; font-size:16px; line-height:1.5;">
                 This is a reminder for your pending payments for <strong>${monthYear}</strong>.
               </p>
@@ -315,7 +381,8 @@ export const sendEmailToTenants = async () => {
                 ${paymentDetails}
                 <tr>
                   <td style="padding:12px 0; border-top:2px solid #333333; border-bottom:2px solid #333333;">
-                    <strong style="font-size:18px;">Total Amount:</strong> <strong style="font-size:18px; color:#d32f2f;">Rs. ${totalAmount.toLocaleString()}</strong>
+                    <strong style="font-size:18px;">Total Amount:</strong> 
+                    <strong style="font-size:18px; color:#d32f2f;">${formatMoney(totalAmountPaisa)}</strong>
                   </td>
                 </tr>
               </table>
@@ -340,39 +407,34 @@ export const sendEmailToTenants = async () => {
         try {
           await sendEmail({ to: tenant.email, subject, html });
 
-          // Track successfully sent rent and CAM IDs to toggle emailReminderSent to true
-          tenantRents.forEach((rent) => {
-            sentRentIds.push(rent._id);
-          });
-          tenantCams.forEach((cam) => {
-            sentCamIds.push(cam._id);
-          });
+          // Track successfully sent IDs
+          tenantRents.forEach((rent) => sentRentIds.push(rent._id));
+          tenantCams.forEach((cam) => sentCamIds.push(cam._id));
         } catch (emailError) {
           console.error(`Failed to send email to ${tenant.email}:`, emailError);
         }
-      }
+      },
     );
 
     await Promise.all(emailPromises);
 
-    // Toggle emailReminderSent to true for all successfully sent rents
+    // Mark emails as sent
     if (sentRentIds.length > 0) {
       await Rent.updateMany(
         { _id: { $in: sentRentIds } },
-        { $set: { emailReminderSent: true } }
+        { $set: { emailReminderSent: true } },
       );
     }
 
-    // Toggle emailReminderSent to true for all successfully sent CAMs
     if (sentCamIds.length > 0) {
       await Cam.updateMany(
         { _id: { $in: sentCamIds } },
-        { $set: { emailReminderSent: true } }
+        { $set: { emailReminderSent: true } },
       );
     }
 
     const sentCount = Array.from(tenantMap.values()).filter(
-      ({ tenant }) => tenant?.email
+      ({ tenant }) => tenant?.email,
     ).length;
     const totalTenants = tenantMap.size;
 
@@ -389,13 +451,58 @@ export const sendEmailToTenants = async () => {
     };
   }
 };
+
+/**
+ * ✅ REFACTORED: Create new rent with paisa values
+ *
+ * @param {Object} rentData - Rent data (should include *Paisa fields)
+ * @param {mongoose.ClientSession} session - Optional session for transactions
+ */
 const createNewRent = async (rentData, session = null) => {
   try {
-    // Mongoose create() with a session requires an array of documents
+    // Ensure paisa fields are present (convert if needed)
+    if (!rentData.rentAmountPaisa && rentData.rentAmount) {
+      rentData.rentAmountPaisa = rupeesToPaisa(rentData.rentAmount);
+    }
+    if (!rentData.tdsAmountPaisa && rentData.tdsAmount) {
+      rentData.tdsAmountPaisa = rupeesToPaisa(rentData.tdsAmount);
+    }
+    if (!rentData.paidAmountPaisa) {
+      rentData.paidAmountPaisa = rentData.paidAmount
+        ? rupeesToPaisa(rentData.paidAmount)
+        : 0;
+    }
+
+    // Convert unit breakdown to paisa if present
+    if (rentData.unitBreakdown?.length > 0) {
+      rentData.unitBreakdown = rentData.unitBreakdown.map((ub) => ({
+        ...ub,
+        rentAmountPaisa:
+          ub.rentAmountPaisa || rupeesToPaisa(ub.rentAmount || 0),
+        tdsAmountPaisa: ub.tdsAmountPaisa || rupeesToPaisa(ub.tdsAmount || 0),
+        paidAmountPaisa:
+          ub.paidAmountPaisa || rupeesToPaisa(ub.paidAmount || 0),
+      }));
+    }
+
     const opts = session ? { session } : {};
     const created = await Rent.create([rentData], opts);
     const rent = created[0];
-    return { success: true, message: "Rent created successfully", data: rent };
+
+    // Access raw paisa value without getter (getters convert to rupees)
+    const rentAmountPaisaRaw = rent.get('rentAmountPaisa', null, { getters: false });
+
+    console.log("✅ Rent created:", {
+      id: rent._id,
+      amount: formatMoney(rentAmountPaisaRaw),
+      amountPaisa: rentAmountPaisaRaw,
+    });
+
+    return {
+      success: true,
+      message: "Rent created successfully",
+      data: rent,
+    };
   } catch (error) {
     console.error("Error creating rent:", error);
     return {
@@ -405,8 +512,12 @@ const createNewRent = async (rentData, session = null) => {
     };
   }
 };
+
 export { createNewRent };
 
+/**
+ * ✅ REFACTORED: Get rents with formatted money values
+ */
 export async function getRentsService() {
   try {
     const rents = await Rent.find()
@@ -415,6 +526,7 @@ export async function getRentsService() {
         path: "tenant",
         match: { isDeleted: false },
         select: "name email",
+        options: { virtuals: false }, // Exclude virtual fields to avoid getter errors
       })
       .populate({
         path: "innerBlock",
@@ -432,10 +544,53 @@ export async function getRentsService() {
         path: "units",
         select: "name",
       });
+
     const filteredRents = rents.filter((rent) => rent.tenant !== null);
-    return { success: true, rents: filteredRents };
+
+    // ✅ Add formatted money values to response
+    const rentsWithFormatted = filteredRents.map((rent) => {
+      try {
+        const rentObj = rent.toObject();
+        return {
+          ...rentObj,
+          formatted: {
+            rentAmount: formatMoney(rent.rentAmountPaisa),
+            paidAmount: formatMoney(rent.paidAmountPaisa),
+            remainingAmount: formatMoney(
+              rent.rentAmountPaisa - rent.paidAmountPaisa,
+            ),
+            tdsAmount: formatMoney(rent.tdsAmountPaisa),
+            lateFee: formatMoney(rent.lateFeePaisa || 0),
+          },
+        };
+      } catch (error) {
+        // If toObject fails due to virtual field errors, create a safe version
+        const rentObj = rent.toObject({ virtuals: false });
+        return {
+          ...rentObj,
+          formatted: {
+            rentAmount: formatMoney(rent.rentAmountPaisa),
+            paidAmount: formatMoney(rent.paidAmountPaisa),
+            remainingAmount: formatMoney(
+              rent.rentAmountPaisa - rent.paidAmountPaisa,
+            ),
+            tdsAmount: formatMoney(rent.tdsAmountPaisa),
+            lateFee: formatMoney(rent.lateFeePaisa || 0),
+          },
+        };
+      }
+    });
+
+    return {
+      success: true,
+      rents: rentsWithFormatted,
+    };
   } catch (error) {
-    console.log(error);
-    return { success: false, message: "Rents fetching failed", error: error };
+    console.error("Error fetching rents:", error);
+    return {
+      success: false,
+      message: "Rents fetching failed",
+      error: error.message,
+    };
   }
 }

@@ -6,6 +6,7 @@ import {
   buildElectricityChargeJournal,
   buildElectricityPaymentJournal,
 } from "../ledger/journal-builders/electricity.js";
+import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 
 class ElectricityService {
   /**
@@ -91,7 +92,15 @@ class ElectricityService {
 
       // Calculate consumption
       const consumption = data.currentReading - previousReading;
-      const totalAmount = consumption * data.ratePerUnit;
+      
+      // ✅ Convert ratePerUnit to paisa if needed
+      const ratePerUnitPaisa = data.ratePerUnitPaisa !== undefined
+        ? data.ratePerUnitPaisa
+        : (data.ratePerUnit ? rupeesToPaisa(data.ratePerUnit) : 0);
+      
+      // Calculate total amount in paisa: consumption * ratePerUnitPaisa
+      const totalAmountPaisa = Math.round(consumption * ratePerUnitPaisa);
+      const totalAmount = totalAmountPaisa / 100; // Backward compatibility
 
       // Create electricity record
       const electricityData = {
@@ -101,8 +110,17 @@ class ElectricityService {
         previousReading,
         currentReading: data.currentReading,
         consumption,
-        ratePerUnit: data.ratePerUnit,
-        totalAmount,
+        
+        // ✅ Store as PAISA (integers)
+        ratePerUnitPaisa: ratePerUnitPaisa,
+        totalAmountPaisa: totalAmountPaisa,
+        paidAmountPaisa: data.paidAmountPaisa || (data.paidAmount ? rupeesToPaisa(data.paidAmount) : 0),
+        
+        // Backward compatibility
+        ratePerUnit: ratePerUnitPaisa / 100,
+        totalAmount: totalAmount,
+        paidAmount: (data.paidAmountPaisa || (data.paidAmount ? rupeesToPaisa(data.paidAmount) : 0)) / 100,
+        
         nepaliMonth: data.nepaliMonth,
         nepaliYear: data.nepaliYear,
         nepaliDate: data.nepaliDate,
@@ -176,11 +194,18 @@ class ElectricityService {
     }
 
     // Update electricity record
-    electricity.paidAmount += paymentData.amount;
+    // ✅ Convert payment amount to paisa if needed
+    const paymentAmountPaisa = paymentData.amountPaisa !== undefined
+      ? paymentData.amountPaisa
+      : (paymentData.amount ? rupeesToPaisa(paymentData.amount) : 0);
+    
+    electricity.paidAmountPaisa += paymentAmountPaisa;
+    electricity.paidAmount = electricity.paidAmountPaisa / 100; // Backward compatibility
 
-    if (electricity.paidAmount >= electricity.totalAmount) {
+    // ✅ Compare using paisa (integer comparison - precise!)
+    if (electricity.paidAmountPaisa >= electricity.totalAmountPaisa) {
       electricity.status = "paid";
-    } else if (electricity.paidAmount > 0) {
+    } else if (electricity.paidAmountPaisa > 0) {
       electricity.status = "partially_paid";
     }
 
@@ -260,9 +285,21 @@ class ElectricityService {
         .sort({ readingDate: -1, createdAt: -1 })
         .lean();
 
-      const totalAmount = readings.reduce((sum, r) => sum + r.totalAmount, 0);
-      const totalPaid = readings.reduce((sum, r) => sum + r.paidAmount, 0);
-      const totalPending = totalAmount - totalPaid;
+      // ✅ Calculate totals in paisa (precise integer arithmetic)
+      const totalAmountPaisa = readings.reduce(
+        (sum, r) => sum + (r.totalAmountPaisa || (r.totalAmount ? rupeesToPaisa(r.totalAmount) : 0)),
+        0
+      );
+      const totalPaidPaisa = readings.reduce(
+        (sum, r) => sum + (r.paidAmountPaisa || (r.paidAmount ? rupeesToPaisa(r.paidAmount) : 0)),
+        0
+      );
+      const totalPendingPaisa = totalAmountPaisa - totalPaidPaisa;
+      
+      // Convert to rupees for display (backward compatibility)
+      const totalAmount = totalAmountPaisa / 100;
+      const totalPaid = totalPaidPaisa / 100;
+      const totalPending = totalPendingPaisa / 100;
       const totalConsumption = readings.reduce(
         (sum, r) => sum + r.consumption,
         0

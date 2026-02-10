@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 const sdSchema = new mongoose.Schema(
   {
@@ -28,7 +29,24 @@ const sdSchema = new mongoose.Schema(
     nepaliYear: { type: Number, required: true },
     nepaliDate: { type: Date, required: true },
     year: { type: Number, required: true },
-    amount: { type: Number, required: true },
+    
+    // ============================================
+    // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
+    // ============================================
+    amountPaisa: {
+      type: Number,
+      required: true,
+      min: 0,
+      get: paisaToRupees,
+    },
+    
+    // Backward compatibility getter
+    amount: {
+      type: Number,
+      get: function () {
+        return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
+      },
+    },
     mode: {
       type: String,
       enum: ["cash", "cheque", "bank_transfer", "bank_guarantee"],
@@ -95,5 +113,14 @@ const sdSchema = new mongoose.Schema(
 
 // Unique index to prevent duplicate SD entries for same tenant + month/year
 sdSchema.index({ tenant: 1, nepaliMonth: 1, nepaliYear: 1 }, { unique: true });
+
+sdSchema.pre("save", function () {
+  // Ensure amount is an integer
+  if (this.amountPaisa && !Number.isInteger(this.amountPaisa)) {
+    throw new Error(
+      `Security deposit amount must be integer paisa, got: ${this.amountPaisa}`,
+    );
+  }
+});
 
 export const Sd = mongoose.model("Sd", sdSchema);

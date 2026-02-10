@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { calculateUnitLease } from "../tenant/domain/rent.calculator.service.js";
 
 const unitSchema = new mongoose.Schema(
   {
@@ -46,7 +47,16 @@ const unitSchema = new mongoose.Schema(
       monthlyCam: { type: Number, default: 0 },
       totalMonthly: { type: Number, default: 0 },
 
-      securityDeposit: { type: Number, default: 0 },
+      // null allowed for bank guarantee (no cash deposit)
+      securityDeposit: {
+        type: Number,
+        default: 0,
+        set: (v) => {
+          if (v == null) return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        },
+      },
       securityDepositStatus: {
         type: String,
         enum: ["held", "partially_refunded", "fully_refunded"],
@@ -126,7 +136,7 @@ const unitSchema = new mongoose.Schema(
 
     isDeleted: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 //
@@ -145,19 +155,24 @@ unitSchema.pre("save", function () {
     lease.status !== "active"
   ) {
     this.isOccupied = false;
+    return;
   }
 
-  const sqft = lease.leaseSquareFeet;
-  const baseRate = lease.pricePerSqft;
-  const tdsPercent = lease.tdsPercentage || 10;
+  // Use rent calculator service (primary method - reverse TDS calculation)
+  const tdsPercentage = lease.tdsPercentage || 10;
+  const calculation = calculateUnitLease({
+    sqft: lease.leaseSquareFeet,
+    pricePerSqft: lease.pricePerSqft,
+    camRatePerSqft: lease.camRatePerSqft || 0,
+    tdsPercentage,
+    securityDeposit: lease.securityDeposit || 0,
+  });
 
-  lease.tds = baseRate * (tdsPercent / 100);
-
-  const rentAfterTds = baseRate - lease.tds;
-
-  lease.monthlyRent = rentAfterTds * sqft;
-  lease.monthlyCam = (lease.camRatePerSqft || 0) * sqft;
-  lease.totalMonthly = lease.monthlyRent + lease.monthlyCam;
+  // Update lease with calculated values
+  lease.tds = calculation.tdsPerSqft; // TDS per sqft (from reverse method)
+  lease.monthlyRent = calculation.rentMonthly; // Rent after TDS
+  lease.monthlyCam = calculation.camMonthly;
+  lease.totalMonthly = calculation.netMonthly; // Rent + CAM
 
   this.isOccupied = true;
 });

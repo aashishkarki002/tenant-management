@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { paisaToRupees } from "../../../utils/moneyUtil.js";
+
 const transactionSchema = new mongoose.Schema(
   {
     transactionDate: {
@@ -61,9 +63,23 @@ const transactionSchema = new mongoose.Schema(
       required: true,
       refPath: "referenceType",
     },
-    totalAmount: {
+    
+    // ============================================
+    // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
+    // ============================================
+    totalAmountPaisa: {
       type: Number,
       required: true,
+      min: 0,
+      get: paisaToRupees,
+    },
+    
+    // Backward compatibility getter
+    totalAmount: {
+      type: Number,
+      get: function () {
+        return this.totalAmountPaisa ? paisaToRupees(this.totalAmountPaisa) : 0;
+      },
     },
     // Indicates whether the underlying charge is monthly or quarterly.
     // This is especially useful for rent transactions so we can

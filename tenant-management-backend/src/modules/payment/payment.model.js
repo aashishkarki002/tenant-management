@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
+
 const paymentSchema = new mongoose.Schema({
   rent: {
     type: mongoose.Schema.Types.ObjectId,
@@ -20,10 +22,25 @@ const paymentSchema = new mongoose.Schema({
     ref: "BankAccount",
     required: false,
   },
-  amount: {
+  
+  // ============================================
+  // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
+  // ============================================
+  amountPaisa: {
     type: Number,
     required: true,
+    min: 0,
+    get: paisaToRupees,
   },
+  
+  // Backward compatibility getter
+  amount: {
+    type: Number,
+    get: function () {
+      return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
+    },
+  },
+  
   paymentDate: {
     type: Date,
     required: true,
@@ -71,12 +88,29 @@ const paymentSchema = new mongoose.Schema({
   allocations: {
     rent: {
       rentId: mongoose.Schema.Types.ObjectId,
-      amount: Number,
+      amountPaisa: Number, // Amount in paisa
+      amount: { // Backward compatibility
+        type: Number,
+        get: function () {
+          return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
+        },
+      },
     },
     cam: {
       camId: mongoose.Schema.Types.ObjectId,
-      paidAmount: Number, // Changed from 'amount' to 'paidAmount' to match code usage
-      amount: Number, // Keep for backward compatibility
+      paidAmountPaisa: Number, // Paid amount in paisa
+      paidAmount: { // Backward compatibility
+        type: Number,
+        get: function () {
+          return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
+        },
+      },
+      amount: { // Keep for backward compatibility
+        type: Number,
+        get: function () {
+          return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
+        },
+      },
     },
   },
   createdBy: {
@@ -85,4 +119,14 @@ const paymentSchema = new mongoose.Schema({
     required: true,
   },
 });
+
+paymentSchema.pre("save", function () {
+  // Ensure amount is an integer
+  if (!Number.isInteger(this.amountPaisa)) {
+    throw new Error(
+      `Payment amount must be integer paisa, got: ${this.amountPaisa}`,
+    );
+  }
+});
+
 export const Payment = mongoose.model("Payment", paymentSchema);

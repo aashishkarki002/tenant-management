@@ -3,11 +3,29 @@ import { ledgerService } from "../ledger/ledger.service.js";
 import { buildCamChargeJournal } from "../ledger/journal-builders/index.js";
 import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
+import { rupeesToPaisa, paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 import dotenv from "dotenv";
 dotenv.config();
+
 async function createCam(camData, createdBy, session = null) {
   try {
+    // Ensure paisa fields are present (convert if needed)
+    if (!camData.amountPaisa && camData.amount) {
+      camData.amountPaisa = rupeesToPaisa(camData.amount);
+    }
+    if (!camData.paidAmountPaisa) {
+      camData.paidAmountPaisa = camData.paidAmount
+        ? rupeesToPaisa(camData.paidAmount)
+        : 0;
+    }
+
     const cam = await Cam.create([camData], session ? { session } : {});
+
+    console.log("✅ CAM created:", {
+      id: cam[0]._id,
+      amount: formatMoney(cam[0].amountPaisa),
+      amountPaisa: cam[0].amountPaisa,
+    });
 
     return {
       success: true,
@@ -24,6 +42,7 @@ async function createCam(camData, createdBy, session = null) {
   }
 }
 export { createCam };
+
 export const handleMonthlyCams = async () => {
   const {
     npMonth,
@@ -59,22 +78,35 @@ export const handleMonthlyCams = async () => {
     );
     const camsToInsert = tenants
       .filter((tenant) => !existingTenantIds.has(tenant._id.toString()))
-      .map((tenant) => ({
-        tenant: tenant._id,
-        property: tenant.property,
-        block: tenant.block,
-        innerBlock: tenant.innerBlock,
-        nepaliMonth: npMonth,
-        nepaliYear: npYear,
-        nepaliDate,
-        amount: tenant.camCharges,
-        year: englishYear,
-        month: englishMonth,
-        nepaliDueDate: lastDay,
-        englishDueDate: englishDueDate,
-        paidAmount: 0,
-        status: "pending",
-      }));
+      .map((tenant) => {
+        // Get paisa values from tenant (if available), otherwise convert from rupees
+        const amountPaisa =
+          tenant.camChargesPaisa || rupeesToPaisa(tenant.camCharges || 0);
+
+        return {
+          tenant: tenant._id,
+          property: tenant.property,
+          block: tenant.block,
+          innerBlock: tenant.innerBlock,
+          nepaliMonth: npMonth,
+          nepaliYear: npYear,
+          nepaliDate,
+          
+          // ✅ Store as PAISA (integers)
+          amountPaisa,
+          paidAmountPaisa: 0,
+          
+          // Backward compatibility (can remove later)
+          amount: paisaToRupees(amountPaisa),
+          paidAmount: 0,
+          
+          year: englishYear,
+          month: englishMonth,
+          nepaliDueDate: lastDay,
+          englishDueDate: englishDueDate,
+          status: "pending",
+        };
+      });
     if (camsToInsert.length) {
       const insertedCams = await Cam.insertMany(camsToInsert);
       for (const cam of insertedCams) {
@@ -117,5 +149,19 @@ export const getCams = async (filters = {}) => {
     .populate("block")
     .populate("innerBlock")
     .lean();
-  return cams;
+  
+  // ✅ Add formatted money values to response
+  const camsWithFormatted = cams.map((cam) => ({
+    ...cam,
+    formatted: {
+      amount: formatMoney(cam.amountPaisa || rupeesToPaisa(cam.amount || 0)),
+      paidAmount: formatMoney(cam.paidAmountPaisa || rupeesToPaisa(cam.paidAmount || 0)),
+      remainingAmount: formatMoney(
+        (cam.amountPaisa || rupeesToPaisa(cam.amount || 0)) -
+        (cam.paidAmountPaisa || rupeesToPaisa(cam.paidAmount || 0))
+      ),
+    },
+  }));
+  
+  return camsWithFormatted;
 };

@@ -11,9 +11,20 @@ import { ExternalPayment } from "./externalPayment.model.js";
 export function mergePaymentPayloads(rentPayload, camPayload) {
   // If both exist, merge them
   if (rentPayload && camPayload) {
+    const rentAmountPaisa = rentPayload.amountPaisa !== undefined
+      ? rentPayload.amountPaisa
+      : (rentPayload.amount ? Math.round(rentPayload.amount * 100) : 0);
+    
+    const camAmountPaisa = camPayload.amountPaisa !== undefined
+      ? camPayload.amountPaisa
+      : (camPayload.amount ? Math.round(camPayload.amount * 100) : 0);
+    
+    const totalAmountPaisa = rentAmountPaisa + camAmountPaisa;
+
     return {
       tenant: rentPayload.tenant || camPayload.tenant,
-      amount: (rentPayload.amount || 0) + (camPayload.amount || 0),
+      amountPaisa: totalAmountPaisa,
+      amount: totalAmountPaisa / 100, // Backward compatibility
       paymentDate: rentPayload.paymentDate || camPayload.paymentDate,
       nepaliDate: rentPayload.nepaliDate || camPayload.nepaliDate,
       paymentMethod: rentPayload.paymentMethod || camPayload.paymentMethod,
@@ -48,7 +59,8 @@ export function mergePaymentPayloads(rentPayload, camPayload) {
 
 export function buildPaymentPayload({
   tenantId,
-  amount,
+  amountPaisa,
+  amount, // Backward compatibility
   paymentDate,
   nepaliDate,
   paymentMethod,
@@ -61,9 +73,15 @@ export function buildPaymentPayload({
   cam,
   allocations,
 }) {
+  // Use paisa if provided, otherwise convert from rupees
+  const finalAmountPaisa = amountPaisa !== undefined
+    ? amountPaisa
+    : (amount ? Math.round(amount * 100) : 0);
+
   const payload = {
     tenant: tenantId,
-    amount,
+    amountPaisa: finalAmountPaisa,
+    amount: finalAmountPaisa / 100, // Backward compatibility
     paymentDate,
     nepaliDate,
     paymentMethod,
@@ -88,7 +106,8 @@ export function buildPaymentPayload({
  */
 export function buildRentPaymentPayload({
   tenantId,
-  amount,
+  amountPaisa,
+  amount, // Backward compatibility
   paymentDate,
   nepaliDate,
   paymentMethod,
@@ -101,9 +120,15 @@ export function buildRentPaymentPayload({
   rentId,
   allocations,
 }) {
+  // Use paisa if provided, otherwise convert from rupees
+  const finalAmountPaisa = amountPaisa !== undefined
+    ? amountPaisa
+    : (amount ? Math.round(amount * 100) : 0);
+
   const payload = {
     tenant: tenantId,
-    amount,
+    amountPaisa: finalAmountPaisa,
+    amount: finalAmountPaisa / 100, // Backward compatibility
     paymentDate,
     nepaliDate,
     paymentMethod,
@@ -132,7 +157,8 @@ export function buildRentPaymentPayload({
  */
 export function buildCamPaymentPayload({
   tenantId,
-  amount,
+  amountPaisa,
+  amount, // Backward compatibility
   paymentDate,
   nepaliDate,
   paymentMethod,
@@ -145,9 +171,15 @@ export function buildCamPaymentPayload({
   camId,
   allocations,
 }) {
+  // Use paisa if provided, otherwise convert from rupees
+  const finalAmountPaisa = amountPaisa !== undefined
+    ? amountPaisa
+    : (amount ? Math.round(amount * 100) : 0);
+
   const payload = {
     tenant: tenantId,
-    amount,
+    amountPaisa: finalAmountPaisa,
+    amount: finalAmountPaisa / 100, // Backward compatibility
     paymentDate,
     nepaliDate,
     paymentMethod,
@@ -180,7 +212,8 @@ export function buildCamPaymentPayload({
  */
 export function buildExternalPaymentPayload({
   payerName,
-  amount,
+  amountPaisa,
+  amount, // Backward compatibility
   paymentDate,
   nepaliDate,
   paymentMethod = "bank_transfer",
@@ -189,9 +222,15 @@ export function buildExternalPaymentPayload({
   note,
   adminId,
 }) {
+  // Use paisa if provided, otherwise convert from rupees
+  const finalAmountPaisa = amountPaisa !== undefined
+    ? amountPaisa
+    : (amount ? Math.round(amount * 100) : 0);
+
   const payload = {
     payerName,
-    amount,
+    amountPaisa: finalAmountPaisa,
+    amount: finalAmountPaisa / 100, // Backward compatibility
     paymentDate,
     paymentMethod,
     paymentStatus,
@@ -214,14 +253,21 @@ export async function createExternalPaymentRecord(paymentPayload, session) {
 }
 
 /**
- * Calculate total payment amount from allocations (rent + CAM)
+ * Calculate total payment amount from allocations (rent + CAM) in paisa
  * @param {Object} allocations - Payment allocations object
- * @returns {number} Total amount
+ * @returns {number} Total amount in paisa (integer)
  */
 export function calculateTotalAmountFromAllocations(allocations) {
-  const rentAmount = allocations?.rent?.amount || 0;
-  const camAmount = allocations?.cam?.paidAmount || 0;
-  return rentAmount + camAmount;
+  // Use paisa fields if available, otherwise convert from rupees
+  const rentAmountPaisa = allocations?.rent?.amountPaisa !== undefined
+    ? allocations.rent.amountPaisa
+    : (allocations?.rent?.amount ? Math.round(allocations.rent.amount * 100) : 0);
+  
+  const camAmountPaisa = allocations?.cam?.paidAmountPaisa !== undefined
+    ? allocations.cam.paidAmountPaisa
+    : (allocations?.cam?.paidAmount ? Math.round(allocations.cam.paidAmount * 100) : 0);
+  
+  return rentAmountPaisa + camAmountPaisa;
 }
 
 /**
@@ -245,7 +291,11 @@ export function validateCamAllocation(camAllocation) {
     return { isValid: false, error: "Invalid CAM ID format" };
   }
 
-  if (!camAllocation.paidAmount || camAllocation.paidAmount <= 0) {
+  const camAmountPaisa = camAllocation.paidAmountPaisa !== undefined
+    ? camAllocation.paidAmountPaisa
+    : (camAllocation.paidAmount ? Math.round(camAllocation.paidAmount * 100) : 0);
+  
+  if (!camAmountPaisa || camAmountPaisa <= 0) {
     return { isValid: false, error: "CAM paidAmount must be greater than 0" };
   }
 
@@ -258,8 +308,16 @@ export function validateCamAllocation(camAllocation) {
  * @returns {string} Payment type: 'rent_only', 'cam_only', 'both', or 'none'
  */
 export function getPaymentType(allocations) {
-  const hasRent = allocations?.rent?.rentId && allocations?.rent?.amount > 0;
-  const hasCam = allocations?.cam?.camId && allocations?.cam?.paidAmount > 0;
+  const rentAmountPaisa = allocations?.rent?.amountPaisa !== undefined
+    ? allocations.rent.amountPaisa
+    : (allocations?.rent?.amount ? Math.round(allocations.rent.amount * 100) : 0);
+  
+  const camAmountPaisa = allocations?.cam?.paidAmountPaisa !== undefined
+    ? allocations.cam.paidAmountPaisa
+    : (allocations?.cam?.paidAmount ? Math.round(allocations.cam.paidAmount * 100) : 0);
+  
+  const hasRent = allocations?.rent?.rentId && rentAmountPaisa > 0;
+  const hasCam = allocations?.cam?.camId && camAmountPaisa > 0;
 
   if (hasRent && hasCam) return "both";
   if (hasRent) return "rent_only";
@@ -294,13 +352,18 @@ export function prepareCamDataForReceipt(cam) {
     nepaliMonths[cam.nepaliMonth - 1] || `Month ${cam.nepaliMonth}`;
   const paidFor = `${monthName} ${cam.nepaliYear}`;
 
+  const amountPaisa = cam.amountPaisa || (cam.amount ? Math.round(cam.amount * 100) : 0);
+  const paidAmountPaisa = cam.paidAmountPaisa || (cam.paidAmount ? Math.round(cam.paidAmount * 100) : 0);
+
   return {
     paidFor,
     monthName,
     nepaliMonth: cam.nepaliMonth,
     nepaliYear: cam.nepaliYear,
-    amount: cam.amount,
-    paidAmount: cam.paidAmount,
+    amountPaisa,
+    amount: amountPaisa / 100, // Backward compatibility
+    paidAmountPaisa,
+    paidAmount: paidAmountPaisa / 100, // Backward compatibility
     status: cam.status,
   };
 }
@@ -329,7 +392,10 @@ export function validatePaymentAllocations(allocations) {
     if (!mongoose.Types.ObjectId.isValid(allocations.rent.rentId)) {
       return { isValid: false, error: "Invalid rent ID format" };
     }
-    if (!allocations.rent.amount || allocations.rent.amount <= 0) {
+    const rentAmountPaisa = allocations.rent.amountPaisa !== undefined
+      ? allocations.rent.amountPaisa
+      : (allocations.rent.amount ? Math.round(allocations.rent.amount * 100) : 0);
+    if (!rentAmountPaisa || rentAmountPaisa <= 0) {
       return { isValid: false, error: "Rent amount must be greater than 0" };
     }
   }

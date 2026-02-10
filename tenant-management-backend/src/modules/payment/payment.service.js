@@ -30,6 +30,7 @@ import {
 import { emitPaymentNotification } from "../../utils/payment.Notification.js";
 import { handleReceiptSideEffects } from "../../reciepts/reciept.service.js";
 import { Cam } from "../cam/cam.model.js";
+import { rupeesToPaisa, formatMoney } from "../../utils/moneyUtil.js";
 
 export async function createPayment(paymentData) {
   const session = await mongoose.startSession();
@@ -37,6 +38,14 @@ export async function createPayment(paymentData) {
 
   try {
     const { allocations, ...rest } = paymentData;
+
+    // ✅ Convert allocation amounts to paisa if needed
+    if (allocations?.rent && allocations.rent.amount && !allocations.rent.amountPaisa) {
+      allocations.rent.amountPaisa = rupeesToPaisa(allocations.rent.amount);
+    }
+    if (allocations?.cam && allocations.cam.paidAmount && !allocations.cam.paidAmountPaisa) {
+      allocations.cam.paidAmountPaisa = rupeesToPaisa(allocations.cam.paidAmount);
+    }
 
     // Validate allocations
     const validation = validatePaymentAllocations(allocations);
@@ -54,9 +63,12 @@ export async function createPayment(paymentData) {
         .populate("property")
         .session(session);
       if (!rent) throw new Error("Rent not found");
+      
+      // ✅ Use paisa amount
+      const rentAmountPaisa = allocations.rent.amountPaisa || rupeesToPaisa(allocations.rent.amount || 0);
       applyPaymentToRent(
         rent,
-        allocations.rent.amount,
+        rentAmountPaisa,
         paymentData.paymentDate,
         paymentData.receivedBy
       );
@@ -70,22 +82,25 @@ export async function createPayment(paymentData) {
         .populate("property")
         .session(session);
       if (!cam) throw new Error("CAM not found");
+      
+      // ✅ Use paisa amount
+      const camAmountPaisa = allocations.cam.paidAmountPaisa || rupeesToPaisa(allocations.cam.paidAmount || 0);
       applyPaymentToCam(
         cam,
-        allocations.cam.paidAmount,
+        camAmountPaisa,
         paymentData.paymentDate,
         paymentData.receivedBy
       );
       await cam.save({ session });
     }
 
-    // Calculate total amount using helper function
-    const totalAmount = calculateTotalAmountFromAllocations(allocations);
+    // Calculate total amount in paisa using helper function
+    const totalAmountPaisa = calculateTotalAmountFromAllocations(allocations);
 
     const bankAccount = await applyPaymentToBank({
       paymentMethod: paymentData.paymentMethod,
       bankAccountId: paymentData.bankAccountId,
-      amount: totalAmount,
+      amountPaisa: totalAmountPaisa,
       session,
     });
 
@@ -93,7 +108,7 @@ export async function createPayment(paymentData) {
     const rentPayload = rent
       ? buildRentPaymentPayload({
           tenantId: paymentData.tenantId,
-          amount: allocations.rent.amount,
+          amountPaisa: allocations.rent.amountPaisa || rupeesToPaisa(allocations.rent.amount || 0),
           paymentDate: paymentData.paymentDate,
           nepaliDate: paymentData.nepaliDate,
           paymentMethod: paymentData.paymentMethod,
@@ -111,7 +126,7 @@ export async function createPayment(paymentData) {
     const camPayload = cam
       ? buildCamPaymentPayload({
           tenantId: paymentData.tenantId,
-          amount: allocations.cam.paidAmount,
+          amountPaisa: allocations.cam.paidAmountPaisa || rupeesToPaisa(allocations.cam.paidAmount || 0),
           paymentDate: paymentData.paymentDate,
           nepaliDate: paymentData.nepaliDate,
           paymentMethod: paymentData.paymentMethod,
@@ -133,26 +148,30 @@ export async function createPayment(paymentData) {
 
     // Record payment in ledger (rent: DR Cash/Bank CR AR; CAM handled below when we have builder)
     if (rent) {
+      const rentAmountPaisa = allocations.rent.amountPaisa || rupeesToPaisa(allocations.rent.amount || 0);
       const rentPaymentPayload = buildPaymentReceivedJournal(
         payment,
         rent,
-        allocations.rent.amount
+        rentAmountPaisa
       );
       await ledgerService.postJournalEntry(rentPaymentPayload, session);
     }
     if (cam) {
+      const camAmountPaisa = allocations.cam.paidAmountPaisa || rupeesToPaisa(allocations.cam.paidAmount || 0);
       const camPaymentPayload = buildCamPaymentReceivedJournal(
         payment,
         cam,
-        allocations.cam.paidAmount
+        camAmountPaisa
       );
       await ledgerService.postJournalEntry(camPaymentPayload, session);
     }
 
     // Record rent revenue only if rent payment exists
     if (rent) {
+      const rentAmountPaisa = allocations.rent.amountPaisa || rupeesToPaisa(allocations.rent.amount || 0);
       await recordRentRevenue({
-        amount: allocations.rent.amount,
+        amountPaisa: rentAmountPaisa,
+        amount: rentAmountPaisa / 100, // Backward compatibility
         paymentDate: payment.paymentDate,
         tenantId: paymentData.tenantId,
         rentId: rent._id,
@@ -164,8 +183,10 @@ export async function createPayment(paymentData) {
 
     // Record CAM revenue only if CAM payment exists
     if (cam) {
+      const camAmountPaisa = allocations.cam.paidAmountPaisa || rupeesToPaisa(allocations.cam.paidAmount || 0);
       await recordCamRevenue({
-        amount: allocations.cam.paidAmount,
+        amountPaisa: camAmountPaisa,
+        amount: camAmountPaisa / 100, // Backward compatibility
         paymentDate: payment.paymentDate,
         tenantId: paymentData.tenantId,
         camId: cam._id,
@@ -183,7 +204,8 @@ export async function createPayment(paymentData) {
       {
         paymentId: payment._id,
         tenantId: payment.tenant,
-        amount: payment.amount,
+        amountPaisa: payment.amountPaisa,
+        amount: payment.amount, // Backward compatibility
         paymentDate: payment.paymentDate,
         paymentMethod: payment.paymentMethod,
         paymentStatus: payment.paymentStatus,
@@ -274,9 +296,14 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
       day: "numeric",
     });
 
-    // Get rent and CAM amounts from allocations
-    const rentAmount = payment.allocations?.rent?.amount || 0;
-    const camAmount = payment.allocations?.cam?.paidAmount || 0;
+    // Get rent and CAM amounts from allocations (convert paisa to rupees for display)
+    const rentAmountPaisa = payment.allocations?.rent?.amountPaisa || 
+      (payment.allocations?.rent?.amount ? rupeesToPaisa(payment.allocations.rent.amount) : 0);
+    const camAmountPaisa = payment.allocations?.cam?.paidAmountPaisa || 
+      (payment.allocations?.cam?.paidAmount ? rupeesToPaisa(payment.allocations.cam.paidAmount) : 0);
+    
+    const rentAmount = rentAmountPaisa / 100;
+    const camAmount = camAmountPaisa / 100;
 
     const pdfData = {
       receiptNo: payment._id.toString(),
@@ -311,9 +338,7 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
               <td style="padding:20px;">
                 <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${tenantName},</h2>
                 <p style="color:#555555; font-size:16px; line-height:1.5;">
-                  Thank you for your payment of <strong>Rs. ${
-                    payment.amount
-                  }</strong> for <strong>${paidFor}</strong>.
+                  Thank you for your payment of <strong>${formatMoney(payment.amountPaisa || rupeesToPaisa(payment.amount || 0))}</strong> for <strong>${paidFor}</strong>.
                 </p>
                 <p style="color:#555555; font-size:16px; line-height:1.5;">
                   Please find your payment receipt attached to this email.
@@ -331,7 +356,7 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
                       ? `CAM Charges: Rs. ${camAmount.toLocaleString()}<br>`
                       : ""
                   }
-                  Total Amount: Rs. ${payment.amount.toLocaleString()}<br>
+                  Total Amount: ${formatMoney(payment.amountPaisa || rupeesToPaisa(payment.amount || 0))}<br>
                   Payment Date: ${formattedPaymentDate}<br>
                   Payment Method: ${pdfData.paymentMethod}
                 </p>

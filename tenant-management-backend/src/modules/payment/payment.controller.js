@@ -91,21 +91,32 @@ export async function getRentSummary(req, res) {
       {
         $group: {
           _id: null,
-          totalCollected: { $sum: "$paidAmount" },
-          totalDue: { $sum: "$rentAmount" },
-          totalPending: {
+          // ✅ Use paisa fields for aggregation (precise integer arithmetic)
+          totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
+          totalDuePaisa: { $sum: "$rentAmountPaisa" },
+          totalPendingPaisa: {
             $sum: {
-              $cond: [{ $eq: ["$status", "pending"] }, "$rentAmount", 0],
+              $cond: [{ $eq: ["$status", "pending"] }, "$rentAmountPaisa", 0],
             },
           },
         },
       },
     ]);
 
-    const data = summary[0] || {
-      totalCollected: 0,
-      totalDue: 0,
-      totalPending: 0,
+    const summaryData = summary[0] || {
+      totalCollectedPaisa: 0,
+      totalDuePaisa: 0,
+      totalPendingPaisa: 0,
+    };
+
+    // Convert to rupees for response (backward compatibility)
+    const data = {
+      totalCollectedPaisa: summaryData.totalCollectedPaisa,
+      totalDuePaisa: summaryData.totalDuePaisa,
+      totalPendingPaisa: summaryData.totalPendingPaisa,
+      totalCollected: summaryData.totalCollectedPaisa / 100,
+      totalDue: summaryData.totalDuePaisa / 100,
+      totalPending: summaryData.totalPendingPaisa / 100,
     };
 
     res.json({

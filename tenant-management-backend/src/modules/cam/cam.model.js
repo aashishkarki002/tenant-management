@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 const camSchema = new mongoose.Schema(
   {
@@ -24,12 +25,42 @@ const camSchema = new mongoose.Schema(
     },
 
     month: { type: Number, required: true, min: 1, max: 12 },
-  nepaliMonth: { type: Number, required: true, min: 1, max: 12 },
-  nepaliYear: { type: Number, required: true },
-  nepaliDate: { type: Date, required: true },
+    nepaliMonth: { type: Number, required: true, min: 1, max: 12 },
+    nepaliYear: { type: Number, required: true },
+    nepaliDate: { type: Date, required: true },
     year: { type: Number, required: true },
-    amount: { type: Number, required: true },
-    paidAmount: { type: Number, required: true, default: 0, min: 0 },
+    
+    // ============================================
+    // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
+    // ============================================
+    amountPaisa: {
+      type: Number,
+      required: true,
+      min: 0,
+      get: paisaToRupees,
+    },
+    paidAmountPaisa: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      get: paisaToRupees,
+    },
+    
+    // Backward compatibility getters
+    amount: {
+      type: Number,
+      get: function () {
+        return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
+      },
+    },
+    paidAmount: {
+      type: Number,
+      get: function () {
+        return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
+      },
+    },
+    
     status: {
       type: String,
       enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
@@ -47,17 +78,37 @@ const camSchema = new mongoose.Schema(
 
 // Unique index to prevent duplicate CAM entries for same tenant + month/year
 camSchema.index({ tenant: 1, nepaliMonth: 1, nepaliYear: 1 }, { unique: true });
-camSchema.virtual("remainingAmount").get(function () {
-  return this.amount - this.paidAmount;
+
+camSchema.virtual("remainingAmountPaisa").get(function () {
+  return this.amountPaisa - this.paidAmountPaisa;
 });
+
+camSchema.virtual("remainingAmount").get(function () {
+  return paisaToRupees(this.remainingAmountPaisa);
+});
+
 camSchema.pre("save", function () {
-  if (this.paidAmount > this.amount) {
+  // Ensure amounts are integers
+  if (!Number.isInteger(this.amountPaisa)) {
+    throw new Error(
+      `CAM amount must be integer paisa, got: ${this.amountPaisa}`,
+    );
+  }
+  if (!Number.isInteger(this.paidAmountPaisa)) {
+    throw new Error(
+      `Paid amount must be integer paisa, got: ${this.paidAmountPaisa}`,
+    );
+  }
+
+  // Validate paid amount doesn't exceed CAM amount (in paisa)
+  if (this.paidAmountPaisa > this.amountPaisa) {
     throw new Error("Paid amount cannot exceed CAM amount");
   }
 
-  if (this.paidAmount === 0) {
+  // Update status based on payment (using paisa values)
+  if (this.paidAmountPaisa === 0) {
     this.status = "pending";
-  } else if (this.paidAmount >= this.amount) {
+  } else if (this.paidAmountPaisa >= this.amountPaisa) {
     this.status = "paid";
   } else {
     this.status = "partially_paid";

@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
+
 const rentSchema = new mongoose.Schema(
   {
     tenant: {
@@ -32,23 +34,59 @@ const rentSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
-    rentAmount: {
+
+    // ============================================
+    // BACKWARD COMPATIBILITY FIELDS (computed from paisa)
+    // ============================================
+
+    lateFee: {
+      type: Number,
+      get: function () {
+        return this.lateFeePaisa ? paisaToRupees(this.lateFeePaisa) : 0;
+      },
+    },
+
+    // ============================================
+    // PRIMARY FIELDS (stored as INTEGER PAISA)
+    // ============================================
+
+    // Rent amount in paisa
+    rentAmountPaisa: {
       type: Number,
       required: true,
       min: 0,
+      get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
     },
-    paidAmount: {
+
+    // Paid amount in paisa
+    paidAmountPaisa: {
       type: Number,
       required: true,
       default: 0,
       min: 0,
+      get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
     },
-    tdsAmount: {
+
+    // TDS amount in paisa
+    tdsAmountPaisa: {
       type: Number,
       required: true,
       default: 0,
       min: 0,
+      get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
     },
+
+    // Late fee in paisa
+    lateFeePaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+      get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter (FIXED!)
+    },
+
+    // ============================================
+    // STATUS & METADATA
+    // ============================================
     status: {
       type: String,
       enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
@@ -86,11 +124,6 @@ const rentSchema = new mongoose.Schema(
       ref: "Admin",
       required: true,
     },
-    lateFee: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
     lateFeeDate: {
       type: Date,
       default: null,
@@ -99,7 +132,6 @@ const rentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
     lateFeeStatus: {
       type: String,
       enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
@@ -121,6 +153,10 @@ const rentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    // ============================================
+    // UNIT BREAKDOWN
+    // ============================================
     unitBreakdown: [
       {
         unit: {
@@ -128,10 +164,23 @@ const rentSchema = new mongoose.Schema(
           ref: "Unit",
           required: true,
         },
-        // Rent details for this specific unit
-        rentAmount: { type: Number, required: true },
-        tdsAmount: { type: Number, default: 0 },
-        paidAmount: { type: Number, default: 0 },
+
+        // Financial fields in PAISA
+        rentAmountPaisa: {
+          type: Number,
+          required: true,
+          get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+        },
+        tdsAmountPaisa: {
+          type: Number,
+          default: 0,
+          get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+        },
+        paidAmountPaisa: {
+          type: Number,
+          default: 0,
+          get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+        },
 
         // Status for this unit
         status: {
@@ -147,7 +196,7 @@ const rentSchema = new mongoose.Schema(
       },
     ],
 
-    //  Flag to indicate if this uses new unit-based system
+    // Flag to indicate if this uses new unit-based system
     useUnitBreakdown: { type: Boolean, default: false },
 
     lastPaidBy: {
@@ -156,34 +205,77 @@ const rentSchema = new mongoose.Schema(
       default: null,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-rentSchema.virtual("remainingAmount").get(function () {
-  return this.rentAmount - this.paidAmount;
+// ============================================
+// VIRTUAL FIELDS
+// ============================================
+
+// Remaining amount (calculated from paisa)
+rentSchema.virtual("remainingAmountPaisa").get(function () {
+  return this.rentAmountPaisa - this.paidAmountPaisa;
 });
-rentSchema.set("toJSON", { virtuals: true });
-rentSchema.set("toObject", { virtuals: true });
+
+rentSchema.virtual("remainingAmount").get(function () {
+  return paisaToRupees(this.remainingAmountPaisa);
+});
+
+rentSchema.virtual("effectiveRentPaisa").get(function () {
+  return this.rentAmountPaisa - this.tdsAmountPaisa;
+});
+
+rentSchema.virtual("effectiveRent").get(function () {
+  return paisaToRupees(this.effectiveRentPaisa);
+});
+
+rentSchema.set("toJSON", { virtuals: true, getters: true });
+rentSchema.set("toObject", { virtuals: true, getters: true });
+
+// ============================================
+// PRE-SAVE HOOK
+// ============================================
 
 rentSchema.pre("save", function () {
-  if (this.paidAmount > this.rentAmount - this.tdsAmount) {
-    throw new Error("Paid amount cannot be greater than rent amount after tds");
+  // Ensure all paisa values are integers before saving
+  if (this.rentAmountPaisa != null && !Number.isInteger(this.rentAmountPaisa)) {
+    this.rentAmountPaisa = Math.round(this.rentAmountPaisa);
   }
-  const effectiveRentAmount = this.rentAmount - (this.tdsAmount || 0);
-  if (this.paidAmount === 0) {
+  if (this.tdsAmountPaisa != null && !Number.isInteger(this.tdsAmountPaisa)) {
+    this.tdsAmountPaisa = Math.round(this.tdsAmountPaisa);
+  }
+  if (this.paidAmountPaisa != null && !Number.isInteger(this.paidAmountPaisa)) {
+    this.paidAmountPaisa = Math.round(this.paidAmountPaisa);
+  }
+  if (this.lateFeePaisa != null && !Number.isInteger(this.lateFeePaisa)) {
+    this.lateFeePaisa = Math.round(this.lateFeePaisa);
+  }
+
+  // Validate paid amount doesn't exceed rent (in paisa)
+  const effectiveRentPaisa = this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
+
+  if (this.paidAmountPaisa > effectiveRentPaisa) {
+    throw new Error("Paid amount cannot be greater than rent amount after TDS");
+  }
+
+  // Update status based on payment (using paisa values)
+  if (this.paidAmountPaisa === 0) {
     this.status = "pending";
-  } else if (this.paidAmount >= effectiveRentAmount) {
+  } else if (this.paidAmountPaisa >= effectiveRentPaisa) {
     this.status = "paid";
   } else {
     this.status = "partially_paid";
   }
 
+  // Update unit breakdown statuses (if using unit breakdown)
   if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
     this.unitBreakdown.forEach((ub) => {
-      const effectiveAmount = ub.rentAmount - (ub.tdsAmount || 0);
-      if (ub.paidAmount === 0) {
+      const effectiveAmountPaisa =
+        ub.rentAmountPaisa - (ub.tdsAmountPaisa || 0);
+
+      if (ub.paidAmountPaisa === 0) {
         ub.status = "pending";
-      } else if (ub.paidAmount >= effectiveAmount) {
+      } else if (ub.paidAmountPaisa >= effectiveAmountPaisa) {
         ub.status = "paid";
       } else {
         ub.status = "partially_paid";
@@ -192,60 +284,122 @@ rentSchema.pre("save", function () {
   }
 });
 
+// ============================================
+// INDEXES
+// ============================================
 rentSchema.index(
   { tenant: 1, nepaliMonth: 1, nepaliYear: 1 },
-  { unique: true }
+  { unique: true },
 );
 rentSchema.index({ nepaliDueDate: 1 });
 rentSchema.index({ tenant: 1, status: 1 });
 rentSchema.index({ englishYear: 1, englishMonth: 1 });
 rentSchema.index({ "unitBreakdown.unit": 1 });
 rentSchema.index({ useUnitBreakdown: 1 });
+
+// ============================================
+// INSTANCE METHODS
+// ============================================
+
+/**
+ * Apply payment to rent (uses paisa internally)
+ * @param {number} amountPaisa - Payment amount in paisa
+ * @param {Date} paymentDate - Date of payment
+ * @param {ObjectId} receivedBy - Admin who received payment
+ * @param {Array} unitPayments - Optional per-unit payment breakdown
+ */
 rentSchema.methods.applyPayment = function (
-  amount,
+  amountPaisa,
   paymentDate,
   receivedBy,
-  unitPayments = null
+  unitPayments = null,
 ) {
-  this.paidAmount += amount;
+  // Add to total paid amount (in paisa)
+  this.paidAmountPaisa += amountPaisa;
   this.lastPaidDate = paymentDate;
   this.lastPaidBy = receivedBy;
 
   // If unit payments specified and we're using breakdown
   if (unitPayments && this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
-    unitPayments.forEach(({ unitId, amount: unitAmount }) => {
+    unitPayments.forEach(({ unitId, amountPaisa: unitAmountPaisa }) => {
       const unitEntry = this.unitBreakdown.find(
-        (ub) => ub.unit.toString() === unitId.toString()
+        (ub) => ub.unit.toString() === unitId.toString(),
       );
       if (unitEntry) {
-        unitEntry.paidAmount += unitAmount;
+        unitEntry.paidAmountPaisa += unitAmountPaisa;
       }
     });
   }
+
+  // Status will be updated by pre-save hook
 };
 
-// 👇 NEW METHOD: Get payment status for specific unit
+/**
+ * Get payment status for specific unit
+ * @param {ObjectId} unitId - Unit ID
+ * @returns {Object|null} Payment status object or null
+ */
 rentSchema.methods.getUnitPaymentStatus = function (unitId) {
   if (!this.useUnitBreakdown || !this.unitBreakdown?.length) {
     return null;
   }
 
   const unitEntry = this.unitBreakdown.find(
-    (ub) => ub.unit.toString() === unitId.toString()
+    (ub) => ub.unit.toString() === unitId.toString(),
   );
 
   if (!unitEntry) {
     return null;
   }
 
-  const effectiveAmount = unitEntry.rentAmount - (unitEntry.tdsAmount || 0);
+  const effectiveAmountPaisa =
+    unitEntry.rentAmountPaisa - (unitEntry.tdsAmountPaisa || 0);
 
   return {
     status: unitEntry.status,
-    paidAmount: unitEntry.paidAmount,
-    remainingAmount: effectiveAmount - unitEntry.paidAmount,
-    rentAmount: unitEntry.rentAmount,
-    tdsAmount: unitEntry.tdsAmount,
+    paidAmountPaisa: unitEntry.paidAmountPaisa,
+    remainingAmountPaisa: effectiveAmountPaisa - unitEntry.paidAmountPaisa,
+    rentAmountPaisa: unitEntry.rentAmountPaisa,
+    tdsAmountPaisa: unitEntry.tdsAmountPaisa,
+
+    // Formatted values
+    paidAmount: paisaToRupees(unitEntry.paidAmountPaisa),
+    remainingAmount: paisaToRupees(
+      effectiveAmountPaisa - unitEntry.paidAmountPaisa,
+    ),
+    rentAmount: paisaToRupees(unitEntry.rentAmountPaisa),
+    tdsAmount: paisaToRupees(unitEntry.tdsAmountPaisa),
   };
 };
+
+/**
+ * Get financial summary
+ */
+rentSchema.methods.getFinancialSummary = function () {
+  return {
+    // Paisa values (precise)
+    paisa: {
+      rentAmount: this.rentAmountPaisa,
+      tdsAmount: this.tdsAmountPaisa,
+      effectiveRent: this.effectiveRentPaisa,
+      paidAmount: this.paidAmountPaisa,
+      remainingAmount: this.remainingAmountPaisa,
+      lateFee: this.lateFeePaisa || 0,
+    },
+
+    // Formatted rupee values (for display)
+    formatted: {
+      rentAmount: `Rs. ${paisaToRupees(this.rentAmountPaisa).toLocaleString()}`,
+      tdsAmount: `Rs. ${paisaToRupees(this.tdsAmountPaisa).toLocaleString()}`,
+      effectiveRent: `Rs. ${paisaToRupees(this.effectiveRentPaisa).toLocaleString()}`,
+      paidAmount: `Rs. ${paisaToRupees(this.paidAmountPaisa).toLocaleString()}`,
+      remainingAmount: `Rs. ${paisaToRupees(this.remainingAmountPaisa).toLocaleString()}`,
+      lateFee: `Rs. ${paisaToRupees(this.lateFeePaisa || 0).toLocaleString()}`,
+    },
+
+    status: this.status,
+    rentFrequency: this.rentFrequency,
+  };
+};
+
 export const Rent = mongoose.model("Rent", rentSchema);

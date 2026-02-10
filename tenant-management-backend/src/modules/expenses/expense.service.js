@@ -4,13 +4,16 @@ import Admin from "../auth/admin.Model.js";
 import mongoose from "mongoose";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildExpenseJournal } from "../ledger/journal-builders/index.js";
+import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+
 export async function createExpense(expenseData) {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
     const {
       source,
-      amount,
+      amountPaisa,
+      amount, // Backward compatibility
       EnglishDate,
       nepaliDate,
       nepaliMonth,
@@ -24,6 +27,12 @@ export async function createExpense(expenseData) {
       createdBy,
       expenseCode,
     } = expenseData;
+    
+    // ✅ Convert to paisa if needed
+    const finalAmountPaisa = amountPaisa !== undefined
+      ? amountPaisa
+      : (amount ? rupeesToPaisa(amount) : 0);
+    
     const expenseSource = await ExpenseSource.findById(source).session(session);
     if (!expenseSource) {
       throw new Error("Expense source not found");
@@ -38,7 +47,8 @@ export async function createExpense(expenseData) {
       [
         {
           source: expenseSource._id,
-          amount,
+          amountPaisa: finalAmountPaisa,
+          amount: finalAmountPaisa / 100, // Backward compatibility
           EnglishDate,
           nepaliDate,
           nepaliMonth,
