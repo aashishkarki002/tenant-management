@@ -27,7 +27,7 @@ export const RentTableRow = ({ rent, cams, onOpenPaymentDialog }) => {
           {rent.tenant ? rent.tenant.name : "No Tenant Assigned"}
         </div>
         <div className="text-sm text-muted-foreground">
-          {rent.innerBlock?.name || "N/A"} - {rent.block?.name || "N/A"}
+          {rent.innerBlock?.name || "N/A"} - {rent.block?.name || "N/A"}-
           {rent.units?.map((unit) => unit.name).join(", ")}
         </div>
       </TableCell>

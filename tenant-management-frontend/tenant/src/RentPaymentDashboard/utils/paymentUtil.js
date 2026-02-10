@@ -17,15 +17,33 @@ export const findMatchingCam = (cams, rent) => {
 
 /**
  * Calculates payment amounts (rent, CAM, total) for a given rent
- * @param {Object} rent - Rent object
- * @param {Array} cams - Array of CAM objects
- * @returns {Object} Object with rentAmount, camAmount, and totalDue
+ * Handles both paisa and rupee formats for backward compatibility
+ * @param {Object} rent - Rent object (may have rentAmountPaisa or rentAmount)
+ * @param {Array} cams - Array of CAM objects (may have amountPaisa or amount)
+ * @returns {Object} Object with rentAmount, camAmount, and totalDue (in rupees for display)
  */
 export const getPaymentAmounts = (rent, cams) => {
   const matchingCam = findMatchingCam(cams, rent);
-  const rentAmount = rent.rentAmount || 0;
-  const camAmount = matchingCam?.amount || rent.tenant?.camCharges || 0;
-  return { rentAmount, camAmount, totalDue: rentAmount + camAmount };
+  
+  // ✅ Read from paisa fields if available, otherwise use rupee fields
+  // Convert paisa to rupees for display (divide by 100)
+  const rentAmountPaisa = rent.rentAmountPaisa || (rent.rentAmount ? rent.rentAmount * 100 : 0);
+  const rentAmount = rentAmountPaisa / 100;
+  
+  const camAmountPaisa = matchingCam?.amountPaisa || 
+    (matchingCam?.amount ? matchingCam.amount * 100 : 0) ||
+    (rent.tenant?.camChargesPaisa || (rent.tenant?.camCharges ? rent.tenant.camCharges * 100 : 0));
+  const camAmount = camAmountPaisa / 100;
+  
+  return { 
+    rentAmount, 
+    camAmount, 
+    totalDue: rentAmount + camAmount,
+    // Also return paisa values for calculations
+    rentAmountPaisa,
+    camAmountPaisa,
+    totalDuePaisa: rentAmountPaisa + camAmountPaisa,
+  };
 };
 
 /**

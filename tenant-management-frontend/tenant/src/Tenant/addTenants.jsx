@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -36,7 +35,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Spinner } from "@/components/ui/spinner";
-import { Combobox, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxValue, ComboboxList, ComboboxInput } from "@/components/ui/combobox.jsx";
+import { Combobox, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxValue, ComboboxList, ComboboxInput, ComboboxChips, ComboboxChip, ComboboxChipsInput } from "@/components/ui/combobox.jsx";
 
 import useUnits from "../hooks/use-units";
 import useProperty from "../hooks/use-property";
@@ -84,7 +83,7 @@ function AddTenants() {
   const formik = useFormik({
     initialValues: {
       name: "",
-      unitNumber: "",
+      unitNumber: [],
       phone: "",
       email: "",
       address: "",
@@ -360,6 +359,34 @@ function AddTenants() {
     return getInnerBlocksForBlock(formik.values.block);
   }, [formik.values.block, property]);
 
+  // Filter units based on selected block and innerBlock
+  const filteredUnits = useMemo(() => {
+    if (!units || !Array.isArray(units)) return [];
+
+    // If no block is selected, return empty array
+    if (!formik.values.block) return [];
+
+    // Filter by block
+    // Handle both populated (object with _id) and non-populated (string/ObjectId) cases
+    let filtered = units.filter((unit) => {
+      const unitBlockId = unit.block?._id || unit.block;
+      // Convert both to strings for comparison to handle ObjectId vs string
+      return String(unitBlockId) === String(formik.values.block);
+    });
+
+    // If innerBlock is selected, filter by innerBlock as well
+    if (formik.values.innerBlock) {
+      filtered = filtered.filter((unit) => {
+        const unitInnerBlockId = unit.innerBlock?._id || unit.innerBlock;
+        // Convert both to strings for comparison to handle ObjectId vs string
+        return String(unitInnerBlockId) === String(formik.values.innerBlock);
+      });
+    }
+
+    return filtered;
+  }, [units, formik.values.block, formik.values.innerBlock]);
+
+
   function handleClose() {
     if (typeof window !== "undefined") {
       window.history.back();
@@ -370,8 +397,9 @@ function AddTenants() {
     "personalInfo",
     "leaseInfo",
     "propertyDetails",
-    "documents",
     "financials",
+    "documents",
+
   ];
 
   const handleNext = () => {
@@ -388,14 +416,129 @@ function AddTenants() {
     }
   };
 
-  const totalFields = Object.keys(formik.initialValues).length;
-  const filledFields = Object.values(formik.values).filter(
-    (value) =>
-      value !== "" &&
-      value !== null &&
-      (typeof value !== "object" || Object.keys(value).length > 0)
-  ).length;
-  const completionRate = Math.round((filledFields / totalFields) * 100);
+  /**
+   * Progress is based only on required fields per step.
+   * - Arrays (e.g. unitNumber) count complete only when non-empty.
+   * - unitFinancials counts complete only when all selected units have all required financial fields.
+   * - Conditional: securityDeposit not required when paymentMethod === "bank_guarantee";
+   *   bankGuaranteePhoto required only when bank_guarantee; chequeAmount/chequeNumber only when cheque.
+   * - Optional fields do not affect progress.
+   */
+  const completionRate = useMemo(() => {
+    const v = formik.values;
+    const paymentMethod = v.paymentMethod;
+
+    // --- personalInfo: required — name, phone, email, address ---
+    const personalRequired = ["name", "phone", "email", "address"];
+    const personalFilled = personalRequired.filter(
+      (key) => v[key] != null && String(v[key]).trim() !== ""
+    ).length;
+    const personalTotal = personalRequired.length;
+
+    // --- leaseInfo: required — leaseStartDate, leaseEndDate, keyHandoverDate, spaceHandoverDate (spaceReturnedDate optional) ---
+    const leaseRequired = [
+      "leaseStartDate",
+      "leaseEndDate",
+      "keyHandoverDate",
+      "spaceHandoverDate",
+    ];
+    const leaseFilled = leaseRequired.filter(
+      (key) => v[key] != null && String(v[key]).trim() !== ""
+    ).length;
+    const leaseTotal = leaseRequired.length;
+
+    // --- propertyDetails: block, innerBlock, unitNumber (array = complete only when non-empty) ---
+    const blockOk = v.block != null && String(v.block).trim() !== "";
+    const innerBlockOk = v.innerBlock != null && String(v.innerBlock).trim() !== "";
+    const unitNumberOk =
+      Array.isArray(v.unitNumber) && v.unitNumber.length > 0;
+    const propertyFilled = [blockOk, innerBlockOk, unitNumberOk].filter(Boolean).length;
+    const propertyTotal = 3;
+
+    // --- financials: paymentMethod, conditional fields, unitFinancials, tdsPercentage, rentPaymentFrequency, status ---
+    let financialsFilled = 0;
+    let financialsTotal = 0;
+
+    // paymentMethod (required)
+    financialsTotal += 1;
+    if (v.paymentMethod != null && String(v.paymentMethod).trim() !== "") {
+      financialsFilled += 1;
+    }
+
+    // Conditional: bank_guarantee → bankGuaranteePhoto; cheque → chequeAmount, chequeNumber
+    if (paymentMethod === "bank_guarantee") {
+      financialsTotal += 1;
+      if (v.bankGuaranteePhoto != null) financialsFilled += 1;
+    } else if (paymentMethod === "cheque") {
+      financialsTotal += 2;
+      if (v.chequeAmount != null && String(v.chequeAmount).trim() !== "")
+        financialsFilled += 1;
+      if (v.chequeNumber != null && String(v.chequeNumber).trim() !== "")
+        financialsFilled += 1;
+    }
+
+    // unitFinancials: complete only when all selected units have required financial fields (securityDeposit not required when bank_guarantee)
+    financialsTotal += 1;
+    const unitIds = Array.isArray(v.unitNumber) ? v.unitNumber : [];
+    const needSecurityDeposit = paymentMethod !== "bank_guarantee";
+    const uf = v.unitFinancials || {};
+    const unitFinancialsComplete =
+      unitIds.length > 0 &&
+      unitIds.every((unitId) => {
+        const u = uf[unitId];
+        if (!u) return false;
+        const sqftOk = u.sqft != null && String(u.sqft).trim() !== "";
+        const priceOk = u.pricePerSqft != null && String(u.pricePerSqft).trim() !== "";
+        const camOk = u.camPerSqft != null && String(u.camPerSqft).trim() !== "";
+        const secOk =
+          !needSecurityDeposit ||
+          (u.securityDeposit != null && String(u.securityDeposit).trim() !== "");
+        return sqftOk && priceOk && camOk && secOk;
+      });
+    if (unitFinancialsComplete) financialsFilled += 1;
+
+    // tdsPercentage (required; has default "0")
+    financialsTotal += 1;
+    if (v.tdsPercentage != null && String(v.tdsPercentage).trim() !== "") {
+      financialsFilled += 1;
+    }
+
+    // rentPaymentFrequency, status (required)
+    financialsTotal += 2;
+    if (v.rentPaymentFrequency != null && String(v.rentPaymentFrequency).trim() !== "")
+      financialsFilled += 1;
+    if (v.status != null && String(v.status).trim() !== "") financialsFilled += 1;
+
+    // --- documents: at least one document + dateOfAgreementSigned ---
+    const hasDocuments =
+      v.documents != null &&
+      typeof v.documents === "object" &&
+      Object.values(v.documents).some(
+        (files) => Array.isArray(files) && files.length > 0
+      );
+    const hasAgreementDate =
+      v.dateOfAgreementSigned != null &&
+      String(v.dateOfAgreementSigned).trim() !== "";
+    const documentsFilled = [hasDocuments, hasAgreementDate].filter(Boolean).length;
+    const documentsTotal = 2;
+
+    const totalFilled =
+      personalFilled +
+      leaseFilled +
+      propertyFilled +
+      financialsFilled +
+      documentsFilled;
+    const totalRequired =
+      personalTotal +
+      leaseTotal +
+      propertyTotal +
+      financialsTotal +
+      documentsTotal;
+
+    if (totalRequired === 0) return 0;
+    const pct = Math.round((totalFilled / totalRequired) * 100);
+    return Math.min(100, Math.max(0, pct));
+  }, [formik.values]);
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-5xl mx-auto">
@@ -549,6 +692,9 @@ function AddTenants() {
                     onValueChange={(value) => {
                       formik.setFieldValue("block", value);
                       formik.setFieldValue("innerBlock", "");
+                      // Clear unit selection when block changes
+                      formik.setFieldValue("unitNumber", []);
+                      formik.setFieldValue("unitFinancials", {});
                     }}
                   >
                     <SelectTrigger className="w-1/4">
@@ -573,9 +719,12 @@ function AddTenants() {
                   <Select
                     name="innerBlock"
                     value={formik.values.innerBlock}
-                    onValueChange={(value) =>
-                      formik.setFieldValue("innerBlock", value)
-                    }
+                    onValueChange={(value) => {
+                      formik.setFieldValue("innerBlock", value);
+                      // Clear unit selection when innerBlock changes
+                      formik.setFieldValue("unitNumber", []);
+                      formik.setFieldValue("unitFinancials", {});
+                    }}
                     disabled={!formik.values.block}
                   >
                     <SelectTrigger className="w-1/4">
@@ -597,11 +746,8 @@ function AddTenants() {
                   </Select>
                   <Label>Unit Number</Label>
                   <Combobox
-                    className="w-1/2"
-                    items={units}
                     multiple
-                    name="unitNumber"
-                    value={formik.values.unitNumber}
+                    value={formik.values.unitNumber || []}
                     onValueChange={(value) => {
                       formik.setFieldValue("unitNumber", value);
 
@@ -633,18 +779,49 @@ function AddTenants() {
                       formik.setFieldValue("unitFinancials", newUnitFinancials);
                     }}
                   >
-                    <ComboboxInput
-                      placeholder="Select Unit"
-                      showTrigger={true}
-                      className="w-1/4"
-                    />
+                    <ComboboxTrigger className="w-1/2">
+                      <ComboboxChips>
+                        <ComboboxValue>
+                          {formik.values.unitNumber && Array.isArray(formik.values.unitNumber) && formik.values.unitNumber.length > 0
+                            ? formik.values.unitNumber.map((unitId) => {
+                              const unit = units?.find((u) => String(u._id) === String(unitId));
+                              return (
+                                <ComboboxChip key={unitId} value={unitId}>
+                                  {unit?.name || unitId}
+                                </ComboboxChip>
+                              );
+                            })
+                            : null}
+                        </ComboboxValue>
+                        <ComboboxChipsInput
+                          placeholder={
+                            !formik.values.block
+                              ? "Select block first"
+                              : filteredUnits.length === 0
+                                ? "No units available"
+                                : "Select units..."
+                          }
+                          disabled={!formik.values.block}
+                        />
+                      </ComboboxChips>
+                    </ComboboxTrigger>
                     <ComboboxContent>
                       <ComboboxList>
-                        {units && units.map((unit) => (
-                          <ComboboxItem key={unit._id} value={unit._id}>
-                            {unit.name}
-                          </ComboboxItem>
-                        ))}
+                        {filteredUnits && filteredUnits.length > 0 ? (
+                          filteredUnits.map((unit) => (
+                            <ComboboxItem key={unit._id} value={unit._id}>
+                              {unit.name}
+                            </ComboboxItem>
+                          ))
+                        ) : (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                            {!formik.values.block
+                              ? "Please select a block first"
+                              : formik.values.innerBlock
+                                ? "No units available for selected inner block"
+                                : "No units available for selected block"}
+                          </div>
+                        )}
                       </ComboboxList>
                     </ComboboxContent>
                   </Combobox>

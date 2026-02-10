@@ -49,17 +49,20 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
         : null;
 
       // Build allocations object
+      // ✅ Convert rupees to paisa (multiply by 100) for API
       const allocations = {};
       if (rentAllocation > 0 && values.rentId) {
         allocations.rent = {
           rentId: values.rentId,
-          amount: rentAllocation,
+          amountPaisa: Math.round(rentAllocation * 100), // Convert to paisa
+          amount: rentAllocation, // Backward compatibility
         };
       }
       if (camAllocation > 0 && matchingCam?._id) {
         allocations.cam = {
           camId: matchingCam._id,
-          paidAmount: camAllocation,
+          paidAmountPaisa: Math.round(camAllocation * 100), // Convert to paisa
+          paidAmount: camAllocation, // Backward compatibility
         };
       }
 
@@ -68,7 +71,8 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
         paymentMethod: String(values.paymentMethod || "").toLowerCase(),
         note: values.notes || "",
         allocations: allocations,
-        amount: values.amount, // Total amount paid
+        amountPaisa: Math.round(values.amount * 100), // Convert total to paisa
+        amount: values.amount, // Backward compatibility - total amount paid in rupees
       };
 
       try {

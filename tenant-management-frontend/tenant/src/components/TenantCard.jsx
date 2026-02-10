@@ -144,7 +144,11 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
             </div>
             <div className="flex justify-between items-center">
               <p className="text-black text-sm">Rent</p>
-              <p className="text-black text-sm ml-3">₹{tenant?.totalRent}</p>
+              <p className="text-black text-sm ml-3">₹{tenant?.quarterlyRentAmountPaisa}</p>
+            </div>
+            <div className="flex justify-between items-center">
+              <p className="text-black text-sm">Frequency</p>
+              <p className="text-black text-sm ml-3">{tenant?.rentPaymentFrequency}</p>
             </div>
           </div>
           <div className="flex justify-between items-center w-full">
@@ -164,7 +168,7 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
           </div>
           <Separator className="my-2" />
           <div className="flex justify-between items-center w-full ">
-            <Button 
+            <Button
               className="bg-gray-50 text-black mr-2 w-30  hover:bg-green-100 hover:text-green-600"
               onClick={() => {
                 if (tenant?.phone) {
@@ -175,7 +179,7 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
               <Phone className="w-5 h-5 mr-2 stroke-black transition-colors duration-200 hover:stroke-green-600" />
               Call
             </Button>
-            <Button 
+            <Button
               className="bg-gray-50 text-black mr-2 w-30 hover:bg-blue-100 hover:text-blue-600"
               onClick={() => {
                 if (tenant?.email) {
