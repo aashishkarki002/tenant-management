@@ -22,7 +22,7 @@ const paymentSchema = new mongoose.Schema({
     ref: "BankAccount",
     required: false,
   },
-  
+
   // ============================================
   // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
   // ============================================
@@ -30,17 +30,8 @@ const paymentSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 0,
-    get: paisaToRupees,
   },
-  
-  // Backward compatibility getter
-  amount: {
-    type: Number,
-    get: function () {
-      return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
-    },
-  },
-  
+
   paymentDate: {
     type: Date,
     required: true,
@@ -89,7 +80,8 @@ const paymentSchema = new mongoose.Schema({
     rent: {
       rentId: mongoose.Schema.Types.ObjectId,
       amountPaisa: Number, // Amount in paisa
-      amount: { // Backward compatibility
+      amount: {
+        // Backward compatibility
         type: Number,
         get: function () {
           return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
@@ -99,13 +91,15 @@ const paymentSchema = new mongoose.Schema({
     cam: {
       camId: mongoose.Schema.Types.ObjectId,
       paidAmountPaisa: Number, // Paid amount in paisa
-      paidAmount: { // Backward compatibility
+      paidAmount: {
+        // Backward compatibility
         type: Number,
         get: function () {
           return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
         },
       },
-      amount: { // Keep for backward compatibility
+      amount: {
+        // Keep for backward compatibility
         type: Number,
         get: function () {
           return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;

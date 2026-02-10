@@ -58,7 +58,7 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
 
   // Format payment date
   const formattedPaymentDate = new Date(
-    paymentData.paymentDate
+    paymentData.paymentDate,
   ).toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -107,10 +107,10 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
     paymentMethod === "cheque"
       ? "Cheque"
       : paymentMethod === "bank_transfer"
-      ? "Bank Transfer"
-      : paymentMethod === "cash"
-      ? "Cash"
-      : paymentMethod || "N/A";
+        ? "Bank Transfer"
+        : paymentMethod === "cash"
+          ? "Cash"
+          : paymentMethod || "N/A";
 
   // Prepare PDF data in the format expected by generatePDFToBuffer
   const pdfData = {

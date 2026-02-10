@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
-
+import { formatMoney } from "../utils/moneyUtil.js";
 dotenv.config();
 
 export const transporter = nodemailer.createTransport({
@@ -55,10 +55,7 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
     }, 30000); // 30 seconds timeout
   });
 
-  await Promise.race([
-    transporter.sendMail(mailOptions),
-    timeoutPromise,
-  ]);
+  await Promise.race([transporter.sendMail(mailOptions), timeoutPromise]);
 };
 
 /** Send welcome email using template; caller only passes data. */
@@ -68,7 +65,7 @@ export const sendWelcomeEmail = async (data) => {
   const { subject, html } = emailTemplates.welcome({ tenantName });
   return sendEmail({ to, subject, html });
 };
- async function sendPaymentReceiptEmail({
+async function sendPaymentReceiptEmail({
   to,
   tenantName,
   amount,
@@ -117,21 +114,29 @@ export const sendWelcomeEmail = async (data) => {
                 <span class="label">Receipt No:</span>
                 <span class="value">${receiptNo}</span>
               </div>
-              ${rentAmount && rentAmount > 0 ? `
+              ${
+                rentAmount && rentAmount > 0
+                  ? `
               <div class="details-row">
                 <span class="label">Rent Amount:</span>
                 <span class="value">Rs. ${rentAmount.toLocaleString()}</span>
               </div>
-              ` : ''}
-              ${camAmount && camAmount > 0 ? `
+              `
+                  : ""
+              }
+              ${
+                camAmount && camAmount > 0
+                  ? `
               <div class="details-row">
                 <span class="label">CAM Charges:</span>
                 <span class="value">Rs. ${camAmount.toLocaleString()}</span>
               </div>
-              ` : ''}
+              `
+                  : ""
+              }
               <div class="details-row">
                 <span class="label">Total Amount Paid:</span>
-                <span class="value"><strong>Rs. ${amount.toLocaleString()}</strong></span>
+                <span class="value"><strong>${formatMoney(amount)}</strong></span>
               </div>
               <div class="details-row">
                 <span class="label">Payment Date:</span>

@@ -38,16 +38,18 @@ export async function createPayment(paymentData) {
 
   try {
     const { allocations, ...rest } = paymentData;
-
-    // ✅ Convert allocation amounts to paisa if needed
-    if (allocations?.rent && allocations.rent.amount && !allocations.rent.amountPaisa) {
+    console.log("allocations", allocations);
+    if (allocations?.rent?.amount) {
       allocations.rent.amountPaisa = rupeesToPaisa(allocations.rent.amount);
     }
-    if (allocations?.cam && allocations.cam.paidAmount && !allocations.cam.paidAmountPaisa) {
-      allocations.cam.paidAmountPaisa = rupeesToPaisa(allocations.cam.paidAmount);
+    if (allocations?.cam?.paidAmount) {
+      allocations.cam.paidAmountPaisa = rupeesToPaisa(
+        allocations.cam.paidAmount,
+      );
     }
-
-    // Validate allocations
+    console.log("allocations for rent", allocations.rent.amountPaisa);
+    console.log("allocations for cam", allocations.cam.paidAmountPaisa);
+    // ✅ Convert allocation amounts to paisa if needed
     const validation = validatePaymentAllocations(allocations);
     if (!validation.isValid) {
       throw new Error(validation.error);
@@ -63,14 +65,16 @@ export async function createPayment(paymentData) {
         .populate("property")
         .session(session);
       if (!rent) throw new Error("Rent not found");
-      
+
       // ✅ Use paisa amount
-      const rentAmountPaisa = allocations.rent.amountPaisa || rupeesToPaisa(allocations.rent.amount || 0);
+      const rentAmountPaisa =
+        allocations.rent.amountPaisa ||
+        rupeesToPaisa(allocations.rent.amount || 0);
       applyPaymentToRent(
         rent,
         rentAmountPaisa,
         paymentData.paymentDate,
-        paymentData.receivedBy
+        paymentData.receivedBy,
       );
       await rent.save({ session });
     }
@@ -82,14 +86,16 @@ export async function createPayment(paymentData) {
         .populate("property")
         .session(session);
       if (!cam) throw new Error("CAM not found");
-      
+
       // ✅ Use paisa amount
-      const camAmountPaisa = allocations.cam.paidAmountPaisa || rupeesToPaisa(allocations.cam.paidAmount || 0);
+      const camAmountPaisa =
+        allocations.cam.paidAmountPaisa ||
+        rupeesToPaisa(allocations.cam.paidAmount || 0);
       applyPaymentToCam(
         cam,
         camAmountPaisa,
         paymentData.paymentDate,
-        paymentData.receivedBy
+        paymentData.receivedBy,
       );
       await cam.save({ session });
     }
@@ -108,7 +114,7 @@ export async function createPayment(paymentData) {
     const rentPayload = rent
       ? buildRentPaymentPayload({
           tenantId: paymentData.tenantId,
-          amountPaisa: allocations.rent.amountPaisa || rupeesToPaisa(allocations.rent.amount || 0),
+          amountPaisa: allocations.rent.amountPaisa,
           paymentDate: paymentData.paymentDate,
           nepaliDate: paymentData.nepaliDate,
           paymentMethod: paymentData.paymentMethod,
@@ -126,7 +132,7 @@ export async function createPayment(paymentData) {
     const camPayload = cam
       ? buildCamPaymentPayload({
           tenantId: paymentData.tenantId,
-          amountPaisa: allocations.cam.paidAmountPaisa || rupeesToPaisa(allocations.cam.paidAmount || 0),
+          amountPaisa: allocations.cam.paidAmountPaisa,
           paymentDate: paymentData.paymentDate,
           nepaliDate: paymentData.nepaliDate,
           paymentMethod: paymentData.paymentMethod,
@@ -143,35 +149,40 @@ export async function createPayment(paymentData) {
 
     // Merge payloads into a single payment payload
     const payload = mergePaymentPayloads(rentPayload, camPayload);
+    console.log("payload", payload);
 
     const payment = await createPaymentRecord(payload, session);
 
     // Record payment in ledger (rent: DR Cash/Bank CR AR; CAM handled below when we have builder)
     if (rent) {
-      const rentAmountPaisa = allocations.rent.amountPaisa || rupeesToPaisa(allocations.rent.amount || 0);
+      const rentAmountPaisa =
+        allocations.rent.amountPaisa ||
+        rupeesToPaisa(allocations.rent.amount || 0);
       const rentPaymentPayload = buildPaymentReceivedJournal(
         payment,
         rent,
-        rentAmountPaisa
+        rentAmountPaisa,
       );
       await ledgerService.postJournalEntry(rentPaymentPayload, session);
     }
     if (cam) {
-      const camAmountPaisa = allocations.cam.paidAmountPaisa || rupeesToPaisa(allocations.cam.paidAmount || 0);
+      const camAmountPaisa =
+        allocations.cam.paidAmountPaisa ||
+        rupeesToPaisa(allocations.cam.paidAmount || 0);
       const camPaymentPayload = buildCamPaymentReceivedJournal(
         payment,
         cam,
-        camAmountPaisa
+        camAmountPaisa,
       );
       await ledgerService.postJournalEntry(camPaymentPayload, session);
     }
 
     // Record rent revenue only if rent payment exists
     if (rent) {
-      const rentAmountPaisa = allocations.rent.amountPaisa || rupeesToPaisa(allocations.rent.amount || 0);
+      const rentAmountPaisa = allocations.rent.amountPaisa;
       await recordRentRevenue({
         amountPaisa: rentAmountPaisa,
-        amount: rentAmountPaisa / 100, // Backward compatibility
+
         paymentDate: payment.paymentDate,
         tenantId: paymentData.tenantId,
         rentId: rent._id,
@@ -183,10 +194,9 @@ export async function createPayment(paymentData) {
 
     // Record CAM revenue only if CAM payment exists
     if (cam) {
-      const camAmountPaisa = allocations.cam.paidAmountPaisa || rupeesToPaisa(allocations.cam.paidAmount || 0);
+      const camAmountPaisa = allocations.cam.paidAmountPaisa;
       await recordCamRevenue({
         amountPaisa: camAmountPaisa,
-        amount: camAmountPaisa / 100, // Backward compatibility
         paymentDate: payment.paymentDate,
         tenantId: paymentData.tenantId,
         camId: cam._id,
@@ -205,7 +215,6 @@ export async function createPayment(paymentData) {
         paymentId: payment._id,
         tenantId: payment.tenant,
         amountPaisa: payment.amountPaisa,
-        amount: payment.amount, // Backward compatibility
         paymentDate: payment.paymentDate,
         paymentMethod: payment.paymentMethod,
         paymentStatus: payment.paymentStatus,
@@ -213,7 +222,7 @@ export async function createPayment(paymentData) {
         receivedBy: payment.receivedBy,
         bankAccountId: payment.bankAccount,
       },
-      paymentData.adminId
+      paymentData.adminId,
     ).catch(console.error);
 
     // Ensure IDs are passed correctly (handle both ObjectId and string formats)
@@ -289,7 +298,7 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
     const paidFor = `${monthName} ${rent.nepaliYear}`;
 
     const formattedPaymentDate = new Date(
-      payment.paymentDate
+      payment.paymentDate,
     ).toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
@@ -297,11 +306,17 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
     });
 
     // Get rent and CAM amounts from allocations (convert paisa to rupees for display)
-    const rentAmountPaisa = payment.allocations?.rent?.amountPaisa || 
-      (payment.allocations?.rent?.amount ? rupeesToPaisa(payment.allocations.rent.amount) : 0);
-    const camAmountPaisa = payment.allocations?.cam?.paidAmountPaisa || 
-      (payment.allocations?.cam?.paidAmount ? rupeesToPaisa(payment.allocations.cam.paidAmount) : 0);
-    
+    const rentAmountPaisa =
+      payment.allocations?.rent?.amountPaisa ||
+      (payment.allocations?.rent?.amount
+        ? rupeesToPaisa(payment.allocations.rent.amount)
+        : 0);
+    const camAmountPaisa =
+      payment.allocations?.cam?.paidAmountPaisa ||
+      (payment.allocations?.cam?.paidAmount
+        ? rupeesToPaisa(payment.allocations.cam.paidAmount)
+        : 0);
+
     const rentAmount = rentAmountPaisa / 100;
     const camAmount = camAmountPaisa / 100;
 
@@ -410,7 +425,7 @@ export const getFilteredPaymentHistoryService = async (
   tenantId,
   startDate,
   endDate,
-  paymentMethod
+  paymentMethod,
 ) => {
   try {
     const filter = buildFilter({
@@ -446,7 +461,7 @@ export const logPaymentActivity = async (
   paymentId,
   activityType,
   adminId = null,
-  metadata = {}
+  metadata = {},
 ) => {
   try {
     const { PaymentActivity } = await import("./paymentActivity.model.js");

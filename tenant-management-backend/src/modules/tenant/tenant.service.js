@@ -6,22 +6,13 @@ import { sendWelcomeEmail } from "../../config/nodemailer.js";
 import { createTenantTransaction } from "./services/tenant.create.js";
 import { uploadSingleFile } from "./helpers/fileUploadHelper.js"; // ✅ NEW: Direct upload
 
-/**
- * REFACTORED TENANT SERVICE
- *
- * Changes:
- * ✅ Removed fs import (no longer needed)
- * ✅ Removed saveTempFile (no longer needed)
- * ✅ updateTenant now uses uploadSingleFile (streams, no disk I/O)
- * ✅ All other functions unchanged
- */
-
 export async function createTenant(body, files, adminId) {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     if (body.unitNumber && !body.units) {
+      console.log("body.unitNumber", body.unitNumber);
       body.units = [body.unitNumber];
     }
 
@@ -97,31 +88,36 @@ export async function createTenant(body, files, adminId) {
 }
 
 export async function getTenants() {
+  // Fetch tenants with populated relations
   const tenants = await Tenant.find({ isDeleted: false })
-    .populate({ path: "property", match: { isDeleted: { $ne: true } } })
-    .populate({ path: "block", match: { isDeleted: { $ne: true } } })
-    .populate({ path: "innerBlock", match: { isDeleted: { $ne: true } } })
-    .populate({ path: "units", match: { isDeleted: { $ne: true } } });
+    .populate({
+      path: "property",
+      match: { isDeleted: { $ne: true } },
+      select: "name address",
+    })
+    .populate({
+      path: "block",
+      match: { isDeleted: { $ne: true } },
+      select: "name",
+    })
+    .populate({
+      path: "innerBlock",
+      match: { isDeleted: { $ne: true } },
+      select: "name",
+    })
+    .populate({
+      path: "units",
+      match: { isDeleted: { $ne: true } },
+      select: "unitNumber sqft price",
+    });
 
-  const validTenants = tenants.filter((tenant) => {
-    if (
-      tenant.units &&
-      Array.isArray(tenant.units) &&
-      tenant.units.length > 0
-    ) {
-      const validUnits = tenant.units.filter((unit) => unit !== null);
-      if (validUnits.length > 0) {
-        tenant.units = validUnits;
-        return true;
-      }
-    }
-    if (!tenant.units || tenant.units.length === 0) {
-      tenant.units = [];
-    }
-    return true;
-  });
+  // Filter out tenants with no valid units
+  const validTenants = tenants.filter(
+    (tenant) => Array.isArray(tenant.units) && tenant.units.length > 0,
+  );
 
-  return validTenants;
+  // Convert to JSON so virtuals are applied
+  return validTenants.map((tenant) => tenant.toJSON());
 }
 
 export async function getTenantById(id) {
@@ -142,15 +138,6 @@ export async function getTenantById(id) {
   return tenant;
 }
 
-/**
- * ✨ REFACTORED: updateTenant
- *
- * Changes:
- * ❌ REMOVED: saveTempFile, fs.unlinkSync (disk I/O)
- * ✅ ADDED: uploadSingleFile (stream-based, no disk)
- *
- * Performance: 3-5x faster for file uploads
- */
 export async function updateTenant(tenantId, body, files) {
   const existingTenant = await Tenant.findById(tenantId);
   if (!existingTenant) {

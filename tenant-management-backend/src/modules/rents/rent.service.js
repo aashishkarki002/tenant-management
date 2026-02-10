@@ -18,19 +18,291 @@ import {
   paisaToRupees,
   formatMoney,
 } from "../../utils/moneyUtil.js";
-import { calculateRentTotals } from "./helpers/rentTotal.helper.js";
 
 dotenv.config();
 
 /**
- * ✅ REFACTORED: Handle monthly rents with integer paisa
+ *  HELPER: Calculate rent totals from rent document
+ * Handles both unit breakdown and legacy direct amounts
  *
- * Key changes:
- * - All rent amounts stored as paisa (integers)
- * - No floating point calculations
- * - Precise financial data
+ * @param {Object} rent - Rent document (mongoose object or plain object)
+ * @returns {Object} Totals in paisa
  */
-const handleMonthlyRents = async (adminId) => {
+function calculateRentTotals(rent) {
+  // If using unit breakdown, sum from units
+  if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
+    const rentAmountPaisa = rent.unitBreakdown.reduce(
+      (sum, unit) => sum + (unit.rentAmountPaisa || 0),
+      0,
+    );
+
+    const tdsAmountPaisa = rent.unitBreakdown.reduce(
+      (sum, unit) => sum + (unit.tdsAmountPaisa || 0),
+      0,
+    );
+
+    const paidAmountPaisa = rent.unitBreakdown.reduce(
+      (sum, unit) => sum + (unit.paidAmountPaisa || 0),
+      0,
+    );
+
+    return {
+      rentAmountPaisa,
+      tdsAmountPaisa,
+      paidAmountPaisa,
+      remainingAmountPaisa: rentAmountPaisa - paidAmountPaisa,
+      netAmountPaisa: rentAmountPaisa - tdsAmountPaisa, // After TDS
+    };
+  }
+
+  // Otherwise use direct amounts from rent document
+  // Access raw paisa values without getters
+  const getRawPaisa = (field) => {
+    if (rent.get && typeof rent.get === "function") {
+      // Mongoose document - bypass getters
+      return rent.get(field, null, { getters: false }) || 0;
+    }
+    // Plain object
+    return rent[field] || 0;
+  };
+
+  const rentAmountPaisa = getRawPaisa("rentAmountPaisa");
+  const tdsAmountPaisa = getRawPaisa("tdsAmountPaisa");
+  const paidAmountPaisa = getRawPaisa("paidAmountPaisa");
+
+  return {
+    rentAmountPaisa,
+    tdsAmountPaisa,
+    paidAmountPaisa,
+    remainingAmountPaisa: rentAmountPaisa - paidAmountPaisa,
+    netAmountPaisa: rentAmountPaisa - tdsAmountPaisa,
+  };
+}
+
+/**
+ * ✅ REFACTORED: Get all rents with formatted amounts
+ *
+ * Returns rents with:
+ * - totals: Raw paisa values (integers) for calculations
+ * - formatted: Human-readable money strings for display
+ */
+export async function getRentsService() {
+  try {
+    const rents = await Rent.find()
+      .sort({ nepaliDueDate: 1 })
+      .populate({
+        path: "tenant",
+        match: { isDeleted: false },
+        select: "name email",
+      })
+      .populate({ path: "innerBlock", select: "name" })
+      .populate({ path: "block", select: "name" })
+      .populate({ path: "property", select: "name" })
+      .populate({ path: "units", select: "name" });
+
+    const filteredRents = rents.filter((rent) => rent.tenant);
+
+    const rentsWithFormatted = filteredRents.map((rent) => {
+      // Convert to plain object WITHOUT getters (they interfere)
+      const rentObj = rent.toObject({
+        virtuals: false,
+        getters: false, // ✅ CRITICAL: Don't apply paisa→rupees getters
+      });
+
+      // Calculate totals from unit breakdown or direct amounts
+      const totals = calculateRentTotals(rent);
+
+      // Get late fee (direct access, no getter)
+      const lateFeePaisa =
+        rent.get("lateFeePaisa", null, { getters: false }) || 0;
+
+      return {
+        ...rentObj,
+
+        // ✅ RAW PAISA VALUES - for frontend calculations
+        totals: {
+          rentAmountPaisa: totals.rentAmountPaisa,
+          tdsAmountPaisa: totals.tdsAmountPaisa,
+          paidAmountPaisa: totals.paidAmountPaisa,
+          remainingAmountPaisa: totals.remainingAmountPaisa,
+          netAmountPaisa: totals.netAmountPaisa,
+          lateFeePaisa,
+
+          // Grand total (rent + late fee - what tenant owes)
+          totalDuePaisa: totals.remainingAmountPaisa + lateFeePaisa,
+        },
+
+        // ✅ FORMATTED STRINGS - for display
+        formatted: {
+          rentAmount: formatMoney(totals.rentAmountPaisa),
+          tdsAmount: formatMoney(totals.tdsAmountPaisa),
+          paidAmount: formatMoney(totals.paidAmountPaisa),
+          remainingAmount: formatMoney(totals.remainingAmountPaisa),
+          netAmount: formatMoney(totals.netAmountPaisa),
+          lateFee: formatMoney(lateFeePaisa),
+          totalDue: formatMoney(totals.remainingAmountPaisa + lateFeePaisa),
+        },
+      };
+    });
+
+    return {
+      success: true,
+      rents: rentsWithFormatted,
+    };
+  } catch (error) {
+    console.error("Error fetching rents:", error);
+    return {
+      success: false,
+      message: "Rents fetching failed",
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * ✅ REFACTORED: Get single rent by ID with formatted amounts
+ */
+export async function getRentByIdService(rentId) {
+  try {
+    const rent = await Rent.findById(rentId)
+      .populate("tenant")
+      .populate("innerBlock")
+      .populate("block")
+      .populate("property")
+      .populate("units")
+      .populate({
+        path: "unitBreakdown.unit",
+        select: "name",
+      });
+
+    if (!rent) {
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Rent not found",
+      };
+    }
+
+    const rentObj = rent.toObject({
+      virtuals: false,
+      getters: false,
+    });
+
+    const totals = calculateRentTotals(rent);
+    const lateFeePaisa =
+      rent.get("lateFeePaisa", null, { getters: false }) || 0;
+
+    return {
+      success: true,
+      rent: {
+        ...rentObj,
+        totals: {
+          rentAmountPaisa: totals.rentAmountPaisa,
+          tdsAmountPaisa: totals.tdsAmountPaisa,
+          paidAmountPaisa: totals.paidAmountPaisa,
+          remainingAmountPaisa: totals.remainingAmountPaisa,
+          netAmountPaisa: totals.netAmountPaisa,
+          lateFeePaisa,
+          totalDuePaisa: totals.remainingAmountPaisa + lateFeePaisa,
+        },
+        formatted: {
+          rentAmount: formatMoney(totals.rentAmountPaisa),
+          tdsAmount: formatMoney(totals.tdsAmountPaisa),
+          paidAmount: formatMoney(totals.paidAmountPaisa),
+          remainingAmount: formatMoney(totals.remainingAmountPaisa),
+          netAmount: formatMoney(totals.netAmountPaisa),
+          lateFee: formatMoney(lateFeePaisa),
+          totalDue: formatMoney(totals.remainingAmountPaisa + lateFeePaisa),
+        },
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching rent:", error);
+    return {
+      success: false,
+      message: "Rent fetching failed",
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * ✅ REFACTORED: Create new rent with paisa values
+ *
+ * @param {Object} rentData - Rent data (must include *Paisa fields)
+ * @param {mongoose.ClientSession} session - Optional session for transactions
+ */
+export async function createNewRent(rentData, session = null) {
+  try {
+    // ✅ VALIDATION: Ensure paisa values are integers
+    if (!Number.isInteger(rentData.rentAmountPaisa)) {
+      throw new Error(
+        `rentAmountPaisa must be an integer, got: ${rentData.rentAmountPaisa}`,
+      );
+    }
+
+    if (!Number.isInteger(rentData.tdsAmountPaisa)) {
+      throw new Error(
+        `tdsAmountPaisa must be an integer, got: ${rentData.tdsAmountPaisa}`,
+      );
+    }
+
+    // Set defaults
+    rentData.paidAmountPaisa ??= 0;
+    rentData.lateFeePaisa ??= 0;
+
+    // Validate unit breakdown if present
+    if (rentData.unitBreakdown?.length > 0) {
+      rentData.unitBreakdown = rentData.unitBreakdown.map((ub) => {
+        if (!Number.isInteger(ub.rentAmountPaisa)) {
+          throw new Error(
+            `Unit breakdown rentAmountPaisa must be integer, got: ${ub.rentAmountPaisa}`,
+          );
+        }
+
+        return {
+          ...ub,
+          rentAmountPaisa: ub.rentAmountPaisa,
+          tdsAmountPaisa: ub.tdsAmountPaisa ?? 0,
+          paidAmountPaisa: ub.paidAmountPaisa ?? 0,
+        };
+      });
+    }
+
+    const opts = session ? { session } : {};
+    const created = await Rent.create([rentData], opts);
+    const rent = created[0];
+
+    // Access raw paisa values (bypass getters)
+    const rentAmountPaisaRaw = rent.get("rentAmountPaisa", null, {
+      getters: false,
+    });
+
+    console.log("✅ Rent created:", {
+      id: rent._id,
+      amount: formatMoney(rentAmountPaisaRaw),
+      amountPaisa: rentAmountPaisaRaw,
+    });
+
+    return {
+      success: true,
+      message: "Rent created successfully",
+      data: rent,
+    };
+  } catch (error) {
+    console.error("Error creating rent:", error);
+    return {
+      success: false,
+      message: "Failed to create rent",
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * ✅ REFACTORED: Handle monthly rent generation with paisa precision
+ */
+export async function handleMonthlyRents(adminId) {
   const createdBy = adminId || process.env.SYSTEM_ADMIN_ID;
   const {
     npMonth,
@@ -56,13 +328,14 @@ const handleMonthlyRents = async (adminId) => {
     );
     console.log("Overdue rents updated:", overdueResult.modifiedCount);
 
-    // Step 2: Create new monthly rents
+    // Step 2: Get active tenants
     const tenants = await Tenant.find({ status: "active" }).lean();
 
     if (!tenants.length) {
       return { success: false, message: "No tenants found", count: 0 };
     }
 
+    // Step 3: Check existing rents for this month
     const existingRents = await Rent.find({
       nepaliMonth: npMonth,
       nepaliYear: npYear,
@@ -72,16 +345,17 @@ const handleMonthlyRents = async (adminId) => {
       existingRents.map((r) => r.tenant.toString()),
     );
 
-    // ✅ NEW: Create rents with PAISA values
+    // Step 4: Create new monthly rents with PAISA values
     const rentsToInsert = tenants
       .filter((tenant) => !existingTenantIds.has(tenant._id.toString()))
       .map((tenant) => {
-        // Get paisa values from tenant (if available), otherwise convert from rupees
+        // ✅ Get paisa values from tenant (prefer *Paisa fields)
         const rentAmountPaisa =
           tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0);
+
         const tdsAmountPaisa = tenant.tdsPaisa
-          ? tenant.tdsPaisa * tenant.leasedSquareFeet
-          : rupeesToPaisa((tenant.tds || 0) * tenant.leasedSquareFeet);
+          ? tenant.tdsPaisa * (tenant.leasedSquareFeet || 0)
+          : rupeesToPaisa((tenant.tds || 0) * (tenant.leasedSquareFeet || 0));
 
         return {
           tenant: tenant._id,
@@ -97,12 +371,6 @@ const handleMonthlyRents = async (adminId) => {
           tdsAmountPaisa,
           paidAmountPaisa: 0,
           lateFeePaisa: 0,
-
-          // Backward compatibility (can remove later)
-          rentAmount: paisaToRupees(rentAmountPaisa),
-          tdsAmount: paisaToRupees(tdsAmountPaisa),
-          paidAmount: 0,
-          lateFee: 0,
 
           units: tenant.units,
           createdBy,
@@ -157,14 +425,12 @@ const handleMonthlyRents = async (adminId) => {
       error: error.message,
     };
   }
-};
-
-export default handleMonthlyRents;
+}
 
 /**
- * ✅ REFACTORED: Send email to tenants with proper money formatting
+ * ✅ REFACTORED: Send email reminders with properly formatted amounts
  */
-export const sendEmailToTenants = async () => {
+export async function sendEmailToTenants() {
   try {
     const { npMonth, npYear, lastDay } = getNepaliMonthDates();
     const { reminderDay } = checkNepaliSpecialDays({ forceTest: true });
@@ -202,22 +468,21 @@ export const sendEmailToTenants = async () => {
     const io = getIO();
 
     // ✅ Use paisa values for accurate amounts
-    const pendingTenants = allPending.map((item) => ({
-      tenantId: item.tenant?._id,
-      tenantName: item.tenant?.name || "Unknown",
-      tenantEmail: item.tenant?.email || "N/A",
+    const pendingTenants = allPending.map((item) => {
+      const amountPaisa = item.rentAmountPaisa || item.amountPaisa || 0;
 
-      // Get amount in paisa (precise)
-      amountPaisa: item.rentAmountPaisa || item.amountPaisa || 0,
-
-      // Formatted for display
-      amount: formatMoney(item.rentAmountPaisa || item.amountPaisa || 0),
-
-      status: item.status,
-      dueDate: item.nepaliDueDate || lastDay,
-      itemId: item._id,
-      type: item.rentAmountPaisa ? "rent" : "cam",
-    }));
+      return {
+        tenantId: item.tenant?._id,
+        tenantName: item.tenant?.name || "Unknown",
+        tenantEmail: item.tenant?.email || "N/A",
+        amountPaisa,
+        amount: formatMoney(amountPaisa),
+        status: item.status,
+        dueDate: item.nepaliDueDate || lastDay,
+        itemId: item._id,
+        type: item.rentAmountPaisa ? "rent" : "cam",
+      };
+    });
 
     // Create notifications for admins
     const admins = await adminModel.find({ role: "admin" });
@@ -250,79 +515,57 @@ export const sendEmailToTenants = async () => {
           },
         });
       }
-
-      return notification;
     });
 
     await Promise.all(notificationPromises);
 
-    // Group rents and CAMs by tenant
+    // Group by tenant and send emails
     const tenantMap = new Map();
 
     rents.forEach((rent) => {
-      const tenantId = rent.tenant?._id?.toString();
-      if (tenantId) {
-        if (!tenantMap.has(tenantId)) {
-          tenantMap.set(tenantId, {
-            tenant: rent.tenant,
-            rents: [],
-            cams: [],
-          });
-        }
-        tenantMap.get(tenantId).rents.push(rent);
+      if (!rent.tenant?.email) return;
+
+      const key = rent.tenant._id.toString();
+      if (!tenantMap.has(key)) {
+        tenantMap.set(key, { tenant: rent.tenant, rents: [], cams: [] });
       }
+      tenantMap.get(key).rents.push(rent);
     });
 
     cams.forEach((cam) => {
-      const tenantId = cam.tenant?._id?.toString();
-      if (tenantId) {
-        if (!tenantMap.has(tenantId)) {
-          tenantMap.set(tenantId, {
-            tenant: cam.tenant,
-            rents: [],
-            cams: [],
-          });
-        }
-        tenantMap.get(tenantId).cams.push(cam);
+      if (!cam.tenant?.email) return;
+
+      const key = cam.tenant._id.toString();
+      if (!tenantMap.has(key)) {
+        tenantMap.set(key, { tenant: cam.tenant, rents: [], cams: [] });
       }
+      tenantMap.get(key).cams.push(cam);
     });
 
     const sentRentIds = [];
     const sentCamIds = [];
 
-    // ✅ Send emails with properly formatted money amounts
     const emailPromises = Array.from(tenantMap.values()).map(
       async ({ tenant, rents: tenantRents, cams: tenantCams }) => {
-        if (!tenant?.email) {
-          console.log(`No email for tenant: ${tenant?.name || "Unknown"}`);
-          return;
-        }
+        if (!tenant?.email) return;
 
-        // ✅ Calculate totals in PAISA (precise integer arithmetic)
-        const rentTotalPaisa = tenantRents.reduce(
-          (sum, rent) =>
-            sum + (rent.rentAmountPaisa || rupeesToPaisa(rent.rentAmount || 0)),
-          0,
-        );
+        // ✅ Calculate totals in paisa, then format
+        const rentTotalPaisa = tenantRents.reduce((sum, rent) => {
+          const totals = calculateRentTotals(rent);
+          return sum + totals.remainingAmountPaisa;
+        }, 0);
+
         const camTotalPaisa = tenantCams.reduce(
-          (sum, cam) =>
-            sum + (cam.amountPaisa || rupeesToPaisa(cam.amount || 0)),
+          (sum, cam) => sum + (cam.amountPaisa || cam.amount * 100 || 0),
           0,
         );
+
         const totalAmountPaisa = rentTotalPaisa + camTotalPaisa;
 
-        // Skip if no pending amounts
-        if (totalAmountPaisa === 0) {
-          console.log(
-            `Skipping email for tenant ${tenant?.name || "Unknown"} - no pending amounts`,
-          );
-          return;
-        }
-
-        // Get due date
+        // Determine due date
         let nepaliDueDate;
-        if (tenantRents.length > 0 && tenantRents[0].nepaliDueDate) {
-          const dateStr = tenantRents[0].nepaliDueDate.toString();
+        if (tenantRents.length > 0) {
+          const dateStr = tenantRents[0].nepaliDueDate;
           const match = dateStr.match(/2\d{3}-\d{2}-(\d{2})/);
           if (match) {
             const nepaliDay = parseInt(match[1]);
@@ -334,8 +577,6 @@ export const sendEmailToTenants = async () => {
           } else {
             nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
           }
-        } else if (tenantCams.length > 0) {
-          nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
         } else {
           nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
         }
@@ -451,125 +692,6 @@ export const sendEmailToTenants = async () => {
       error: error.message,
     };
   }
-};
-
-/**
- * ✅ REFACTORED: Create new rent with paisa values
- *
- * @param {Object} rentData - Rent data (should include *Paisa fields)
- * @param {mongoose.ClientSession} session - Optional session for transactions
- */
-const createNewRent = async (rentData, session = null) => {
-  try {
-    // Ensure paisa fields are present (convert if needed)
-    if (!rentData.rentAmountPaisa && rentData.rentAmount) {
-      rentData.rentAmountPaisa = rupeesToPaisa(rentData.rentAmount);
-    }
-    if (!rentData.tdsAmountPaisa && rentData.tdsAmount) {
-      rentData.tdsAmountPaisa = rupeesToPaisa(rentData.tdsAmount);
-    }
-    if (!rentData.paidAmountPaisa) {
-      rentData.paidAmountPaisa = rentData.paidAmount
-        ? rupeesToPaisa(rentData.paidAmount)
-        : 0;
-    }
-
-    // Convert unit breakdown to paisa if present
-    if (rentData.unitBreakdown?.length > 0) {
-      rentData.unitBreakdown = rentData.unitBreakdown.map((ub) => ({
-        ...ub,
-        rentAmountPaisa:
-          ub.rentAmountPaisa || rupeesToPaisa(ub.rentAmount || 0),
-        tdsAmountPaisa: ub.tdsAmountPaisa || rupeesToPaisa(ub.tdsAmount || 0),
-        paidAmountPaisa:
-          ub.paidAmountPaisa || rupeesToPaisa(ub.paidAmount || 0),
-      }));
-    }
-
-    const opts = session ? { session } : {};
-    const created = await Rent.create([rentData], opts);
-    const rent = created[0];
-
-    // Access raw paisa value without getter (getters convert to rupees)
-    const rentAmountPaisaRaw = rent.get("rentAmountPaisa", null, {
-      getters: false,
-    });
-
-    console.log("✅ Rent created:", {
-      id: rent._id,
-      amount: formatMoney(rentAmountPaisaRaw),
-      amountPaisa: rentAmountPaisaRaw,
-    });
-
-    return {
-      success: true,
-      message: "Rent created successfully",
-      data: rent,
-    };
-  } catch (error) {
-    console.error("Error creating rent:", error);
-    return {
-      success: false,
-      message: "Failed to create rent",
-      error: error.message,
-    };
-  }
-};
-
-export { createNewRent };
-
-/**
- * ✅ REFACTORED: Get rents with formatted money values
- */
-export async function getRentsService() {
-  try {
-    const rents = await Rent.find()
-      .sort({ nepaliDueDate: 1 })
-      .populate({
-        path: "tenant",
-        match: { isDeleted: false },
-        select: "name email",
-      })
-      .populate({ path: "innerBlock", select: "name" })
-      .populate({ path: "block", select: "name" })
-      .populate({ path: "property", select: "name" })
-      .populate({ path: "units", select: "name" });
-
-    const filteredRents = rents.filter((rent) => rent.tenant);
-
-    const rentsWithFormatted = filteredRents.map((rent) => {
-      const rentObj = rent.toObject({ virtuals: false });
-
-      const totals = calculateRentTotals(rent);
-      console.log("DEBUG RENT TOTALS", {
-        rentId: rent._id.toString(),
-        rentAmountPaisa: totals.rentAmountPaisa,
-        type: typeof totals.rentAmountPaisa,
-      });
-
-      return {
-        ...rentObj,
-        totals, // raw paisa (great for frontend logic)
-        formatted: {
-          rentAmount: formatMoney(totals.rentAmountPaisa),
-          paidAmount: formatMoney(totals.paidAmountPaisa),
-          remainingAmount: formatMoney(totals.remainingAmountPaisa),
-          tdsAmount: formatMoney(totals.tdsAmountPaisa),
-          lateFee: formatMoney(rent.lateFeePaisa || 0),
-        },
-      };
-    });
-
-    return {
-      success: true,
-      rents: rentsWithFormatted,
-    };
-  } catch (error) {
-    console.error("Error fetching rents:", error);
-    return {
-      success: false,
-      message: "Rents fetching failed",
-      error: error.message,
-    };
-  }
 }
+
+export default handleMonthlyRents;

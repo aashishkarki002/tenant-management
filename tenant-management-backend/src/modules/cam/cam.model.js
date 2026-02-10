@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 const camSchema = new mongoose.Schema(
   {
@@ -29,7 +28,7 @@ const camSchema = new mongoose.Schema(
     nepaliYear: { type: Number, required: true },
     nepaliDate: { type: Date, required: true },
     year: { type: Number, required: true },
-    
+
     // ============================================
     // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
     // ============================================
@@ -37,30 +36,14 @@ const camSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
-      get: paisaToRupees,
     },
     paidAmountPaisa: {
       type: Number,
       required: true,
       default: 0,
       min: 0,
-      get: paisaToRupees,
     },
-    
-    // Backward compatibility getters
-    amount: {
-      type: Number,
-      get: function () {
-        return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
-      },
-    },
-    paidAmount: {
-      type: Number,
-      get: function () {
-        return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
-      },
-    },
-    
+
     status: {
       type: String,
       enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
@@ -73,7 +56,7 @@ const camSchema = new mongoose.Schema(
       default: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Unique index to prevent duplicate CAM entries for same tenant + month/year
@@ -81,10 +64,6 @@ camSchema.index({ tenant: 1, nepaliMonth: 1, nepaliYear: 1 }, { unique: true });
 
 camSchema.virtual("remainingAmountPaisa").get(function () {
   return this.amountPaisa - this.paidAmountPaisa;
-});
-
-camSchema.virtual("remainingAmount").get(function () {
-  return paisaToRupees(this.remainingAmountPaisa);
 });
 
 camSchema.pre("save", function () {
@@ -114,6 +93,5 @@ camSchema.pre("save", function () {
     this.status = "partially_paid";
   }
 });
-
 
 export const Cam = mongoose.model("Cam", camSchema);

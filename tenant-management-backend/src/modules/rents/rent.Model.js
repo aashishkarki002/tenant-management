@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { paisaToRupees } from "../../utils/moneyUtil.js";
+import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 
 const rentSchema = new mongoose.Schema(
   {
@@ -55,7 +55,10 @@ const rentSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
-      get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+      validate: {
+        validator: Number.isInteger,
+        message: "rentAmountPaisa must be an integer",
+      },
     },
 
     // Paid amount in paisa
@@ -64,7 +67,10 @@ const rentSchema = new mongoose.Schema(
       required: true,
       default: 0,
       min: 0,
-      get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+      validate: {
+        validator: Number.isInteger,
+        message: "paidAmountPaisa must be an integer",
+      },
     },
 
     // TDS amount in paisa
@@ -73,7 +79,10 @@ const rentSchema = new mongoose.Schema(
       required: true,
       default: 0,
       min: 0,
-      get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+      validate: {
+        validator: Number.isInteger,
+        message: "tdsAmountPaisa must be an integer",
+      },
     },
 
     // Late fee in paisa
@@ -81,7 +90,10 @@ const rentSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
-      get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter (FIXED!)
+      validate: {
+        validator: Number.isInteger,
+        message: "lateFeePaisa must be an integer",
+      },
     },
 
     // ============================================
@@ -169,17 +181,26 @@ const rentSchema = new mongoose.Schema(
         rentAmountPaisa: {
           type: Number,
           required: true,
-          get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+          validate: {
+            validator: Number.isInteger,
+            message: "rentAmountPaisa must be an integer",
+          },
         },
         tdsAmountPaisa: {
           type: Number,
           default: 0,
-          get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+          validate: {
+            validator: Number.isInteger,
+            message: "tdsAmountPaisa must be an integer",
+          },
         },
         paidAmountPaisa: {
           type: Number,
           default: 0,
-          get: (v) => (v == null ? 0 : paisaToRupees(v)), // ✅ Safe getter
+          validate: {
+            validator: Number.isInteger,
+            message: "paidAmountPaisa must be an integer",
+          },
         },
 
         // Status for this unit
@@ -228,9 +249,20 @@ rentSchema.virtual("effectiveRentPaisa").get(function () {
 rentSchema.virtual("effectiveRent").get(function () {
   return paisaToRupees(this.effectiveRentPaisa);
 });
+rentSchema.virtual("rentAmountFormatted").get(function () {
+  return formatMoney(this.rentAmountPaisa);
+});
 
-rentSchema.set("toJSON", { virtuals: true, getters: true });
-rentSchema.set("toObject", { virtuals: true, getters: true });
+rentSchema.virtual("tdsAmountFormatted").get(function () {
+  return formatMoney(this.tdsAmountPaisa);
+});
+
+rentSchema.virtual("paidAmountFormatted").get(function () {
+  return formatMoney(this.paidAmountPaisa);
+});
+
+rentSchema.set("toJSON", { virtuals: true, getters: false });
+rentSchema.set("toObject", { virtuals: true, getters: false });
 
 // ============================================
 // PRE-SAVE HOOK
@@ -252,16 +284,11 @@ rentSchema.pre("save", function () {
   }
 
   // Validate paid amount doesn't exceed rent (in paisa)
-  const effectiveRentPaisa = this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
-
-  if (this.paidAmountPaisa > effectiveRentPaisa) {
-    throw new Error("Paid amount cannot be greater than rent amount after TDS");
-  }
 
   // Update status based on payment (using paisa values)
   if (this.paidAmountPaisa === 0) {
     this.status = "pending";
-  } else if (this.paidAmountPaisa >= effectiveRentPaisa) {
+  } else if (this.paidAmountPaisa >= this.rentAmountPaisa) {
     this.status = "paid";
   } else {
     this.status = "partially_paid";

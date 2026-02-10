@@ -2,6 +2,7 @@ import { getIO } from "../config/socket.js";
 import Notification from "../modules/notifications/notification.model.js";
 import dotenv from "dotenv";
 import BankAccount from "../modules/banks/BankAccountModel.js";
+import { formatMoney } from "./moneyUtil.js";
 dotenv.config();
 
 export const emitPaymentNotification = async (paymentData, adminId) => {
@@ -12,7 +13,7 @@ export const emitPaymentNotification = async (paymentData, adminId) => {
     const {
       paymentId,
       tenantId,
-      amount,
+      amountPaisa,
       paymentDate,
       paymentMethod,
       paymentStatus,
@@ -36,8 +37,7 @@ export const emitPaymentNotification = async (paymentData, adminId) => {
         : paymentDate
           ? new Date(paymentDate).toLocaleDateString()
           : "N/A";
-    const amountStr =
-      amount != null ? Number(amount).toLocaleString() : "0";
+    const amountStr = formatMoney(amountPaisa);
     const methodStr = paymentMethod || "N/A";
 
     const notificationMessage = `Payment of Rs. ${amountStr} received from tenant on ${dateStr} using ${methodStr}${
@@ -52,7 +52,7 @@ export const emitPaymentNotification = async (paymentData, adminId) => {
       data: {
         paymentId,
         tenantId,
-        amount,
+        amountPaisa,
         paymentDate,
         paymentMethod,
         paymentStatus,

@@ -14,8 +14,6 @@ import { createSd } from "../../securityDeposits/sd.service.js";
 import { calculateQuarterlyRentCycle } from "../../../utils/quarterlyRentHelper.js";
 import { buildCamChargeJournal } from "../../ledger/journal-builders/camCharge.js";
 import buildDocumentsFromFiles from "../helpers/fileUploadHelper.js";
-
-// ✅ NEW: Import money utilities
 import {
   rupeesToPaisa,
   paisaToRupees,
@@ -23,10 +21,8 @@ import {
   divideMoney,
 } from "../../../utils/moneyUtil.js";
 
-// ✅ NEW: Import rent calculator service
 import {
   calculateMultiUnitLease,
-  calculateRentByFrequency,
   buildUnitBreakdown,
 } from "../domain/rent.calculator.service.js";
 
@@ -93,34 +89,48 @@ function calculateMultiUnitLeaseInPaisa(unitLeaseConfigs, tdsPercentage) {
 }
 
 /**
- * ✅ REFACTORED: Calculate rent by frequency using rent.calculator.service
- * Converts results to PAISA for storage
+ * ✅ SIMPLIFIED: Calculate rent by frequency using DIRECT INTEGER MATH
+ * No precision loss from paisa→rupees→paisa conversions
  */
 function calculateRentByFrequencyInPaisa(
   monthlyRentPaisa,
   frequency,
   frequencyMonths = 3,
 ) {
-  // Convert paisa to rupees for calculator service
-  const monthlyRentRupees = paisaToRupees(monthlyRentPaisa);
+  console.log(`\n🔢 Calculate Rent by Frequency:`);
+  console.log(`├─ Monthly Rent (paisa): ${monthlyRentPaisa}`);
+  console.log(`├─ Frequency: ${frequency}`);
+  console.log(`└─ Frequency Months: ${frequencyMonths}`);
 
-  // Use the calculator service
-  const result = calculateRentByFrequency(
-    monthlyRentRupees,
-    frequency,
-    frequencyMonths,
-  );
+  if (frequency === "quarterly") {
+    // ✅ SIMPLE INTEGER MULTIPLICATION - No precision loss!
+    const chargeAmountPaisa = monthlyRentPaisa * frequencyMonths;
 
-  // Convert back to paisa
+    console.log(`\n✅ Quarterly Calculation:`);
+    console.log(
+      `├─ ${monthlyRentPaisa} × ${frequencyMonths} = ${chargeAmountPaisa} paisa`,
+    );
+    console.log(`└─ Display: ${formatMoney(chargeAmountPaisa)}`);
+
+    return {
+      chargeAmountPaisa, // Integer - exact!
+      chargeAmount: paisaToRupees(chargeAmountPaisa), // For display
+      periodMonths: frequencyMonths,
+    };
+  }
+
+  // Monthly - just return the same amount
+  console.log(`\n✅ Monthly Calculation:`);
+  console.log(`└─ Charge Amount: ${formatMoney(monthlyRentPaisa)}`);
+
   return {
-    chargeAmountPaisa: rupeesToPaisa(result.chargeAmount), // Store as paisa
-    chargeAmount: result.chargeAmount, // For display
-    periodMonths: result.periodMonths,
+    chargeAmountPaisa: monthlyRentPaisa,
+    chargeAmount: paisaToRupees(monthlyRentPaisa),
+    periodMonths: 1,
   };
 }
 
 /**
- * ✅ UPDATED: Create tenant with precise paisa calculations
  */
 export async function createTenantTransaction(body, files, adminId, session) {
   // ============================================
@@ -139,25 +149,33 @@ export async function createTenantTransaction(body, files, adminId, session) {
   if (body.unitNumber && !body.units) {
     body.units = [body.unitNumber];
   }
+  // ✅ Normalize unit IDs (support string | array | unitLeases)
+  let unitIds = [];
 
-  const usePerUnitConfig = !!body.unitLeases;
+  if (Array.isArray(body.unitLeases)) {
+    unitIds = parseUnitIds(body.unitLeases.map((ul) => ul.unitId));
+  } else {
+    const rawUnits = body.unitIds ?? body.units ?? body.unitNumber;
+
+    unitIds = Array.isArray(rawUnits) ? rawUnits : rawUnits ? [rawUnits] : [];
+  }
+
+  if (unitIds.length === 0) {
+    throw new Error("At least one unit must be selected");
+  }
+
+  const usePerUnitConfig = Array.isArray(body.unitLeases);
   let unitLeaseConfigs = [];
-  let unitIds;
 
   if (usePerUnitConfig) {
     unitLeaseConfigs = body.unitLeases;
-    unitIds = parseUnitIds(unitLeaseConfigs.map((ul) => ul.unitId));
   } else {
-    unitIds = parseUnitIds(body.units);
-    const sqftPerUnit = body.leasedSquareFeet / unitIds.length;
-    const securityDepositPerUnit = body.securityDeposit / unitIds.length;
-
+    // ✅ Build default unit lease configs from shared values
     unitLeaseConfigs = unitIds.map((unitId) => ({
-      unitId: unitId.toString(),
-      leasedSquareFeet: sqftPerUnit,
+      unitId,
+      leasedSquareFeet: body.leasedSquareFeet,
       pricePerSqft: body.pricePerSqft,
       camRatePerSqft: body.camRatePerSqft,
-      securityDeposit: securityDepositPerUnit,
     }));
   }
 
@@ -176,26 +194,18 @@ export async function createTenantTransaction(body, files, adminId, session) {
   // ============================================
   // 3. ✅ CALCULATE ALL FINANCIALS IN PAISA
   // ============================================
-  const tdsPercentage = body.tdsPercentage || 10;
+  const tdsPercentage = 10;
 
   // ✅ Use calculator service, then convert to paisa
-  const originalCalculation = calculateMultiUnitLease(unitLeaseConfigs, tdsPercentage);
+  const originalCalculation = calculateMultiUnitLease(
+    unitLeaseConfigs,
+    tdsPercentage,
+  );
   const leaseCalculation = calculateMultiUnitLeaseInPaisa(
     unitLeaseConfigs,
     tdsPercentage,
   );
   const { units: calculatedUnits, totals } = leaseCalculation;
-
-  // ✅ Logging now shows both paisa and formatted rupees
-  console.log("📊 Lease Calculation Summary:");
-  console.log("├─ Total Units:", unitIds.length);
-  console.log("├─ Total Sqft:", totals.sqft);
-  console.log("├─ Gross Monthly:", formatMoney(totals.grossMonthlyPaisa));
-  console.log("├─ Total TDS:", formatMoney(totals.totalTdsPaisa));
-  console.log("├─ Net Rent:", formatMoney(totals.rentMonthlyPaisa));
-  console.log("├─ Monthly CAM:", formatMoney(totals.camMonthlyPaisa));
-  console.log("├─ Net Monthly:", formatMoney(totals.netMonthlyPaisa));
-  console.log("└─ Security Deposit:", formatMoney(totals.securityDepositPaisa));
 
   // ============================================
   // 4. CALCULATE RENT CYCLE DATES (unchanged)
@@ -303,6 +313,11 @@ export async function createTenantTransaction(body, files, adminId, session) {
     { session },
   );
 
+  console.log("\n✅ Tenant Created:");
+  console.log(`├─ Tenant ID: ${tenant[0]._id}`);
+  console.log(`├─ totalRentPaisa: ${tenant[0].totalRentPaisa} (stored in DB)`);
+  console.log(`└─ This is MONTHLY rent in paisa\n`);
+
   // ============================================
   // 7. OCCUPY UNITS (unchanged)
   // ============================================
@@ -330,20 +345,37 @@ export async function createTenantTransaction(body, files, adminId, session) {
   // ============================================
   // 8. ✅ CALCULATE RENT CHARGE IN PAISA
   // ============================================
+  console.log("\n" + "=".repeat(60));
+  console.log("💰 CALCULATING RENT CHARGE");
+  console.log("=".repeat(60));
+
   const rentFrequencyCalc = calculateRentByFrequencyInPaisa(
     totals.rentMonthlyPaisa, // ← Pass paisa, not rupees!
     body.rentPaymentFrequency,
     frequencyMonths,
   );
 
+  console.log("\n📋 Rent Charge Result:");
+  console.log(`├─ chargeAmountPaisa: ${rentFrequencyCalc.chargeAmountPaisa}`);
   console.log(
-    `💰 Rent Charge: ${formatMoney(rentFrequencyCalc.chargeAmountPaisa)}`,
+    `├─ Display: ${formatMoney(rentFrequencyCalc.chargeAmountPaisa)}`,
   );
-  console.log(`   Stored as: ${rentFrequencyCalc.chargeAmountPaisa} paisa`);
+  console.log(`├─ Period Months: ${rentFrequencyCalc.periodMonths}`);
+  console.log(`└─ Frequency: ${body.rentPaymentFrequency}`);
+  console.log("=".repeat(60) + "\n");
 
   // ============================================
   // 9. ✅ CREATE RENT RECORD WITH PAISA
   // ============================================
+
+  // ✅ Calculate TDS for the period (SIMPLE INTEGER MULTIPLICATION)
+  const periodTdsPaisa = totals.totalTdsPaisa * rentFrequencyCalc.periodMonths;
+
+  console.log("\n📊 Rent Record Payload:");
+  console.log(`├─ rentAmountPaisa: ${rentFrequencyCalc.chargeAmountPaisa}`);
+  console.log(`├─ tdsAmountPaisa: ${periodTdsPaisa}`);
+  console.log(`└─ paidAmountPaisa: 0`);
+
   const rentPayload = {
     tenant: tenant[0]._id,
     innerBlock: tenant[0].innerBlock,
@@ -352,13 +384,8 @@ export async function createTenantTransaction(body, files, adminId, session) {
 
     // ✅ Store as PAISA (integer)
     rentAmountPaisa: rentFrequencyCalc.chargeAmountPaisa,
-    tdsAmountPaisa: totals.totalTdsPaisa * rentFrequencyCalc.periodMonths,
+    tdsAmountPaisa: periodTdsPaisa,
     paidAmountPaisa: 0,
-
-    // Backward compatibility (can remove later)
-    rentAmount: rentFrequencyCalc.chargeAmount,
-    tdsAmount: totals.totalTds * rentFrequencyCalc.periodMonths,
-    paidAmount: 0,
 
     rentFrequency: body.rentPaymentFrequency,
     status: "pending",
@@ -377,17 +404,11 @@ export async function createTenantTransaction(body, files, adminId, session) {
     englishDueDate: rentCycleData.dueDate.english,
     lateFee: 0,
     useUnitBreakdown: true,
-    // ✅ Use buildUnitBreakdown from calculator service, then add paisa fields
-    unitBreakdown: buildUnitBreakdown(
-      units,
-      originalCalculation.units, // Use the units from calculator service (has unitId)
-      body.rentPaymentFrequency,
-      frequencyMonths,
-    ).map((ub) => ({
-      ...ub,
-      // Add paisa fields
-      rentAmountPaisa: rupeesToPaisa(ub.rentAmount),
-      tdsAmountPaisa: ub.tdsAmount ? rupeesToPaisa(ub.tdsAmount) : 0,
+
+    unitBreakdown: calculatedUnits.map((u) => ({
+      unit: u.unitId,
+      rentAmountPaisa: u.rentMonthlyPaisa * rentFrequencyCalc.periodMonths,
+      tdsAmountPaisa: u.totalTdsPaisa * rentFrequencyCalc.periodMonths,
       paidAmountPaisa: 0,
     })),
   };
@@ -479,21 +500,49 @@ export async function createTenantTransaction(body, files, adminId, session) {
   }
 
   // ============================================
-  // 13. ✅ FINAL LOGGING WITH FORMATTED VALUES
+  // 13. ✅ FINAL SUMMARY
   // ============================================
-  console.log("✅ Tenant creation completed!");
+  console.log("\n" + "=".repeat(60));
+  console.log("✅ TENANT CREATION COMPLETED SUCCESSFULLY");
+  console.log("=".repeat(60));
   console.log("📊 Summary:");
   console.log("├─ Tenant ID:", tenant[0]._id);
   console.log("├─ Units:", unitIds.length);
   console.log("├─ Total Sqft:", totals.sqft);
-  console.log("├─ Monthly Rent:", formatMoney(totals.rentMonthlyPaisa));
-  console.log("├─ Monthly CAM:", formatMoney(totals.camMonthlyPaisa));
-  console.log("├─ Security Deposit:", formatMoney(totals.securityDepositPaisa));
-  console.log("└─ Rent Frequency:", body.rentPaymentFrequency);
-  console.log("\n💾 Stored values (paisa):");
-  console.log("├─ rentMonthlyPaisa:", totals.rentMonthlyPaisa);
-  console.log("├─ camMonthlyPaisa:", totals.camMonthlyPaisa);
-  console.log("└─ securityDepositPaisa:", totals.securityDepositPaisa);
+  console.log("├─ Frequency:", body.rentPaymentFrequency);
+  console.log("│");
+  console.log("├─ 💰 TENANT (Monthly Values):");
+  console.log("│  ├─ Monthly Rent:", formatMoney(totals.rentMonthlyPaisa));
+  console.log("│  ├─ Monthly CAM:", formatMoney(totals.camMonthlyPaisa));
+  console.log(
+    "│  └─ Security Deposit:",
+    formatMoney(totals.securityDepositPaisa),
+  );
+  console.log("│");
+  console.log("├─ 📝 RENT RECORD (Period Values):");
+  console.log(
+    "│  ├─ Rent Charge:",
+    formatMoney(rentFrequencyCalc.chargeAmountPaisa),
+  );
+  console.log("│  ├─ Period:", `${rentFrequencyCalc.periodMonths} month(s)`);
+  console.log("│  └─ TDS:", formatMoney(periodTdsPaisa));
+  console.log("│");
+  console.log("└─ 💾 Stored Paisa Values:");
+  console.log(
+    "   ├─ Tenant.totalRentPaisa:",
+    totals.rentMonthlyPaisa,
+    "(monthly)",
+  );
+  console.log(
+    "   ├─ Rent.rentAmountPaisa:",
+    rentFrequencyCalc.chargeAmountPaisa,
+    `(${rentFrequencyCalc.periodMonths} months)`,
+  );
+  console.log(
+    "   └─ Calculation:",
+    `${totals.rentMonthlyPaisa} × ${rentFrequencyCalc.periodMonths} = ${rentFrequencyCalc.chargeAmountPaisa}`,
+  );
+  console.log("=".repeat(60) + "\n");
 
   return tenant[0];
 }
