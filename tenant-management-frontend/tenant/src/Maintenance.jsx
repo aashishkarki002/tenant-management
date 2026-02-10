@@ -17,6 +17,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import useProperty from './hooks/use-property';
 import MaintenanceCard from './Maintenance/components/MaintenanceCard';
+import maintenanceSchema from './Validation/maintenanceValidation';
 export default function Maintenance() {
   const [priority, setPriority] = useState("medium");
   const [tenant, setTenant] = useState([]);
@@ -88,6 +89,7 @@ export default function Maintenance() {
       description: "",
       scheduledDate: "",
     },
+    validationSchema: maintenanceSchema,
     onSubmit: async (values) => {
       try {
         // Map form values to backend model format

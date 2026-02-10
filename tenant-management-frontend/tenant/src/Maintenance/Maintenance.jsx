@@ -16,6 +16,7 @@ import { useFormik } from 'formik';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import FullCalendarView from '../components/fullCalendar';
+import { Empty, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 export default function Maintenance() {
   const [priority, setPriority] = useState("medium");
   const [tenant, setTenant] = useState([]);
@@ -477,7 +478,6 @@ export default function Maintenance() {
         </div>
 
       </div>
-
       <Tabs defaultValue="list">
         <TabsList className="flex justify-between w-full ">
           <TabsTrigger value="list" className='w-1/2'>List</TabsTrigger>
@@ -485,82 +485,92 @@ export default function Maintenance() {
 
         </TabsList>
 
-
         <TabsContent value="list" className='w-full p-2 '>
-          <div className='w-full flex flex-col gap-4'>
-            {maintenance.map((maintenanceItem) => {
-              const isExpanded = expandedCards.has(maintenanceItem._id);
+          {maintenance.length > 0 ? (
+            <div className='w-full flex flex-col gap-4'>
+              {maintenance.map((maintenanceItem) => {
+                const isExpanded = expandedCards.has(maintenanceItem._id);
 
-              // Generate work order ID from maintenance._id
-              const workOrderId = `#WO-${String(maintenanceItem._id || '').slice(-4).toUpperCase()}`;
+                // Generate work order ID from maintenance._id
+                const workOrderId = `#WO-${String(maintenanceItem._id || '').slice(-4).toUpperCase()}`;
 
-              // Get priority styling - match image with red for urgent
-              const getPriorityStyle = (priority) => {
-                const priorityUpper = priority?.toUpperCase() || '';
-                if (priorityUpper === 'HIGH' || priorityUpper === 'URGENT') {
-                  return 'bg-red-600 text-red-100';
-                } else if (priorityUpper === 'MEDIUM') {
-                  return 'bg-orange-500 text-orange-100';
-                } else {
-                  return 'bg-gray-500 text-gray-100';
-                }
-              };
+                // Get priority styling - match image with red for urgent
+                const getPriorityStyle = (priority) => {
+                  const priorityUpper = priority?.toUpperCase() || '';
+                  if (priorityUpper === 'HIGH' || priorityUpper === 'URGENT') {
+                    return 'bg-red-600 text-red-100';
+                  } else if (priorityUpper === 'MEDIUM') {
+                    return 'bg-orange-500 text-orange-100';
+                  } else {
+                    return 'bg-gray-500 text-gray-100';
+                  }
+                };
 
-              // Format status for display
-              const formatStatus = (status) => {
-                if (!status) return 'Open';
-                return status.split('_').map(word =>
-                  word.charAt(0) + word.slice(1).toLowerCase()
-                ).join(' ');
-              };
+                // Format status for display
+                const formatStatus = (status) => {
+                  if (!status) return 'Open';
+                  return status.split('_').map(word =>
+                    word.charAt(0) + word.slice(1).toLowerCase()
+                  ).join(' ');
+                };
 
-              // Format date
-              const formatDate = (date) => {
-                if (!date) return 'N/A';
-                try {
-                  return new Date(date).toLocaleDateString();
-                } catch {
-                  return date;
-                }
-              };
+                // Format date
+                const formatDate = (date) => {
+                  if (!date) return 'N/A';
+                  try {
+                    return new Date(date).toLocaleDateString();
+                  } catch {
+                    return date;
+                  }
+                };
 
-              const toggleExpand = () => {
-                const newExpanded = new Set(expandedCards);
-                if (isExpanded) {
-                  newExpanded.delete(maintenanceItem._id);
-                } else {
-                  newExpanded.add(maintenanceItem._id);
-                }
-                setExpandedCards(newExpanded);
-              };
+                const toggleExpand = () => {
+                  const newExpanded = new Set(expandedCards);
+                  if (isExpanded) {
+                    newExpanded.delete(maintenanceItem._id);
+                  } else {
+                    newExpanded.add(maintenanceItem._id);
+                  }
+                  setExpandedCards(newExpanded);
+                };
 
-              return (
-                <MaintenanceCard
-                  className='w-full'
-                  key={maintenanceItem._id}
-                  maintenanceItem={maintenanceItem}
-                  isExpanded={isExpanded}
-                  toggleExpand={toggleExpand}
-                  getPriorityStyle={getPriorityStyle}
-                  formatStatus={formatStatus}
-                  formatDate={formatDate}
-                  workOrderId={workOrderId}
-                  onUpdate={async () => {
-                    const response = await api.get("/api/maintenance/all");
-                    setMaintenance(response.data.maintenance);
-                  }}
-                />
-              );
-            })}
-          </div>
+                return (
+                  <MaintenanceCard
+                    className='w-full'
+                    key={maintenanceItem._id}
+                    maintenanceItem={maintenanceItem}
+                    isExpanded={isExpanded}
+                    toggleExpand={toggleExpand}
+                    getPriorityStyle={getPriorityStyle}
+                    formatStatus={formatStatus}
+                    formatDate={formatDate}
+                    workOrderId={workOrderId}
+                    onUpdate={async () => {
+                      const response = await api.get("/api/maintenance/all");
+                      setMaintenance(response.data.maintenance);
+                    }}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className='w-full flex justify-center items-center h-full'>
+              <Empty>
+                <EmptyTitle className='text-gray-500 text-sm'>
+                  No maintenance tasks found
+                </EmptyTitle>
+
+              </Empty>
+            </div>
+          )}
         </TabsContent>
+
         <TabsContent value="calendar" className='w-full'>
           <div className='w-full'>
             <FullCalendarView maintenance={maintenance} />
           </div>
         </TabsContent>
       </Tabs>
-
     </>
   );
 }
