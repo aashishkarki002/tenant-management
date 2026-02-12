@@ -12,7 +12,7 @@ import Revenue from "./Revenue";
 import Maintenance from "./Maintenance/Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
 import Payments from "./payments";
-import AddTenants from "./Tenant/addTenants";
+import AddTenants from "./Tenant/addTenant/addTenants";
 
 import VerifyEmail from "./verify_email";
 import EditTenant from "./Tenant/editTenant";

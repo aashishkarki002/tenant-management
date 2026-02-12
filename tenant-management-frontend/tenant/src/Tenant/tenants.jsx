@@ -1,7 +1,6 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
-import { Send, House, Search } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Send, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,9 +10,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuPortal,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,

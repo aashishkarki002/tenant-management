@@ -78,6 +78,29 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
       }
     }
   };
+  const frequencyConfig = {
+    monthly: {
+      label: "Monthly",
+      className: "bg-blue-50 text-blue-600 border-blue-600",
+    },
+    quarterly: {
+      label: "Quarterly",
+      className: "bg-purple-50 text-purple-600 border-purple-600",
+    },
+  };
+
+  const frequency =
+    frequencyConfig[tenant?.rentPaymentFrequency] || {
+      label: "N/A",
+      className: "bg-gray-50 text-gray-600 border-gray-400",
+    };
+  const rentDisplay =
+    tenant?.rentPaymentFrequency === "monthly"
+      ? tenant?.totalRentFormatted
+      : tenant?.rentPaymentFrequency === "quarterly"
+        ? tenant?.quarterlyRentAmountFormatted
+        : "N/A";
+
   return (
     <Card className="w-full h-full hover:shadow-lg transition-shadow duration-300">
       <CardContent>
@@ -126,14 +149,15 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
           </span>
           <p className="text-gray-500 text-sm text-left flex items-center gap-2">
             <House className="w-4 h-4 text-gray-500" />
-            {tenant?.unitNumber
-              ? tenant?.unitNumber
-              : tenant?.units?.map((unit) => unit.name).join(", ")}
+            {Array.isArray(tenant?.units) && tenant.units.length > 0
+              ? tenant.units.map((u) => u?.name).filter(Boolean).join(", ") ||
+              "—"
+              : "—"}
           </p>
         </div>
         <div className="text-gray-500 text-sm mt-3">
-          <div className="flex flex-col gap-2 w-full ">
-            <div className="flex mb-2 justify-between items-center w-full">
+          <div className="flex flex-col gap-2 w-full">
+            <div className="flex justify-between items-center w-full">
               <p className="text-black text-sm">Status</p>
               <Badge
                 variant="outline"
@@ -142,15 +166,23 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
                 Active
               </Badge>
             </div>
+
             <div className="flex justify-between items-center">
               <p className="text-black text-sm">Rent</p>
-              <p className="text-black text-sm ml-3">₹{tenant?.quarterlyRentAmountPaisa}</p>
+              <p className="text-black text-sm">{rentDisplay}</p>
             </div>
+
             <div className="flex justify-between items-center">
               <p className="text-black text-sm">Frequency</p>
-              <p className="text-black text-sm ml-3">{tenant?.rentPaymentFrequency}</p>
+              <Badge
+                variant="outline"
+                className={`border ${frequency.className}`}
+              >
+                {frequency.label}
+              </Badge>
             </div>
           </div>
+
           <div className="flex justify-between items-center w-full">
             <Badge className="bg-blue-50 text-blue-600 mr-2 w-full p-4 mt-2 rounded-md ">
               <div className="flex justify-between items-center w-full">

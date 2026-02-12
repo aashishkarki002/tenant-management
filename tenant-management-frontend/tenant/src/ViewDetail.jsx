@@ -135,6 +135,20 @@ function ViewDetail() {
 
   const { progress, remainingMonths } = calculateLeaseProgress();
 
+  const getUnitLabel = () => {
+    if (!tenant?.units || tenant.units.length === 0) return "—";
+
+    const firstUnit = tenant.units[0];
+
+    // If units are objects with name
+    if (typeof firstUnit === "object" && firstUnit !== null) {
+      return tenant.units.map((unit) => unit.name).join(", ");
+    }
+
+    // If units are just ids/strings
+    return tenant.units.join(", ");
+  };
+
   return (
     <div className="px-2 sm:px-4 md:px-6">
       <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
@@ -158,6 +172,14 @@ function ViewDetail() {
                     className="border-green-600 text-green-700 bg-green-50 text-xs"
                   >
                     {tenant?.status}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-yellow-600 text-yellow-700 bg-yellow-50 text-xs"
+                  >
+                    {tenant?.rentPaymentFrequency === "monthly"
+                      ? "Monthly Rent"
+                      : "Quarterly Rent"}
                   </Badge>
                 </div>
                 <span className="text-xs sm:text-sm text-muted-foreground">
@@ -190,7 +212,7 @@ function ViewDetail() {
               <Building2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <span className="break-words">
                 {tenant?.block?.name}, {tenant?.innerBlock?.name} —{" "}
-                {tenant?.units?.map((unit) => unit.name).join(", ")}
+                {getUnitLabel()}
               </span>
             </div>
 
@@ -427,7 +449,10 @@ function ViewDetail() {
                         Rate Per Sqft
                       </p>
                       <p className="text-xs sm:text-sm font-medium">
-                        {tenant?.pricePerSqft}
+                        {tenant?.pricePerSqftFormatted ??
+                          (tenant?.pricePerSqft != null
+                            ? `₹${tenant.pricePerSqft.toLocaleString()}`
+                            : "—")}
                       </p>
                     </div>
                   </div>
@@ -440,27 +465,62 @@ function ViewDetail() {
                       Security Deposit
                     </p>
                     <p className="text-xs sm:text-sm text-muted-foreground">
-                      ₹{tenant?.securityDeposit?.toLocaleString()}
+                      {tenant?.securityDepositFormatted ??
+                        (tenant?.securityDeposit != null
+                          ? `₹${tenant.securityDeposit.toLocaleString()}`
+                          : "—")}
                     </p>
                   </div>
 
                   {/* TDS */}
                   <div className="flex items-center justify-between">
-                    <p className="text-xs sm:text-sm font-medium">TDS (10%)</p>
+                    <p className="text-xs sm:text-sm font-medium">
+                      TDS ({tenant?.tdsPercentage ?? 10}%)
+                    </p>
                     <p className="text-xs sm:text-sm text-muted-foreground">
-                      ₹{tenant?.tds?.toLocaleString()}
+                      {tenant?.tdsFormatted ??
+                        (tenant?.tds != null
+                          ? `₹${tenant.tds.toLocaleString()}`
+                          : "—")}
                     </p>
                   </div>
 
                   <Separator />
 
-                  {/* Gross Amount */}
+                  {/* net Amount */}
                   <div className="flex items-center justify-between">
                     <p className="text-xs sm:text-sm font-semibold">
-                      Gross Amount
+                      Net Amount including CAM
                     </p>
                     <p className="text-xs sm:text-sm font-semibold">
-                      ₹{tenant?.totalRent?.toLocaleString()}
+                      {tenant?.netAmountFormatted ??
+                        (tenant?.netAmount != null
+                          ? `₹${tenant.netAmount.toLocaleString()}`
+                          : "—")}
+                    </p>
+                  </div>
+                  {tenant?.rentPaymentFrequency === "quarterly" && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs sm:text-sm font-semibold">
+                        Quarterly Rent Amount
+                      </p>
+                      <p className="text-xs sm:text-sm font-semibold">
+                        {tenant?.quarterlyRentAmountFormatted ??
+                          (tenant?.quarterlyRentAmount != null
+                            ? `₹${tenant.quarterlyRentAmount.toLocaleString()}`
+                            : "—")}
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs sm:text-sm font-semibold">
+                      Gross Amount excluding CAM
+                    </p>
+                    <p className="text-xs sm:text-sm font-semibold">
+                      {tenant?.grossAmountFormatted ??
+                        (tenant?.grossAmount != null
+                          ? `₹${tenant.grossAmount.toLocaleString()}`
+                          : "—")}
                     </p>
                   </div>
                 </CardContent>
@@ -528,7 +588,9 @@ function ViewDetail() {
                                 ? "Lease Agreement"
                                 : document.type === "image"
                                   ? "Property Photos"
-                                  : document.type;
+                                  : document.type === "bank_guarantee"
+                                    ? "Bank Guarantee"
+                                    : document.type;
 
                           // Generate file name from URL or use type
                           const urlParts = file.url.split("/");
@@ -756,10 +818,10 @@ function ViewDetail() {
                           <TableCell>
                             {task.scheduledDate
                               ? new Date(task.scheduledDate).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })
                               : "—"}
                           </TableCell>
                           <TableCell>

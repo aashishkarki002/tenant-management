@@ -123,38 +123,7 @@ const RentPayment = () => {
             </div>
           </CardHeader>
 
-          <div className="px-6 py-4">
-            <div className="rounded-xl bg-white shadow-sm border border-gray-100">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <p className="text-[11px] font-medium tracking-[0.16em] text-gray-400 uppercase">
-                      {frequencyView === "monthly"
-                        ? "Total monthly collected"
-                        : "Total quarterly collected"}
-                    </p>
-                    <div className="mt-1 flex items-baseline gap-2">
-                      <span className="text-xl font-semibold text-gray-900">
-                        {formatCurrency(totalCollected || 0)}
-                      </span>
-                      <span className="text-sm text-gray-400">
-                        / {formatCurrency(monthlyTarget || 0)}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="mt-1 inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-600">
-                    {collectedPercentage}% Collected
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-                  <div
-                    className="h-full rounded-full bg-indigo-600"
-                    style={{ width: `${Math.min(collectedPercentage, 100)}%` }}
-                  />
-                </div>
-              </CardContent>
-            </div>
-          </div>
+
 
           <TabsContent value="rent">
             <RentSummaryCard
@@ -210,8 +179,8 @@ const RentPayment = () => {
             </CardContent>
           </TabsContent>
         </Tabs>
-      </Card>
-    </form>
+      </Card >
+    </form >
   );
 };
 
