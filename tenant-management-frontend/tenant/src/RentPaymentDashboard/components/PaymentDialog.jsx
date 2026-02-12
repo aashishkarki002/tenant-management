@@ -306,7 +306,7 @@ export const PaymentDialog = ({
 
       {/* ── High-level due summary ─────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm space-y-4">
-        <div className="grid grid-cols-2 gap-6">
+        <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wide">
               Rent Due
@@ -345,7 +345,7 @@ export const PaymentDialog = ({
           <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900"
+              className="h-3.5 w-3.5 rounded border-slate-300 accent-slate-900 cursor-pointer"
               checked={allSelected}
               onChange={(e) =>
                 setSelectedUnitIds(e.target.checked ? units.map((u) => u.id) : [])
@@ -355,7 +355,7 @@ export const PaymentDialog = ({
           </label>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="space-y-3">
           {units.map((unit) => {
             const selected = selectedUnitIds.includes(unit.id);
             return (
@@ -369,19 +369,25 @@ export const PaymentDialog = ({
                       : [...prev, unit.id]
                   )
                 }
-                className={`w-full text-left rounded-lg border p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${selected
-                    ? "border-slate-900/80 bg-slate-900/[0.03]"
-                    : "border-slate-200 hover:border-slate-300 bg-white"
+                className={`w-full text-left rounded-xl border-2 px-4 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${selected
+                  ? "border-slate-900/80 bg-slate-900/[0.02]"
+                  : "border-slate-200 hover:border-slate-300 bg-white"
                   }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      readOnly
-                      className="mt-1 h-3.5 w-3.5 rounded border-slate-300 pointer-events-none"
-                    />
+                {/* Top row: unit info + total due */}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    {/* Circular selector indicator */}
+                    <div
+                      className={`flex items-center justify-center w-5 h-5 rounded-full border-2 ${selected
+                        ? "border-slate-900 bg-slate-900"
+                        : "border-slate-300 bg-white"
+                        }`}
+                    >
+                      {selected && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-white" />
+                      )}
+                    </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-900">
                         {unit.name}
@@ -389,20 +395,26 @@ export const PaymentDialog = ({
                       {unit.label && (
                         <p className="text-xs text-slate-500 mt-0.5">{unit.label}</p>
                       )}
+                      {unit.hasOutstanding && (
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600">
+                          Outstanding
+                        </p>
+                      )}
                     </div>
                   </div>
-                  {unit.hasOutstanding && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] border-amber-300 text-amber-700 bg-amber-50"
-                    >
-                      Outstanding
-                    </Badge>
-                  )}
+
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+                      Total Due
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold text-slate-900">
+                      ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Per-unit amounts — sourced from unitBreakdown, not divided equally */}
-                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                {/* Bottom row: per-unit amounts */}
+                <div className="mt-3 grid grid-cols-2 gap-4 text-xs flex justify-between">
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">
                       Rent Due
@@ -413,18 +425,10 @@ export const PaymentDialog = ({
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Paid
-                    </p>
-                    <p className="mt-0.5 font-semibold text-emerald-700">
-                      ₹{unit.paidSoFar.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Remaining
+                      Cam Due
                     </p>
                     <p className="mt-0.5 font-semibold text-slate-900">
-                      ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      ₹{unit.paidSoFar.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                 </div>
@@ -434,7 +438,7 @@ export const PaymentDialog = ({
         </div>
 
         {!selectedUnits.length && (
-          <p className="text-xs text-rose-600">Select at least one unit to continue.</p>
+          <p className="text-xs text-slate-500">Select at least one unit to continue.</p>
         )}
       </section>
 
@@ -686,8 +690,8 @@ export const PaymentDialog = ({
                     formik.setFieldValue("bankAccountId", bank._id);
                   }}
                   className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
-                      ? "border-slate-900 bg-slate-900/[0.03]"
-                      : "border-slate-200 hover:border-slate-300 bg-white"
+                    ? "border-slate-900 bg-slate-900/[0.03]"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
                     }`}
                 >
                   <div className="flex items-center justify-between">

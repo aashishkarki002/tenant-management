@@ -18,7 +18,7 @@ import VerifyEmail from "./verify_email";
 import EditTenant from "./Tenant/editTenant";
 import Admin from "./Settings/Admin";
 import ProtectedRoutes, { GuestRoute } from "./protectedRoutes";
-import Test from "./test";
+
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail";
 import BroadCast from "./BroadCast";
@@ -155,14 +155,7 @@ export default function App() {
           </ProtectedRoutes>
         }
       />
-      <Route
-        path="/test"
-        element={
-          <ProtectedRoutes>
-            <Test />
-          </ProtectedRoutes>
-        }
-      />
+
       <Route
         path="/tenant/viewDetail/:id"
         element={
