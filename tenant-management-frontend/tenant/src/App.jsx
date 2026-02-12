@@ -16,7 +16,7 @@ import AddTenants from "./Tenant/addTenant/addTenants";
 
 import VerifyEmail from "./verify_email";
 import EditTenant from "./Tenant/editTenant";
-import Admin from "./Admin";
+import Admin from "./Settings/Admin";
 import ProtectedRoutes, { GuestRoute } from "./protectedRoutes";
 import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
