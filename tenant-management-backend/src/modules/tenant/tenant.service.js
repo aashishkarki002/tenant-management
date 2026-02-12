@@ -4,14 +4,44 @@ import tenantValidation from "../../validations/tenantValidation.js";
 import { Unit } from "../units/Unit.Model.js";
 import { sendWelcomeEmail } from "../../config/nodemailer.js";
 import { createTenantTransaction } from "./services/tenant.create.js";
-import { uploadSingleFile } from "./helpers/fileUploadHelper.js"; // ✅ NEW: Direct upload
+import { uploadSingleFile } from "./helpers/fileUploadHelper.js";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 export async function createTenant(body, files, adminId) {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    if (body.unitNumber && !body.units) {
+    // ✅ Normalize unit-related fields BEFORE validation
+    // Support:
+    // - Legacy single-unit flow using `unitNumber` (string or array)
+    // - New multi-unit flow using `unitLeases` (JSON string from FormData)
+
+    // Handle unitLeases coming as JSON string from FormData
+    if (body.unitLeases && typeof body.unitLeases === "string") {
+      try {
+        const parsed = JSON.parse(body.unitLeases);
+        if (Array.isArray(parsed)) {
+          body.unitLeases = parsed;
+          const unitIds = parsed
+            .map((u) => u.unitId)
+            .filter(
+              (id) => typeof id === "string" && id.trim().length > 0,
+            );
+
+          if (unitIds.length > 0) {
+            body.units = unitIds;
+          }
+        }
+      } catch (parseError) {
+        console.error("Failed to parse unitLeases JSON:", parseError);
+      }
+    }
+
+    // Handle legacy/unitNumber-based selection
+    if (Array.isArray(body.unitNumber) && !body.units) {
+      body.units = body.unitNumber;
+    } else if (body.unitNumber && !body.units) {
       console.log("body.unitNumber", body.unitNumber);
       body.units = [body.unitNumber];
     }
@@ -121,21 +151,143 @@ export async function getTenants() {
 }
 
 export async function getTenantById(id) {
-  const tenant = await Tenant.findById(id)
-    .populate("property")
-    .populate("block")
-    .populate("innerBlock")
-    .populate("units");
+  try {
+    // Find tenant and populate all related entities
+    const tenant = await Tenant.findById(id)
+      .populate({
+        path: "property",
+        select: "name description address createdAt updatedAt",
+      })
+      .populate({
+        path: "block",
+        select: "name property createdAt updatedAt",
+      })
+      .populate({
+        path: "innerBlock",
+        select: "name block property",
+      })
+      .populate({
+        path: "units",
+        match: { isDeleted: { $ne: true } },
+        select: "-__v",
+      });
 
-  if (!tenant) return null;
+    if (!tenant) {
+      return null;
+    }
 
-  if (tenant.units && Array.isArray(tenant.units)) {
-    tenant.units = tenant.units.filter((u) => u !== null && u !== undefined);
-  } else {
-    tenant.units = [];
+    // Filter out null/undefined units (in case some were soft deleted)
+    if (tenant.units && Array.isArray(tenant.units)) {
+      tenant.units = tenant.units.filter((u) => u !== null && u !== undefined);
+    } else {
+      tenant.units = [];
+    }
+
+    // Enhance each unit with currentLease information from the tenant
+    if (tenant.units && tenant.units.length > 0) {
+      tenant.units = tenant.units.map((unit) => {
+        // Build the currentLease object using tenant's lease information
+        const currentLease = {
+          tenant: tenant._id,
+          leaseSquareFeet: tenant.leasedSquareFeet || unit.sqft || 0,
+          pricePerSqft: paisaToRupees(tenant.pricePerSqftPaisa),
+          camRatePerSqft: paisaToRupees(tenant.camRatePerSqftPaisa),
+          securityDeposit: paisaToRupees(tenant.securityDepositPaisa),
+          leaseStartDate: tenant.leaseStartDate,
+          leaseEndDate: tenant.leaseEndDate,
+          dateOfAgreementSigned: tenant.dateOfAgreementSigned,
+          keyHandoverDate: tenant.keyHandoverDate,
+          spaceHandoverDate: tenant.spaceHandoverDate,
+          spaceReturnedDate: tenant.spaceReturnedDate,
+          status: tenant.status || "active",
+          notes: tenant.notes || "",
+          tdsPercentage: tenant.tdsPercentage || 10,
+          securityDepositStatus: "held", // You may want to add this field to your model
+
+          // Financial calculations - convert from paisa to rupees
+          tds: paisaToRupees(tenant.tdsPaisa),
+          monthlyRent: paisaToRupees(tenant.totalRentPaisa),
+          monthlyCam: paisaToRupees(tenant.camChargesPaisa),
+          totalMonthly: paisaToRupees(tenant.monthlyTotalPaisa), // Using virtual
+          grossAmount: paisaToRupees(tenant.grossAmountPaisa),
+        };
+
+        // Return enhanced unit with currentLease and computed fields
+        return {
+          ...unit.toObject(), // Convert Mongoose doc to plain object
+          currentLease,
+          isExpiringSoon: checkLeaseExpiringSoon(tenant.leaseEndDate),
+          leaseDurationMonths: calculateLeaseDuration(
+            tenant.leaseStartDate,
+            tenant.leaseEndDate,
+          ),
+        };
+      });
+    }
+
+    // Convert tenant to JSON to include all virtuals
+    // The model's toJSON includes virtuals like:
+    // - monthlyTotal, quarterlyTotal
+    // - All formatted fields (tdsFormatted, grossAmountFormatted, etc.)
+    const tenantJson = tenant.toJSON();
+
+    // Add rupee conversions for convenience (in addition to virtuals)
+    return {
+      ...tenantJson,
+      units: tenant.units, // Use the enhanced units array
+
+      // Add rupee versions of paisa fields (for backward compatibility)
+      tds: paisaToRupees(tenant.tdsPaisa),
+      rentalRate: paisaToRupees(tenant.rentalRatePaisa),
+      grossAmount: paisaToRupees(tenant.grossAmountPaisa),
+      totalRent: paisaToRupees(tenant.totalRentPaisa),
+      camCharges: paisaToRupees(tenant.camChargesPaisa),
+      netAmount: paisaToRupees(tenant.netAmountPaisa),
+      securityDeposit: paisaToRupees(tenant.securityDepositPaisa),
+      quarterlyRentAmount: paisaToRupees(tenant.quarterlyRentAmountPaisa),
+      pricePerSqft: paisaToRupees(tenant.pricePerSqftPaisa),
+      camRatePerSqft: paisaToRupees(tenant.camRatePerSqftPaisa),
+
+      // Note: Formatted fields are already included via toJSON() virtuals:
+      // - tdsFormatted, rentalRateFormatted, grossAmountFormatted
+      // - totalRentFormatted, camChargesFormatted, netAmountFormatted
+      // - securityDepositFormatted, quarterlyRentAmountFormatted
+      // - pricePerSqftFormatted, camRatePerSqftFormatted
+      // - monthlyTotal, quarterlyTotal (from virtuals)
+    };
+  } catch (error) {
+    console.error("Error in getTenantById:", error);
+    throw error;
   }
+}
 
-  return tenant;
+/**
+ * Helper function to check if lease is expiring soon (within 60 days)
+ */
+function checkLeaseExpiringSoon(leaseEndDate) {
+  if (!leaseEndDate) return false;
+
+  const endDate = new Date(leaseEndDate);
+  const today = new Date();
+  const daysUntilExpiry = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+
+  return daysUntilExpiry > 0 && daysUntilExpiry <= 60;
+}
+
+/**
+ * Helper function to calculate lease duration in months
+ */
+function calculateLeaseDuration(startDate, endDate) {
+  if (!startDate || !endDate) return 0;
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  const months =
+    (end.getFullYear() - start.getFullYear()) * 12 +
+    (end.getMonth() - start.getMonth());
+
+  return months;
 }
 
 export async function updateTenant(tenantId, body, files) {

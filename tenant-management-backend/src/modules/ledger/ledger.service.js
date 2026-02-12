@@ -3,7 +3,11 @@ import { Account } from "./accounts/Account.Model.js";
 import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
-import { rupeesToPaisa, paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
+import {
+  rupeesToPaisa,
+  paisaToRupees,
+  formatMoney,
+} from "../../utils/moneyUtil.js";
 /**
  * @typedef {Object} JournalEntryLine
  * @property {string} accountCode
@@ -97,7 +101,7 @@ class LedgerService {
       description,
       createdBy,
       totalAmountPaisa,
-      totalAmount, // Backward compatibility
+      totalAmount,
       entries,
       tenant: payloadTenant,
       property: payloadProperty,
@@ -109,7 +113,7 @@ class LedgerService {
       throw new Error("Journal payload must have at least one entry");
     }
 
-    // ✅ Convert entries to paisa if needed (backward compatibility)
+    // ✅ Convert entries to paisa if needed
     const paisaEntries = entries.map((entry) => {
       // If already in paisa, use as-is
       if (
@@ -200,9 +204,6 @@ class LedgerService {
           // ✅ Store as PAISA (integer)
           totalAmountPaisa: finalTotalAmountPaisa,
 
-          // Backward compatibility
-          totalAmount: paisaToRupees(finalTotalAmountPaisa),
-
           createdBy,
           status: "POSTED",
           billingFrequency,
@@ -237,10 +238,6 @@ class LedgerService {
             creditAmountPaisa,
             balancePaisa: 0, // Will be updated by account balance
 
-            // Backward compatibility
-            debitAmount: paisaToRupees(debitAmountPaisa),
-            creditAmount: paisaToRupees(creditAmountPaisa),
-
             description: entry.description,
             tenant: entry.tenant ?? payloadTenant,
             property: entry.property ?? payloadProperty,
@@ -268,7 +265,7 @@ class LedgerService {
           // Backward compatibility: also update currentBalance
           $set: {
             currentBalance: paisaToRupees(
-              (account.currentBalancePaisa || 0) + balanceChangePaisa
+              (account.currentBalancePaisa || 0) + balanceChangePaisa,
             ),
           },
         },

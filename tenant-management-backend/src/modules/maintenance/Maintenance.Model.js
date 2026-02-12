@@ -52,7 +52,7 @@ const maintenanceSchema = new mongoose.Schema(
       ref: "Admin",
       required: true,
     },
-    
+
     // ============================================
     // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
     // ============================================
@@ -68,20 +68,7 @@ const maintenanceSchema = new mongoose.Schema(
       min: 0,
       get: paisaToRupees,
     },
-    
-    // Backward compatibility getters
-    amount: {
-      type: Number,
-      get: function () {
-        return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
-      },
-    },
-    paidAmount: {
-      type: Number,
-      get: function () {
-        return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
-      },
-    },
+
     paymentStatus: {
       type: String,
       enum: ["pending", "partially_paid", "paid"],

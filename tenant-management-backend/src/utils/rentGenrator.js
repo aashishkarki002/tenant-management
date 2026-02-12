@@ -28,7 +28,7 @@ export async function generateAndUploadRentPDF(rent) {
             url: result.secure_url,
             cloudinaryId: result.public_id,
           });
-        }
+        },
       );
 
       doc.on("error", reject);
@@ -141,7 +141,7 @@ export async function generateAndUploadRentPDF(rent) {
         .font("Helvetica-Oblique")
         .text(
           "This is an official receipt for your payment. Please keep it for your records.",
-          { align: "center" }
+          { align: "center" },
         );
       doc.text("Contact us: info@sallyanhouse.com | +977-9812345678", {
         align: "center",
@@ -249,7 +249,7 @@ export async function generatePDFToBuffer(rent) {
         doc
           .font("Helvetica")
           .text(`Rent - ${rent.paidFor}`, tableLeft + 5, rowY)
-          .text(rent.rentAmount.toLocaleString(), tableRight - 100, rowY, {
+          .text(rent.rentAmount, tableRight - 100, rowY, {
             width: 90,
             align: "right",
           });
@@ -262,7 +262,7 @@ export async function generatePDFToBuffer(rent) {
         doc
           .font("Helvetica")
           .text(`CAM Charges - ${rent.paidFor}`, tableLeft + 5, rowY)
-          .text(rent.camAmount.toLocaleString(), tableRight - 100, rowY, {
+          .text(rent.camAmount, tableRight - 100, rowY, {
             width: 90,
             align: "right",
           });
@@ -272,14 +272,15 @@ export async function generatePDFToBuffer(rent) {
 
       // If no breakdown, show total amount
       if (!rent.rentAmount && !rent.camAmount) {
+        const amount = rent.amount ?? 0;
         doc
           .font("Helvetica")
           .text(rent.paidFor, tableLeft + 5, rowY)
-          .text(rent.amount.toLocaleString(), tableRight - 100, rowY, {
+          .text(amount, tableRight - 100, rowY, {
             width: 90,
             align: "right",
           });
-        totalAmount = rent.amount;
+        totalAmount = amount;
         rowY += rowHeight;
       }
 
@@ -300,7 +301,7 @@ export async function generatePDFToBuffer(rent) {
         doc
           .font("Helvetica-Bold")
           .text("Total", tableLeft + 5, rowY)
-          .text(totalAmount.toLocaleString(), tableRight - 100, rowY, {
+          .text(totalAmount, tableRight - 100, rowY, {
             width: 90,
             align: "right",
           });
@@ -344,7 +345,7 @@ export async function generatePDFToBuffer(rent) {
         .font("Helvetica-Oblique")
         .text(
           "This is an official receipt for your payment. Please keep it for your records.",
-          { align: "center" }
+          { align: "center" },
         );
       doc.text("Contact us: info@sallyanhouse.com | +977-9812345678", {
         align: "center",
@@ -404,7 +405,7 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
 
     const result = await cloudinary.uploader.upload(
       tempFilePath,
-      uploadOptions
+      uploadOptions,
     );
 
     if (!result || !result.secure_url) {
@@ -414,7 +415,7 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
           receiptNo,
           result: result,
           resultType: typeof result,
-        }
+        },
       );
       throw new Error("Cloudinary upload returned invalid result");
     }
@@ -447,7 +448,7 @@ export async function uploadPDFBufferToCloudinary(pdfBuffer, receiptNo) {
             receiptNo,
             tempFilePath,
             error: unlinkError.message,
-          }
+          },
         );
       }
     }

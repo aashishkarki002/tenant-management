@@ -2,7 +2,7 @@ import BankAccount from "./BankAccountModel.js";
 
 /**
  * Apply payment to bank account (using integer paisa)
- * 
+ *
  * @param {Object} params
  * @param {string} params.paymentMethod - Payment method (cash, bank_transfer, cheque)
  * @param {string} params.bankAccountId - Bank account ID
@@ -15,7 +15,6 @@ async function applyPaymentToBank({
   paymentMethod,
   bankAccountId,
   amountPaisa,
-  amount, // Backward compatibility
   session,
 }) {
   // Cash payments don't require bank account
@@ -32,23 +31,14 @@ async function applyPaymentToBank({
     throw new Error("Bank account ID is required");
   }
 
-  // Use paisa if provided, otherwise convert from rupees
-  const finalAmountPaisa = amountPaisa !== undefined
-    ? amountPaisa
-    : (amount ? Math.round(amount * 100) : 0);
-
-  if (!Number.isInteger(finalAmountPaisa)) {
-    throw new Error(`Payment amount must be integer paisa, got: ${finalAmountPaisa}`);
-  }
-
   const bankAccount =
     await BankAccount.findById(bankAccountId).session(session);
   if (!bankAccount) {
     throw new Error("Bank account not found");
   }
-
+  console.log("amountPaisa", amountPaisa);
   // Increment balance in paisa (integer addition - no float errors!)
-  bankAccount.balancePaisa += finalAmountPaisa;
+  bankAccount.balancePaisa += amountPaisa;
   await bankAccount.save({ session });
   return bankAccount;
 }

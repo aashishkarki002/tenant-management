@@ -283,19 +283,27 @@ rentSchema.pre("save", function () {
     this.lateFeePaisa = Math.round(this.lateFeePaisa);
   }
 
-  // Validate paid amount doesn't exceed rent (in paisa)
-
-  // Update status based on payment (using paisa values)
-  if (this.paidAmountPaisa === 0) {
-    this.status = "pending";
-  } else if (this.paidAmountPaisa >= this.rentAmountPaisa) {
-    this.status = "paid";
-  } else {
-    this.status = "partially_paid";
-  }
-
-  // Update unit breakdown statuses (if using unit breakdown)
+  // ============================================
+  // NEW: Synchronize root level from unit breakdown
+  // ============================================
   if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
+    // Calculate root-level totals from unit breakdown (single source of truth)
+    this.rentAmountPaisa = this.unitBreakdown.reduce(
+      (sum, unit) => sum + (unit.rentAmountPaisa || 0),
+      0,
+    );
+
+    this.paidAmountPaisa = this.unitBreakdown.reduce(
+      (sum, unit) => sum + (unit.paidAmountPaisa || 0),
+      0,
+    );
+
+    this.tdsAmountPaisa = this.unitBreakdown.reduce(
+      (sum, unit) => sum + (unit.tdsAmountPaisa || 0),
+      0,
+    );
+
+    // Update unit statuses
     this.unitBreakdown.forEach((ub) => {
       const effectiveAmountPaisa =
         ub.rentAmountPaisa - (ub.tdsAmountPaisa || 0);
@@ -308,6 +316,15 @@ rentSchema.pre("save", function () {
         ub.status = "partially_paid";
       }
     });
+  }
+
+  // Update root status based on root totals (now guaranteed accurate)
+  if (this.paidAmountPaisa === 0) {
+    this.status = "pending";
+  } else if (this.paidAmountPaisa >= this.rentAmountPaisa) {
+    this.status = "paid";
+  } else {
+    this.status = "partially_paid";
   }
 });
 

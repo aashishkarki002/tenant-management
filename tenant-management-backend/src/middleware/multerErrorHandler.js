@@ -11,7 +11,8 @@ export const multerErrorHandler = (err, req, res, next) => {
     if (err.code === "LIMIT_UNEXPECTED_FILE" || err.message.includes("Unexpected field")) {
       return res.status(400).json({
         success: false,
-        message: "Invalid field name. Expected fields: 'image' and 'pdfAgreement'.",
+        message:
+          "Invalid file field. Allowed: image, pdfAgreement, citizenShip, bank_guarantee, cheque, company_docs, tax_certificate, other.",
         error: err.message,
       });
     }

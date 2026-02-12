@@ -9,6 +9,7 @@ import { Payment } from "./payment.model.js";
 import { getFilteredPaymentHistoryService } from "./payment.service.js";
 import parsePaginationParams from "../../helper/paginator.js";
 import { getDashboardStatsData } from "../dashboards/dashboard.service.js";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
 export async function payRentAndCam(req, res) {
   try {
     const {
@@ -22,10 +23,14 @@ export async function payRentAndCam(req, res) {
       paymentStatus,
       note,
       receivedBy,
-      bankAccountId,
+      bankAccountId: bodyBankAccountId,
+      bankAccount: bodyBankAccount,
       transactionRef,
       allocations, // New format: supports both rent and CAM
     } = req.body;
+
+    // Support both bankAccountId and bankAccount so bank balance is updated when either is sent
+    const bankAccountId = bodyBankAccountId || bodyBankAccount;
 
     // Build allocations object - support both old format (backward compatible) and new format
     let paymentAllocations = allocations;
@@ -59,7 +64,7 @@ export async function payRentAndCam(req, res) {
       paymentStatus: paymentStatus || "paid",
       note: note || "",
       receivedBy,
-      bankAccountId,
+      bankAccountId, // Used to update bank balance for bank_transfer/cheque
       transactionRef: transactionRef || undefined,
       allocations: paymentAllocations,
     };
@@ -228,13 +233,16 @@ export async function getAllPaymentHistory(req, res) {
 export async function getPaymentHistoryByTenant(req, res) {
   try {
     const { tenantId } = req.params;
+
     if (!tenantId) {
       return res.status(400).json({
         success: false,
         message: "Tenant ID is required",
       });
     }
+
     const { page, limit, skip } = parsePaginationParams(req);
+
     const [payments, total] = await Promise.all([
       Payment.find({ tenant: tenantId })
         .sort({ createdAt: -1 })
@@ -259,10 +267,50 @@ export async function getPaymentHistoryByTenant(req, res) {
       Payment.countDocuments({ tenant: tenantId }),
     ]);
 
+    // Transform payments: convert paisa to rupees for frontend display
+    const transformedPayments = payments.map((payment) => ({
+      ...payment,
+      // Add 'amount' field in rupees for display (frontend expects this)
+      amount: paisaToRupees(payment.amountPaisa),
+      // Keep original amountPaisa for reference if needed
+      amountPaisa: payment.amountPaisa,
+
+      // Transform allocations if present
+      allocations: payment.allocations
+        ? {
+            rent: payment.allocations.rent
+              ? {
+                  ...payment.allocations.rent,
+                  amount: paisaToRupees(
+                    payment.allocations.rent.amountPaisa || 0,
+                  ),
+                  amountPaisa: payment.allocations.rent.amountPaisa,
+                  // Transform unit allocations
+                  unitAllocations:
+                    payment.allocations.rent.unitAllocations?.map((ua) => ({
+                      ...ua,
+                      amount: paisaToRupees(ua.amountPaisa),
+                      amountPaisa: ua.amountPaisa,
+                    })),
+                }
+              : undefined,
+            cam: payment.allocations.cam
+              ? {
+                  ...payment.allocations.cam,
+                  paidAmount: paisaToRupees(
+                    payment.allocations.cam.paidAmountPaisa || 0,
+                  ),
+                  paidAmountPaisa: payment.allocations.cam.paidAmountPaisa,
+                }
+              : undefined,
+          }
+        : undefined,
+    }));
+
     res.json({
       success: true,
       message: "Tenant payment history fetched successfully",
-      data: payments,
+      data: transformedPayments,
       pagination: {
         page,
         limit,

@@ -4,6 +4,7 @@ import { generatePDFToBuffer } from "../utils/rentGenrator.js";
 import { sendPaymentReceiptEmail } from "../config/nodemailer.js";
 import { uploadPDFBufferToCloudinary } from "../utils/rentGenrator.js";
 import { Payment } from "../modules/payment/payment.model.js";
+import { rupeesToPaisa, paisaToRupees } from "../utils/moneyUtil.js";
 
 export async function handleReceiptSideEffects({ payment, rentId, camId }) {
   if (!payment) {
@@ -94,12 +95,31 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
   }
 
   // Get rent and CAM amounts from allocations
-  // Handle both 'paidAmount' (new) and 'amount' (backward compatibility) for CAM
-  const rentAmount = paymentData.allocations?.rent?.amount || 0;
-  const camAmount =
-    paymentData.allocations?.cam?.paidAmount ||
-    paymentData.allocations?.cam?.amount ||
-    0;
+  // Always normalize to paisa first, then derive rupees for PDF/email.
+  // Handle both new paisa fields and old rupee fields for backward compatibility.
+  const rentAmountPaisa =
+    paymentData.allocations?.rent?.amountPaisa !== undefined
+      ? paymentData.allocations.rent.amountPaisa
+      : paymentData.allocations?.rent?.amount
+        ? rupeesToPaisa(paymentData.allocations.rent.amount)
+        : 0;
+
+  const camAmountPaisa =
+    paymentData.allocations?.cam?.paidAmountPaisa !== undefined
+      ? paymentData.allocations.cam.paidAmountPaisa
+      : paymentData.allocations?.cam?.paidAmount
+        ? rupeesToPaisa(paymentData.allocations.cam.paidAmount)
+        : paymentData.allocations?.cam?.amount
+          ? rupeesToPaisa(paymentData.allocations.cam.amount)
+          : 0;
+
+  const rentAmount = paisaToRupees(rentAmountPaisa);
+  const camAmount = paisaToRupees(camAmountPaisa);
+
+  // Total amount in paisa for consistent money formatting in email
+  const totalAmountPaisa =
+    (paymentData.amountPaisa ?? payment.amountPaisa ?? 0) ||
+    rentAmountPaisa + camAmountPaisa;
 
   // Format payment method
   const paymentMethod = paymentData.paymentMethod || payment.paymentMethod;
@@ -115,7 +135,11 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
   // Prepare PDF data in the format expected by generatePDFToBuffer
   const pdfData = {
     receiptNo: (paymentData._id || paymentData.id || payment._id).toString(),
-    amount: paymentData.amount || payment.amount,
+    // PDF expects rupees, so convert from paisa using helper
+    amount:
+      paymentData.amount ??
+      payment.amount ??
+      paisaToRupees(totalAmountPaisa),
     paymentDate: formattedPaymentDate,
     tenantName: tenant?.name || "N/A",
     property: property?.name || "N/A",
@@ -150,7 +174,8 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
       paidFor,
       propertyName: property?.name || "N/A",
       receiptNo,
-      amount: paymentData.amount || payment.amount,
+      // Email template uses formatMoney(amount) where amount is in paisa
+      amount: totalAmountPaisa,
       paymentDate: formattedPaymentDate,
     });
   }

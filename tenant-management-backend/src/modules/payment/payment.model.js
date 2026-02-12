@@ -79,32 +79,28 @@ const paymentSchema = new mongoose.Schema({
   allocations: {
     rent: {
       rentId: mongoose.Schema.Types.ObjectId,
-      amountPaisa: Number, // Amount in paisa
-      amount: {
-        // Backward compatibility
-        type: Number,
-        get: function () {
-          return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
+      amountPaisa: Number, // Total amount allocated to rent
+
+      // NEW: Unit-level allocations for multi-unit rents
+      // Each allocation specifies which unit and how much was paid
+      unitAllocations: [
+        {
+          unitId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Unit",
+            required: true,
+          },
+          amountPaisa: {
+            type: Number,
+            required: true,
+            min: 0,
+          },
         },
-      },
+      ],
     },
     cam: {
       camId: mongoose.Schema.Types.ObjectId,
-      paidAmountPaisa: Number, // Paid amount in paisa
-      paidAmount: {
-        // Backward compatibility
-        type: Number,
-        get: function () {
-          return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
-        },
-      },
-      amount: {
-        // Keep for backward compatibility
-        type: Number,
-        get: function () {
-          return this.paidAmountPaisa ? paisaToRupees(this.paidAmountPaisa) : 0;
-        },
-      },
+      paidAmountPaisa: Number, // Amount paid for CAM charges
     },
   },
   createdBy: {
@@ -115,12 +111,41 @@ const paymentSchema = new mongoose.Schema({
 });
 
 paymentSchema.pre("save", function () {
-  // Ensure amount is an integer
+  // Ensure amount is an integer (paisa)
   if (!Number.isInteger(this.amountPaisa)) {
     throw new Error(
       `Payment amount must be integer paisa, got: ${this.amountPaisa}`,
     );
   }
+
+  // Validate unit allocations if present
+  if (this.allocations?.rent?.unitAllocations?.length > 0) {
+    const totalAllocated = this.allocations.rent.unitAllocations.reduce(
+      (sum, ua) => sum + ua.amountPaisa,
+      0,
+    );
+
+    // Total unit allocations should match rent allocation amount
+    if (totalAllocated !== this.allocations.rent.amountPaisa) {
+      throw new Error(
+        `Unit allocations (${totalAllocated} paisa) don't match rent amount (${this.allocations.rent.amountPaisa} paisa)`,
+      );
+    }
+
+    // Each unit allocation must be an integer
+    this.allocations.rent.unitAllocations.forEach((ua) => {
+      if (!Number.isInteger(ua.amountPaisa)) {
+        throw new Error(
+          `Unit allocation must be integer paisa, got: ${ua.amountPaisa}`,
+        );
+      }
+    });
+  }
 });
+paymentSchema.index({ tenant: 1, paymentDate: -1 });
+paymentSchema.index({ rent: 1 });
+paymentSchema.index({ cam: 1 });
+paymentSchema.index({ createdAt: -1 });
+paymentSchema.index({ paymentStatus: 1 });
 
 export const Payment = mongoose.model("Payment", paymentSchema);

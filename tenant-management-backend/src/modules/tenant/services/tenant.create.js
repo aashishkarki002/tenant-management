@@ -147,7 +147,12 @@ export async function createTenantTransaction(body, files, adminId, session) {
   } = getNepaliMonthDates();
 
   if (body.unitNumber && !body.units) {
-    body.units = [body.unitNumber];
+    // Normalize unitNumber -> units
+    // - If unitNumber is already an array of IDs, use it directly
+    // - If it's a single string, wrap it in an array
+    body.units = Array.isArray(body.unitNumber)
+      ? body.unitNumber
+      : [body.unitNumber];
   }
   // ✅ Normalize unit IDs (support string | array | unitLeases)
   let unitIds = [];
@@ -239,6 +244,13 @@ export async function createTenantTransaction(body, files, adminId, session) {
       },
     };
   } else {
+    // Monthly rent: due date is 1st of next month
+    const monthlyDueDates = getRentCycleDates({
+      startYear: npYear,
+      startMonth: npMonth,
+      frequencyMonths: 1, // ← Monthly = 1 month frequency
+    });
+
     rentCycleData = {
       chargeDate: {
         nepali: `${npYear}-${String(npMonth).padStart(2, "0")}-01`,
@@ -247,10 +259,10 @@ export async function createTenantTransaction(body, files, adminId, session) {
         month: npMonth,
       },
       dueDate: {
-        nepali: nepaliDueDate,
-        english: lastDay.getDateObject(),
-        year: npYear,
-        month: npMonth,
+        nepali: monthlyDueDates.rentDueNp, // ← 1st of next month
+        english: monthlyDueDates.rentDueDate, // ← English Date for 1st of next month
+        year: monthlyDueDates.nepaliDueYear, // ← Next month's year
+        month: monthlyDueDates.nepaliDueMonth, // ← Next month (1-based)
       },
     };
   }
@@ -456,18 +468,40 @@ export async function createTenantTransaction(body, files, adminId, session) {
   });
   await ledgerService.postJournalEntry(camChargePayload, session);
 
-  if (body.securityDepositMode !== "bank_guarantee") {
+  // ============================================
+  // 11. ✅ CREATE SECURITY DEPOSIT (IN PAISA)
+  //     Follow same pattern as CAM/Rent
+  // ============================================
+  const hasSecurityDepositAmount =
+    body.securityDepositAmount != null &&
+    body.securityDepositAmount !== "" &&
+    !Number.isNaN(Number(body.securityDepositAmount));
+
+  const baseSecurityDeposit =
+    hasSecurityDepositAmount && Number(body.securityDepositAmount) > 0
+      ? Number(body.securityDepositAmount)
+      : totals.securityDeposit || 0;
+
+  const hasSecurityDeposit =
+    (body.securityDepositMode &&
+      body.securityDepositMode !== "none" &&
+      body.securityDepositMode !== "disabled") &&
+    baseSecurityDeposit > 0;
+
+  if (hasSecurityDeposit) {
+    const mode = body.securityDepositMode;
+
     const sdPayload = {
       tenant: tenant[0]._id,
       property: tenant[0].property,
       block: tenant[0].block,
       innerBlock: tenant[0].innerBlock,
 
-      // ✅ Store SD in paisa
-      amountPaisa: totals.securityDepositPaisa,
-      amount: totals.securityDeposit, // Backward compat
+      // ✅ Store SD in paisa (source of truth)
+      amountPaisa: rupeesToPaisa(baseSecurityDeposit),
+      amount: baseSecurityDeposit, // Backward compat (rupees)
 
-      status: "paid",
+      status: mode === "bank_guarantee" ? "held_as_bg" : "paid",
       paidDate: new Date(),
       year: englishYear,
       month: englishMonth,
@@ -475,21 +509,29 @@ export async function createTenantTransaction(body, files, adminId, session) {
       nepaliYear: npYear,
       nepaliDate: nepaliDate,
       createdBy: adminId,
-      mode: body.securityDepositMode,
+      mode,
     };
 
-    if (["cash", "bank_transfer"].includes(body.securityDepositMode)) {
-      const overrideAmount =
-        body.securityDepositAmount || totals.securityDeposit;
-      sdPayload.amountPaisa = rupeesToPaisa(overrideAmount);
-      sdPayload.amount = overrideAmount;
+    // Allow overriding amount for cash/bank transfer explicitly
+    if (["cash", "bank_transfer"].includes(mode) && hasSecurityDepositAmount) {
+      sdPayload.amountPaisa = rupeesToPaisa(Number(body.securityDepositAmount));
+      sdPayload.amount = Number(body.securityDepositAmount);
     }
 
-    if (body.securityDepositMode === "cheque") {
+    if (mode === "cheque") {
       sdPayload.chequeDetails = {
         chequeNumber: body.chequeNumber,
         chequeDate: body.chequeDate,
         bankName: body.bankName,
+      };
+    }
+
+    if (mode === "bank_guarantee") {
+      sdPayload.bankGuaranteeDetails = {
+        bgNumber: body.bgNumber,
+        bankName: body.bankName,
+        issueDate: body.bgIssueDate,
+        expiryDate: body.bgExpiryDate,
       };
     }
 

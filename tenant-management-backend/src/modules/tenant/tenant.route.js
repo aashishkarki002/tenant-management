@@ -27,10 +27,12 @@ router.post(
     { name: "citizenShip", maxCount: 5 },
     { name: "bank_guarantee", maxCount: 5 },
     { name: "cheque", maxCount: 5 },
+    { name: "company_docs", maxCount: 5 },
+    { name: "tax_certificate", maxCount: 5 },
     { name: "other", maxCount: 5 },
   ]),
   multerErrorHandler,
-  createTenant
+  createTenant,
 );
 
 router.patch(
@@ -38,7 +40,7 @@ router.patch(
   protect,
   upload.any(),
   multerErrorHandler,
-  updateTenant
+  updateTenant,
 );
 
 router.patch("/delete-tenant/:id", protect, deleteTenant);

@@ -5,7 +5,7 @@ import BankAccount from "../modules/banks/BankAccountModel.js";
 import { formatMoney } from "./moneyUtil.js";
 dotenv.config();
 
-export const emitPaymentNotification = async (paymentData, adminId) => {
+export const emitPaymentNotification = async (normalizedData, adminId) => {
   const io = getIO();
   // When called from API, adminId comes from req.admin.id; fallback to env when omitted (e.g. cron)
   const targetAdminId = adminId || process.env.SYSTEM_ADMIN_ID;
@@ -20,7 +20,7 @@ export const emitPaymentNotification = async (paymentData, adminId) => {
       note,
       receivedBy,
       bankAccountId,
-    } = paymentData;
+    } = normalizedData;
 
     let bankName = "Unknown";
 

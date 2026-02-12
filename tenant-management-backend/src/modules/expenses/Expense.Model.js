@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 const expenseSchema = new mongoose.Schema(
   {
@@ -8,7 +7,7 @@ const expenseSchema = new mongoose.Schema(
       ref: "ExpenseSource",
       required: true,
     },
-    
+
     // ============================================
     // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
     // ============================================
@@ -16,16 +15,8 @@ const expenseSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
-      get: paisaToRupees,
     },
-    
-    // Backward compatibility getter
-    amount: {
-      type: Number,
-      get: function () {
-        return this.amountPaisa ? paisaToRupees(this.amountPaisa) : 0;
-      },
-    },
+
     EnglishDate: {
       type: Date,
       default: Date.now,
@@ -101,7 +92,7 @@ expenseSchema.pre("validate", function () {
   if (this.payeeType === "EXTERNAL") {
     this.tenant = undefined;
   }
-  
+
   // Ensure amount is an integer
   if (this.amountPaisa && !Number.isInteger(this.amountPaisa)) {
     throw new Error(

@@ -6,7 +6,7 @@ const bankAccountSchema = new mongoose.Schema(
     accountNumber: { type: String, required: true },
     accountName: { type: String, required: true },
     bankName: { type: String, required: true },
-    
+
     // ============================================
     // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
     // ============================================
@@ -14,9 +14,8 @@ const bankAccountSchema = new mongoose.Schema(
       type: Number,
       required: true,
       default: 0,
-      get: paisaToRupees,
     },
-    
+
     // Backward compatibility getter
     balance: {
       type: Number,
@@ -24,7 +23,7 @@ const bankAccountSchema = new mongoose.Schema(
         return this.balancePaisa ? paisaToRupees(this.balancePaisa) : 0;
       },
     },
-    
+
     isDefault: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
   },

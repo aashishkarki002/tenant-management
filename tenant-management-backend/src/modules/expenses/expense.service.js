@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildExpenseJournal } from "../ledger/journal-builders/index.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { ACCOUNTING_CONFIG } from "../../config/accounting.config.js";
 
 export async function createExpense(expenseData) {
   const session = await mongoose.startSession();
@@ -13,7 +14,7 @@ export async function createExpense(expenseData) {
     const {
       source,
       amountPaisa,
-      amount, // Backward compatibility
+      amount,
       EnglishDate,
       nepaliDate,
       nepaliMonth,
@@ -27,12 +28,15 @@ export async function createExpense(expenseData) {
       createdBy,
       expenseCode,
     } = expenseData;
-    
+
     // ✅ Convert to paisa if needed
-    const finalAmountPaisa = amountPaisa !== undefined
-      ? amountPaisa
-      : (amount ? rupeesToPaisa(amount) : 0);
-    
+    const finalAmountPaisa =
+      amountPaisa !== undefined
+        ? amountPaisa
+        : amount
+          ? rupeesToPaisa(amount)
+          : 0;
+
     const expenseSource = await ExpenseSource.findById(source).session(session);
     if (!expenseSource) {
       throw new Error("Expense source not found");
@@ -41,14 +45,29 @@ export async function createExpense(expenseData) {
     if (!existingAdmin) {
       throw new Error("Admin not found");
     }
-    const expenseCodeToUse = expenseCode ?? expenseSource?.code ?? "5200";
+
+    // Determine which ledger expense account code to use.
+    // Priority:
+    // 1. Explicit expenseCode from the caller
+    // 2. Special mapping for known ExpenseSource codes (e.g. MAINTENANCE)
+    // 3. Fallback to a generic expense account code (5200)
+    let expenseCodeToUse = expenseCode;
+    if (!expenseCodeToUse && expenseSource?.code) {
+      if (expenseSource.code === ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_SOURCE_CODE) {
+        expenseCodeToUse = ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE;
+      } else {
+        expenseCodeToUse = expenseSource.code;
+      }
+    }
+    if (!expenseCodeToUse) {
+      expenseCodeToUse = "5200";
+    }
     // Create expense first so we have an _id for the transaction referenceId
     const [expense] = await Expense.create(
       [
         {
           source: expenseSource._id,
           amountPaisa: finalAmountPaisa,
-          amount: finalAmountPaisa / 100, // Backward compatibility
           EnglishDate,
           nepaliDate,
           nepaliMonth,

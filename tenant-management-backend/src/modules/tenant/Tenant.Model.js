@@ -227,7 +227,6 @@ tenantSchema.statics.findOverdue = function () {
 // ============================================
 // INDEXES
 // ============================================
-tenantSchema.index({ email: 1 });
 tenantSchema.index({ status: 1, isDeleted: 1 });
 tenantSchema.index({ property: 1, block: 1, innerBlock: 1 });
 tenantSchema.index({ nextRentDueDate: 1 });
