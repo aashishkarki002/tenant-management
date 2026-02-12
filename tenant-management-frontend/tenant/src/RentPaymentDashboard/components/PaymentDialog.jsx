@@ -21,6 +21,54 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DualCalendarTailwind from "../../components/dualDate";
 import { getPaymentAmounts, normalizeStatus } from "../utils/paymentUtil";
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a unit id to a plain string from ObjectId, populated doc, or string.
+ * Mirrors resolveUnitId in rent-payment.helper.js for front-end parity.
+ */
+function resolveId(val) {
+  if (!val) return null;
+  if (val._id) return val._id.toString();
+  return val.toString();
+}
+
+/**
+ * Proportional allocation — mirrors allocatePaymentProportionally on the backend.
+ * Returns [{ unitId: string, amount: number (rupees) }]
+ */
+function proportionalAllocate(unitBreakdown, totalRupees) {
+  const totalRemainingPaisa = unitBreakdown.reduce((sum, u) => {
+    return sum + Math.max(0, (u.rentAmountPaisa || 0) - (u.paidAmountPaisa || 0));
+  }, 0);
+  if (totalRemainingPaisa === 0) return [];
+
+  const totalPaymentPaisa = Math.round(totalRupees * 100);
+  let remaining = totalPaymentPaisa;
+  const result = [];
+
+  unitBreakdown.forEach((u, idx) => {
+    const unitRemainingPaisa = (u.rentAmountPaisa || 0) - (u.paidAmountPaisa || 0);
+    if (unitRemainingPaisa <= 0) return;
+
+    let alloc;
+    if (idx === unitBreakdown.length - 1) {
+      alloc = remaining; // last unit absorbs rounding residue
+    } else {
+      alloc = Math.round((unitRemainingPaisa / totalRemainingPaisa) * totalPaymentPaisa);
+      alloc = Math.min(alloc, unitRemainingPaisa);
+    }
+
+    if (alloc > 0) {
+      result.push({ unitId: resolveId(u.unit), amount: alloc / 100 });
+      remaining -= alloc;
+    }
+  });
+
+  return result;
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export const PaymentDialog = ({
   rent,
@@ -37,103 +85,214 @@ export const PaymentDialog = ({
   setSelectedBankAccountId,
   handleAmountChange,
   onClose,
-  // Optional future extension: list of related rent records for this tenant
   relatedRents,
 }) => {
   const { rentAmount, camAmount, totalDue } = getPaymentAmounts(rent, cams);
-  const totalAllocated = rentAllocation + camAllocation;
-  const balanceOwed = totalDue - totalAllocated;
-  const paymentAmount = formik.values?.amount || 0;
 
+  // ── Find matching CAM record ─────────────────────────────────────────────
+  // Industry standard: match CAM to rent by tenant + billing period
+  const matchingCam = React.useMemo(() => {
+    if (!cams?.length) return null;
+    return (
+      cams.find(
+        (c) =>
+          resolveId(c.tenant) === resolveId(rent?.tenant?._id || rent?.tenant) &&
+          c.nepaliMonth === rent?.nepaliMonth &&
+          c.nepaliYear === rent?.nepaliYear
+      ) || cams[0] // fallback to first CAM if period-match unavailable
+    );
+  }, [cams, rent]);
+
+  // ── Unit breakdown (multi-unit) ──────────────────────────────────────────
+  /**
+   * Industry standard: derive per-unit amounts from the server's unitBreakdown,
+   * NOT by dividing the total equally. unitBreakdown holds the authoritative
+   * rentAmountPaisa / paidAmountPaisa per unit set at rent creation time.
+   */
   const units = React.useMemo(() => {
-    const rawUnits = Array.isArray(rent?.units) && rent.units.length > 0
-      ? rent.units
-      : [
-        {
-          _id: rent?._id || "primary-unit",
-          name: rent?.unitLabel || "Primary Unit",
-        },
-      ];
+    const hasBreakdown =
+      rent?.useUnitBreakdown && Array.isArray(rent.unitBreakdown) && rent.unitBreakdown.length > 0;
 
-    const unitCount = rawUnits.length || 1;
+    if (hasBreakdown) {
+      return rent.unitBreakdown.map((ub) => {
+        const unit = ub.unit; // populated doc or ObjectId
+        const id = resolveId(unit);
+        const rentDue = (ub.rentAmountPaisa || 0) / 100;
+        const paidSoFar = (ub.paidAmountPaisa || 0) / 100;
+        const remaining = rentDue - paidSoFar;
 
-    return rawUnits.map((unit, index) => {
-      const id = unit._id || unit.id || unit.name || String(index);
-      const perUnitRent = rentAmount / unitCount;
-      const perUnitCam = camAmount / unitCount;
-      const perUnitTotal = perUnitRent + perUnitCam;
-      const status = normalizeStatus(rent?.status || "");
-      const hasOutstanding =
-        status !== "paid" && perUnitTotal > 0;
+        return {
+          id,
+          name: unit?.name || id || "Unit",
+          label:
+            unit?.block?.name
+              ? `${unit.block.name} – ${unit.innerBlock?.name || ""}`.trim()
+              : "",
+          rentDue,
+          paidSoFar,
+          remaining,
+          hasOutstanding: remaining > 0,
+          // keep reference for payload building
+          _breakdownRef: ub,
+        };
+      });
+    }
 
-      return {
-        id,
-        name: unit.name || `Unit ${index + 1}`,
-        label:
-          unit.name ||
-          `${rent?.innerBlock?.name || ""} ${rent?.block?.name || ""}`.trim(),
-        rentDue: perUnitRent,
-        camDue: perUnitCam,
-        totalDue: perUnitTotal,
-        hasOutstanding,
-      };
-    });
-  }, [rent, rentAmount, camAmount]);
+    // Single-unit fallback
+    const rentDue = rentAmount;
+    const paidSoFar = (rent?.paidAmountPaisa || 0) / 100;
+    return [
+      {
+        id: resolveId(rent?.units?.[0]) || rent?._id || "primary",
+        name: rent?.units?.[0]?.name || "Primary Unit",
+        label: `${rent?.innerBlock?.name || ""} ${rent?.block?.name || ""}`.trim(),
+        rentDue,
+        paidSoFar,
+        remaining: rentDue - paidSoFar,
+        hasOutstanding: rentDue - paidSoFar > 0,
+        _breakdownRef: null,
+      },
+    ];
+  }, [rent, rentAmount]);
 
+  // ── Selected units ───────────────────────────────────────────────────────
   const [selectedUnitIds, setSelectedUnitIds] = React.useState(
-    units.map((u) => u.id)
+    units.filter((u) => u.hasOutstanding).map((u) => u.id)
   );
 
-  // Re-sync selected units when rent changes (dialog opened for a different row)
   React.useEffect(() => {
-    setSelectedUnitIds(units.map((u) => u.id));
-  }, [rent?._id, units]);
+    setSelectedUnitIds(units.filter((u) => u.hasOutstanding).map((u) => u.id));
+  }, [rent?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const selectedUnits = units.filter((u) => selectedUnitIds.includes(u.id));
   const allSelected = selectedUnitIds.length === units.length;
-  const hasSelectedUnits = selectedUnitIds.length > 0;
 
-  const isOverAllocated =
-    totalAllocated > paymentAmount && paymentAmount > 0;
+  // ── Per-unit rent allocation (manual mode) ───────────────────────────────
+  /**
+   * Industry standard: store allocation as rupees keyed by unitId.
+   * On submit, these become unitAllocations[].amount in the payload.
+   */
+  const [unitRentAllocations, setUnitRentAllocations] = React.useState({});
 
+  // Reset per-unit allocations when selected units change
+  React.useEffect(() => {
+    setUnitRentAllocations((prev) => {
+      const next = {};
+      selectedUnits.forEach((u) => {
+        next[u.id] = prev[u.id] ?? u.remaining;
+      });
+      return next;
+    });
+  }, [selectedUnitIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Derived amounts ──────────────────────────────────────────────────────
+  const paymentAmount = formik.values?.amount || 0;
+  const totalAllocated = rentAllocation + camAllocation;
+  const balanceOwed = totalDue - totalAllocated;
+  const isOverAllocated = totalAllocated > paymentAmount && paymentAmount > 0;
+
+  // Proportional auto-allocation preview (matches backend default strategy)
+  const autoUnitAllocations = React.useMemo(() => {
+    if (!rent?.useUnitBreakdown || !rent?.unitBreakdown?.length) return [];
+    const selectedBreakdown = rent.unitBreakdown.filter((ub) =>
+      selectedUnitIds.includes(resolveId(ub.unit))
+    );
+    if (!selectedBreakdown.length || !rentAllocation) return [];
+    return proportionalAllocate(selectedBreakdown, rentAllocation);
+  }, [rent, selectedUnitIds, rentAllocation]);
+
+  // Manual per-unit total validation
+  const manualUnitRentTotal = Object.values(unitRentAllocations).reduce(
+    (s, v) => s + (parseFloat(v) || 0),
+    0
+  );
+  const unitAllocationMismatch =
+    allocationMode === "manual" &&
+    rent?.useUnitBreakdown &&
+    Math.abs(manualUnitRentTotal - rentAllocation) > 0.01;
+
+  // ── Payload builder ──────────────────────────────────────────────────────
+  /**
+   * Builds the exact API payload matching the /payments endpoint contract.
+   * Industry standard: construct at submit time, not incrementally,
+   * so the shape is always derived from latest state.
+   */
+  function buildPayload() {
+    const isMultiUnit = rent?.useUnitBreakdown && rent?.unitBreakdown?.length > 0;
+
+    const payload = {
+      tenantId: resolveId(rent?.tenant?._id || rent?.tenant),
+      amount: paymentAmount,
+      paymentDate: formik.values?.paymentDate
+        ? new Date(formik.values.paymentDate).toISOString().split("T")[0]
+        : null,
+      nepaliDate: formik.values?.nepaliDate || null,
+      paymentMethod: formik.values?.paymentMethod,
+      paymentStatus: "paid",
+      note: formik.values?.note || "",
+      bankAccountId: formik.values?.bankAccountId || null,
+      transactionRef: formik.values?.transactionRef || null,
+      allocations: {},
+    };
+
+    // ── Rent allocation ────────────────────────────────────────────────────
+    if (rentAllocation > 0) {
+      const rentEntry = {
+        rentId: rent._id,
+        amount: rentAllocation,
+      };
+
+      if (isMultiUnit) {
+        // Attach per-unit allocations — use manual or proportional depending on mode
+        const unitAllocations =
+          allocationMode === "manual"
+            ? selectedUnits
+              .map((u) => ({
+                unitId: u.id,
+                amount: parseFloat(unitRentAllocations[u.id]) || 0,
+              }))
+              .filter((a) => a.amount > 0)
+            : autoUnitAllocations.filter((a) =>
+              selectedUnitIds.includes(a.unitId)
+            );
+
+        if (unitAllocations.length > 0) {
+          rentEntry.unitAllocations = unitAllocations;
+        }
+      }
+
+      payload.allocations.rent = rentEntry;
+    }
+
+    // ── CAM allocation ─────────────────────────────────────────────────────
+    if (camAllocation > 0 && matchingCam?._id) {
+      payload.allocations.cam = {
+        camId: matchingCam._id,
+        paidAmount: camAllocation,
+      };
+    }
+
+    return payload;
+  }
+
+  // ── Validation ───────────────────────────────────────────────────────────
   const isSubmitDisabled =
-    !hasSelectedUnits ||
+    !selectedUnits.length ||
     isOverAllocated ||
     !paymentAmount ||
     !formik.values?.paymentMethod ||
-    !formik.values?.paymentDate;
+    !formik.values?.paymentDate ||
+    unitAllocationMismatch;
 
-  const selectedUnits = units.filter((u) =>
-    selectedUnitIds.includes(u.id)
-  );
-  const selectedCount = selectedUnits.length || 1;
-
-  const perUnitRentAllocation =
-    selectedCount > 0 ? rentAllocation / selectedCount : 0;
-  const perUnitCamAllocation =
-    selectedCount > 0 ? camAllocation / selectedCount : 0;
-
-  const effectivePaymentAmount =
-    paymentAmount && paymentAmount > 0 ? paymentAmount : totalDue;
-
+  // ── Summary tone ─────────────────────────────────────────────────────────
   const summaryTone =
     balanceOwed === 0
-      ? {
-        container:
-          "border-emerald-200 bg-emerald-50",
-        accent: "text-emerald-700",
-      }
+      ? { container: "border-emerald-200 bg-emerald-50", accent: "text-emerald-700" }
       : balanceOwed > 0
-        ? {
-          container:
-            "border-amber-200 bg-amber-50",
-          accent: "text-amber-700",
-        }
-        : {
-          container:
-            "border-rose-200 bg-rose-50",
-          accent: "text-rose-700",
-        };
+        ? { container: "border-amber-200 bg-amber-50", accent: "text-amber-700" }
+        : { container: "border-rose-200 bg-rose-50", accent: "text-rose-700" };
 
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto bg-slate-50">
       <DialogHeader className="pb-4">
@@ -145,7 +304,7 @@ export const PaymentDialog = ({
         </p>
       </DialogHeader>
 
-      {/* High-level due summary */}
+      {/* ── High-level due summary ─────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm space-y-4">
         <div className="grid grid-cols-2 gap-6">
           <div>
@@ -174,13 +333,11 @@ export const PaymentDialog = ({
         </div>
       </div>
 
-      {/* 1️⃣ Select Units */}
+      {/* ── 1️⃣ Select Units ──────────────────────────────────────────────── */}
       <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-900">
-              Select Units
-            </p>
+            <p className="text-sm font-semibold text-slate-900">Select Units</p>
             <p className="text-xs text-slate-500 mt-0.5">
               Choose one or more units to include in this payment.
             </p>
@@ -190,13 +347,9 @@ export const PaymentDialog = ({
               type="checkbox"
               className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900"
               checked={allSelected}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedUnitIds(units.map((u) => u.id));
-                } else {
-                  setSelectedUnitIds([]);
-                }
-              }}
+              onChange={(e) =>
+                setSelectedUnitIds(e.target.checked ? units.map((u) => u.id) : [])
+              }
             />
             Select all units
           </label>
@@ -209,16 +362,16 @@ export const PaymentDialog = ({
               <button
                 key={unit.id}
                 type="button"
-                onClick={() => {
+                onClick={() =>
                   setSelectedUnitIds((prev) =>
                     prev.includes(unit.id)
                       ? prev.filter((id) => id !== unit.id)
                       : [...prev, unit.id]
-                  );
-                }}
-                className={`w-full text-left rounded-lg border p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 ${selected
-                  ? "border-slate-900/80 bg-slate-900/3"
-                  : "border-slate-200 hover:border-slate-300 bg-white"
+                  )
+                }
+                className={`w-full text-left rounded-lg border p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${selected
+                    ? "border-slate-900/80 bg-slate-900/[0.03]"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
                   }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -227,16 +380,14 @@ export const PaymentDialog = ({
                       type="checkbox"
                       checked={selected}
                       readOnly
-                      className="mt-1 h-3.5 w-3.5 rounded border-slate-300 text-slate-900 pointer-events-none"
+                      className="mt-1 h-3.5 w-3.5 rounded border-slate-300 pointer-events-none"
                     />
                     <div>
                       <p className="text-sm font-semibold text-slate-900">
                         {unit.name}
                       </p>
                       {unit.label && (
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {unit.label}
-                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">{unit.label}</p>
                       )}
                     </div>
                   </div>
@@ -250,35 +401,30 @@ export const PaymentDialog = ({
                   )}
                 </div>
 
+                {/* Per-unit amounts — sourced from unitBreakdown, not divided equally */}
                 <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">
                       Rent Due
                     </p>
                     <p className="mt-0.5 font-semibold text-slate-900">
-                      ₹{unit.rentDue.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}
+                      ₹{unit.rentDue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      CAM Due
+                      Paid
                     </p>
-                    <p className="mt-0.5 font-semibold text-slate-900">
-                      ₹{unit.camDue.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}
+                    <p className="mt-0.5 font-semibold text-emerald-700">
+                      ₹{unit.paidSoFar.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Total Due
+                      Remaining
                     </p>
                     <p className="mt-0.5 font-semibold text-slate-900">
-                      ₹{unit.totalDue.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}
+                      ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                 </div>
@@ -287,24 +433,19 @@ export const PaymentDialog = ({
           })}
         </div>
 
-        {!hasSelectedUnits && (
-          <p className="text-xs text-rose-600">
-            Select at least one unit to continue.
-          </p>
+        {!selectedUnits.length && (
+          <p className="text-xs text-rose-600">Select at least one unit to continue.</p>
         )}
       </section>
 
-      {/* 2️⃣ Allocation Mode + 3️⃣ / 4️⃣ Mode Content */}
+      {/* ── 2️⃣ Allocation Mode ───────────────────────────────────────────── */}
       <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">
-              Allocation Mode
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Switch between quick full-payment and manual allocation.
-            </p>
-          </div>
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Allocation Mode</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Quick Payment auto-distributes proportionally across units. Custom lets you
+            specify exact amounts per unit.
+          </p>
         </div>
 
         <Tabs
@@ -327,13 +468,10 @@ export const PaymentDialog = ({
             </TabsTrigger>
           </TabsList>
 
-          {/* 3️⃣ Quick Payment Mode */}
+          {/* ── 3️⃣ Quick Payment ────────────────────────────────────────── */}
           <TabsContent value="auto" className="space-y-4 pt-2">
             <div className="space-y-2">
-              <label
-                htmlFor="amount-quick"
-                className="text-sm font-semibold text-slate-900"
-              >
+              <label htmlFor="amount-quick" className="text-sm font-semibold text-slate-900">
                 Amount to Pay (Rs)
               </label>
               <Input
@@ -341,79 +479,67 @@ export const PaymentDialog = ({
                 type="number"
                 placeholder="Enter payment amount"
                 value={formik.values?.amount || ""}
-                onChange={(e) =>
-                  handleAmountChange(parseFloat(e.target.value) || 0, rent)
-                }
+                onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
                 onBlur={(e) => {
-                  if (!e.target.value) {
-                    handleAmountChange(totalDue, rent);
-                  }
+                  if (!e.target.value) handleAmountChange(totalDue, rent);
                 }}
                 className="text-lg"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                If left blank, full due amount (₹
-                {totalDue.toLocaleString()}) will be used.
+              <p className="text-xs text-slate-500">
+                If left blank, full due amount (₹{totalDue.toLocaleString()}) will be used.
               </p>
             </div>
 
-            {/* Auto allocation preview per unit */}
+            {/* Proportional preview — matches backend allocatePaymentProportionally */}
             <div className="mt-3 bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
-                  Auto allocation preview
+                  Proportional allocation preview
                 </p>
-                <p className="text-xs text-slate-500">
-                  Rent first, then CAM across selected units
-                </p>
+                <p className="text-xs text-slate-500">Weighted by remaining balance</p>
               </div>
-              <div className="space-y-2">
-                {selectedUnits.map((unit) => (
-                  <div
-                    key={unit.id}
-                    className="flex items-center justify-between text-xs"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium text-slate-900">
-                        {unit.name}
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        Rent ₹
-                        {perUnitRentAllocation.toLocaleString(undefined, {
-                          maximumFractionDigits: 0,
-                        })}{" "}
-                        · CAM ₹
-                        {perUnitCamAllocation.toLocaleString(undefined, {
-                          maximumFractionDigits: 0,
-                        })}
+
+              {autoUnitAllocations.length > 0 ? (
+                <div className="space-y-2">
+                  {autoUnitAllocations.map((alloc) => {
+                    const unit = units.find((u) => u.id === alloc.unitId);
+                    return (
+                      <div
+                        key={alloc.unitId}
+                        className="flex items-center justify-between text-xs"
+                      >
+                        <span className="font-medium text-slate-900">
+                          {unit?.name || alloc.unitId}
+                        </span>
+                        <span className="font-semibold text-slate-900">
+                          ₹{alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {camAllocation > 0 && matchingCam && (
+                    <div className="flex items-center justify-between text-xs border-t border-slate-200 pt-2 mt-1">
+                      <span className="font-medium text-slate-500">CAM</span>
+                      <span className="font-semibold text-slate-700">
+                        ₹{camAllocation.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </span>
                     </div>
-                    <span className="font-semibold text-slate-900">
-                      ₹
-                      {(
-                        perUnitRentAllocation + perUnitCamAllocation
-                      ).toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })}
-                    </span>
-                  </div>
-                ))}
-                {!selectedUnits.length && (
-                  <p className="text-xs text-slate-500">
-                    Select at least one unit to see allocation.
-                  </p>
-                )}
-              </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  {selectedUnits.length === 0
+                    ? "Select at least one unit to see allocation."
+                    : "Enter an amount above to preview allocation."}
+                </p>
+              )}
             </div>
           </TabsContent>
 
-          {/* 4️⃣ Custom Allocation Mode */}
+          {/* ── 4️⃣ Custom Allocation ─────────────────────────────────────── */}
           <TabsContent value="manual" className="space-y-4 pt-2">
             <div className="space-y-2">
-              <label
-                htmlFor="amount-manual"
-                className="text-sm font-semibold text-slate-900"
-              >
+              <label htmlFor="amount-manual" className="text-sm font-semibold text-slate-900">
                 Total Amount to Pay (Rs)
               </label>
               <Input
@@ -422,21 +548,16 @@ export const PaymentDialog = ({
                 placeholder="Enter total payment amount"
                 value={formik.values?.amount || ""}
                 onChange={(e) =>
-                  formik.setFieldValue(
-                    "amount",
-                    parseFloat(e.target.value) || 0
-                  )
+                  formik.setFieldValue("amount", parseFloat(e.target.value) || 0)
                 }
                 className="text-lg"
               />
             </div>
 
+            {/* Global rent / CAM split */}
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label
-                  htmlFor="rent-allocation"
-                  className="text-sm font-semibold text-slate-900"
-                >
+                <label htmlFor="rent-allocation" className="text-sm font-semibold text-slate-900">
                   Allocate to Rent (Rs)
                 </label>
                 <Input
@@ -444,20 +565,13 @@ export const PaymentDialog = ({
                   type="number"
                   placeholder="Rent amount"
                   value={rentAllocation}
-                  onChange={(e) =>
-                    setRentAllocation(parseFloat(e.target.value) || 0)
-                  }
+                  onChange={(e) => setRentAllocation(parseFloat(e.target.value) || 0)}
                 />
-                <p className="text-xs text-slate-500">
-                  Rent due: ₹{rentAmount.toLocaleString()}
-                </p>
+                <p className="text-xs text-slate-500">Rent due: ₹{rentAmount.toLocaleString()}</p>
               </div>
 
               <div className="space-y-2">
-                <label
-                  htmlFor="cam-allocation"
-                  className="text-sm font-semibold text-slate-900"
-                >
+                <label htmlFor="cam-allocation" className="text-sm font-semibold text-slate-900">
                   Allocate to CAM (Rs)
                 </label>
                 <Input
@@ -465,48 +579,87 @@ export const PaymentDialog = ({
                   type="number"
                   placeholder="CAM amount"
                   value={camAllocation}
-                  onChange={(e) =>
-                    setCamAllocation(parseFloat(e.target.value) || 0)
-                  }
+                  onChange={(e) => setCamAllocation(parseFloat(e.target.value) || 0)}
                 />
-                <p className="text-xs text-slate-500">
-                  CAM due: ₹{camAmount.toLocaleString()}
-                </p>
+                <p className="text-xs text-slate-500">CAM due: ₹{camAmount.toLocaleString()}</p>
               </div>
             </div>
 
-            <div className="mt-3 bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
-              <p className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
-                Allocation across selected units
-              </p>
+            {/* Per-unit rent allocation — only shown for multi-unit rents */}
+            {rent?.useUnitBreakdown && selectedUnits.length > 0 && (
+              <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
+                    Per-unit rent allocation
+                  </p>
+                  <p
+                    className={`text-xs font-medium ${unitAllocationMismatch ? "text-rose-600" : "text-slate-500"
+                      }`}
+                  >
+                    {unitAllocationMismatch
+                      ? `Total ₹${manualUnitRentTotal.toFixed(2)} ≠ rent ₹${rentAllocation.toFixed(2)}`
+                      : `Must sum to ₹${rentAllocation.toLocaleString()}`}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {selectedUnits.map((unit) => (
+                    <div key={unit.id} className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <p className="text-xs font-medium text-slate-900">{unit.name}</p>
+                        <p className="text-[11px] text-slate-500">
+                          Remaining ₹
+                          {unit.remaining.toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
+                          })}
+                        </p>
+                      </div>
+                      <Input
+                        type="number"
+                        className="w-36 text-sm"
+                        value={unitRentAllocations[unit.id] ?? ""}
+                        placeholder="0"
+                        max={unit.remaining}
+                        onChange={(e) =>
+                          setUnitRentAllocations((prev) => ({
+                            ...prev,
+                            [unit.id]: parseFloat(e.target.value) || 0,
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {unitAllocationMismatch && (
+                  <p className="text-xs text-rose-600">
+                    Unit allocations must exactly match the rent allocation amount.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="mt-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
               <p className="text-xs text-slate-500">
-                Rent and CAM allocations apply to all selected units in this
-                billing cycle.
+                Rent and CAM allocations apply to all selected units in this billing cycle.
               </p>
             </div>
           </TabsContent>
         </Tabs>
       </section>
 
-      {/* 5️⃣ Payment Details */}
+      {/* ── 5️⃣ Payment Details ──────────────────────────────────────────── */}
       <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-4">
-        <p className="text-sm font-semibold text-slate-900">
-          Payment Details
-        </p>
+        <p className="text-sm font-semibold text-slate-900">Payment Details</p>
 
         {/* Payment Method */}
         <div className="space-y-2">
-          <label
-            htmlFor="payment-method"
-            className="text-sm font-medium text-slate-900"
-          >
+          <label htmlFor="payment-method" className="text-sm font-medium text-slate-900">
             Payment Method
           </label>
           <Select
             value={formik.values?.paymentMethod || ""}
-            onValueChange={(value) =>
-              formik.setFieldValue("paymentMethod", value)
-            }
+            onValueChange={(value) => formik.setFieldValue("paymentMethod", value)}
           >
             <SelectTrigger id="payment-method">
               <SelectValue placeholder="Select payment method" />
@@ -519,12 +672,10 @@ export const PaymentDialog = ({
           </Select>
         </div>
 
-        {/* Bank Accounts when Bank Transfer */}
+        {/* Bank account picker */}
         {formik.values?.paymentMethod === "bank_transfer" && (
           <div className="space-y-3">
-            <label className="text-sm font-medium text-slate-900">
-              Deposit To
-            </label>
+            <label className="text-sm font-medium text-slate-900">Deposit To</label>
             <div className="grid gap-3">
               {bankAccounts.map((bank) => (
                 <button
@@ -535,15 +686,13 @@ export const PaymentDialog = ({
                     formik.setFieldValue("bankAccountId", bank._id);
                   }}
                   className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
-                    ? "border-slate-900 bg-slate-900/3"
-                    : "border-slate-200 hover:border-slate-300 bg-white"
+                      ? "border-slate-900 bg-slate-900/[0.03]"
+                      : "border-slate-200 hover:border-slate-300 bg-white"
                     }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <p className="font-semibold text-slate-900">
-                        {bank.bankName}
-                      </p>
+                      <p className="font-semibold text-slate-900">{bank.bankName}</p>
                       <p className="text-xs text-slate-500">
                         **** **** {bank.accountNumber?.slice(-4) || "****"}
                       </p>
@@ -558,11 +707,7 @@ export const PaymentDialog = ({
                     </div>
                     {selectedBankAccountId === bank._id && (
                       <div className="ml-3 text-slate-900">
-                        <svg
-                          className="w-5 h-5"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path
                             fillRule="evenodd"
                             d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -580,9 +725,7 @@ export const PaymentDialog = ({
 
         {/* Payment Date */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-900">
-            Payment Date
-          </label>
+          <label className="text-sm font-medium text-slate-900">Payment Date</label>
           <DualCalendarTailwind
             onChange={(english, nepali) => {
               if (english && nepali) {
@@ -598,10 +741,7 @@ export const PaymentDialog = ({
 
         {/* Transaction Reference */}
         <div className="space-y-2">
-          <label
-            htmlFor="transaction-ref"
-            className="text-sm font-medium text-slate-900"
-          >
+          <label htmlFor="transaction-ref" className="text-sm font-medium text-slate-900">
             Transaction Reference{" "}
             <span className="text-slate-500 font-normal">(Optional)</span>
           </label>
@@ -609,14 +749,26 @@ export const PaymentDialog = ({
             id="transaction-ref"
             placeholder="e.g., CHQ-12345 or Bank Ref ID"
             value={formik.values?.transactionRef || ""}
-            onChange={(e) =>
-              formik.setFieldValue("transactionRef", e.target.value)
-            }
+            onChange={(e) => formik.setFieldValue("transactionRef", e.target.value)}
+          />
+        </div>
+
+        {/* Note */}
+        <div className="space-y-2">
+          <label htmlFor="note" className="text-sm font-medium text-slate-900">
+            Note{" "}
+            <span className="text-slate-500 font-normal">(Optional)</span>
+          </label>
+          <Input
+            id="note"
+            placeholder="e.g., Payment for Unit A and Unit B"
+            value={formik.values?.note || ""}
+            onChange={(e) => formik.setFieldValue("note", e.target.value)}
           />
         </div>
       </section>
 
-      {/* 6️⃣ Final Summary Card */}
+      {/* ── 6️⃣ Final Summary ────────────────────────────────────────────── */}
       <section
         className={`mt-6 mb-2 rounded-xl border px-5 py-4 ${summaryTone.container}`}
       >
@@ -635,17 +787,13 @@ export const PaymentDialog = ({
           </div>
           <div className="grid grid-cols-3 gap-4 text-right min-w-[260px]">
             <div>
-              <p className="text-[11px] text-slate-500 uppercase tracking-wide">
-                Total Due
-              </p>
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide">Total Due</p>
               <p className="mt-1 text-base font-semibold text-slate-900">
                 ₹{totalDue.toLocaleString()}
               </p>
             </div>
             <div>
-              <p className="text-[11px] text-slate-500 uppercase tracking-wide">
-                Total Allocated
-              </p>
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide">Total Allocated</p>
               <p className="mt-1 text-base font-semibold text-slate-900">
                 ₹{totalAllocated.toLocaleString()}
               </p>
@@ -654,9 +802,7 @@ export const PaymentDialog = ({
               <p className="text-[11px] text-slate-500 uppercase tracking-wide">
                 Remaining Balance
               </p>
-              <p
-                className={`mt-1 text-base font-semibold ${summaryTone.accent}`}
-              >
+              <p className={`mt-1 text-base font-semibold ${summaryTone.accent}`}>
                 ₹{balanceOwed.toLocaleString()}
               </p>
             </div>
@@ -665,15 +811,15 @@ export const PaymentDialog = ({
       </section>
 
       <DialogFooter className="mt-2 border-t border-slate-200 pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        {(!hasSelectedUnits || isOverAllocated) && (
+        {(!selectedUnits.length || isOverAllocated || unitAllocationMismatch) && (
           <div className="text-xs text-rose-600">
-            {!hasSelectedUnits && (
-              <p>Select at least one unit before submitting.</p>
-            )}
+            {!selectedUnits.length && <p>Select at least one unit before submitting.</p>}
             {isOverAllocated && (
+              <p>Allocation total cannot exceed the payment amount.</p>
+            )}
+            {unitAllocationMismatch && (
               <p>
-                Allocation total cannot exceed the payment amount. Adjust rent
-                or CAM allocation.
+                Per-unit rent allocations must sum to ₹{rentAllocation.toFixed(2)}.
               </p>
             )}
           </div>
@@ -688,6 +834,9 @@ export const PaymentDialog = ({
             disabled={isSubmitDisabled}
             onClick={async (e) => {
               e.preventDefault();
+              // Build the complete, correctly-shaped payload and inject into formik
+              const payload = buildPayload();
+              await formik.setValues({ ...formik.values, ...payload });
               await formik.handleSubmit();
               if (formik.isValid) {
                 onClose();
