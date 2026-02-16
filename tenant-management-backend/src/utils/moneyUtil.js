@@ -33,7 +33,7 @@ function bankersRound(value) {
   return rounded;
 }
 
- /**
+/**
  * Extract numeric value from formatted string or number
  * Handles formatted strings like "Rs. 27,272.70" or "27,272.70"
  * @param {number|string} value - Amount (formatted string or number)

@@ -42,7 +42,7 @@ export const deleteBankAccount = async (req, res) => {
     const bankAccount = await BankAccount.findByIdAndUpdate(
       id,
       { isDeleted: true },
-      { new: true }
+      { new: true },
     );
     return res.status(200).json({ success: true, bankAccount });
   } catch (error) {

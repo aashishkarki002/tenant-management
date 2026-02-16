@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { paisaToRupees } from "../../utils/moneyUtil.js";
+import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 
 const bankAccountSchema = new mongoose.Schema(
   {
@@ -16,14 +16,6 @@ const bankAccountSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // Backward compatibility getter
-    balance: {
-      type: Number,
-      get: function () {
-        return this.balancePaisa ? paisaToRupees(this.balancePaisa) : 0;
-      },
-    },
-
     isDefault: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
   },
@@ -38,5 +30,22 @@ bankAccountSchema.pre("save", function () {
     );
   }
 });
+
+bankAccountSchema.index({ accountNumber: 1, isDeleted: 1 });
+
+// ============================================
+// VIRTUAL FIELDS (same pattern as rent models)
+// ============================================
+
+bankAccountSchema.virtual("balance").get(function () {
+  return paisaToRupees(this.balancePaisa ?? 0);
+});
+
+bankAccountSchema.virtual("balanceFormatted").get(function () {
+  return formatMoney(this.balancePaisa ?? 0);
+});
+
+bankAccountSchema.set("toJSON", { virtuals: true, getters: false });
+bankAccountSchema.set("toObject", { virtuals: true, getters: false });
 
 export default mongoose.model("BankAccount", bankAccountSchema);

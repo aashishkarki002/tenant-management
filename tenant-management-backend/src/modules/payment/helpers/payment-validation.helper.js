@@ -38,15 +38,22 @@ export function validateUnitAllocations(
 
   // Validate each unit exists and doesn't exceed remaining
   unitAllocations.forEach(({ unitId, amountPaisa }) => {
-    const unit = unitBreakdown.find(
-      (u) => u.unit.toString() === unitId.toString(),
-    );
+    const unitIdStr = unitId.toString();
+    const unit = unitBreakdown.find((u) => {
+      const uUnit = u.unit;
+      if (!uUnit) return false;
+
+      // Support both populated (document) and unpopulated (ObjectId) refs
+      const actualId = uUnit._id ? uUnit._id.toString() : uUnit.toString();
+      return actualId === unitIdStr;
+    });
 
     if (!unit) {
       throw new Error(`Unit ${unitId} not found in rent breakdown`);
     }
 
     const remaining = (unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
+    console.log("remaining", remaining);
     if (amountPaisa > remaining) {
       throw new Error(
         `Payment ${formatMoney(amountPaisa)} exceeds remaining ${formatMoney(remaining)} for unit ${unitId}`,
@@ -190,6 +197,28 @@ export function validatePaymentNotExceeding(
         `Payment ${formatMoney(paymentPaisa)} exceeds remaining balance ${formatMoney(remaining)}`,
       );
     }
+  }
+}
+
+/**
+ * Validate CAM payment doesn't exceed remaining balance
+ *
+ * CAM payments are added to paidAmountPaisa. This ensures the
+ * payment would not cause paidAmountPaisa > amountPaisa.
+ *
+ * @param {Object} cam - CAM document with amountPaisa, paidAmountPaisa
+ * @param {number} paymentPaisa - Payment amount in paisa to apply
+ * @throws {Error} If payment would exceed CAM amount
+ */
+export function validateCamPaymentNotExceeding(cam, paymentPaisa) {
+  const amountPaisa = cam.amountPaisa ?? 0;
+  const paidAmountPaisa = cam.paidAmountPaisa ?? 0;
+  const remainingPaisa = amountPaisa - paidAmountPaisa;
+
+  if (paymentPaisa > remainingPaisa) {
+    throw new Error(
+      `CAM payment ${formatMoney(paymentPaisa)} exceeds remaining balance ${formatMoney(remainingPaisa)} (CAM total: ${formatMoney(amountPaisa)}, already paid: ${formatMoney(paidAmountPaisa)})`,
+    );
   }
 }
 

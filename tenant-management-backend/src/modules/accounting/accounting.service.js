@@ -3,6 +3,7 @@ import { Revenue } from "../revenue/Revenue.Model.js";
 import { RevenueSource } from "../revenue/RevenueSource.Model.js";
 import { Liability } from "../liabilities/Liabilities.Model.js";
 import { LiabilitySource } from "../liabilities/LiabilitesSource.Model.js";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 /**
  * Build accounting summary for dashboard (revenue, liabilities, cash flow, breakdowns)
@@ -46,10 +47,11 @@ export async function getAccountingSummary({
       },
     },
     { $unwind: { path: "$sourceDetails", preserveNullAndEmptyArrays: true } },
+    // Aggregate revenues: sum in paisa (integer arithmetic, no floating-point drift)
     {
       $group: {
         _id: "$source",
-        totalAmount: { $sum: "$amount" },
+        totalAmountPaisa: { $sum: "$amountPaisa" },
         name: { $first: "$sourceDetails.name" },
         code: { $first: "$sourceDetails.code" },
       },
@@ -71,10 +73,11 @@ export async function getAccountingSummary({
       },
     },
     { $unwind: { path: "$sourceDetails", preserveNullAndEmptyArrays: true } },
+    // Aggregate liabilities: sum in paisa
     {
       $group: {
         _id: "$source",
-        totalAmount: { $sum: "$amount" },
+        totalAmountPaisa: { $sum: "$amountPaisa" },
         name: { $first: "$sourceDetails.name" },
         code: { $first: "$sourceDetails.code" },
       },
@@ -100,13 +103,16 @@ export async function getAccountingSummary({
   const expenseAccounts = byType("EXPENSE");
   const totalExpenses = sumNet(expenseAccounts);
 
-  // Totals derived from models
+  // Convert paisa aggregations to rupees at the service boundary.
+  // NOTE: ledger expenses (totalExpenses) come from ledgerService which returns
+  // values already in rupees. Revenue and liabilities are stored in paisa and
+  // converted here — keep this conversion centralised so callers always receive rupees.
   const totalRevenue = revenueAggregation.reduce(
-    (sum, item) => sum + (item.totalAmount || 0),
+    (sum, item) => sum + paisaToRupees(item.totalAmountPaisa || 0),
     0,
   );
   const totalLiabilities = liabilityAggregation.reduce(
-    (sum, item) => sum + (item.totalAmount || 0),
+    (sum, item) => sum + paisaToRupees(item.totalAmountPaisa || 0),
     0,
   );
 
@@ -122,7 +128,7 @@ export async function getAccountingSummary({
     (streams, item) => {
       const name = item.name || item.code || "revenue";
       const key = camelKey(name) || "revenue";
-      const amount = item.totalAmount || 0;
+      const amount = paisaToRupees(item.totalAmountPaisa || 0);
 
       streams.breakdown.push({
         code: item.code,
@@ -144,7 +150,7 @@ export async function getAccountingSummary({
   const liabilitiesBreakdown = liabilityAggregation.map((item) => ({
     code: item.code,
     name: item.name || item.code || "liability",
-    amount: Math.abs(item.totalAmount || 0),
+    amount: Math.abs(paisaToRupees(item.totalAmountPaisa || 0)),
   }));
 
   // Build dynamic expense breakdown from ledger summary accounts

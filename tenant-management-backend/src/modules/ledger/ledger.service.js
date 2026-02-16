@@ -262,12 +262,6 @@ class LedgerService {
         {
           // ✅ Increment balance in PAISA (integer addition)
           $inc: { currentBalancePaisa: balanceChangePaisa },
-          // Backward compatibility: also update currentBalance
-          $set: {
-            currentBalance: paisaToRupees(
-              (account.currentBalancePaisa || 0) + balanceChangePaisa,
-            ),
-          },
         },
         { session },
       ).exec();

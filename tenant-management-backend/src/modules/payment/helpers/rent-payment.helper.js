@@ -6,6 +6,13 @@
  */
 
 import { getAllocationStrategy } from "./payment.allocation.helper.js";
+
+/** Resolve unit ID string from ObjectId, populated doc, or string (handles .populate("unitBreakdown.unit") and strategy-returned unitId) */
+function resolveUnitId(val) {
+  if (val == null) return null;
+  if (val._id) return val._id.toString();
+  return typeof val === "string" ? val : val.toString();
+}
 import {
   validateUnitAllocations,
   validatePaymentNotExceeding,
@@ -49,8 +56,10 @@ export function applyPaymentToRent(
 
     // Apply payment to each unit
     allocations.forEach(({ unitId, amountPaisa }) => {
+      const unitIdStr = resolveUnitId(unitId);
+      if (!unitIdStr) return;
       const unitBreakdown = rent.unitBreakdown.find(
-        (u) => u.unit.toString() === unitId.toString(),
+        (u) => resolveUnitId(u.unit) === unitIdStr,
       );
 
       if (unitBreakdown) {
@@ -64,6 +73,10 @@ export function applyPaymentToRent(
       (sum, unit) => sum + (unit.paidAmountPaisa || 0),
       0,
     );
+
+    // Update metadata (same as single-unit)
+    rent.lastPaidDate = paymentDate;
+    rent.lastPaidBy = receivedBy;
 
     // Return allocations for audit trail
     return allocations;

@@ -9,7 +9,6 @@ import { Payment } from "./payment.model.js";
 import { getFilteredPaymentHistoryService } from "./payment.service.js";
 import parsePaginationParams from "../../helper/paginator.js";
 import { getDashboardStatsData } from "../dashboards/dashboard.service.js";
-import { paisaToRupees } from "../../utils/moneyUtil.js";
 export async function payRentAndCam(req, res) {
   try {
     const {
@@ -189,13 +188,10 @@ export async function getAllPaymentHistory(req, res) {
     const { page, limit, skip } = parsePaginationParams(req);
     const [payments, total] = await Promise.all([
       Payment.find()
-        .sort({ createdAt: -1 }) // latest first
+        .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate({
-          path: "tenant",
-          select: "name",
-        })
+        .populate({ path: "tenant", select: "name" })
         .populate({
           path: "rent",
           populate: [
@@ -206,11 +202,11 @@ export async function getAllPaymentHistory(req, res) {
         .populate({
           path: "bankAccount",
           select: "accountNumber accountName bankName",
-        })
-        .lean(),
+        }),
 
       Payment.countDocuments(),
     ]);
+
     res.json({
       success: true,
       message: "Payment history fetched successfully",
@@ -262,55 +258,14 @@ export async function getPaymentHistoryByTenant(req, res) {
         .populate({
           path: "bankAccount",
           select: "accountNumber accountName bankName",
-        })
-        .lean(),
+        }),
       Payment.countDocuments({ tenant: tenantId }),
     ]);
-
-    // Transform payments: convert paisa to rupees for frontend display
-    const transformedPayments = payments.map((payment) => ({
-      ...payment,
-      // Add 'amount' field in rupees for display (frontend expects this)
-      amount: paisaToRupees(payment.amountPaisa),
-      // Keep original amountPaisa for reference if needed
-      amountPaisa: payment.amountPaisa,
-
-      // Transform allocations if present
-      allocations: payment.allocations
-        ? {
-            rent: payment.allocations.rent
-              ? {
-                  ...payment.allocations.rent,
-                  amount: paisaToRupees(
-                    payment.allocations.rent.amountPaisa || 0,
-                  ),
-                  amountPaisa: payment.allocations.rent.amountPaisa,
-                  // Transform unit allocations
-                  unitAllocations:
-                    payment.allocations.rent.unitAllocations?.map((ua) => ({
-                      ...ua,
-                      amount: paisaToRupees(ua.amountPaisa),
-                      amountPaisa: ua.amountPaisa,
-                    })),
-                }
-              : undefined,
-            cam: payment.allocations.cam
-              ? {
-                  ...payment.allocations.cam,
-                  paidAmount: paisaToRupees(
-                    payment.allocations.cam.paidAmountPaisa || 0,
-                  ),
-                  paidAmountPaisa: payment.allocations.cam.paidAmountPaisa,
-                }
-              : undefined,
-          }
-        : undefined,
-    }));
 
     res.json({
       success: true,
       message: "Tenant payment history fetched successfully",
-      data: transformedPayments,
+      data: payments,
       pagination: {
         page,
         limit,

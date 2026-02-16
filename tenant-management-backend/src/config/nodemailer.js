@@ -41,7 +41,7 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
   if (!to) throw new Error("No recipient email provided");
 
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: process.env.EMAIL_FROM,
     to,
     subject,
     html,
@@ -79,7 +79,7 @@ async function sendPaymentReceiptEmail({
   camAmount = 0,
 }) {
   const mailOptions = {
-    from: `"Sallyan House" <${process.env.EMAIL_USER}>`,
+    from: `"Sallyan House" ${process.env.EMAIL_FROM}`,
     to: to,
     subject: `Payment Receipt - ${paidFor}`,
     html: `

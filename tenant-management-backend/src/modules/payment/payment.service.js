@@ -37,6 +37,7 @@ import {
 } from "./helpers/payment.allocation.helper.js";
 import {
   validatePaymentNotExceeding,
+  validateCamPaymentNotExceeding,
   validatePaisaIntegrity,
 } from "./helpers/payment-validation.helper.js";
 import {
@@ -168,6 +169,9 @@ export async function createPayment(paymentData) {
           allocationStrategy,
         );
 
+        // Ensure Mongoose persists nested unitBreakdown changes
+        rent.markModified("unitBreakdown");
+
         // Store unit allocations in payment allocations
         allocations.rent.unitAllocations =
           unitAllocationsResult || unitAllocations;
@@ -228,6 +232,7 @@ export async function createPayment(paymentData) {
         rupeesToPaisa(allocations.cam.paidAmount || 0);
 
       validatePaisaIntegrity({ camAmountPaisa }, ["camAmountPaisa"]);
+      validateCamPaymentNotExceeding(cam, camAmountPaisa);
 
       applyPaymentToCam(
         cam,
@@ -565,9 +570,14 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
     ) {
       pdfData.unitBreakdown = payment.allocations.rent.unitAllocations.map(
         (ua) => {
-          const unit = rent.unitBreakdown.find(
-            (ub) => ub.unit.toString() === ua.unitId.toString(),
-          );
+          const uaId =
+            (ua.unitId?._id ?? ua.unitId)?.toString?.() ?? String(ua.unitId);
+          const unit = rent.unitBreakdown.find((ub) => {
+            const ubId = ub.unit?._id
+              ? ub.unit._id.toString()
+              : ub.unit?.toString?.();
+            return ubId === uaId;
+          });
           return {
             unitName: unit?.unit?.name || "Unknown Unit",
             amountPaisa: ua.amountPaisa,
