@@ -49,6 +49,7 @@ const items = [
   { title: "Maintenance", url: "/maintenance", icon: Wrench },
   { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
   { title: "Electricity", url: "/electricity", icon: Zap },
+  { title: "Accounting", url: "/accounting", icon: FileText },
 ];
 
 export default function AppSidebar() {
@@ -118,62 +119,10 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
               ))}
 
-              {/* Accounting Dropdown Menu - hover only on desktop; on mobile use tap to toggle */}
-              <SidebarMenuItem
-                className="mb-2 text-gray-500"
-                onMouseEnter={!isMobile ? handleAccountingEnter : undefined}
-                onMouseLeave={!isMobile ? handleAccountingLeave : undefined}
-              >
-                <SidebarMenuButton
-                  className="hover:bg-gray-100 hover:text-gray-800 rounded-md flex items-center gap-2"
-                  onClick={() => setIsAccountingOpen((prev) => !prev)}
-                >
-                  <FileText className="w-5 h-5" />
-                  <span>Accounting</span>
-                  {isAccountingOpen ? (
-                    <ChevronDown className="w-4 h-4 ml-auto" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 ml-auto" />
-                  )}
-                </SidebarMenuButton>
-                {isAccountingOpen && (
-                  <SidebarMenuSub>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        className="hover:bg-gray-100 hover:text-gray-800"
-                        onClick={handleNav}
-                      >
-                        <Link to="/expenses">
-                          <span>Expense</span>
-                        </Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        className="hover:bg-gray-100 hover:text-gray-800"
-                        onClick={handleNav}
-                      >
-                        <Link to="/revenue">
-                          <span>Revenue</span>
-                        </Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        className="hover:bg-gray-100 hover:text-gray-800"
-                        onClick={handleNav}
-                      >
-                        <Link to="/accounting">
-                          <span>Summary</span>
-                        </Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  </SidebarMenuSub>
-                )}
-              </SidebarMenuItem>
+
+
+
+
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
