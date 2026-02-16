@@ -194,7 +194,7 @@ export default function AccountingPage() {
         : activeTab === "Expenses" ? "expense"
             : "all";
 
-    const { summary, loadingSummary, ledgerEntries, loadingLedger } =
+    const { summary, loadingSummary, ledgerEntries, loadingLedger, refetch } =
         useAccounting(selectedQuarter, ledgerType);
 
     const { bankAccounts } = useBankAccounts();
@@ -446,6 +446,7 @@ export default function AccountingPage() {
                         ledgerEntries={ledgerEntries}
                         loadingSummary={loadingSummary}
                         loadingLedger={loadingLedger}
+                        onRevenueAdded={refetch}
                     />
                 </TabsContent>
 
@@ -456,6 +457,7 @@ export default function AccountingPage() {
                         ledgerEntries={ledgerEntries}
                         loadingSummary={loadingSummary}
                         loadingLedger={loadingLedger}
+                        onExpenseAdded={refetch}
                     />
                 </TabsContent>
             </Tabs>

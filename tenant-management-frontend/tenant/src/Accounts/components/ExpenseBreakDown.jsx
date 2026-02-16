@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -9,14 +9,45 @@ import { toast } from "sonner";
 import { BanknoteArrowDownIcon, Download, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import { PlusIcon } from "lucide-react";
+import { AddExpenseDialog } from "../../Expenses/components/AddExpenseDialog";
+import api from '../../../plugins/axios'
 
 export default function ExpenseBreakDown({
     expenses,
     ledgerEntries,
     loadingSummary,
     loadingLedger,
+    onExpenseAdded,
 }) {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [tenants, setTenants] = useState([]);
+    const [expenseSources, setExpenseSources] = useState([]);
 
+    useEffect(() => {
+        const fetchTenants = async () => {
+            try {
+                const response = await api.get('/api/tenant/get-tenants');
+                setTenants(response.data?.tenants ?? []);
+            } catch (error) {
+                console.error('Error fetching tenants:', error);
+            }
+        };
+        const fetchExpenseSources = async () => {
+            try {
+                const response = await api.get('/api/expense/get-expense-sources');
+                setExpenseSources(response.data?.expenseSources ?? response.data?.data ?? []);
+            } catch (error) {
+                console.error('Error fetching expense sources:', error);
+            }
+        };
+        fetchTenants();
+        fetchExpenseSources();
+    }, []);
+
+    const handleExpenseSuccess = useCallback(() => {
+        onExpenseAdded?.();
+    }, [onExpenseAdded]);
     // Export to CSV
     const exportToCSV = () => {
         const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -162,7 +193,7 @@ export default function ExpenseBreakDown({
                 <Button
                     onClick={exportToCSV}
                     variant="outline"
-                    className="flex items-center gap-2"
+                    className="flex  gap-2"
                 >
                     <Download className="h-4 w-4" />
                     Export CSV
@@ -170,10 +201,18 @@ export default function ExpenseBreakDown({
                 <Button
                     onClick={exportToPDF}
                     variant="outline"
-                    className="flex items-center gap-2"
+                    className="flex  gap-2"
                 >
                     <FileText className="h-4 w-4" />
                     Export PDF
+                </Button>
+                <Button
+                    variant="outline"
+                    className="w-1/4 ml-auto  bg-red-600 text-white hover:bg-red-700 cursor-pointer hover:text-white"
+                    onClick={() => setIsDialogOpen(true)}
+                >
+                    <PlusIcon className="w-6 h-6 text-white" />
+                    Add Expense
                 </Button>
             </div>
 
@@ -208,6 +247,7 @@ export default function ExpenseBreakDown({
                         {expenses[0]?.name || "—"}
                     </CardContent>
                 </Card>
+
             </div>
 
             {/* ===== Expense Breakdown Chart ===== */}
@@ -270,6 +310,13 @@ export default function ExpenseBreakDown({
                 </CardContent>
             </Card>
 
+            <AddExpenseDialog
+                open={isDialogOpen}
+                onOpenChange={setIsDialogOpen}
+                tenants={tenants}
+                expenseSources={expenseSources}
+                onSuccess={handleExpenseSuccess}
+            />
         </div>
     );
 }

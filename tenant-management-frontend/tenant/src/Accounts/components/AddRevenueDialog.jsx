@@ -21,31 +21,27 @@ import api from "../../../plugins/axios";
 import { Loader2 } from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
 
-function parseNepaliDate(nepaliStr) {
-  if (!nepaliStr || typeof nepaliStr !== "string") return null;
-  const parts = nepaliStr.trim().split("-").map(Number);
-  if (parts.length < 3) return null;
-  return { year: parts[0], month: parts[1], day: parts[2] };
-}
-
 const getInitialValues = () => ({
-  payeeType: "tenant",
+  payerType: "tenant",
   tenantId: "",
-  externalPayeeName: "",
-  source: "",
-  referenceType: "MANUAL",
+  externalPayerName: "",
+  externalPayerType: "PERSON",
+  referenceType: "",
   referenceId: "",
   amount: "",
   date: new Date().toISOString().split("T")[0],
-  nepaliDateStr: "",
   notes: "",
+  bankAccount: "",
+  paymentSchedule: "one_time",
 });
 
-export function AddExpenseDialog({
+
+export function AddRevenueDialog({
   open,
   onOpenChange,
   tenants,
-  expenseSources,
+  revenueSource,
+  bankAccounts,
   onSuccess,
 }) {
   const [submitting, setSubmitting] = React.useState(false);
@@ -55,44 +51,38 @@ export function AddExpenseDialog({
     onSubmit: async (values) => {
       setSubmitting(true);
       try {
-        const payeeType = values.payeeType === "tenant" ? "TENANT" : "EXTERNAL";
-        const nepali = parseNepaliDate(values.nepaliDateStr);
-        const englishDate = values.date || new Date().toISOString().split("T")[0];
-
+        const payerType = values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
         const payload = {
-          source: values.source,
+          source: values.referenceType,
           amount: Number(values.amount),
-          EnglishDate: englishDate,
-          referenceType: values.referenceType || "MANUAL",
+          date: values.date || new Date().toISOString().split("T")[0],
+          payerType,
+          referenceType: "MANUAL",
           referenceId: values.referenceId || undefined,
           notes: values.notes || undefined,
-          payeeType,
+          bankAccountId: values.bankAccount,
+          paymentMethod: "bank_transfer",
+          createdBy: undefined,
         };
 
-        if (nepali) {
-          payload.nepaliDate = values.nepaliDateStr;
-          payload.nepaliMonth = nepali.month;
-          payload.nepaliYear = nepali.year;
-        } else {
-          const today = new Date();
-          payload.nepaliYear = 2081;
-          payload.nepaliMonth = today.getMonth() + 1;
-          payload.nepaliDate = `${payload.nepaliYear}-${String(payload.nepaliMonth).padStart(2, "0")}-15`;
-        }
-
-        if (payeeType === "TENANT") {
+        if (payerType === "TENANT") {
           payload.tenant = typeof values.tenantId === "object" ? values.tenantId?._id : values.tenantId;
+        } else {
+          payload.externalPayer = {
+            name: values.externalPayerName,
+            type: values.externalPayerType,
+          };
         }
 
-        const response = await api.post("/api/expense/create", payload);
-        if (response.data?.expense != null) {
+        const response = await api.post("/api/revenue/create", payload);
+        if (response.data?.success) {
           onSuccess?.(response.data);
           handleClose();
         } else {
           console.error(response.data?.message || "Create failed");
         }
       } catch (err) {
-        console.error("Error creating expense:", err);
+        console.error("Error creating revenue:", err);
       } finally {
         setSubmitting(false);
       }
@@ -109,7 +99,7 @@ export function AddExpenseDialog({
     formik.resetForm({ values: getInitialValues() });
   }, [open]);
 
-  const payeeType = formik.values.payeeType ?? "tenant";
+  const payerType = formik.values.payerType ?? "tenant";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -123,39 +113,37 @@ export function AddExpenseDialog({
       >
         <DialogHeader className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Accounting · Expense
+            Accounting · Revenue
           </p>
           <DialogTitle className="text-2xl font-bold text-foreground">
-            Add Expense
+            Add Revenue
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={formik.handleSubmit} className="space-y-6">
-          {/* Payee type */}
+          {/* Payer type */}
           <div className="space-y-2">
             <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Payee type
+              Payer type
             </Label>
             <div className="inline-flex rounded-md border border-input bg-muted/30 p-0.5">
               <button
                 type="button"
-                onClick={() => formik.setFieldValue("payeeType", "tenant")}
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
-                  payeeType === "tenant"
-                    ? "bg-background text-foreground border border-border shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                onClick={() => formik.setFieldValue("payerType", "tenant")}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${payerType === "tenant"
+                  ? "bg-background text-foreground border border-border shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 Tenant
               </button>
               <button
                 type="button"
-                onClick={() => formik.setFieldValue("payeeType", "external")}
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
-                  payeeType === "external"
-                    ? "bg-background text-foreground border border-border shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                onClick={() => formik.setFieldValue("payerType", "external")}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${payerType === "external"
+                  ? "bg-background text-foreground border border-border shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 External
               </button>
@@ -163,7 +151,7 @@ export function AddExpenseDialog({
           </div>
 
           {/* Select tenant (when Tenant) */}
-          {payeeType === "tenant" && (
+          {payerType === "tenant" && (
             <div className="space-y-2">
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Select tenant
@@ -187,19 +175,40 @@ export function AddExpenseDialog({
             </div>
           )}
 
-          {payeeType === "external" && (
-            <div className="space-y-2">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Payee name (optional)
-              </Label>
-              <Input
-                placeholder="Vendor or payee name"
-                value={formik.values.externalPayeeName ?? ""}
-                onChange={(e) =>
-                  formik.setFieldValue("externalPayeeName", e.target.value)
-                }
-                className="rounded-md"
-              />
+          {payerType === "external" && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  External payer name
+                </Label>
+                <Input
+                  placeholder="Name of payer"
+                  value={formik.values.externalPayerName ?? ""}
+                  onChange={(e) =>
+                    formik.setFieldValue("externalPayerName", e.target.value)
+                  }
+                  className="rounded-md"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Type
+                </Label>
+                <Select
+                  value={formik.values.externalPayerType ?? "PERSON"}
+                  onValueChange={(value) =>
+                    formik.setFieldValue("externalPayerType", value)
+                  }
+                >
+                  <SelectTrigger className="w-full rounded-md">
+                    <SelectValue placeholder="Person or Company" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PERSON">Person</SelectItem>
+                    <SelectItem value="COMPANY">Company</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 
@@ -212,24 +221,26 @@ export function AddExpenseDialog({
             <div className="flex-1 border-t border-border" />
           </div>
 
-          {/* Expense source + Reference ID */}
+          {/* Revenue source + Bank account */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Expense source
+                Revenue source
               </Label>
               <Select
-                value={formik.values.source ?? ""}
-                onValueChange={(value) => formik.setFieldValue("source", value)}
+                value={formik.values.referenceType ?? ""}
+                onValueChange={(value) =>
+                  formik.setFieldValue("referenceType", value)
+                }
               >
                 <SelectTrigger className="w-full rounded-md">
                   <SelectValue placeholder="— select source —" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.isArray(expenseSources) &&
-                    expenseSources.map((src) => (
-                      <SelectItem key={src._id} value={src._id}>
-                        {src.name}
+                  {Array.isArray(revenueSource) &&
+                    revenueSource.map((source) => (
+                      <SelectItem key={source._id} value={source._id}>
+                        {source.name}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -237,16 +248,27 @@ export function AddExpenseDialog({
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Reference ID (optional)
+                Bank account
               </Label>
-              <Input
-                placeholder="Reference ID"
-                value={formik.values.referenceId ?? ""}
-                onChange={(e) =>
-                  formik.setFieldValue("referenceId", e.target.value)
+              <Select
+                value={formik.values.bankAccount ?? ""}
+                onValueChange={(value) =>
+                  formik.setFieldValue("bankAccount", value)
                 }
-                className="rounded-md"
-              />
+              >
+                <SelectTrigger className="w-full rounded-md">
+                  <SelectValue placeholder="— select account —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.isArray(bankAccounts) &&
+                    bankAccounts.map((bank) => (
+                      <SelectItem key={bank._id} value={bank._id}>
+                        {bank.bankName} — ****
+                        {bank.accountNumber?.slice(-4) || "****"}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -272,9 +294,8 @@ export function AddExpenseDialog({
               </Label>
               <DualCalendarTailwind
                 value={formik.values.date ?? ""}
-                onChange={(englishDate, nepaliDateStr) => {
+                onChange={(englishDate) => {
                   formik.setFieldValue("date", englishDate);
-                  formik.setFieldValue("nepaliDateStr", nepaliDateStr ?? "");
                 }}
               />
             </div>
@@ -307,7 +328,7 @@ export function AddExpenseDialog({
               {submitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : null}
-              Add Expense
+              Add Revenue
             </Button>
           </div>
         </form>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import api from "../../../plugins/axios";
 
 export const useAccounting = (selectedQuarter, ledgerType = "all") => {
@@ -7,48 +7,57 @@ export const useAccounting = (selectedQuarter, ledgerType = "all") => {
   const [ledgerEntries, setLedgerEntries] = useState([]);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
-  useEffect(() => {
-    const fetchSummary = async () => {
-      try {
-        setLoadingSummary(true);
-        const params = {};
-        if (selectedQuarter) params.quarter = selectedQuarter;
-        const response = await api.get("/api/accounting/summary", { params });
-        setSummary(response.data.data);
-      } catch (error) {
-        console.error("Failed to fetch accounting summary", error);
-      } finally {
-        setLoadingSummary(false);
-      }
-    };
-
-    fetchSummary();
+  const fetchSummary = useCallback(async () => {
+    try {
+      setLoadingSummary(true);
+      const params = {};
+      if (selectedQuarter) params.quarter = selectedQuarter;
+      const response = await api.get("/api/accounting/summary", { params });
+      setSummary(response.data.data);
+    } catch (error) {
+      console.error("Failed to fetch accounting summary", error);
+    } finally {
+      setLoadingSummary(false);
+    }
   }, [selectedQuarter]);
 
-  useEffect(() => {
-    const fetchLedger = async () => {
-      try {
-        setLoadingLedger(true);
-        const params = {};
-        if (selectedQuarter) params.quarter = selectedQuarter;
-        if (ledgerType && ledgerType !== "all") params.type = ledgerType;
-        const response = await api.get("/api/ledger/get-ledger", { params });
-        setLedgerEntries(response.data.data?.entries || []);
-      } catch (error) {
-        console.error("Failed to fetch ledger", error);
-      } finally {
-        setLoadingLedger(false);
-      }
-    };
-
-    fetchLedger();
+  const fetchLedger = useCallback(async () => {
+    try {
+      setLoadingLedger(true);
+      const params = {};
+      if (selectedQuarter) params.quarter = selectedQuarter;
+      if (ledgerType && ledgerType !== "all") params.type = ledgerType;
+      const response = await api.get("/api/ledger/get-ledger", { params });
+      const data = response.data?.data;
+      const entries = Array.isArray(data?.entries) ? data.entries : [];
+      setLedgerEntries(entries);
+    } catch (error) {
+      console.error("Failed to fetch ledger", error);
+      setLedgerEntries([]);
+    } finally {
+      setLoadingLedger(false);
+    }
   }, [selectedQuarter, ledgerType]);
+
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
+
+  useEffect(() => {
+    fetchLedger();
+  }, [fetchLedger]);
+
+  const refetch = useCallback(() => {
+    fetchSummary();
+    fetchLedger();
+  }, [fetchSummary, fetchLedger]);
 
   return {
     summary,
     loadingSummary,
     ledgerEntries,
     loadingLedger,
+    refetch,
   };
 };
 

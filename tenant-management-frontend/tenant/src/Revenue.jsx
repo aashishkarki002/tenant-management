@@ -10,7 +10,7 @@ import {
   EmptyDescription,
 } from "@/components/ui/empty";
 import api from "../plugins/axios";
-import { AddRevenueDialog } from "./Revenue/components/AddRevenueDialog";
+import { AddRevenueDialog } from "./Accounts/components/AddRevenueDialog";
 import { Badge } from "@/components/ui/badge";
 
 const PARKING_CODES = ["PARKING"];
