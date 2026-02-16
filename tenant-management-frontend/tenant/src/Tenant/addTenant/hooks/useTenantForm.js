@@ -39,7 +39,7 @@ const INITIAL_VALUES = {
 export const useTenantForm = (property, onSuccess) => {
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (values) => {
+  const handleSubmit = async (values, { resetForm }) => {
     try {
       setIsLoading(true);
 

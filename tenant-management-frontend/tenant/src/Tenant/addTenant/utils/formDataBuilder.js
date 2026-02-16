@@ -68,9 +68,9 @@ export const buildTenantFormData = (values, propertyId) => {
   formData.append("camRatePerSqft", avgCamPerSqft.toString());
   formData.append("securityDeposit", totals.totalSecurityDeposit.toString());
 
-  // Add payment method specific fields
+  // Add payment method specific fields (field name must match backend upload.fields: bank_guarantee)
   if (values.paymentMethod === "bank_guarantee" && values.bankGuaranteePhoto) {
-    formData.append("bankGuaranteePhoto", values.bankGuaranteePhoto);
+    formData.append("bank_guarantee", values.bankGuaranteePhoto);
   }
 
   if (values.paymentMethod === "cheque") {

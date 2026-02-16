@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Card,
   CardHeader,
@@ -14,6 +14,7 @@ import { RentTable } from "./components/RentTable";
 import { PaymentsTable } from "./components/PaymentsTable";
 import { PaymentFilters } from "./components/PaymentFilters";
 import { RentSummaryCard } from "./components/RentSummaryCard";
+import { getPaymentAmounts } from "./utils/paymentUtil";
 
 /**
  * Main component for Rent & Payments dashboard
@@ -26,8 +27,6 @@ const RentPayment = () => {
     payments,
     bankAccounts,
     cams,
-    totalCollected,
-    totalDue,
     loading,
     paymentsLoading,
     filterRentMonth,
@@ -47,35 +46,58 @@ const RentPayment = () => {
   const [datePickerResetKey, setDatePickerResetKey] = useState(0);
   const [frequencyView, setFrequencyView] = useState("monthly");
 
-  const monthlyTarget = totalCollected + totalDue;
-  const collectedPercentage =
-    monthlyTarget > 0 ? Math.round((totalCollected / monthlyTarget) * 100) : 0;
+  // Filter rents by selected frequency (monthly / quarterly)
+  const frequencyFilteredRents = useMemo(
+    () =>
+      filteredRents.filter((rent) => {
+        const rawFrequency =
+          rent.rentFrequency || rent.tenant?.rentPaymentFrequency;
+        const frequency = rawFrequency?.toLowerCase();
+        if (!frequency) return false;
+        return frequencyView === "monthly"
+          ? frequency === "monthly"
+          : frequency === "quarterly";
+      }),
+    [filteredRents, frequencyView]
+  );
 
-  const formatCurrency = (value) =>
-    value?.toLocaleString("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+  /**
+   * Industry standard: derive summary figures directly from the filtered
+   * rent list rather than a separate API call so the progress bar always
+   * stays in sync with what is visible in the table.
+   *
+   * - totalDue   → sum of (rentAmount + camAmount) for every visible rent
+   * - totalCollected → paid rents count in full; partial rents use the
+   *                    paidAmountPaisa field set by the backend; others = 0
+   */
+  const { frequencyTotalDue, frequencyTotalCollected } = useMemo(() => {
+    return frequencyFilteredRents.reduce(
+      (acc, rent) => {
+        const { totalDue } = getPaymentAmounts(rent, cams);
+        const status = rent.status?.toLowerCase();
 
-  const frequencyFilteredRents = filteredRents.filter((rent) => {
-    const rawFrequency =
-      rent.rentFrequency || rent.tenant?.rentPaymentFrequency;
-    const frequency = rawFrequency?.toLowerCase();
-    if (!frequency) return false;
-    return frequencyView === "monthly"
-      ? frequency === "monthly"
-      : frequency === "quarterly";
-  });
+        let collected = 0;
+        if (status === "paid") {
+          collected = totalDue;
+        } else if (status === "partial") {
+          // Prefer paisa-precision field; fall back to rupee field
+          collected =
+            rent.paidAmountPaisa != null
+              ? rent.paidAmountPaisa / 100
+              : (rent.paidAmount ?? 0);
+        }
+
+        return {
+          frequencyTotalDue: acc.frequencyTotalDue + totalDue,
+          frequencyTotalCollected: acc.frequencyTotalCollected + collected,
+        };
+      },
+      { frequencyTotalDue: 0, frequencyTotalCollected: 0 }
+    );
+  }, [frequencyFilteredRents, cams]);
 
   const handlePaymentSuccess = async () => {
-    await Promise.all([
-      getRents(),
-      getPayments(),
-      fetchRentSummary(),
-      getCams(),
-    ]);
+    await Promise.all([getRents(), getPayments(), fetchRentSummary(), getCams()]);
   };
 
   const paymentForm = usePaymentForm({
@@ -106,7 +128,7 @@ const RentPayment = () => {
 
   return (
     <form onSubmit={handleSubmit}>
-      <Card className="">
+      <Card>
         <Tabs defaultValue="rent">
           <CardHeader>
             <TabsList className="mt-4 grid w-full grid-cols-2">
@@ -123,12 +145,11 @@ const RentPayment = () => {
             </div>
           </CardHeader>
 
-
-
           <TabsContent value="rent">
             <RentSummaryCard
-              totalCollected={totalCollected}
-              totalDue={totalDue}
+              totalCollected={frequencyTotalCollected}
+              totalDue={frequencyTotalDue}
+              frequencyView={frequencyView}
               filterRentMonth={filterRentMonth}
               onMonthChange={setFilterRentMonth}
             />
@@ -154,7 +175,7 @@ const RentPayment = () => {
 
           <TabsContent value="payments">
             <div className="px-6 pt-6">
-              <CardTitle className=" font-bold text-xl">
+              <CardTitle className="font-bold text-xl">
                 View all payment history
               </CardTitle>
             </div>
@@ -179,8 +200,8 @@ const RentPayment = () => {
             </CardContent>
           </TabsContent>
         </Tabs>
-      </Card >
-    </form >
+      </Card>
+    </form>
   );
 };
 
