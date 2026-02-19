@@ -1,0 +1,63 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches:
+      - main  # Trigger deployment on pushes to main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout the repo
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # 2️⃣ Setup Node.js (optional if using build step)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      # 3️⃣ Install dependencies locally (if build needed)
+      - name: Install dependencies
+        run: |
+          cd tenant-management-backend
+          npm install
+
+      # 4️⃣ Build step (only if using TypeScript or bundler)
+      - name: Build
+        run: |
+          cd tenant-management-backend
+          npm run build
+        # Remove this step if plain JS
+
+      # 5️⃣ Deploy backend via FTP
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4
+        with:
+          server: ${{ secrets.BACKEND_FTP_HOST }}
+          username: ${{ secrets.BACKEND_FTP_USER }}
+          password: ${{ secrets.BACKEND_FTP_PASSWORD }}
+          port: 21
+          local-dir: tenant-management-backend/  # backend folder in your repo
+          server-dir: /api.sallyanhouse.com        # folder on cPanel server
+          exclude: |
+            .github/
+            node_modules/
+            *.log
+            *.zip
+
+      # 6️⃣ SSH: install dependencies & restart Node.js app
+      - name: SSH & Restart Node.js App
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host: ${{ secrets.SERVER_HOST }}        # e.g., api.sallyanhouse.com
+          username: ${{ secrets.SERVER_USER }}    # cPanel username, e.g., sallyanh
+          key: ${{ secrets.SERVER_SSH_KEY }}      # private SSH key
+          port: ${{ secrets.SERVER_SSH_PORT }}    # usually 22
+          script: |
+            cd ~/api.sallyanhouse.com
+            npm install --production
+            ~/nodevenv/api.sallyanhouse.com/bin/node restart
