@@ -3,8 +3,7 @@ name: Deploy Backend via FTP + SSH
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'tenant-management-backend/**'  # Run only when backend changes
+
 
 jobs:
   deploy-backend:
