@@ -35,7 +35,7 @@ jobs:
           password: ${{ secrets.BACKEND_FTP_PASSWORD }}
           port: 21
           local-dir: tenant-management-backend/
-          server-dir: /api.sallyanhouse.com
+          server-dir: /api.sallyanhouse.com/
           exclude: |
             .github/
             node_modules/
