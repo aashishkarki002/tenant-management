@@ -35,7 +35,7 @@ jobs:
 
       # 5️⃣ Deploy backend via FTP
       - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4
+        uses: SamKirkland/FTP-Deploy-Action@v3
         with:
           server: ${{ secrets.BACKEND_FTP_HOST }}
           username: ${{ secrets.BACKEND_FTP_USER }}
