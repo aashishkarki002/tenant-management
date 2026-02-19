@@ -31,6 +31,6 @@ jobs:
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ftp.sallyanhouse.com
-          username: deploy@app.sallyanhouse.com
+          username: frontend-deploy@app.sallyanhouse.com
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: tenant-management-frontend/tenant/dist/
