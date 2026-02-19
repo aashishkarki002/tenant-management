@@ -1,32 +1,32 @@
 import React, { useState, useEffect } from "react";
-
-
 import { useFormik } from "formik";
 import api from "../../plugins/axios";
 import { useAuth } from "../context/AuthContext";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
-
 import { toast } from "sonner";
-
+import ElectricityRateTab from "./components/electricityRateTab";
 import SettingTab from "./components/settingTab";
 import StaffDetail from "./components/staffDetail";
+import SubMetersTab from "./components/SubMetersTab";
+import useProperty from "@/hooks/use-property";
+import RentEscalationTab from "./components/RentEscalationTab";
+
+// ─── Main Admin / Settings Page ───────────────────────────────────────────────
+
 export default function Admin() {
   const usemobile = useIsMobile();
   const { user } = useAuth();
 
   const [bankAccounts, setBankAccounts] = useState([]);
+
   const ChangePassword = async (values) => {
-    try {
-      const response = await api.patch("/api/auth/change-password", values);
-      if (response.data.success) {
-        toast.success(response.data.message);
-      }
-    } catch (error) {
-      console.error("Error changing password:", error);
-      toast.error(error.response.data.message);
+    const response = await api.patch("/api/auth/change-password", values);
+    if (response.data.success) {
+      toast.success(response.data.message);
     }
   };
+
   const GetBankAccounts = async () => {
     const response = await api.get("/api/bank/get-bank-accounts");
     const data = await response.data;
@@ -55,15 +55,11 @@ export default function Admin() {
         if (response.data.success) {
           toast.success(response.data.message || "Bank account created successfully");
           resetForm();
-          setDrawerOpen(false);
-          setDialogOpen(false);
-          GetBankAccounts(); // Refresh the list
+          GetBankAccounts();
         }
       } catch (error) {
         console.error("Error creating bank account:", error);
-        toast.error(
-          error.response?.data?.message || "Failed to create bank account"
-        );
+        toast.error(error.response?.data?.message || "Failed to create bank account");
       } finally {
         setSubmitting(false);
       }
@@ -76,22 +72,10 @@ export default function Admin() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState(false);
-  const CreateBankAccount = async (values) => {
-    try {
-      const response = await api.post("/api/bank/create-bank-account", values);
-      if (response.data.success) {
-        GetBankAccounts();
-      }
-    } catch (error) {
-      console.error("Error creating bank account:", error);
-    }
-  };
-  const languages = [
-    { code: "en", name: "English", flag: "🇺🇸" },
+  const { property } = useProperty();
+  const languages = [{ code: "en", name: "English", flag: "🇺🇸" }];
 
-  ];
-
-  const handlePasswordChange = (e) => {
+  const handlePasswordChange = async (e) => {
     e.preventDefault();
     setPasswordError("");
     setPasswordSuccess(false);
@@ -100,29 +84,34 @@ export default function Admin() {
       setPasswordError("Password must be at least 8 characters long");
       return;
     }
-
     if (newPassword !== confirmPassword) {
       setPasswordError("Passwords do not match");
       return;
     }
-
     if (!currentPassword) {
       setPasswordError("Please enter your current password");
       return;
     }
 
-    // Simulate password change success
-    setPasswordSuccess(true);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-
-    setTimeout(() => setPasswordSuccess(false), 3000);
+    try {
+      await ChangePassword({
+        oldPassword: currentPassword,
+        newPassword,
+      });
+      setPasswordSuccess(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (err) {
+      setPasswordError(err?.response?.data?.message || "Failed to change password");
+    }
   };
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState(null);
   const [staff, setStaff] = useState([]);
+
   const DeleteBankAccount = async (id) => {
     try {
       const response = await api.patch(`/api/bank/delete-bank-account/${id}`);
@@ -134,9 +123,7 @@ export default function Admin() {
       }
     } catch (error) {
       console.error("Error deleting bank account:", error);
-      toast.error(
-        error?.response?.data?.message || "Failed to delete bank account"
-      );
+      toast.error(error?.response?.data?.message || "Failed to delete bank account");
       setDeleteConfirmOpen(false);
       setAccountToDelete(null);
     }
@@ -148,9 +135,7 @@ export default function Admin() {
   };
 
   const confirmDelete = () => {
-    if (accountToDelete) {
-      DeleteBankAccount(accountToDelete);
-    }
+    if (accountToDelete) DeleteBankAccount(accountToDelete);
   };
 
   async function getStaff() {
@@ -163,6 +148,9 @@ export default function Admin() {
     getStaff();
   }, []);
 
+  // propertyId — property is an array, get the first property's ID
+  const propertyId = property?.[0]?._id;
+
   return (
     <>
       <div>
@@ -171,11 +159,14 @@ export default function Admin() {
           Manage your account preferences, admin details, and financial settings
         </p>
       </div>
+
       <Tabs defaultValue="settings" className="mt-4">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="staffDetails">Staff Details</TabsTrigger>
-
+          <TabsTrigger value="electricityRate">Electricity Rate</TabsTrigger>
+          <TabsTrigger value="subMeters">Sub-Meters</TabsTrigger>
+          <TabsTrigger value="rentEscalation">Rent Escalation</TabsTrigger>
         </TabsList>
 
         <TabsContent value="settings">
@@ -200,10 +191,24 @@ export default function Admin() {
             setAccountToDelete={setAccountToDelete}
             confirmDelete={confirmDelete}
             handleDeleteClick={handleDeleteClick}
+            GetBankAccounts={GetBankAccounts}
           />
         </TabsContent>
+
         <TabsContent value="staffDetails">
           <StaffDetail staff={staff} />
+        </TabsContent>
+
+        <TabsContent value="electricityRate">
+          <ElectricityRateTab propertyId={propertyId} />
+        </TabsContent>
+
+        <TabsContent value="subMeters">
+          <SubMetersTab propertyId={propertyId} />
+        </TabsContent>
+
+        <TabsContent value="rentEscalation">
+          <RentEscalationTab />
         </TabsContent>
       </Tabs>
     </>

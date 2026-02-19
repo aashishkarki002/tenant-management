@@ -1,54 +1,66 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { PlusIcon, Save } from "lucide-react";
+import { PlusIcon } from "lucide-react";
+import { useFiscalYear } from "../../../plugins/useNepaliDate";
+import ElectricityReadingDialog from "./ElectricityReadingDialog";
 
-/**
- * Title and action buttons for the electricity screen.
- */
 export function ElectricityHeader({
   onExportReport,
   onAddReading,
   onSaveReadings,
+  onSaved,
   hasNewRows = false,
   saving = false,
+  allBlocks = [],
+  property = [],
 }) {
+  const { fiscalYearLabel } = useFiscalYear();
+  const [open, setOpen] = useState(false);
+
   return (
-    <div className="flex justify-between">
+    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-6">
+
+      {/* Left Section */}
       <div>
-        <p className="text-2xl font-bold">Utility Monitoring</p>
-        <p className="text-gray-500 text-sm">
-          Detailed electricity consumption tracking for buildings
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+          Utility Monitoring
+        </h1>
+        <p className="text-muted-foreground text-sm md:text-base mt-1">
+          Units • Common Area • Parking • Sub Meter — {fiscalYearLabel}
         </p>
       </div>
-      <div className="flex gap-2">
+
+      {/* Right Section */}
+      <div className="flex flex-wrap items-center gap-3">
+
         <Button
           type="button"
-          className="bg-gray-100 text-black hover:bg-gray-200"
+          variant="outline"
+          className="flex items-center gap-2"
           onClick={onExportReport}
         >
-          <PlusIcon className="w-5 h-5" />
+          <PlusIcon className="w-4 h-4" />
           Export Report
         </Button>
-        {hasNewRows && (
-          <Button
-            type="button"
-            className="bg-green-600 text-white hover:bg-green-700"
-            onClick={onSaveReadings}
-            disabled={saving}
-          >
-            <Save className="w-5 h-5" />
-            {saving ? "Saving…" : "Save readings"}
-          </Button>
-        )}
+
         <Button
           type="button"
-          className="bg-blue-500 text-white hover:bg-blue-600"
-          onClick={onAddReading}
+          className="flex items-center gap-2"
+          onClick={() => setOpen(true)}
         >
-          <PlusIcon className="w-5 h-5" />
+          <PlusIcon className="w-4 h-4" />
           Add Reading
         </Button>
+
       </div>
+
+      <ElectricityReadingDialog
+        open={open}
+        onOpenChange={setOpen}
+        allBlocks={allBlocks}
+        property={property}
+        onSaved={onSaved}
+      />
     </div>
   );
 }

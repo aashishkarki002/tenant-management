@@ -51,7 +51,7 @@ function StaffDetail({ staff }) {
                         <Input type="text" placeholder="Search staff" className="" />
                         <Button
                             onClick={() => setOpen(true)}
-                            className="bg-accent text-accent-foreground hover:bg-accent/90 cursor-pointer w-1/5"
+                            className=" text-white cursor-pointer w-1/5"
                         >
                             <Plus className="w-4 h-4" />
                             Add Staff Member
@@ -118,7 +118,7 @@ function StaffDetail({ staff }) {
                                         variant="outline"
                                         size="sm"
                                         className="border-border hover:bg-accent/10 hover:text-accent gap-1"
-                                        // Wire up edit logic later
+                                    // Wire up edit logic later
                                     >
                                         <Edit className="w-4 h-4" />
                                         <span>Edit</span>

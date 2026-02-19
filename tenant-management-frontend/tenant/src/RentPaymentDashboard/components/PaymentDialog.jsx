@@ -293,8 +293,13 @@ export const PaymentDialog = ({
         : { container: "border-rose-200 bg-rose-50", accent: "text-rose-700" };
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Portal container ref — keeps floating pickers inside Radix focus trap
+  const portalContainerRef = React.useRef(null);
+
   return (
     <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto bg-slate-50">
+      {/* Mount point for portaled pickers */}
+      <div ref={portalContainerRef} />
       <DialogHeader className="pb-4">
         <DialogTitle className="text-2xl font-semibold text-slate-900">
           Record Payment
@@ -731,6 +736,7 @@ export const PaymentDialog = ({
         <div className="space-y-2">
           <label className="text-sm font-medium text-slate-900">Payment Date</label>
           <DualCalendarTailwind
+            container={portalContainerRef.current}
             onChange={(english, nepali) => {
               if (english && nepali) {
                 formik.setFieldValue("paymentDate", new Date(english));

@@ -68,6 +68,12 @@ export const buildTenantFormData = (values, propertyId) => {
   formData.append("camRatePerSqft", avgCamPerSqft.toString());
   formData.append("securityDeposit", totals.totalSecurityDeposit.toString());
 
+  // Backend creates SD record + ledger + liability only when securityDepositMode is set
+  if (totals.totalSecurityDeposit > 0 && values.paymentMethod) {
+    formData.append("securityDepositMode", values.paymentMethod);
+    formData.append("securityDepositAmount", totals.totalSecurityDeposit.toString());
+  }
+
   // Add payment method specific fields (field name must match backend upload.fields: bank_guarantee)
   if (values.paymentMethod === "bank_guarantee" && values.bankGuaranteePhoto) {
     formData.append("bank_guarantee", values.bankGuaranteePhoto);

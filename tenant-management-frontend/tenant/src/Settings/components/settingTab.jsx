@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { useFormik } from 'formik'
 import api from '../../../plugins/axios'
 import { toast } from 'sonner'
+import { useAuth } from '../../context/AuthContext'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
     Globe,
@@ -25,6 +26,7 @@ import {
     Building,
     Plus,
     Trash2,
+    Pencil,
 } from "lucide-react";
 
 function SettingTab({
@@ -48,105 +50,182 @@ function SettingTab({
     setAccountToDelete,
     confirmDelete,
     handleDeleteClick,
+    GetBankAccounts,
 }) {
     const usemobile = useIsMobile();
+    const { fetchMe } = useAuth();
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [accountToEdit, setAccountToEdit] = useState(null);
+
+    const editBankFormik = useFormik({
+        enableReinitialize: true,
+        initialValues: {
+            accountNumber: accountToEdit?.accountNumber || "",
+            accountName: accountToEdit?.accountName || "",
+            bankName: accountToEdit?.bankName || "",
+        },
+        onSubmit: async (values) => {
+            if (!accountToEdit?._id) return;
+            try {
+                const res = await api.patch(`/api/bank/update-bank-account/${accountToEdit._id}`, values);
+                if (res.data.success) {
+                    toast.success(res.data.message);
+                    setEditDialogOpen(false);
+                    setAccountToEdit(null);
+                    GetBankAccounts?.();
+                }
+            } catch (error) {
+                toast.error(error?.response?.data?.message || "Failed to update bank account");
+            }
+        },
+    });
+
+    const handleEditClick = (account) => {
+        setAccountToEdit(account);
+        setEditDialogOpen(true);
+    };
+
     const formik = useFormik({
+        enableReinitialize: true,
         initialValues: {
             name: user?.name || "",
             email: user?.email || "",
             phone: user?.phone || "",
-            address: "",
-            company: "",
+            address: user?.address || "",
+            company: user?.company || "",
         },
         onSubmit: async (values) => {
-            const res = await api.patch("/api/admin/update-admin", values);
-            if (res.data.success) {
-                toast.success(res.data.message);
+            try {
+                const res = await api.patch("/api/auth/update-admin", values);
+                if (res.data.success) {
+                    toast.success(res.data.message);
+                    setIsEditingProfile(false);
+                    await fetchMe(true);
+                }
+            } catch (error) {
+                toast.error(error?.response?.data?.message || "Failed to update profile");
             }
         },
     });
+
     return (
         <div className="space-y-6">
 
 
-            {/* Admin Details section */}
-            <Card
-                title="Admin Details"
-                subtitle="Manage your administrator profile and contact information"
-            >
-                <div className="space-y-6 ml-4 mr-4">
-                    <div className="flex items-center space-x-3 mb-4">
-                        <div className="p-2 bg-blue-50 rounded-lg">
-                            <User className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <div>
-                            <h4 className="font-semibold text-slate-900">
-                                Administrator Profile
-                            </h4>
-                            <p className="text-sm text-slate-500">
-                                These details will be used for official communications
-                            </p>
-                        </div>
-                    </div>
+            <Card title="Admin Details" subtitle="Manage your administrator profile and contact information">
+                <form onSubmit={formik.handleSubmit}>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                                <User className="w-4 h-4" /> Full Name
-                            </label>
-                            <Input
-                                value={user?.name}
-                                onChange={(e) => formik.setFieldValue("name", e.target.value)}
-                            />
+                    <div className="space-y-6 ml-4 mr-4">
+                        <div className="flex items-center space-x-3 mb-4">
+                            <div className="p-2 bg-blue-50 rounded-lg">
+                                <User className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-slate-900">
+                                    Administrator Profile
+                                </h4>
+                                <p className="text-sm text-slate-500">
+                                    These details will be used for official communications
+                                </p>
+                            </div>
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                                <Mail className="w-4 h-4" /> Email Address
-                            </label>
-                            <Input
-                                value={user?.email}
-                                onChange={(e) => formik.setFieldValue("email", e.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                                <Phone className="w-4 h-4" /> Phone Number
-                            </label>
-                            <Input
-                                value={user?.phone}
-                                onChange={(e) => formik.setFieldValue("phone", e.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                                <Building className="w-4 h-4" /> Company Name
-                            </label>
-                            <Input
-                                value={user?.company}
-                                onChange={(e) =>
-                                    formik.setFieldValue("company", e.target.value)
-                                }
-                            />
-                        </div>
-                        <div className="md:col-span-2 space-y-2">
-                            <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                                <MapPin className="w-4 h-4" /> Office Address
-                            </label>
-                            <Input
-                                value={user?.address}
-                                onChange={(e) =>
-                                    formik.setFieldValue("address", e.target.value)
-                                }
-                            />
-                        </div>
-                    </div>
 
-                    <div className="pt-2">
-                        <Button icon={Save}>Save Profile Details</Button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <User className="w-4 h-4" /> Full Name
+                                </label>
+                                <Input
+                                    name="name"
+                                    value={formik.values.name}
+                                    onChange={formik.handleChange}
+                                    readOnly={!isEditingProfile}
+                                    className={!isEditingProfile ? "bg-slate-50" : ""}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <Mail className="w-4 h-4" /> Email Address
+                                </label>
+                                <Input
+                                    name="email"
+                                    value={formik.values.email}
+                                    onChange={formik.handleChange}
+                                    readOnly={!isEditingProfile}
+                                    className={!isEditingProfile ? "bg-slate-50" : ""}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <Phone className="w-4 h-4" /> Phone Number
+                                </label>
+                                <Input
+                                    name="phone"
+                                    value={formik.values.phone}
+                                    onChange={formik.handleChange}
+                                    readOnly={!isEditingProfile}
+                                    className={!isEditingProfile ? "bg-slate-50" : ""}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <Building className="w-4 h-4" /> Company Name
+                                </label>
+                                <Input
+                                    name="company"
+                                    value={formik.values.company}
+                                    onChange={formik.handleChange}
+                                    readOnly={!isEditingProfile}
+                                    className={!isEditingProfile ? "bg-slate-50" : ""}
+                                />
+                            </div>
+                            <div className="md:col-span-2 space-y-2">
+                                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <MapPin className="w-4 h-4" /> Office Address
+                                </label>
+                                <Input
+                                    name="address"
+                                    value={formik.values.address}
+                                    onChange={formik.handleChange}
+                                    readOnly={!isEditingProfile}
+                                    className={!isEditingProfile ? "bg-slate-50" : ""}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="pt-4 flex gap-3">
+                            {!isEditingProfile ? (
+                                <Button type="button" onClick={() => setIsEditingProfile(true)}>
+                                    Edit Profile
+                                </Button>
+                            ) : (
+                                <>
+                                    <Button
+                                        type="submit"
+                                        icon={Save}
+                                        disabled={formik.isSubmitting}
+                                    >
+                                        {formik.isSubmitting ? "Saving..." : "Save Changes"}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => {
+                                            formik.resetForm();
+                                            setIsEditingProfile(false);
+                                        }}
+                                    >
+                                        Cancel
+                                    </Button>
+                                </>
+                            )}
+                        </div>
+
                     </div>
-                </div>
+                </form>
             </Card>
 
             {/* Bank Accounts section */}
@@ -172,7 +251,7 @@ function SettingTab({
                     <div className="grid grid-cols-1 gap-4">
                         {bankAccounts.map((account) => (
                             <div
-                                key={account.id}
+                                key={account._id}
                                 className="flex items-center justify-between p-4 border border-slate-100 rounded-xl bg-slate-50/50"
                             >
                                 <div className="flex items-center gap-4">
@@ -187,15 +266,24 @@ function SettingTab({
                                             {account.bankName} • {account.accountNumber}
                                         </p>
                                     </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        icon={Trash2}
-                                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                                        onClick={() => handleDeleteClick(account._id)}
-                                    >
-                                        <Trash2 className="w-4 h-4 text-red-500" />
-                                    </Button>
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                                            onClick={() => handleEditClick(account)}
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                            onClick={() => handleDeleteClick(account._id)}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -248,18 +336,6 @@ function SettingTab({
                                                     value={bankAccountFormik.values.accountName}
                                                     onChange={bankAccountFormik.handleChange}
                                                     name="accountName"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium text-slate-700">
-                                                    Want to make this account default?
-                                                </label>
-                                                <Input
-                                                    type="checkbox"
-                                                    placeholder="Default Account"
-                                                    value={bankAccountFormik.values.isDefault}
-                                                    onChange={bankAccountFormik.handleChange}
-                                                    name="isDefault"
                                                 />
                                             </div>
                                             <div className="space-y-2">
@@ -350,19 +426,7 @@ function SettingTab({
                                                     name="bankName"
                                                 />
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label className="text-sm font-medium text-slate-700">
-                                                    Want to make this account default?
-                                                </Label>
-                                                <Input
-                                                    type="checkbox"
-                                                    placeholder="Default Account"
-                                                    value={bankAccountFormik.values.isDefault}
-                                                    onChange={bankAccountFormik.handleChange}
-                                                    name="isDefault"
-                                                />
-                                            </div>
-                                        </FieldGroup>
+                                            </FieldGroup>
                                         <div className="flex gap-2 pt-4 justify-end">
                                             <DialogClose asChild>
                                                 <Button type="button" variant="ghost">
@@ -387,46 +451,7 @@ function SettingTab({
                 </div>
             </Card>
 
-            {/* Language Settings */}
-            <Card
-                title="Language Preferences"
-                subtitle="Choose your preferred language for the application"
-            >
-                <div className="space-y-4 ml-4 mr-4">
-                    <div className="flex items-center space-x-3 mb-4">
-                        <div className="p-2 bg-blue-50 rounded-lg">
-                            <Globe className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <div>
-                            <h4 className="font-semibold text-slate-900">Display Language</h4>
-                            <p className="text-sm text-slate-500">
-                                Select the language for the interface
-                            </p>
-                        </div>
-                    </div>
 
-                    <div className="relative">
-                        <select
-                            value={selectedLanguage}
-                            onChange={(e) => setSelectedLanguage(e.target.value)}
-                            className="w-full p-3 pr-10 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
-                        >
-                            {languages.map((lang) => (
-                                <option key={lang.code} value={lang.code}>
-                                    {lang.flag} {lang.name}
-                                </option>
-                            ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
-                    </div>
-
-                    <div className="pt-4">
-                        <Button icon={Save} size="sm">
-                            Save Language
-                        </Button>
-                    </div>
-                </div>
-            </Card>
 
             {/* Password Change */}
             <Card
@@ -533,6 +558,84 @@ function SettingTab({
                     </div>
                 </form>
             </Card>
+
+            {/* Edit Bank Account Dialog */}
+            <Dialog open={editDialogOpen} onOpenChange={(open) => {
+                setEditDialogOpen(open);
+                if (!open) setAccountToEdit(null);
+            }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Bank Account</DialogTitle>
+                        <DialogDescription>
+                            Update account details. Balance cannot be changed.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={editBankFormik.handleSubmit} className="space-y-4">
+                        {accountToEdit && (
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium text-slate-700">
+                                    Balance (read-only)
+                                </Label>
+                                <Input
+                                    value={accountToEdit.balanceFormatted ?? accountToEdit.balance ?? "-"}
+                                    readOnly
+                                    disabled
+                                    className="bg-slate-100 text-slate-600"
+                                />
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium text-slate-700">
+                                Account Number
+                            </Label>
+                            <Input
+                                name="accountNumber"
+                                value={editBankFormik.values.accountNumber}
+                                onChange={editBankFormik.handleChange}
+                                placeholder="Account Number"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium text-slate-700">
+                                Account Name
+                            </Label>
+                            <Input
+                                name="accountName"
+                                value={editBankFormik.values.accountName}
+                                onChange={editBankFormik.handleChange}
+                                placeholder="Account Name"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium text-slate-700">
+                                Bank Name
+                            </Label>
+                            <Input
+                                name="bankName"
+                                value={editBankFormik.values.bankName}
+                                onChange={editBankFormik.handleChange}
+                                placeholder="Bank Name"
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => {
+                                    setEditDialogOpen(false);
+                                    setAccountToEdit(null);
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={editBankFormik.isSubmitting}>
+                                {editBankFormik.isSubmitting ? "Saving..." : "Save Changes"}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             {/* Delete Confirmation Dialog */}
             <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

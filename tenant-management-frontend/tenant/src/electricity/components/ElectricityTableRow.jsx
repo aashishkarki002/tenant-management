@@ -1,181 +1,114 @@
 import React, { useState, useCallback } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
-import {
-  AlertTriangle,
-  Home,
-  Upload,
-  FileText,
-} from "lucide-react";
-import { getConsumption, getTrendPercent, formatConsumption } from "../utils/electricityCalculations";
-import { FLAGGED_CONSUMPTION_THRESHOLD } from "../utils/electricityConstants";
-import { recordPayment, updateReading } from "../utils/electricityApi";
+import { getConsumption, formatConsumption } from "../utils/electricityCalculations";
+import ElectricityPaymentDialog from "./ElectricityPaymentDialog";
 
-/**
- * Status badge class by status string.
- */
 function getStatusBadge(status) {
   switch (String(status).toLowerCase()) {
-    case "paid":
-      return "bg-green-100 text-green-700";
-    case "pending":
-      return "bg-orange-100 text-orange-700";
-    case "overdue":
-      return "bg-red-100 text-red-700";
-    case "partially_paid":
-      return "bg-blue-100 text-blue-700";
-    default:
-      return "bg-gray-100 text-gray-700";
+    case "paid": return "bg-green-100 text-green-700";
+    case "pending": return "bg-orange-100 text-orange-700";
+    case "overdue": return "bg-red-100 text-red-700";
+    case "partially_paid": return "bg-blue-100 text-blue-700";
+    default: return "bg-gray-100 text-gray-700";
   }
 }
 
-const STATUS_OPTIONS = [
-  { value: "pending", label: "Pending" },
-  { value: "paid", label: "Paid" },
-  { value: "partially_paid", label: "Partially paid" },
-  { value: "overdue", label: "Overdue" },
-];
-
 /**
- * Single existing electricity record row with status select and payment dialog.
+ * ElectricityTableRow
+ *
+ * Renders one reading record. Column order matches ElectricityTable thead:
+ * Name | Type | Building | Block | Prev | Curr | Consumption | Bill | Status | Action | Receipt | Reading Date
+ *
+ * Field-name alignment with the controller / DB model:
+ *   unitsConsumed  — stored by the service (falls back to curr - prev via getConsumption)
+ *   totalAmount    — already a number (paise conversion happens server-side)
+ *   paidAmount     — same
+ *   remainingAmount — same
  */
 export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [receiptFile, setReceiptFile] = useState(null);
-  const [savingPayment, setSavingPayment] = useState(false);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const unitName =
     record.unit?.name ??
     record.unit?.unitName ??
-    `Unit ${index + 1}`;
-  const previousReading = Number(record.previousReading) || 0;
-  const currentReading = Number(record.currentReading) || 0;
-  const consumption = getConsumption(record);
+    record.subMeter?.name ??
+    record.subMeter?.displayName ??
+    `Row ${index + 1}`;
+
+  // Controller stores consumption as `unitsConsumed`; fall back to calculation
+  const consumption =
+    record.unitsConsumed != null && !Number.isNaN(Number(record.unitsConsumed))
+      ? Number(record.unitsConsumed)
+      : getConsumption(record);
+
   const status = record.status || "pending";
-  const trend = getTrendPercent(consumption, previousReading);
-  const trendColor = parseFloat(trend) > 0 ? "text-red-500" : "text-green-500";
-  const trendSign = parseFloat(trend) > 0 ? "+" : "";
-  const hasHighUsage = consumption > FLAGGED_CONSUMPTION_THRESHOLD;
-  const billMedia = record.billMedia ?? record.receipt;
 
   const totalAmount = Number(record.totalAmount) || 0;
   const paidAmount = Number(record.paidAmount) || 0;
-  const remainingAmount = Math.max(0, totalAmount - paidAmount);
+  const remainingAmount =
+    record.remainingAmount != null
+      ? Number(record.remainingAmount)
+      : Math.max(0, totalAmount - paidAmount);
 
-  const openPaymentDialog = useCallback(() => {
-    setPaymentAmount(String(remainingAmount > 0 ? remainingAmount : totalAmount));
-    setPaymentDialogOpen(true);
-  }, [remainingAmount, totalAmount]);
+  const fmt = (n) =>
+    `Rs. ${Number(n).toLocaleString("en-NP", { minimumFractionDigits: 2 })}`;
 
-  const closePaymentDialog = useCallback(() => {
-    setPaymentDialogOpen(false);
-    setPaymentAmount("");
-    setReceiptFile(null);
-  }, []);
+  const totalAmountFormatted = record.totalAmountFormatted ?? fmt(totalAmount);
+  const paidAmountFormatted = record.paidAmountFormatted ?? (paidAmount > 0 ? fmt(paidAmount) : null);
+  const remainingAmountFormatted = record.remainingAmountFormatted ?? fmt(remainingAmount);
 
-  const handleStatusChange = useCallback(
-    async (newStatus) => {
-      if (newStatus === status) return;
-      if (newStatus === "paid" || newStatus === "partially_paid") {
-        openPaymentDialog();
-        return;
-      }
-      setUpdatingStatus(true);
-      try {
-        await updateReading(record._id, { status: newStatus });
-        toast.success("Status updated.");
-        onPaymentRecorded?.();
-      } catch (err) {
-        toast.error(err?.message || "Failed to update status.");
-      } finally {
-        setUpdatingStatus(false);
-      }
-    },
-    [status, record._id, openPaymentDialog, onPaymentRecorded]
-  );
+  const isPayable =
+    remainingAmount > 0 &&
+    ["pending", "partially_paid", "overdue"].includes(status.toLowerCase());
 
-  const handlePaymentSubmit = useCallback(
-    async (e) => {
-      e.preventDefault();
-      const amount = parseFloat(paymentAmount);
-      if (Number.isNaN(amount) || amount <= 0) {
-        toast.error("Enter a valid amount.");
-        return;
-      }
-      if (amount > remainingAmount) {
-        toast.error(`Amount cannot exceed remaining due (Rs ${remainingAmount}).`);
-        return;
-      }
-      setSavingPayment(true);
-      try {
-        await recordPayment(
-          {
-            electricityId: record._id,
-            amount,
-          },
-          receiptFile || undefined
-        );
-        toast.success("Payment recorded.");
-        closePaymentDialog();
-        onPaymentRecorded?.();
-      } catch (err) {
-        toast.error(err?.message || "Failed to record payment.");
-      } finally {
-        setSavingPayment(false);
-      }
-    },
-    [paymentAmount, remainingAmount, record._id, receiptFile, closePaymentDialog, onPaymentRecorded]
-  );
+  const openPaymentDialog = useCallback(() => setPaymentDialogOpen(true), []);
+
+  // Receipt URL: backend stores as receipt.url (Cloudinary secure_url); support legacy flat fields
+  const receiptUrl =
+    record.receipt?.url ??
+    (typeof record.receipt === "string" ? record.receipt : null) ??
+    record.receiptImageUrl ??
+    record.receiptImage ??
+    null;
 
   return (
     <>
-      <tr
-        className={`border-b border-gray-100 hover:bg-gray-50 ${hasHighUsage ? "relative" : ""}`}
-      >
-        <td className="py-3 px-4 relative">
-          {hasHighUsage && (
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500" />
-          )}
-          <div
-            className={`flex items-center gap-2 ${hasHighUsage ? "pl-2" : ""}`}
-          >
-            {hasHighUsage ? (
-              <AlertTriangle className="w-4 h-4 text-red-500" />
-            ) : (
-              <Home className="w-4 h-4 text-gray-400" />
-            )}
-            <div>
-              <div className="font-medium">{unitName}</div>
-              {hasHighUsage && (
-                <div className="text-xs text-red-500">HIGH USAGE ALERT</div>
-              )}
-            </div>
-          </div>
+      <tr className="border-b border-gray-100 hover:bg-gray-50">
+        {/* NAME */}
+        <td className="py-3 px-4">
+          <div className="font-medium">{unitName}</div>
         </td>
+
+        {/* TYPE */}
+        <td className="py-3 px-4 text-sm capitalize">
+          {record.meterType?.replace("_", " ") || "-"}
+        </td>
+
+        {/* BUILDING */}
         <td className="py-3 px-4 text-sm">
-          {previousReading > 0 ? previousReading.toFixed(1) : "-"}
+          {record.unit?.block?.name ?? record.subMeter?.block?.name ?? "-"}
         </td>
+
+        {/* BLOCK */}
         <td className="py-3 px-4 text-sm">
-          {currentReading > 0 ? currentReading.toFixed(1) : "-"}
+          {record.unit?.innerBlock?.name ?? record.subMeter?.innerBlock?.name ?? "-"}
         </td>
+
+        {/* PREVIOUS */}
+        <td className="py-3 px-4 text-sm">
+          {Number(record.previousReading) > 0
+            ? Number(record.previousReading).toFixed(1)
+            : "-"}
+        </td>
+
+        {/* CURRENT */}
+        <td className="py-3 px-4 text-sm">
+          {Number(record.currentReading) > 0
+            ? Number(record.currentReading).toFixed(1)
+            : "-"}
+        </td>
+
+        {/* CONSUMPTION */}
         <td className="py-3 px-4">
           {consumption > 0 ? (
             <span className="text-sm font-medium text-blue-600">
@@ -185,120 +118,70 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
             <span className="text-sm text-gray-400">-</span>
           )}
         </td>
+
+        {/* BILL */}
+        <td className="py-3 px-4 text-sm">{totalAmountFormatted}</td>
+
+        {/* STATUS */}
         <td className="py-3 px-4">
-          <Select
-            value={status}
-            onValueChange={handleStatusChange}
-            disabled={updatingStatus}
+          <span
+            className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(status)}`}
           >
-            <SelectTrigger
-              className={`w-[130px] h-8 text-xs font-medium ${getStatusBadge(status)} border-0`}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            {status.replace("_", " ").toUpperCase()}
+          </span>
         </td>
+
+        {/* ACTION */}
         <td className="py-3 px-4">
-          {previousReading > 0 ? (
-            <span className={`text-sm font-medium ${trendColor}`}>
-              {trendSign}
-              {trend}%
-            </span>
-          ) : (
-            <span className="text-sm text-gray-400">-</span>
-          )}
-        </td>
-        <td className="py-3 px-4">
-          {billMedia?.url ? (
-            <a
-              href={billMedia.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block"
-            >
-              <FileText className="w-4 h-4 text-blue-500 cursor-pointer hover:text-blue-700" />
-            </a>
-          ) : (
+          {isPayable ? (
             <Button
-              type="button"
-              className="px-2 py-1 rounded text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 flex items-center gap-1"
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
               onClick={openPaymentDialog}
             >
-              <Upload className="w-3 h-3" />
-              UPLOAD
+              Pay
             </Button>
+          ) : (
+            <span className="text-xs text-gray-400">
+              {status.toLowerCase() === "paid" ? "Completed" : "-"}
+            </span>
           )}
+        </td>
+
+        {/* RECEIPT */}
+        <td className="py-3 px-4 text-sm">
+          {receiptUrl ? (
+            <a
+              href={receiptUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline text-xs hover:text-blue-800"
+            >
+              View
+            </a>
+          ) : (
+            <span className="text-gray-400 text-xs">-</span>
+          )}
+        </td>
+
+        {/* READING DATE */}
+        <td className="py-3 px-4 text-sm text-gray-600">
+          {record.nepaliDate ?? record.readingDate?.slice(0, 10) ?? "-"}
         </td>
       </tr>
 
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Record electricity payment</DialogTitle>
-            <p className="text-sm text-gray-600">
-              {unitName} — Total due: Rs {totalAmount.toLocaleString()}
-              {paidAmount > 0 && (
-                <span className="ml-1">(Paid: Rs {paidAmount.toLocaleString()})</span>
-              )}
-            </p>
-          </DialogHeader>
-          <form onSubmit={handlePaymentSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="payment-amount">Amount (Rs)</Label>
-              <Input
-                id="payment-amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                placeholder="Enter amount"
-                className="mt-1"
-              />
-              {remainingAmount > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Remaining due: Rs {remainingAmount.toLocaleString()}
-                </p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="receipt-upload">Receipt (optional)</Label>
-              <Input
-                id="receipt-upload"
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/gif,application/pdf"
-                className="mt-1"
-                onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
-              />
-              {receiptFile && (
-                <p className="text-xs text-gray-600 mt-1">
-                  {receiptFile.name}
-                </p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={closePaymentDialog}
-                disabled={savingPayment}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={savingPayment}>
-                {savingPayment ? "Saving…" : "Save"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ElectricityPaymentDialog
+        paymentDialogOpen={paymentDialogOpen}
+        setPaymentDialogOpen={setPaymentDialogOpen}
+        unitName={unitName}
+        record={record}
+        totalAmountFormatted={totalAmountFormatted}
+        paidAmount={paidAmount}
+        paidAmountFormatted={paidAmountFormatted}
+        remainingAmount={remainingAmount}
+        remainingAmountFormatted={remainingAmountFormatted}
+        onPaymentRecorded={onPaymentRecorded}
+      />
     </>
   );
 }

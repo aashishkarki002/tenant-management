@@ -7,7 +7,7 @@ import Tenants from "./Tenant/tenants";
 import Dashboard from "./Dashboard/Dashboard";
 
 import Account from "./Accounts/Account";
-import ElectricityPage from "./Electricity";
+import ElectricityPage from "./electricity/ElectricityPage";
 import Revenue from "./Revenue";
 import Maintenance from "./Maintenance/Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
@@ -15,14 +15,14 @@ import Payments from "./payments";
 import AddTenants from "./Tenant/addTenant/addTenants";
 
 import VerifyEmail from "./verify_email";
-import EditTenant from "./Tenant/editTenant";
+import EditTenant from "./Tenant/editTenant/editTenant";
 import Admin from "./Settings/Admin";
 import ProtectedRoutes, { GuestRoute } from "./protectedRoutes";
+import Test from "./test";
 
 import RentPayment from "./RentPaymentDashboard/RentPayment";
-import ViewDetail from "./ViewDetail";
+import ViewDetail from "./ViewDetail/ViewDetail";
 import BroadCast from "./BroadCast";
-import Expenses from "./Expenses";
 export default function App() {
   const location = useLocation();
   const path = location.pathname.toLowerCase();
@@ -65,14 +65,7 @@ export default function App() {
           </ProtectedRoutes>
         }
       />
-      <Route
-        path="/expenses"
-        element={
-          <ProtectedRoutes>
-            <Expenses />
-          </ProtectedRoutes>
-        }
-      />
+
       <Route
         path="/rent-payment"
         element={
@@ -152,6 +145,14 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <Admin />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
+        path="/test"
+        element={
+          <ProtectedRoutes>
+            <Test />
           </ProtectedRoutes>
         }
       />
