@@ -1,0 +1,24 @@
+name: build and deploy react app via ftp
+
+on:
+  push:
+  branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: npm install
+        env:
+        CI: false
+
+        -name:FTP Deploy actions
+        uses: SamKirkland/FTP-Deploy-Action@v4
+        with:
+        ftp-server: ftp.sallyanhouse.com
+        ftp-username: deploy@app.sallyanhouse.com
+        ftp-password: ${{ secrets.FTP_PASSWORD }}
+        local-dir: ./dist
