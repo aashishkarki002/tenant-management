@@ -3,7 +3,7 @@ import api from "../../../plugins/axios";
 import { Button } from "@/components/ui/button";
 import { METER_TYPE_META } from "./constants";
 import Modal from "./Modal";
-import { Label } from "@/components/ui/Label";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {

@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
-          node-version: 20
+          node-version: 18
 
       - name: Install dependencies
         working-directory: tenant-management-frontend/tenant
@@ -28,7 +28,7 @@ jobs:
         run: npm run build
 
       - name: FTP Deploy
-        uses: SamKirkland/FTP-Deploy-Action@v3
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ftp.sallyanhouse.com
           username: deploy@app.sallyanhouse.com
