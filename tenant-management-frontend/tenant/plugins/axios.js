@@ -1,8 +1,7 @@
 import axios from "axios";
 
 // Use VITE_API_URL for local dev (e.g. http://localhost:3000); production build uses .env or fallback
-const baseURL =
-  import.meta.env.VITE_API_URL || "https://api.aashish.maaniish.com.np";
+const baseURL = import.meta.env.VITE_API_URL || "http://api.sallyanhouse.com";
 
 const api = axios.create({
   baseURL,
@@ -30,7 +29,7 @@ api.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 api.interceptors.response.use(
@@ -99,7 +98,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;
