@@ -28,7 +28,7 @@ jobs:
         run: npm run build
 
       - name: FTP Deploy
-        uses: SamKirkland/FTP-Deploy-Action@v4
+        uses: SamKirkland/FTP-Deploy-Action@v3
         with:
           server: ftp.sallyanhouse.com
           username: deploy@app.sallyanhouse.com
