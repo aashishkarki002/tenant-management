@@ -22,7 +22,7 @@ jobs:
           username: ${{ secrets.BACKEND_FTP_USER }}
           password: ${{ secrets.BACKEND_FTP_PASSWORD }}
           port: 21
-          local-dir: tenant-management-backend/
+          local-dir: tenant-management-backend/*
           server-dir: /api.sallyanhouse.com/
           exclude: |
             **/node_modules/**
@@ -30,7 +30,7 @@ jobs:
             *.log
             *.zip
 
-      # 3️⃣ SSH: install production dependencies & restart cPanel Node app
+         # 3️⃣ SSH: install dependencies & restart Node app
       - name: SSH & Restart Node.js App
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -41,4 +41,5 @@ jobs:
           script: |
             cd ~/api.sallyanhouse.com
             npm install --production
-            ~/nodevenv/api.sallyanhouse.com/bin/node restart
+            /usr/local/bin/passenger-config restart-app .
+
