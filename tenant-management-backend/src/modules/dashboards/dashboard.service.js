@@ -1,5 +1,4 @@
 import { Tenant } from "../tenant/Tenant.Model.js";
-import { Block } from "../blocks/Block.Model.js";
 import { Rent } from "../rents/rent.Model.js";
 import { Unit } from "../units/Unit.Model.js";
 import {
@@ -8,6 +7,7 @@ import {
 } from "../../utils/nepaliDateHelper.js";
 import { Revenue } from "../revenue/Revenue.Model.js";
 import { Maintenance } from "../maintenance/Maintenance.Model.js";
+import { Payment } from "../payment/payment.model.js";
 
 /**
  * Fetches dashboard stats (Nepali-date-based). Use this when you need the data
@@ -51,26 +51,26 @@ export async function getDashboardStatsData() {
     totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
 
   /* ===============================
-       2️⃣ RENT SUMMARY
-    =============================== */
+     2️⃣ RENT SUMMARY — uses paisa fields for precision
+  =============================== */
 
-  const [rentAgg, revenueAgg] = await Promise.all([
+  const [rentAgg, revenueAgg, revenueByMonthAgg] = await Promise.all([
     Rent.aggregate([
       {
         $project: {
-          rentAmount: 1,
-          paidAmount: 1,
+          rentAmountPaisa: 1,
+          paidAmountPaisa: 1,
           remaining: {
-            $max: [{ $subtract: ["$rentAmount", "$paidAmount"] }, 0],
+            $max: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
           },
         },
       },
       {
         $group: {
           _id: null,
-          totalCollected: { $sum: "$paidAmount" },
-          totalRent: { $sum: "$rentAmount" },
-          totalOutstanding: { $sum: "$remaining" },
+          totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
+          totalRentPaisa: { $sum: "$rentAmountPaisa" },
+          totalOutstandingPaisa: { $sum: "$remaining" },
         },
       },
     ]),
@@ -83,23 +83,49 @@ export async function getDashboardStatsData() {
         },
       },
     ]),
+
+    // Revenue trend: group by Nepali year + month for chart
+    Revenue.aggregate([
+      {
+        $match: {
+          npYear: { $in: [npYear, npYear - 1] },
+        },
+      },
+      {
+        $group: {
+          _id: { year: "$npYear", month: "$npMonth" },
+          total: { $sum: "$amount" },
+        },
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1 } },
+    ]),
   ]);
+
   const rentSummary = rentAgg[0] || {};
   const revenueSummary = revenueAgg[0] || {};
 
+  // Normalise revenue trend into a flat array
+  const revenueByMonth = revenueByMonthAgg.map((r) => ({
+    year: r._id.year,
+    month: r._id.month,
+    total: r.total,
+  }));
+
   /* ===============================
-       3️⃣ OVERDUE RENTS (TOP 3) – due before Nepali today
-    =============================== */
+     3️⃣ OVERDUE RENTS (TOP 3) – due before Nepali today
+  =============================== */
 
   const overdueRents = await Rent.find({
     nepaliDueDate: { $lt: nepaliTodayDate },
     $expr: {
-      $gt: [{ $subtract: ["$rentAmount", "$paidAmount"] }, 0],
+      $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
     },
   })
     .populate("tenant", "name")
     .populate("property", "name")
-    .select("tenant property rentAmount paidAmount nepaliDueDate status")
+    .select(
+      "tenant property rentAmount paidAmount rentAmountPaisa paidAmountPaisa nepaliDueDate status",
+    )
     .sort({ nepaliDueDate: 1 })
     .limit(3)
     .lean()
@@ -107,14 +133,23 @@ export async function getDashboardStatsData() {
       rents.map((rent) => ({
         ...rent,
         remaining: rent.rentAmount - rent.paidAmount,
-      }))
+        remainingPaisa:
+          (rent.rentAmountPaisa || 0) - (rent.paidAmountPaisa || 0),
+      })),
     );
 
-  const maintenance = await Maintenance.find({
-    status: "OPEN",
-  })
-    .limit(3)
-    .lean();
+  /* ===============================
+     4️⃣ MAINTENANCE — count + top 3
+  =============================== */
+
+  const [maintenanceList, maintenanceOpen] = await Promise.all([
+    Maintenance.find({ status: "OPEN" }).limit(3).lean(),
+    Maintenance.countDocuments({ status: "OPEN" }),
+  ]);
+
+  /* ===============================
+     4️⃣ UPCOMING RENTS (next 7 Nepali days)
+  =============================== */
 
   const nepaliUpcomingEnd = addNepaliDays(nepaliToday, 7);
   const upcomingEndDate = nepaliUpcomingEnd.getDateObject();
@@ -125,27 +160,29 @@ export async function getDashboardStatsData() {
       $lte: upcomingEndDate,
     },
     $expr: {
-      $gt: [{ $subtract: ["$rentAmount", "$paidAmount"] }, 0],
+      $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
     },
   })
     .populate("tenant", "name")
     .populate("property", "name")
-    .select("tenant property rentAmount paidAmount nepaliDueDate status")
+    .select(
+      "tenant property rentAmount paidAmount rentAmountPaisa paidAmountPaisa nepaliDueDate status",
+    )
     .sort({ nepaliDueDate: 1 })
     .limit(3)
     .lean()
     .then((rents) =>
-      rents.map((rent) => {
-        return {
-          ...rent,
-          remaining: rent.rentAmount - rent.paidAmount,
-        };
-      })
+      rents.map((rent) => ({
+        ...rent,
+        remaining: rent.rentAmount - rent.paidAmount,
+        remainingPaisa:
+          (rent.rentAmountPaisa || 0) - (rent.paidAmountPaisa || 0),
+      })),
     );
 
   /* ===============================
-       5️⃣ CONTRACTS ENDING SOON (30 NEPALI DAYS)
-    =============================== */
+     5️⃣ CONTRACTS ENDING SOON (30 NEPALI DAYS)
+  =============================== */
 
   const nepali30DaysLater = addNepaliDays(nepaliToday, 30);
   const leaseEndLimitDate = nepali30DaysLater.getDateObject();
@@ -166,24 +203,76 @@ export async function getDashboardStatsData() {
       tenants.map((tenant) => {
         const endDate = new Date(tenant.leaseEndDate);
         const daysUntilEnd = Math.ceil(
-          (endDate - nepaliTodayDate) / (1000 * 60 * 60 * 24)
+          (endDate - nepaliTodayDate) / (1000 * 60 * 60 * 24),
         );
-
-        return {
-          ...tenant,
-          daysUntilEnd,
-        };
-      })
+        return { ...tenant, daysUntilEnd };
+      }),
     );
 
   /* ===============================
-     6️⃣ RESPONSE DATA
+     6️⃣ RECENT ACTIVITY FEED
+     Merges latest payments, maintenance updates, and new tenants
+     into a single timeline for the dashboard activity widget.
+  =============================== */
+
+  const [recentPayments, recentMaintenance, recentTenants] = await Promise.all([
+    Payment.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate("tenant", "name")
+      .populate({
+        path: "rent",
+        populate: { path: "property", select: "name" },
+      })
+      .select("tenant rent amountPaisa createdAt paymentMethod")
+      .lean(),
+
+    Maintenance.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("title status unit createdAt")
+      .lean(),
+
+    Tenant.find({ isDeleted: false })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("name createdAt")
+      .lean(),
+  ]);
+
+  const recentActivity = [
+    ...recentPayments.map((p) => ({
+      type: "payment",
+      label: `${p.tenant?.name || "Tenant"} paid rent`,
+      sub: p.rent?.property?.name || "",
+      amount: p.amountPaisa / 100,
+      time: p.createdAt,
+    })),
+    ...recentMaintenance.map((m) => ({
+      type: "maintenance",
+      label: `Maintenance ${m.status === "OPEN" ? "scheduled" : "updated"}`,
+      sub: m.title || "",
+      time: m.createdAt,
+    })),
+    ...recentTenants.map((t) => ({
+      type: "tenant",
+      label: `New tenant added`,
+      sub: t.name,
+      time: t.createdAt,
+    })),
+  ]
+    .sort((a, b) => new Date(b.time) - new Date(a.time))
+    .slice(0, 10);
+
+  /* ===============================
+     7️⃣ RESPONSE DATA
   =============================== */
 
   return {
     success: true,
     message: "Dashboard stats fetched successfully",
     data: {
+      // Tenants & Units
       totalTenants,
       activeTenants,
       tenantsThisMonth,
@@ -191,18 +280,35 @@ export async function getDashboardStatsData() {
       occupiedUnits,
       occupancyRate,
 
+      // Rent summary — both paisa (precise) and rupees (display)
       rentSummary: {
-        totalCollected: rentSummary.totalCollected || 0,
-        totalRent: rentSummary.totalRent || 0,
-        totalOutstanding: rentSummary.totalOutstanding || 0,
+        totalCollectedPaisa: rentSummary.totalCollectedPaisa || 0,
+        totalRentPaisa: rentSummary.totalRentPaisa || 0,
+        totalOutstandingPaisa: rentSummary.totalOutstandingPaisa || 0,
+        totalCollected: (rentSummary.totalCollectedPaisa || 0) / 100,
+        totalRent: (rentSummary.totalRentPaisa || 0) / 100,
+        totalOutstanding: (rentSummary.totalOutstandingPaisa || 0) / 100,
       },
 
+      // Revenue
       totalRevenue: revenueSummary.totalRevenue || 0,
+      revenueByMonth, // [{ year, month, total }] — powers the Revenue Trend chart
 
+      // Attention-needed items
       overdueRents,
       upcomingRents,
-      maintenance,
+
+      // Maintenance
+      maintenance: maintenanceList, // top 3 for sidebar list
+      maintenanceOpen, // total count for the badge/counter widget
+
+      // Contracts
       contractsEndingSoon,
+
+      // Activity feed
+      recentActivity,
+
+      // Nepali date context
       nepaliToday: nepaliToday.toString(),
       npYear,
       npMonth,
