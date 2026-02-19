@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { METER_TYPE_META } from "./constants";
 import { Input } from "@/components/ui/input";
 import Modal from "./Modal";
-import { Label } from "@/components/ui/Label";
+import { Label } from "@/components/ui/label";
 
 export default function RateFormDialog({ propertyId, rateData, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
