@@ -1,38 +1,32 @@
-name: Build and Deploy Backend via FTP + SSH
+name: Deploy Backend via FTP + SSH
 
 on:
   push:
     branches: [ main ]
     paths:
-      - 'tenant-management-backend/**'  # only run when backend changes
+      - 'tenant-management-backend/**'  # Run only when backend changes
 
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout code
+      # 1️⃣ Checkout the repo
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ Setup Node.js (optional if you have build step)
-      - name: Setup Node
+      # 2️⃣ Setup Node.js (needed for npm install)
+      - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
 
-      # 3️⃣ Install dependencies locally (if build needed)
+      # 3️⃣ Install dependencies locally (optional, ensures node_modules exists if needed)
       - name: Install dependencies
         working-directory: tenant-management-backend
         run: npm install
 
-      # 4️⃣ Build step (if using TS)
-      - name: Build project
-        working-directory: tenant-management-backend
-        run: npm run build
-        # remove if plain JS
-
-      # 5️⃣ Deploy backend via FTP
+      # 4️⃣ Deploy backend via FTP
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -48,7 +42,7 @@ jobs:
             *.log
             *.zip
 
-      # 6️⃣ SSH: install dependencies & restart Node.js app
+      # 5️⃣ SSH to server: install dependencies & restart Node app with PM2
       - name: SSH & Restart Node.js App
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -59,4 +53,5 @@ jobs:
           script: |
             cd ~/api.sallyanhouse.com
             npm install --production
-            ~/nodevenv/api.sallyanhouse.com/bin/node restart
+            # Restart the app using PM2; start if not running
+            pm2 restart api.sallyanhouse.com || pm2 start src/server.js --name "api.sallyanhouse.com"
