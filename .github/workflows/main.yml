@@ -1,0 +1,36 @@
+name: Build and Deploy React (Vite) via FTP
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: tenant-management-frontend/tenant
+        run: npm install
+        env:
+          CI: false
+
+      - name: Build project
+        working-directory: tenant-management-frontend/tenant
+        run: npm run build
+
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@v3
+        with:
+          server: ftp.sallyanhouse.com
+          username: deploy@app.sallyanhouse.com
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: tenant-management-frontend/tenant/dist
