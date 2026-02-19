@@ -33,4 +33,4 @@ jobs:
           server: ftp.sallyanhouse.com
           username: deploy@app.sallyanhouse.com
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: tenant-management-frontend/tenant/dist
+          local-dir: tenant-management-frontend/tenant/dist/
