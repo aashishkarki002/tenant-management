@@ -22,7 +22,8 @@ import expenseRoute from "./modules/expenses/expense.route.js";
 import maintenanceRoute from "./modules/maintenance/maintenance.route.js";
 import staffRoute from "./modules/staffs/staffs.route.js";
 import broadcastRoute from "./modules/broadcasts/broadcast.route.js";
-
+import escalationRoute from "./modules/tenant/escalation/rent.escalation.route.js";
+import { startEscalationCron } from "./modules/tenant/escalation/crons/rent.escalation.cron.js";
 // Load cron jobs asynchronously (no top-level await — required for cPanel/LiteSpeed which uses require())
 function loadCronJobs() {
   import("./cron/monthlyRentAndCam.cron.js")
@@ -31,7 +32,7 @@ function loadCronJobs() {
     .catch((err) => console.error("❌ Error loading cron jobs:", err));
 }
 loadCronJobs();
-
+startEscalationCron();
 const app = express();
 
 /* -------------------- MIDDLEWARE -------------------- */
@@ -40,7 +41,7 @@ app.use(
     origin: process.env.FRONTEND_URL ?? false,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  })
+  }),
 );
 
 app.use(cookieParser());
@@ -65,6 +66,7 @@ app.use("/api/expense", expenseRoute);
 app.use("/api/maintenance", maintenanceRoute);
 app.use("/api/staff", staffRoute);
 app.use("/api/broadcast", broadcastRoute);
+app.use("/api/escalation", escalationRoute);
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });

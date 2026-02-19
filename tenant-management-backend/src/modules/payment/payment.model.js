@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import { paisaToRupees } from "../../utils/moneyUtil.js";
-
 const paymentSchema = new mongoose.Schema(
   {
     rent: {

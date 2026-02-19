@@ -1,3 +1,9 @@
+/**
+ * electricity.route.js — updated
+ *
+ * Sub-meter routes added under /api/electricity/sub-meters/*
+ */
+
 import { Router } from "express";
 import {
   createElectricityReading,
@@ -9,20 +15,41 @@ import {
   updateElectricityReading,
   deleteElectricityReading,
 } from "./electricity.controller.js";
+import {
+  getElectricityRate,
+  setElectricityRate,
+} from "./electricity.rate.controller.js";
+import {
+  createSubMeter,
+  getSubMeters,
+  updateSubMeter,
+} from "./subMeter.controller.js";
 import upload from "../../middleware/upload.js";
 import { protect } from "../../middleware/protect.js";
+
 const router = Router();
 
-// Create new electricity reading
+// ── Rate config (owner only) ──────────────────────────────────────────────────
+router.get("/rate/:propertyId", protect, getElectricityRate);
+router.post("/rate/:propertyId", protect, setElectricityRate);
+
+// ── Sub-Meters ────────────────────────────────────────────────────────────────
+// NOTE: specific paths before parameterised ones to avoid route collisions
+router.post("/sub-meters/create", protect, createSubMeter);
+
+router.put("/sub-meters/update/:subMeterId", protect, updateSubMeter);
+
+// GET /api/electricity/sub-meters?propertyId=... (query param; controller validates)
+router.get("/sub-meters", getSubMeters);
+
+// ── Unit Readings ─────────────────────────────────────────────────────────────
 router.post("/create-reading", protect, createElectricityReading);
-
-// Get all electricity readings with filters
 router.get("/get-readings", getElectricityReadings);
-
-// Get specific electricity reading
 router.get("/get-reading/:id", getElectricityReadingById);
+router.put("/update-reading/:id", updateElectricityReading);
+router.delete("/delete-reading/:id", deleteElectricityReading);
 
-// Record electricity payment (with optional receipt image)
+// ── Payments ──────────────────────────────────────────────────────────────────
 router.post(
   "/record-payment",
   protect,
@@ -30,16 +57,8 @@ router.post(
   recordElectricityPayment,
 );
 
-// Get unit consumption history (shows all readings for a unit, including tenant transitions)
+// ── History / summaries ───────────────────────────────────────────────────────
 router.get("/unit-history/:unitId", getUnitConsumptionHistory);
-
-// Get tenant electricity summary
 router.get("/tenant-summary/:tenantId", getTenantElectricitySummary);
-
-// Update electricity reading
-router.put("/update-reading/:id", updateElectricityReading);
-
-// Delete (cancel) electricity reading
-router.delete("/delete-reading/:id", deleteElectricityReading);
 
 export default router;

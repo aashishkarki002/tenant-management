@@ -5,18 +5,16 @@ import { Unit } from "../units/Unit.Model.js";
 import { sendWelcomeEmail } from "../../config/nodemailer.js";
 import { createTenantTransaction } from "./services/tenant.create.js";
 import { uploadSingleFile } from "./helpers/fileUploadHelper.js";
-import { paisaToRupees } from "../../utils/moneyUtil.js";
+import { paisaToRupees, rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { calculateMultiUnitLease } from "./domain/rent.calculator.service.js";
+import { Rent } from "../rents/rent.Model.js";
+import { Cam } from "../cam/cam.model.js";
 
 export async function createTenant(body, files, adminId) {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    // ✅ Normalize unit-related fields BEFORE validation
-    // Support:
-    // - Legacy single-unit flow using `unitNumber` (string or array)
-    // - New multi-unit flow using `unitLeases` (JSON string from FormData)
-
     // Handle unitLeases coming as JSON string from FormData
     if (body.unitLeases && typeof body.unitLeases === "string") {
       try {
@@ -25,9 +23,7 @@ export async function createTenant(body, files, adminId) {
           body.unitLeases = parsed;
           const unitIds = parsed
             .map((u) => u.unitId)
-            .filter(
-              (id) => typeof id === "string" && id.trim().length > 0,
-            );
+            .filter((id) => typeof id === "string" && id.trim().length > 0);
 
           if (unitIds.length > 0) {
             body.units = unitIds;
@@ -290,80 +286,437 @@ function calculateLeaseDuration(startDate, endDate) {
   return months;
 }
 
-export async function updateTenant(tenantId, body, files) {
-  const existingTenant = await Tenant.findById(tenantId);
-  if (!existingTenant) {
-    return { success: false, statusCode: 404, message: "Tenant not found" };
-  }
+function hasFinancialChanges(updates, existingTenant) {
+  const financialFields = [
+    "leasedSquareFeet",
+    "pricePerSqft",
+    "pricePerSqftPaisa",
+    "camRatePerSqft",
+    "camRatePerSqftPaisa",
+    "tdsPercentage",
+  ];
 
-  const updatedTenantData = {};
-  Object.keys(body).forEach((key) => {
-    if (body[key] !== undefined && body[key] !== "") {
-      updatedTenantData[key] = body[key];
+  return financialFields.some((field) => {
+    if (updates[field] !== undefined) {
+      // For paisa fields, compare as integers
+      if (field.endsWith("Paisa")) {
+        return updates[field] !== existingTenant[field];
+      }
+      // For regular fields, compare with small tolerance for floats
+      return (
+        Math.abs(Number(updates[field]) - Number(existingTenant[field])) > 0.01
+      );
     }
+    return false;
   });
+}
 
-  // ✨ OPTIMIZED: Image upload (no disk I/O)
-  if (files?.image?.[0]) {
-    try {
-      const imageResult = await uploadSingleFile(files.image[0], {
-        folder: "tenants/images", // ✅ Folder specified
-        imageTransform: [{ width: 1000, height: 1000, crop: "limit" }],
-      });
-      updatedTenantData.image = imageResult.url;
-    } catch (error) {
-      console.error("[updateTenant] Image upload failed:", error);
-      return {
-        success: false,
-        statusCode: 500,
-        message: "Image upload failed",
-        error: error.message,
-      };
-    }
-  }
+/**
+ * Recalculate tenant financials based on updated values
+ */
+function recalculateTenantFinancials(tenant, updates) {
+  // Get current or updated values
+  const sqft = updates.leasedSquareFeet ?? tenant.leasedSquareFeet;
+  const pricePerSqft =
+    updates.pricePerSqft ?? paisaToRupees(tenant.pricePerSqftPaisa);
+  const camRate =
+    updates.camRatePerSqft ?? paisaToRupees(tenant.camRatePerSqftPaisa);
+  const tdsPercentage = updates.tdsPercentage ?? tenant.tdsPercentage ?? 10;
 
-  // ✨ OPTIMIZED: PDF upload (no disk I/O)
-  if (files?.pdfAgreement?.[0]) {
-    try {
-      const pdfResult = await uploadSingleFile(files.pdfAgreement[0], {
-        folder: "tenants/agreements", // ✅ Specific folder
-      });
-      updatedTenantData.pdfAgreement = pdfResult.url;
-    } catch (error) {
-      console.error("[updateTenant] PDF upload failed:", error);
-      return {
-        success: false,
-        statusCode: 500,
-        message: "PDF upload failed",
-        error: error.message,
-      };
-    }
-  }
+  // Build unit lease config for calculation
+  const unitLeaseConfig = [
+    {
+      unitId: tenant.units[0]?.toString() || tenant.units[0]?._id?.toString(),
+      leasedSquareFeet: sqft,
+      pricePerSqft: pricePerSqft,
+      camRatePerSqft: camRate,
+      securityDeposit:
+        updates.securityDeposit ?? paisaToRupees(tenant.securityDepositPaisa),
+    },
+  ];
 
-  if (Object.keys(updatedTenantData).length === 0) {
-    return { success: false, statusCode: 400, message: "No fields to update" };
-  }
+  // Calculate using the rent calculator service
+  const calculation = calculateMultiUnitLease(unitLeaseConfig, tdsPercentage);
+  const totals = calculation.totals;
 
-  const updatedTenant = await Tenant.findByIdAndUpdate(
-    tenantId,
-    { $set: updatedTenantData },
-    { new: true },
-  )
-    .populate("property")
-    .populate("block")
-    .populate("innerBlock");
-
-  await Unit.updateMany(
-    { _id: { $in: updatedTenant.units } },
-    { $set: { isOccupied: true } },
-  );
-
+  // Return updated financial values in PAISA
   return {
-    success: true,
-    statusCode: 200,
-    message: "Tenant updated successfully",
-    tenant: updatedTenant,
+    // Store in paisa (integers - source of truth)
+    pricePerSqftPaisa: rupeesToPaisa(pricePerSqft),
+    camRatePerSqftPaisa: rupeesToPaisa(camRate),
+    tdsPaisa: rupeesToPaisa(totals.totalTds),
+    rentalRatePaisa: rupeesToPaisa(totals.rentMonthly / sqft), // Net rate per sqft
+    grossAmountPaisa: rupeesToPaisa(totals.grossMonthly),
+    totalRentPaisa: rupeesToPaisa(totals.rentMonthly),
+    camChargesPaisa: rupeesToPaisa(totals.camMonthly),
+    netAmountPaisa: rupeesToPaisa(totals.netMonthly),
+
+    // Also store rupee values for backward compatibility
+    pricePerSqft: pricePerSqft,
+    camRatePerSqft: camRate,
+    tdsPercentage: tdsPercentage,
+    leasedSquareFeet: sqft,
+
+    // For logging
+    _calculationDetails: {
+      grossMonthly: totals.grossMonthly,
+      totalTds: totals.totalTds,
+      rentMonthly: totals.rentMonthly,
+      camMonthly: totals.camMonthly,
+      netMonthly: totals.netMonthly,
+    },
   };
+}
+
+/**
+ * Update future/pending rent records with new calculations
+ */
+async function updatePendingRentRecords(tenant, newFinancials, session) {
+  console.log("\n🔄 Updating Pending Rent Records...");
+
+  // Find all pending/unpaid rent records for this tenant
+  const pendingRents = await Rent.find({
+    tenant: tenant._id,
+    status: { $in: ["pending", "partial"] }, // Only pending/partial, not paid
+  }).session(session);
+
+  console.log(`├─ Found ${pendingRents.length} pending rent record(s)`);
+
+  if (pendingRents.length === 0) {
+    console.log("└─ No pending rents to update");
+    return { updated: 0 };
+  }
+
+  let updatedCount = 0;
+
+  for (const rent of pendingRents) {
+    try {
+      // Calculate new rent amount based on frequency
+      const frequencyMonths = rent.rentFrequency === "quarterly" ? 3 : 1;
+      const newMonthlyRent = newFinancials.totalRentPaisa;
+      const newRentAmount = newMonthlyRent * frequencyMonths;
+      const newTdsAmount = newFinancials.tdsPaisa * frequencyMonths;
+
+      // Only update if amounts actually changed
+      if (
+        Math.abs(rent.rentAmountPaisa - newRentAmount) > 1 ||
+        Math.abs(rent.tdsAmountPaisa - newTdsAmount) > 1
+      ) {
+        console.log(`\n├─ Updating Rent Record: ${rent._id}`);
+        console.log(`│  ├─ Old Rent: ${rent.rentAmountPaisa} paisa`);
+        console.log(`│  ├─ New Rent: ${newRentAmount} paisa`);
+        console.log(`│  ├─ Old TDS: ${rent.tdsAmountPaisa} paisa`);
+        console.log(`│  └─ New TDS: ${newTdsAmount} paisa`);
+
+        // Update the rent record
+        rent.rentAmountPaisa = newRentAmount;
+        rent.tdsAmountPaisa = newTdsAmount;
+
+        // Update legacy rupee fields for backward compatibility
+        rent.rentAmount = paisaToRupees(newRentAmount);
+        rent.tdsAmount = paisaToRupees(newTdsAmount);
+
+        // If has unit breakdown, update it too
+        if (
+          rent.useUnitBreakdown &&
+          rent.unitBreakdown &&
+          rent.unitBreakdown.length > 0
+        ) {
+          rent.unitBreakdown = rent.unitBreakdown.map((ub) => ({
+            ...ub,
+            rentAmountPaisa: newMonthlyRent * frequencyMonths,
+            tdsAmountPaisa: newFinancials.tdsPaisa * frequencyMonths,
+          }));
+        }
+
+        await rent.save({ session });
+        updatedCount++;
+      }
+    } catch (error) {
+      console.error(`│  ✗ Failed to update rent ${rent._id}:`, error.message);
+      // Continue with other rents even if one fails
+    }
+  }
+
+  console.log(`└─ Successfully updated ${updatedCount} rent record(s)\n`);
+  return { updated: updatedCount };
+}
+
+/**
+ * Update future/pending CAM records with new calculations
+ */
+async function updatePendingCAMRecords(tenant, newFinancials, session) {
+  console.log("\n🔄 Updating Pending CAM Records...");
+
+  // Find all pending CAM records
+  const pendingCAMs = await Cam.find({
+    tenant: tenant._id,
+    status: { $in: ["pending", "partially_paid"] },
+  }).session(session);
+
+  console.log(`├─ Found ${pendingCAMs.length} pending CAM record(s)`);
+
+  if (pendingCAMs.length === 0) {
+    console.log("└─ No pending CAMs to update");
+    return { updated: 0 };
+  }
+
+  let updatedCount = 0;
+
+  for (const cam of pendingCAMs) {
+    try {
+      const newCamAmount = newFinancials.camChargesPaisa;
+
+      // Only update if amount changed
+      if (Math.abs((cam.amountPaisa || 0) - newCamAmount) > 1) {
+        console.log(`\n├─ Updating CAM Record: ${cam._id}`);
+        console.log(`│  ├─ Old CAM: ${cam.amountPaisa || 0} paisa`);
+        console.log(`│  └─ New CAM: ${newCamAmount} paisa`);
+
+        cam.amountPaisa = newCamAmount;
+        cam.amount = paisaToRupees(newCamAmount); // Backward compatibility
+
+        await cam.save({ session });
+        updatedCount++;
+      }
+    } catch (error) {
+      console.error(`│  ✗ Failed to update CAM ${cam._id}:`, error.message);
+    }
+  }
+
+  console.log(`└─ Successfully updated ${updatedCount} CAM record(s)\n`);
+  return { updated: updatedCount };
+}
+
+/**
+ * Enhanced update tenant with financial recalculation
+ */
+export async function updateTenant(tenantId, body, files) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    console.log("\n" + "=".repeat(60));
+    console.log("📝 UPDATING TENANT");
+    console.log("=".repeat(60));
+
+    // 1. Fetch existing tenant
+    const existingTenant = await Tenant.findById(tenantId).session(session);
+    if (!existingTenant) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 404, message: "Tenant not found" };
+    }
+
+    console.log(`\n✓ Found tenant: ${existingTenant.name}`);
+
+    // 2. Build update object
+    const updatedTenantData = {};
+    Object.keys(body).forEach((key) => {
+      if (body[key] !== undefined && body[key] !== "" && body[key] !== null) {
+        updatedTenantData[key] = body[key];
+      }
+    });
+
+    // 3. Handle file uploads
+    if (files?.image?.[0]) {
+      try {
+        const imageResult = await uploadSingleFile(files.image[0], {
+          folder: "tenants/images",
+          imageTransform: [{ width: 1000, height: 1000, crop: "limit" }],
+        });
+        updatedTenantData.image = imageResult.url;
+      } catch (error) {
+        console.error("Image upload failed:", error);
+        await session.abortTransaction();
+        session.endSession();
+        return {
+          success: false,
+          statusCode: 500,
+          message: "Image upload failed",
+          error: error.message,
+        };
+      }
+    }
+
+    if (files?.pdfAgreement?.[0]) {
+      try {
+        const pdfResult = await uploadSingleFile(files.pdfAgreement[0], {
+          folder: "tenants/agreements",
+        });
+        updatedTenantData.pdfAgreement = pdfResult.url;
+      } catch (error) {
+        console.error("PDF upload failed:", error);
+        await session.abortTransaction();
+        session.endSession();
+        return {
+          success: false,
+          statusCode: 500,
+          message: "PDF upload failed",
+          error: error.message,
+        };
+      }
+    }
+
+    // 4. Check if financial data changed
+    const financialsChanged = hasFinancialChanges(
+      updatedTenantData,
+      existingTenant,
+    );
+
+    console.log(
+      `\n💰 Financial data changed: ${financialsChanged ? "YES" : "NO"}`,
+    );
+
+    let recalculationResult = null;
+
+    // 5. If financials changed, recalculate everything
+    if (financialsChanged) {
+      console.log("\n🔢 Recalculating Financials...");
+
+      recalculationResult = recalculateTenantFinancials(
+        existingTenant,
+        updatedTenantData,
+      );
+
+      console.log("\n✓ Recalculation Complete:");
+      console.log(
+        "├─ Monthly Rent (Net):",
+        paisaToRupees(recalculationResult.totalRentPaisa),
+      );
+      console.log(
+        "├─ Monthly CAM:",
+        paisaToRupees(recalculationResult.camChargesPaisa),
+      );
+      console.log(
+        "├─ Monthly TDS:",
+        paisaToRupees(recalculationResult.tdsPaisa),
+      );
+      console.log(
+        "└─ Monthly Total:",
+        paisaToRupees(recalculationResult.netAmountPaisa),
+      );
+
+      // Merge recalculated financials into update data
+      Object.assign(updatedTenantData, recalculationResult);
+
+      // Calculate quarterly amount if tenant uses quarterly frequency
+      if (existingTenant.rentPaymentFrequency === "quarterly") {
+        const quarterlyRentAmountPaisa = recalculationResult.totalRentPaisa * 3;
+        updatedTenantData.quarterlyRentAmountPaisa = quarterlyRentAmountPaisa;
+        console.log(
+          "\n├─ Quarterly Rent:",
+          paisaToRupees(quarterlyRentAmountPaisa),
+        );
+      }
+    }
+
+    // 6. Validation
+    if (Object.keys(updatedTenantData).length === 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return {
+        success: false,
+        statusCode: 400,
+        message: "No fields to update",
+      };
+    }
+
+    // 7. Update the tenant document
+    const updatedTenant = await Tenant.findByIdAndUpdate(
+      tenantId,
+      { $set: updatedTenantData },
+      { new: true, session },
+    )
+      .populate("property")
+      .populate("block")
+      .populate("innerBlock")
+      .populate("units");
+
+    console.log("\n✓ Tenant document updated");
+
+    // 8. Update related records if financials changed
+    let rentUpdateResult = { updated: 0 };
+    let camUpdateResult = { updated: 0 };
+
+    if (financialsChanged && recalculationResult) {
+      // Update pending rent records
+      rentUpdateResult = await updatePendingRentRecords(
+        updatedTenant,
+        recalculationResult,
+        session,
+      );
+
+      // Update pending CAM records
+      camUpdateResult = await updatePendingCAMRecords(
+        updatedTenant,
+        recalculationResult,
+        session,
+      );
+    }
+
+    // 9. Update unit occupancy status if needed
+    if (updatedTenantData.units || updatedTenantData.status === "vacated") {
+      const shouldBeOccupied = updatedTenantData.status !== "vacated";
+      await Unit.updateMany(
+        { _id: { $in: updatedTenant.units } },
+        { $set: { isOccupied: shouldBeOccupied } },
+        { session },
+      );
+      console.log(
+        `\n✓ Unit occupancy updated: ${shouldBeOccupied ? "occupied" : "vacant"}`,
+      );
+    }
+
+    // 10. Commit transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // 11. Build response message
+    let message = "Tenant updated successfully";
+    if (financialsChanged) {
+      message += `. Recalculated financials and updated ${rentUpdateResult.updated} rent record(s) and ${camUpdateResult.updated} CAM record(s).`;
+    }
+
+    console.log("\n" + "=".repeat(60));
+    console.log("✅ UPDATE COMPLETED SUCCESSFULLY");
+    console.log("=".repeat(60));
+    if (financialsChanged) {
+      console.log("📊 Summary:");
+      console.log(`├─ Rent records updated: ${rentUpdateResult.updated}`);
+      console.log(`├─ CAM records updated: ${camUpdateResult.updated}`);
+      console.log(
+        `└─ New monthly total: ₹${paisaToRupees(recalculationResult.netAmountPaisa).toLocaleString()}`,
+      );
+    }
+    console.log("=".repeat(60) + "\n");
+
+    return {
+      success: true,
+      statusCode: 200,
+      message,
+      tenant: updatedTenant,
+      recalculation: financialsChanged
+        ? {
+            rentsUpdated: rentUpdateResult.updated,
+            camsUpdated: camUpdateResult.updated,
+            newMonthlyRent: paisaToRupees(recalculationResult.totalRentPaisa),
+            newMonthlyCam: paisaToRupees(recalculationResult.camChargesPaisa),
+            newMonthlyTotal: paisaToRupees(recalculationResult.netAmountPaisa),
+          }
+        : null,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("\n❌ Tenant update error:", error);
+    return {
+      success: false,
+      statusCode: 500,
+      message: "Error updating tenant",
+      error: error.message,
+    };
+  }
 }
 
 export async function deleteTenant(tenantId) {

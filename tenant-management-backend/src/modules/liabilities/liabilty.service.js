@@ -16,6 +16,7 @@ async function createLiability(liabilityData) {
       status,
       notes,
       createdBy,
+      session,
     } = liabilityData;
 
     // Accept either ObjectId or source code (e.g., "SECURITY_DEPOSIT")
@@ -33,18 +34,22 @@ async function createLiability(liabilityData) {
       throw new Error("Admin not found");
     }
 
-    const liability = await Liability.create({
-      source: liabilitySource._id,
-      amount,
-      date,
-      payeeType,
-      tenant,
-      referenceType,
-      referenceId,
-      status,
-      notes,
-      createdBy,
-    });
+    const createOpts = session ? { session } : {};
+    const liability = await Liability.create(
+      {
+        source: liabilitySource._id,
+        amount,
+        date,
+        payeeType,
+        tenant,
+        referenceType,
+        referenceId,
+        status,
+        notes,
+        createdBy,
+      },
+      createOpts
+    );
 
     return {
       success: true,

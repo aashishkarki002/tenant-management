@@ -82,6 +82,67 @@ const tenantSchema = new mongoose.Schema(
       ref: "Admin",
     },
     rentFrequencyChangedReason: { type: String },
+    rentEscalation: {
+      // Master switch
+      enabled: { type: Boolean, default: false },
+
+      // How often does escalation trigger (in months, e.g. 12 = yearly)
+      intervalMonths: { type: Number, default: 12 },
+
+      // Percentage increase per interval (e.g. 5 = 5%)
+      percentageIncrease: { type: Number, default: 0 },
+
+      // What the escalation applies to
+      appliesTo: {
+        type: String,
+        enum: ["rent_only", "cam_only", "both"],
+        default: "rent_only",
+      },
+
+      // ── English Date (JS Date) — used for MongoDB index + cron queries ──
+      nextEscalationDate: { type: Date, default: null },
+
+      // ── Nepali ISO string "YYYY-MM-DD" — used for display and history ──
+      nextEscalationNepaliDate: { type: String, default: null },
+
+      // When did the last escalation fire?
+      lastEscalatedAt: { type: Date, default: null },
+      lastEscalatedNepaliDate: { type: String, default: null },
+
+      // Full audit trail
+      history: [
+        {
+          // When it happened
+          escalatedAt: { type: Date, required: true },
+          escalatedNepaliDate: { type: String, required: true }, // "YYYY-MM-DD"
+          nepaliYear: { type: Number, required: true },
+          nepaliMonth: { type: Number, required: true }, // 1-based
+          quarter: { type: Number, required: true }, // 1-4
+
+          escalatedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Admin",
+          },
+
+          // Before snapshot (paisa)
+          previousPricePerSqftPaisa: { type: Number, required: true },
+          previousCamRatePerSqftPaisa: { type: Number, required: true },
+          previousGrossAmountPaisa: { type: Number, required: true },
+          previousTotalRentPaisa: { type: Number, required: true },
+          previousCamChargesPaisa: { type: Number, required: true },
+
+          // After snapshot (paisa)
+          newPricePerSqftPaisa: { type: Number, required: true },
+          newCamRatePerSqftPaisa: { type: Number, required: true },
+          newGrossAmountPaisa: { type: Number, required: true },
+          newTotalRentPaisa: { type: Number, required: true },
+          newCamChargesPaisa: { type: Number, required: true },
+
+          percentageApplied: { type: Number, required: true },
+          note: { type: String, default: "" },
+        },
+      ],
+    },
 
     // =========================
     // STATUS
@@ -202,6 +263,16 @@ tenantSchema.methods.getFinancialSummary = function () {
       netPerSqft: formatMoney(this.rentalRatePaisa),
       camPerSqft: formatMoney(this.camRatePerSqftPaisa),
     },
+    escalation: this.rentEscalation?.enabled
+      ? {
+          nextDateNepali: this.rentEscalation.nextEscalationNepaliDate,
+          daysAway: this.daysUntilEscalation,
+          percentage: this.rentEscalation.percentageIncrease,
+          appliesTo: this.rentEscalation.appliesTo,
+          totalEscalations: this.rentEscalation.history?.length || 0,
+          lastEscalatedNepali: this.rentEscalation.lastEscalatedNepaliDate,
+        }
+      : null,
   };
 };
 
@@ -223,7 +294,15 @@ tenantSchema.statics.findOverdue = function () {
     nextRentDueDate: { $lt: new Date() },
   });
 };
-
+// Cron query — uses the English Date index for performance
+tenantSchema.statics.findDueForEscalation = function (asOf = new Date()) {
+  return this.find({
+    status: "active",
+    isDeleted: false,
+    "rentEscalation.enabled": true,
+    "rentEscalation.nextEscalationDate": { $lte: asOf },
+  });
+};
 // ============================================
 // INDEXES
 // ============================================
@@ -231,6 +310,7 @@ tenantSchema.index({ status: 1, isDeleted: 1 });
 tenantSchema.index({ property: 1, block: 1, innerBlock: 1 });
 tenantSchema.index({ nextRentDueDate: 1 });
 tenantSchema.index({ rentPaymentFrequency: 1 });
+tenantSchema.index({ "rentEscalation.nextEscalationDate": 1 });
 
 // JSON / Object output
 tenantSchema.set("toJSON", { virtuals: true, getters: false });

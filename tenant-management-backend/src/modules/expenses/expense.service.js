@@ -47,20 +47,24 @@ export async function createExpense(expenseData) {
     }
 
     // Determine which ledger expense account code to use.
+    // Chart of accounts uses numeric codes (1000, 5200, etc.); ExpenseSource codes
+    // (VENDOR, MAINTENANCE, etc.) are categories and must be mapped to real account codes.
     // Priority:
     // 1. Explicit expenseCode from the caller
-    // 2. Special mapping for known ExpenseSource codes (e.g. MAINTENANCE)
-    // 3. Fallback to a generic expense account code (5200)
+    // 2. Special mapping for known ExpenseSource codes (e.g. MAINTENANCE → 5000)
+    // 3. Fallback to generic expense account (5200) for all other sources
+    const DEFAULT_EXPENSE_ACCOUNT_CODE = "5200";
     let expenseCodeToUse = expenseCode;
     if (!expenseCodeToUse && expenseSource?.code) {
       if (expenseSource.code === ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_SOURCE_CODE) {
         expenseCodeToUse = ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE;
       } else {
-        expenseCodeToUse = expenseSource.code;
+        // VENDOR, SALARY, UTILITY, etc. are not ledger account codes; use default expense account
+        expenseCodeToUse = DEFAULT_EXPENSE_ACCOUNT_CODE;
       }
     }
     if (!expenseCodeToUse) {
-      expenseCodeToUse = "5200";
+      expenseCodeToUse = DEFAULT_EXPENSE_ACCOUNT_CODE;
     }
     // Create expense first so we have an _id for the transaction referenceId
     const [expense] = await Expense.create(

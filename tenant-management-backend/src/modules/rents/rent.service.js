@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { Rent } from "./rent.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
 import adminModel from "../auth/admin.Model.js";
@@ -80,15 +81,49 @@ function calculateRentTotals(rent) {
 }
 
 /**
+ * Build MongoDB filter from query params (tenantId, propertyId, status, nepaliMonth, nepaliYear, startDate, endDate).
+ * @param {Object} filters - Optional filters from req.query
+ * @returns {Object} Mongoose query filter
+ */
+function buildRentsFilter(filters = {}) {
+  const query = {};
+  if (filters.tenantId && mongoose.Types.ObjectId.isValid(filters.tenantId)) {
+    query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
+  }
+  if (filters.propertyId && mongoose.Types.ObjectId.isValid(filters.propertyId)) {
+    query.property = new mongoose.Types.ObjectId(filters.propertyId);
+  }
+  if (filters.status && ["pending", "paid", "partially_paid", "overdue", "cancelled"].includes(filters.status)) {
+    query.status = filters.status;
+  }
+  if (filters.nepaliMonth != null) {
+    const month = Number(filters.nepaliMonth);
+    if (month >= 1 && month <= 12) query.nepaliMonth = month;
+  }
+  if (filters.nepaliYear != null) {
+    const year = Number(filters.nepaliYear);
+    if (!Number.isNaN(year)) query.nepaliYear = year;
+  }
+  if (filters.startDate || filters.endDate) {
+    query.englishDueDate = {};
+    if (filters.startDate) query.englishDueDate.$gte = new Date(filters.startDate);
+    if (filters.endDate) query.englishDueDate.$lte = new Date(filters.endDate);
+  }
+  return query;
+}
+
+/**
  * ✅ REFACTORED: Get all rents with formatted amounts
  *
+ * @param {Object} filters - Optional: tenantId, propertyId, status, nepaliMonth, nepaliYear, startDate, endDate
  * Returns rents with:
  * - totals: Raw paisa values (integers) for calculations
  * - formatted: Human-readable money strings for display
  */
-export async function getRentsService() {
+export async function getRentsService(filters = {}) {
   try {
-    const rents = await Rent.find()
+    const query = buildRentsFilter(filters);
+    const rents = await Rent.find(query)
       .sort({ nepaliDueDate: 1 })
       .populate({
         path: "tenant",
@@ -221,6 +256,81 @@ export async function getRentByIdService(rentId) {
     return {
       success: false,
       message: "Rent fetching failed",
+      error: error.message,
+    };
+  }
+}
+
+const ALLOWED_STATUSES = ["pending", "paid", "partially_paid", "overdue", "cancelled"];
+
+/**
+ * Update a rent record (admin only). Allows only safe fields: lateFeePaisa, status, lateFeeApplied, lateFeeDate.
+ * Does not allow changing paidAmountPaisa, rentAmountPaisa, or tdsAmountPaisa (those are driven by payments/tenant).
+ *
+ * @param {string} rentId - Rent document ID
+ * @param {Object} body - Allowed fields: lateFeePaisa, status, lateFeeApplied, lateFeeDate
+ * @returns {Object} { success, rent?, message?, statusCode? }
+ */
+export async function updateRentService(rentId, body) {
+  try {
+    const rent = await Rent.findById(rentId);
+    if (!rent) {
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Rent not found",
+      };
+    }
+
+    if (body.lateFeePaisa !== undefined) {
+      const lateFeePaisa = Number(body.lateFeePaisa);
+      if (!Number.isInteger(lateFeePaisa) || lateFeePaisa < 0) {
+        return {
+          success: false,
+          statusCode: 400,
+          message: "lateFeePaisa must be a non-negative integer",
+        };
+      }
+      rent.lateFeePaisa = lateFeePaisa;
+      rent.lateFeeApplied = lateFeePaisa > 0;
+      rent.lateFeeDate = lateFeePaisa > 0 ? (body.lateFeeDate ? new Date(body.lateFeeDate) : new Date()) : null;
+      rent.lateFeeStatus = lateFeePaisa > 0 ? "pending" : "pending";
+    }
+
+    if (body.status !== undefined) {
+      if (!ALLOWED_STATUSES.includes(body.status)) {
+        return {
+          success: false,
+          statusCode: 400,
+          message: `status must be one of: ${ALLOWED_STATUSES.join(", ")}`,
+        };
+      }
+      rent.status = body.status;
+    }
+
+    if (body.lateFeeApplied !== undefined) {
+      rent.lateFeeApplied = Boolean(body.lateFeeApplied);
+    }
+    if (body.lateFeeDate !== undefined) {
+      rent.lateFeeDate = body.lateFeeDate ? new Date(body.lateFeeDate) : null;
+    }
+
+    await rent.save();
+
+    const result = await getRentByIdService(rentId);
+    if (!result.success) {
+      return { success: true, rent: rent.toObject(), message: "Rent updated successfully" };
+    }
+    return {
+      success: true,
+      rent: result.rent,
+      message: "Rent updated successfully",
+    };
+  } catch (error) {
+    console.error("Error updating rent:", error);
+    return {
+      success: false,
+      message: error.message || "Rent update failed",
       error: error.message,
     };
   }

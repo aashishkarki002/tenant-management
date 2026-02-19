@@ -4,32 +4,75 @@ import ExpenseSource from "../expenses/ExpenseSource.Model.js";
 import { createExpense } from "../expenses/expense.service.js";
 import { ACCOUNTING_CONFIG } from "../../config/accounting.config.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { sendMaintenanceAssignmentEmail } from "../../config/nodemailer.js";
+
+// ─── Helper ──────────────────────────────────────────────────────────────────
+/**
+ * Fires a non-blocking assignment email to the assigned staff.
+ * Relies on populated `assignedTo`, `property`, and `unit` fields.
+ */
+function _notifyAssignedStaff(maintenance) {
+  const staff = maintenance.assignedTo;
+  if (!staff?.email) return; // nothing to do if no staff or no email
+
+  sendMaintenanceAssignmentEmail({
+    to: staff.email,
+    staffName: staff.name,
+    title: maintenance.title,
+    description: maintenance.description,
+    type: maintenance.type,
+    priority: maintenance.priority,
+    scheduledDate: maintenance.scheduledDate,
+    propertyName: maintenance.property?.name,
+    unitName: maintenance.unit?.name,
+    maintenanceId: maintenance._id.toString(),
+  });
+  // Intentionally NOT awaited — email is a side-effect
+}
+
+// ─── Service functions ────────────────────────────────────────────────────────
 
 export async function createMaintenance(maintenanceData) {
   try {
-    // ✅ Convert amounts to paisa if needed
-    if (maintenanceData.amountPaisa === undefined && maintenanceData.amount !== undefined) {
+    if (
+      maintenanceData.amountPaisa === undefined &&
+      maintenanceData.amount !== undefined
+    ) {
       maintenanceData.amountPaisa = rupeesToPaisa(maintenanceData.amount);
     }
-    if (maintenanceData.paidAmountPaisa === undefined && maintenanceData.paidAmount !== undefined) {
-      maintenanceData.paidAmountPaisa = rupeesToPaisa(maintenanceData.paidAmount);
+    if (
+      maintenanceData.paidAmountPaisa === undefined &&
+      maintenanceData.paidAmount !== undefined
+    ) {
+      maintenanceData.paidAmountPaisa = rupeesToPaisa(
+        maintenanceData.paidAmount,
+      );
     }
-    
+
     const maintenance = await Maintenance.create(maintenanceData);
+
+    // Notify assigned staff if one was set at creation time
+    if (maintenanceData.assignedTo) {
+      const populated = await Maintenance.findById(maintenance._id)
+        .populate("assignedTo", "name email")
+        .populate("property", "name")
+        .populate("unit", "name");
+
+      _notifyAssignedStaff(populated);
+    }
+
     return {
       success: true,
       message: "Maintenance task created successfully",
       data: maintenance,
     };
   } catch (error) {
-    // Surface Mongoose validation errors clearly
     if (error.name === "ValidationError") {
       const validationErrors = Object.values(error.errors)
         .map((err) => err.message)
         .join(", ");
       throw new Error(validationErrors);
     }
-
     throw new Error(error.message || "Failed to create maintenance task");
   }
 }
@@ -87,11 +130,10 @@ export async function updateMaintenanceStatus(
   status,
   paymentStatus,
   paidAmountPaisa = null,
-  paidAmount = null, // Backward compatibility
+  paidAmount = null,
   lastPaidBy = null,
-  options = {}
+  options = {},
 ) {
-  // 1. Verify maintenance exists
   const existing = await Maintenance.findById(id);
   if (!existing) {
     return {
@@ -102,37 +144,36 @@ export async function updateMaintenanceStatus(
     };
   }
 
-  // 2. Update maintenance task
-  // ✅ Convert to paisa if needed
-  const finalPaidAmountPaisa = paidAmountPaisa !== undefined
-    ? paidAmountPaisa
-    : (paidAmount !== null ? rupeesToPaisa(paidAmount) : null);
-  
+  const finalPaidAmountPaisa =
+    paidAmountPaisa !== undefined
+      ? paidAmountPaisa
+      : paidAmount !== null
+        ? rupeesToPaisa(paidAmount)
+        : null;
+
   const updateFields = { status, paymentStatus };
   if (finalPaidAmountPaisa !== null) {
     updateFields.paidAmountPaisa = finalPaidAmountPaisa;
-    updateFields.paidAmount = finalPaidAmountPaisa / 100; // Backward compatibility
+    updateFields.paidAmount = finalPaidAmountPaisa / 100;
   }
   if (lastPaidBy) updateFields.lastPaidBy = lastPaidBy;
 
   const updatedTask = await Maintenance.findByIdAndUpdate(
     id,
     { $set: updateFields },
-    { new: true }
+    { new: true },
   );
 
-  // 3. Handle expense creation if completed and paid
   let expense = null;
   const isCompleted = updatedTask?.status === "COMPLETED";
   const isPaid = updatedTask?.paymentStatus === "paid";
 
   if (isCompleted && isPaid) {
-    // ✅ Use paisa field if available, otherwise convert from rupees
-    const finalPaidAmountPaisa = updatedTask.paidAmountPaisa || 
+    const finalPaidAmountPaisa =
+      updatedTask.paidAmountPaisa ||
       (updatedTask.paidAmount ? rupeesToPaisa(updatedTask.paidAmount) : 0);
 
     if (finalPaidAmountPaisa > 0) {
-      // Check for existing expense to avoid duplicates
       const existingExpense = await Expense.findOne({
         referenceType: "MAINTENANCE",
         referenceId: updatedTask._id,
@@ -141,18 +182,16 @@ export async function updateMaintenanceStatus(
       if (existingExpense) {
         expense = existingExpense;
       } else {
-        // Get maintenance expense source
         const maintenanceSource = await ExpenseSource.findOne({
           code: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_SOURCE_CODE,
         });
 
         if (!maintenanceSource) {
           throw new Error(
-            "Maintenance ExpenseSource with code MAINTENANCE not found"
+            "Maintenance ExpenseSource with code MAINTENANCE not found",
           );
         }
 
-        // Prepare expense data
         const { adminId, nepaliDate, nepaliMonth, nepaliYear } = options;
         const now = new Date();
         const payeeType = updatedTask.tenant ? "TENANT" : "EXTERNAL";
@@ -160,7 +199,7 @@ export async function updateMaintenanceStatus(
         const expenseData = {
           source: maintenanceSource._id,
           amountPaisa: finalPaidAmountPaisa,
-          amount: finalPaidAmountPaisa / 100, // Backward compatibility
+          amount: finalPaidAmountPaisa / 100,
           EnglishDate: now,
           nepaliDate: nepaliDate ? new Date(nepaliDate) : now,
           nepaliMonth:
@@ -179,12 +218,11 @@ export async function updateMaintenanceStatus(
           expenseCode: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE,
         };
 
-        // Create expense
         const result = await createExpense(expenseData);
         console.log("create expense result", result);
         if (!result.success) {
           throw new Error(
-            result.error || result.message || "Failed to create expense"
+            result.error || result.message || "Failed to create expense",
           );
         }
 
@@ -210,23 +248,31 @@ export async function updateMaintenanceAssignedTo(id, assignedTo) {
       data: null,
     };
   }
+
   const updated = await Maintenance.findByIdAndUpdate(
     id,
     { $set: { assignedTo: assignedTo || null } },
-    { new: true }
+    { new: true },
   )
     .populate("assignedTo", "name email phone")
     .populate("tenant")
-    .populate("unit")
-    .populate("property")
+    .populate("unit", "name")
+    .populate("property", "name")
     .populate("block")
     .populate("createdBy");
+
+  // Notify newly assigned staff
+  if (assignedTo) {
+    _notifyAssignedStaff(updated);
+  }
+
   return {
     success: true,
     message: "Assignment updated successfully",
     data: updated,
   };
 }
+
 export async function getMaintenanceByTenantId(tenantId) {
   const maintenance = await Maintenance.find({ tenant: tenantId })
     .populate("tenant")

@@ -21,7 +21,7 @@ export async function createSd(sdData, createdBy, session = null) {
 
     // ✅ Use paisa for liability creation
     const amountPaisa = sd.amountPaisa || (sd.amount ? rupeesToPaisa(sd.amount) : 0);
-    await createLiability({
+    const liabilityResult = await createLiability({
       source: "SECURITY_DEPOSIT",
       amountPaisa: amountPaisa,
       amount: amountPaisa / 100, // Backward compatibility
@@ -31,7 +31,11 @@ export async function createSd(sdData, createdBy, session = null) {
       referenceType: "SECURITY_DEPOSIT",
       referenceId: sd._id,
       createdBy: createdBy,
+      session,
     });
+    if (!liabilityResult.success) {
+      throw new Error(liabilityResult.error || liabilityResult.message || "Failed to create SD liability");
+    }
     return {
       success: true,
       message: "Sd created successfully",

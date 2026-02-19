@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createBankAccount,
   getBankAccounts,
+  updateBankAccount,
   deleteBankAccount,
 } from "./bank.controller.js";
 import { protect } from "../../middleware/protect.js";
@@ -18,6 +19,12 @@ router.get(
   protect,
   authorize("admin", "super_admin", "staff"),
   getBankAccounts,
+);
+router.patch(
+  "/update-bank-account/:id",
+  protect,
+  authorize("admin", "super_admin"),
+  updateBankAccount,
 );
 router.patch(
   "/delete-bank-account/:id",

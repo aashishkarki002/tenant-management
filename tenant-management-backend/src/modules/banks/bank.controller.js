@@ -36,6 +36,39 @@ export const getBankAccounts = async (req, res) => {
     });
   }
 };
+export const updateBankAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { accountNumber, accountName, bankName } = req.body;
+
+    const bankAccount = await BankAccount.findByIdAndUpdate(
+      id,
+      { accountNumber, accountName, bankName },
+      { new: true, runValidators: true }
+    );
+
+    if (!bankAccount) {
+      return res.status(404).json({
+        success: false,
+        message: "Bank account not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Bank account updated successfully",
+      bankAccount,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update bank account",
+      error: error.message,
+    });
+  }
+};
+
 export const deleteBankAccount = async (req, res) => {
   try {
     const { id } = req.params;

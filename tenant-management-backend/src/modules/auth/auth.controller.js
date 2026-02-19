@@ -457,6 +457,8 @@ export const getMe = async (req, res) => {
         email: admin.email,
         role: admin.role,
         phone: admin.phone,
+        address: admin.address || "",
+        company: admin.company || "",
         isEmailVerified: admin.isEmailVerified,
       },
     });
