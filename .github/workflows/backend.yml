@@ -3,7 +3,6 @@ name: Deploy Backend via FTP + SSH
 on:
   push:
     branches: [ main ]
-    
 
 jobs:
   deploy-backend:
@@ -14,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ Deploy backend via FTP
+      # 2️⃣ FTP Deploy
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -29,8 +28,9 @@ jobs:
             .github/**
             *.log
             *.zip
+          dangerous-clean-slate: false
 
-         # 3️⃣ SSH: install dependencies & restart Node app
+      # 3️⃣ SSH: install dependencies & restart Node app
       - name: SSH & Restart Node.js App
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -42,4 +42,3 @@ jobs:
             cd ~/api.sallyanhouse.com
             npm install --production
             /usr/local/bin/passenger-config restart-app .
-
