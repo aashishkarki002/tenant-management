@@ -30,28 +30,27 @@ jobs:
             *.zip
           dangerous-clean-slate: false
 
-      # 3️⃣ Deploy Backend via SSH
+      # 3️⃣ SSH - Install deps & restart Passenger
       - name: Deploy Backend via SSH
         uses: appleboy/ssh-action@v0.1.9
         with:
-          host: api.sallyanhouse.com       # or 190.92.174.249
-          username: ${{ secrets.SERVER_SSH_USER }}  # sallyanh
-          key: ${{ secrets.SERVER_SSH_KEY }}        # private key in OpenSSH format
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_SSH_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
-          # Optional: avoid "unknown host" issues
-          # known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
           script: |
-            set -e  # Exit immediately if a command fails
-            echo "Activating Node.js virtual environment..."
+            set -e
+
+            echo "Activating Node.js environment..."
             source /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate
 
             echo "Navigating to project directory..."
             cd /home/sallyanh/api.sallyanhouse.com
 
             echo "Installing production dependencies..."
-            npm install --production
+            npm install --omit=dev
 
             echo "Restarting Passenger application..."
-            passenger-config restart-app .
+            mkdir -p tmp && touch tmp/restart.txt
 
             echo "✅ Deployment completed successfully!"
