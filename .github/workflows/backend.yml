@@ -35,8 +35,8 @@ jobs:
         uses: appleboy/ssh-action@v0.1.9
         with:
           host: api.sallyanhouse.com       # or 190.92.174.249
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
+          username: ${{ secrets.SERVER_SSH_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22                        # change if using custom SSH port
           script: |
             # Activate Node.js virtual environment
