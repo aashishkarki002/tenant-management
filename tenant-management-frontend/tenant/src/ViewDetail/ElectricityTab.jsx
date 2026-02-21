@@ -50,7 +50,7 @@ export function ElectricityTab({ tenantId }) {
 
   return (
     <div className="space-y-4">
-      <ElectricitySummaryCards grouped={grouped} summary={summary} />
+
       <Card className="rounded-lg shadow bg-white">
         <CardContent className="p-5">
           <div className="overflow-x-auto">

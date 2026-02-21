@@ -426,7 +426,7 @@ function SettingTab({
                                                     name="bankName"
                                                 />
                                             </div>
-                                            </FieldGroup>
+                                        </FieldGroup>
                                         <div className="flex gap-2 pt-4 justify-end">
                                             <DialogClose asChild>
                                                 <Button type="button" variant="ghost">

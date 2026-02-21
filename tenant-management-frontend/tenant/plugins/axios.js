@@ -1,12 +1,17 @@
 import axios from "axios";
 
-// Use VITE_API_URL for local dev (e.g. http://localhost:3000); production build uses .env or fallback
-const baseURL = import.meta.env.VITE_API_URL || "https://api.sallyanhouse.com";
+// Use VITE_API_URL for local dev (e.g. http://localhost:3000)
+const baseURL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 const api = axios.create({
   baseURL,
+  // FIX: withCredentials sends httpOnly cookies (accessToken + refreshToken)
+  // on every request automatically. Do NOT also try to send tokens via
+  // Authorization header from localStorage — that was the other half of the
+  // broken dual-strategy. Pick one. We pick cookies (more secure: XSS-proof).
   withCredentials: true,
 });
+
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -18,19 +23,10 @@ const processQueue = (error) => {
   failedQueue = [];
 };
 
-// Request interceptor to add token from localStorage to Authorization header
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
+// FIX: Removed the request interceptor that read localStorage("token") and
+// injected it as a Bearer header. The backend now reads the httpOnly accessToken
+// cookie exclusively via protect.js. Mixing both strategies caused every
+// protected request to fail because localStorage was always empty.
 
 api.interceptors.response.use(
   (response) => response,
@@ -38,11 +34,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Don't try to refresh if:
-    // 1. The request was to refresh-token itself (avoid infinite loop)
-    // 2. The request was to logout (should not refresh on logout)
-    // 3. The request was already retried
-    // 4. We're on login/signup pages
+    // FIX: Removed the early `if (error.response) return Promise.reject(error)`
+    // guard that was here before. That line short-circuited ALL response errors
+    // before the 401 check below it could ever run, making the entire refresh
+    // token flow dead/unreachable code.
+
     const isRefreshTokenRequest =
       originalRequest.url?.includes("/refresh-token");
     const isLogoutRequest = originalRequest.url?.includes("/logout");
@@ -50,7 +46,7 @@ api.interceptors.response.use(
     const isPublicRoute =
       path.startsWith("/login") || path.startsWith("/signup");
 
-    // If access token expired and we should try to refresh
+    // Attempt token refresh on 401 (access token expired)
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
@@ -60,33 +56,30 @@ api.interceptors.response.use(
     ) {
       originalRequest._retry = true;
 
+      // If a refresh is already in flight, queue this request and wait.
       if (isRefreshing) {
-        // wait until refresh finishes
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        }).then(() => api(originalRequest));
+        })
+          .then(() => api(originalRequest))
+          .catch((err) => Promise.reject(err));
       }
 
       isRefreshing = true;
 
       try {
-        // 🔄 call refresh-token
-        const refreshResponse = await api.post("/api/auth/refresh-token");
+        // The refresh endpoint reads the refreshToken httpOnly cookie automatically.
+        // withCredentials:true ensures it is sent.
+        await api.post("/api/auth/refresh-token");
 
-        // Update token in localStorage if returned in response
-        if (refreshResponse.data?.token) {
-          localStorage.setItem("token", refreshResponse.data.token);
-        }
-
+        // The backend sets a fresh accessToken cookie in the response.
+        // No localStorage involved — the cookie will be sent on the retry automatically.
         processQueue(null);
-        return api(originalRequest); // retry original request
+        return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError);
 
-        // logout if refresh fails - but don't redirect if already on login
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
-        // Only redirect if not already on login/signup page
+        // Refresh failed (token revoked, expired, or reused) — send to login.
         if (!isPublicRoute) {
           window.location.href = "/login";
         }

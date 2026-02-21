@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import api from "../../plugins/axios";
 
 const AuthContext = createContext(null);
@@ -6,8 +6,9 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const fetchMe = async (force = false) => {
-    // Skip fetch if on login or signup page to prevent loops (unless forced)
+
+  const fetchMe = useCallback(async (force = false) => {
+    // Skip fetch if on login or signup page to prevent redirect loops.
     if (!force) {
       const path = window.location.pathname.toLowerCase();
       if (path.startsWith("/login") || path.startsWith("/signup")) {
@@ -25,7 +26,6 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
       }
     } catch (error) {
-      // Only log non-401 errors (401 is expected when not logged in)
       if (error.response?.status !== 401) {
         console.error("Error fetching user:", error);
       }
@@ -33,16 +33,28 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
   useEffect(() => {
     fetchMe();
-  }, []);
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    // Clear loading state to ensure ProtectedRoutes re-evaluates
-    setLoading(false);
+  }, [fetchMe]);
+
+  // FIX: logout now calls the backend to:
+  //  1. Revoke the refresh token in the database.
+  //  2. Clear the httpOnly cookies server-side (res.clearCookie).
+  // Previously it only cleared localStorage which had no meaningful effect
+  // because tokens were stored in httpOnly cookies, not localStorage.
+  const logout = async () => {
+    try {
+      await api.post("/api/auth/logout");
+    } catch (error) {
+      // Even if the API call fails (network issue, already logged out),
+      // we still clear local state so the UI reflects the logged-out state.
+      console.error("Logout API error:", error);
+    } finally {
+      setUser(null);
+      setLoading(false);
+    }
   };
 
   return (
@@ -51,6 +63,7 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

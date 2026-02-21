@@ -41,9 +41,7 @@ export default function LoginForm({ className, ...props }) {
         const data = response.data;
 
         if (data.success) {
-          // Store token in localStorage
-          localStorage.setItem("token", data.token);
-          // Fetch user data to update AuthContext (force fetch even on login page)
+
           await fetchMe(true);
           // Navigate to home page
           navigate("/");

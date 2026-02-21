@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
     Dialog,
     DialogContent,
@@ -22,7 +22,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import useUnits from "../../hooks/use-units";
 import { useSubMeterOptions, filterSubMeterOptions } from "../utils/useSubMeterOptions";
-import { createReading } from "../utils/electricityApi";
+import { createReading, getReadings } from "../utils/electricityApi";
+import { getUnitsForInnerBlocks } from "../../Tenant/addTenant/utils/propertyHelper";
 import DualCalendarTailwind from "../../components/dualDate";
 
 const METER_TYPES = [
@@ -111,6 +112,58 @@ export default function ElectricityReadingDialog({
         sub_meter: { ...EMPTY_FORM },
     });
 
+    /** Previous reading for the selected meter (fetched when selection changes) */
+    const [previousReading, setPreviousReading] = useState(null);
+    const [previousReadingLoading, setPreviousReadingLoading] = useState(false);
+
+    // ── Single building: set unit tab buildingId from propertyId ───────────────
+    useEffect(() => {
+        if (!propertyId) return;
+        setFormData((prev) => ({
+            ...prev,
+            unit: prev.unit.buildingId ? prev.unit : { ...prev.unit, buildingId: propertyId },
+        }));
+    }, [propertyId]);
+
+    // ── Fetch previous reading when unit/sub-meter is selected ─────────────────
+    useEffect(() => {
+        const selected = formData[selectedMeterType].selected;
+        if (!propertyId || !selected) {
+            setPreviousReading(null);
+            return;
+        }
+        let cancelled = false;
+        setPreviousReadingLoading(true);
+        setPreviousReading(null);
+        const params =
+            selectedMeterType === "unit"
+                ? { propertyId, unitId: selected, meterType: "unit" }
+                : { propertyId, subMeterId: selected, meterType: selectedMeterType };
+        getReadings(params)
+            .then((data) => {
+                if (cancelled) return;
+                const list = data?.readings ?? [];
+                const sorted = [...list].sort((a, b) => {
+                    const da = new Date(a.readingDate || a.createdAt || 0);
+                    const db = new Date(b.readingDate || b.createdAt || 0);
+                    return db - da;
+                });
+                const latest = sorted[0];
+                setPreviousReading(
+                    latest != null && typeof latest.currentReading === "number"
+                        ? latest.currentReading
+                        : null
+                );
+            })
+            .catch(() => {
+                if (!cancelled) setPreviousReading(null);
+            })
+            .finally(() => {
+                if (!cancelled) setPreviousReadingLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [propertyId, selectedMeterType, formData[selectedMeterType].selected]);
+
     // ── Building / block cascade helpers ──────────────────────────────────────
     const buildings = useMemo(() => {
         if (!Array.isArray(property)) return [];
@@ -144,19 +197,31 @@ export default function ElectricityReadingDialog({
      * Industry note: never mix domain data sources into a single list.
      * Separate fetches = separate caches, separate loading states.
      */
+    /**
+     * Unit options: same pattern as add tenant — filter by building, block, then by innerBlock.
+     * When block has inner blocks, only show units for the selected inner block.
+     */
     const getOptions = (type) => {
         const { buildingId, blockId, innerBlockId } = formData[type];
 
         if (type === "unit") {
-            return (units ?? []).filter((item) => {
+            const byBuildingAndBlock = (units ?? []).filter((item) => {
                 const matchBuilding = buildingId
-                    ? (item.propertyId ?? item.property?._id ?? item.building?._id) === buildingId
+                    ? (item.propertyId ?? item.property?._id ?? item.property) === buildingId
                     : true;
                 const matchBlock = blockId
-                    ? (item.blockId ?? item.block?._id) === blockId
+                    ? (item.blockId ?? item.block?._id ?? item.block) === blockId
                     : true;
                 return matchBuilding && matchBlock;
             });
+            // Same as add tenant: when block has inner blocks, only show units for selected inner block
+            if (innerBlockId) {
+                return getUnitsForInnerBlocks([innerBlockId], byBuildingAndBlock);
+            }
+            // No inner block selected: if block has inner blocks, show no units (user must pick inner block first)
+            const innerBlocks = getInnerBlocks(type);
+            if (innerBlocks.length > 0) return [];
+            return byBuildingAndBlock;
         }
 
         const pool = subMetersByType[type] ?? [];
@@ -180,6 +245,12 @@ export default function ElectricityReadingDialog({
         setFormData((prev) => ({
             ...prev,
             [type]: { ...prev[type], blockId, innerBlockId: "", selected: "" },
+        }));
+
+    const handleInnerBlockChange = (type, innerBlockId) =>
+        setFormData((prev) => ({
+            ...prev,
+            [type]: { ...prev[type], innerBlockId, selected: "" },
         }));
 
     const handleClose = () => {
@@ -223,14 +294,15 @@ export default function ElectricityReadingDialog({
                  */
                 const selectedUnit = (units ?? []).find((u) => u._id === data.selected);
                 const tenantId =
+                    selectedUnit?.currentLease?.tenant ??
                     selectedUnit?.tenantId ??
                     selectedUnit?.tenant?._id ??
                     selectedUnit?.tenant ??
-                    null;
+                    undefined;
 
                 await createReading({
                     meterType: "unit",
-                    tenantId,
+                    ...(tenantId != null && { tenantId }),
                     unitId: data.selected,
                     propertyId,
                     currentReading,
@@ -301,36 +373,16 @@ export default function ElectricityReadingDialog({
         return (
             <div className="flex flex-col gap-4 mt-3">
 
-                {/* Building — unit tab only; sub-meters filter by block directly */}
-                {type === "unit" && buildings.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                        <label className="text-sm font-medium">Building</label>
-                        <Select
-                            value={buildingId || ""}
-                            onValueChange={(val) => handleBuildingChange(type, val)}
-                        >
-                            <SelectTrigger className="h-9 bg-gray-100">
-                                <SelectValue placeholder="Select Building" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {buildings.map((b) => (
-                                    <SelectItem key={b._id} value={b._id}>{b.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                )}
-
-                {/* Block — cascades from building (unit tab) or standalone (sub-meter tabs) */}
+                {/* Block — cascades from building (unit tab uses constant propertyId; sub-meters filter by block) */}
                 {(buildingId && blocks.length > 0) ? (
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-sm font-medium">Block</label>
+                        <label className="text-sm font-medium">Building</label>
                         <Select
                             value={blockId || ""}
                             onValueChange={(val) => handleBlockChange(type, val)}
                         >
                             <SelectTrigger className="h-9 bg-gray-100">
-                                <SelectValue placeholder="Select Block" />
+                                <SelectValue placeholder="Select Building" />
                             </SelectTrigger>
                             <SelectContent>
                                 {blocks.map((bl) => (
@@ -342,7 +394,7 @@ export default function ElectricityReadingDialog({
                 ) : isSubMeterTab && allBlocks.length > 0 && (
                     /* Sub-meter tabs: optional block filter without requiring a building */
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-sm font-medium">Block (optional)</label>
+                        <label className="text-sm font-medium">Building (optional)</label>
                         <Select
                             value={blockId || "__all__"}
                             onValueChange={(val) =>
@@ -350,10 +402,10 @@ export default function ElectricityReadingDialog({
                             }
                         >
                             <SelectTrigger className="h-9 bg-gray-100">
-                                <SelectValue placeholder="All Blocks" />
+                                <SelectValue placeholder="All Buildings" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="__all__">All Blocks</SelectItem>
+                                <SelectItem value="__all__">All Buildings</SelectItem>
                                 {allBlocks.map((bl) => (
                                     <SelectItem key={bl._id} value={bl._id}>{bl.name}</SelectItem>
                                 ))}
@@ -362,16 +414,16 @@ export default function ElectricityReadingDialog({
                     </div>
                 )}
 
-                {/* Inner Block */}
+                {/* Inner Block — same cascade as add tenant; changing it clears unit selection */}
                 {blockId && innerBlocks.length > 0 && (
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-sm font-medium">Inner Block</label>
+                        <label className="text-sm font-medium">Block</label>
                         <Select
                             value={innerBlockId || ""}
-                            onValueChange={(val) => update(type, "innerBlockId", val)}
+                            onValueChange={(val) => handleInnerBlockChange(type, val)}
                         >
                             <SelectTrigger className="h-9 bg-gray-100">
-                                <SelectValue placeholder="Select Inner Block" />
+                                <SelectValue placeholder="Select Block" />
                             </SelectTrigger>
                             <SelectContent>
                                 {innerBlocks.map((ib) => (
@@ -414,6 +466,22 @@ export default function ElectricityReadingDialog({
                         </SelectContent>
                     </Select>
                 </div>
+
+                {/* Previous reading (when a meter is selected) */}
+                {(selected && (type === selectedMeterType)) && (
+                    <div className="text-sm text-muted-foreground">
+                        {previousReadingLoading ? (
+                            <span className="inline-flex items-center gap-1">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Previous reading…
+                            </span>
+                        ) : previousReading != null ? (
+                            <>Previous reading: <span className="font-medium text-foreground">{Number(previousReading).toFixed(1)} kWh</span></>
+                        ) : (
+                            "Previous reading: —"
+                        )}
+                    </div>
+                )}
 
                 {/* Current Reading */}
                 <div className="flex flex-col gap-1.5">

@@ -58,8 +58,7 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
   const remainingAmountFormatted = record.remainingAmountFormatted ?? fmt(remainingAmount);
 
   const isPayable =
-    remainingAmount > 0 &&
-    ["pending", "partially_paid", "overdue"].includes(status.toLowerCase());
+    remainingAmount > 0 && String(status).toLowerCase() === "pending";
 
   const openPaymentDialog = useCallback(() => setPaymentDialogOpen(true), []);
 

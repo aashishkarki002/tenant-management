@@ -234,30 +234,30 @@ export default function MaintenanceCard({
             </Dialog>
 
             {/* MAIN CARD */}
-            <Card className="border border-gray-200 hover:shadow-md transition w-full h-full min-w-0">
-                <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
+            <Card className="w-full min-w-0 rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
+                <CardContent className="p-4 sm:p-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                         {/* Title */}
-                        <div className="flex-1">
-                            <h3 className="font-semibold text-gray-900">
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-gray-900 truncate">
                                 {maintenanceItem.title}
                             </h3>
                             <p className="text-sm text-gray-500">{workOrderId}</p>
                         </div>
 
-                        {/* Priority */}
+                        {/* Priority badge */}
                         {maintenanceItem.priority && (
                             <Badge
                                 className={`${getPriorityStyle(
                                     maintenanceItem.priority
-                                )} uppercase`}
+                                )} shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium uppercase`}
                             >
                                 {maintenanceItem.priority}
                             </Badge>
                         )}
 
                         {/* Assign staff */}
-                        <div className="flex items-center gap-2 min-w-[180px]">
+                        <div className="flex w-full items-center gap-2 sm:w-auto sm:min-w-[140px]">
                             <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center shrink-0">
                                 <User className="w-4 h-4 text-teal-600" />
                             </div>
@@ -266,7 +266,7 @@ export default function MaintenanceCard({
                                 onValueChange={handleAssignStaff}
                                 disabled={assigning}
                             >
-                                <SelectTrigger className="bg-white border-gray-300 min-w-[140px]">
+                                <SelectTrigger className="min-w-0 flex-1 bg-white border-gray-300 sm:min-w-[140px] sm:flex-initial">
                                     <SelectValue placeholder="Assign staff">
                                         {assignedStaffId
                                             ? staffs.find((s) => s._id === assignedStaffId)?.name ?? "Assigned"
@@ -316,7 +316,7 @@ export default function MaintenanceCard({
 
                     {/* EXPANDED DETAILS */}
                     {isExpanded && (
-                        <div className="mt-4 pt-4 border-t grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4 md:grid-cols-4">
                             <Info label="Scheduled Date" value={formatDate(maintenanceItem.scheduledDate)} />
                             <Info label="Type" value={maintenanceItem.type} />
                             <Info label="Amount" value={`₹${maintenanceItem.amount || 0}`} />

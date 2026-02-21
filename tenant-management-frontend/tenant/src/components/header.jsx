@@ -24,7 +24,6 @@ import { useAuth } from "../context/AuthContext";
 import api from "../../plugins/axios";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
 export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const { user, loading } = useAuth();

@@ -1,27 +1,18 @@
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "./context/AuthContext.jsx";
-import { useEffect } from "react";
+import { useAuth } from "./context/AuthContext";
 
 export default function ProtectedRoutes({ children }) {
     const { user, loading } = useAuth();
     const location = useLocation();
 
-    // Check for token in localStorage as an additional security check
-    const token = localStorage.getItem("token");
-
-    // Re-check authentication when route changes
-    useEffect(() => {
-        // If no token and not loading, ensure user is null
-        if (!token && !loading) {
-            // This will be handled by the redirect below
-        }
-    }, [location.pathname, token, loading]);
-
     if (loading) return <div>Loading...</div>;
 
-    // Redirect to login if no user OR no token
-    if (!user || !token) {
-        return <Navigate to="/login" replace />;
+    // Auth is cookie-based (httpOnly). There is no localStorage token.
+    // The only source of truth is the `user` object from AuthContext,
+    // which is populated by /api/auth/get-me on mount (using the cookie automatically).
+    if (!user) {
+        // Preserve the attempted URL so we can redirect back after login
+        return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
     return children;
@@ -29,15 +20,14 @@ export default function ProtectedRoutes({ children }) {
 
 export function GuestRoute({ children }) {
     const { user, loading } = useAuth();
-    const token = localStorage.getItem("token");
 
     if (loading) return <div>Loading...</div>;
 
-    // If user is authenticated, redirect to dashboard
-    if (user && token) {
+    // If user is already authenticated (cookie valid, get-me succeeded),
+    // send them to dashboard — they don't need to see login/signup.
+    if (user) {
         return <Navigate to="/" replace />;
     }
 
-    // If not authenticated, show the login/signup page
     return children;
 }

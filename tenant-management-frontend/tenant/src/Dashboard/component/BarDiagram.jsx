@@ -9,38 +9,62 @@ import {
     ResponsiveContainer,
     Cell,
 } from 'recharts';
+import { useNepaliDate } from '../../../plugins/useNepaliDate';
+
 
 const MUTED_FILL = '#94a3b8';
 const HIGHLIGHT_FILL = '#9a3412'; /* orange-800 */
 
-function normalizeChartData(stats) {
-  const raw = stats?.revenueTrend ?? stats?.monthlyRevenue ?? stats?.revenueByMonth;
-  if (!Array.isArray(raw) || raw.length === 0) return [];
-  return raw.map((item, i) => ({
-    name: item.name ?? item.month ?? item.label ?? String(i + 1),
-    revenue: Number(item.revenue ?? item.value ?? 0) || 0,
-    isHighlighted: Boolean(item.isHighlighted ?? (i === raw.length - 1)),
-  }));
+
+
+function normalizeChartData(items, currentMonth, highlightCurrent = false) {
+    if (!Array.isArray(items) || items.length === 0) return [];
+
+    return items.map((item) => ({
+        name:
+            item.name ??
+            item.label ??
+            (item.month ? MONTH_NAMES[item.month - 1] : ""),
+
+        revenue: Number(item.revenue ?? item.value ?? item.total ?? 0) || 0,
+
+        isHighlighted: highlightCurrent
+            ? item.month === currentMonth
+            : Boolean(item.isHighlighted),
+    }));
 }
 
 function ChartSkeleton() {
-  return (
-    <div className="h-full w-full flex flex-col justify-end gap-1 px-2">
-      {[40, 65, 45, 80, 55, 70, 50, 60].map((h, i) => (
-        <div
-          key={i}
-          className="rounded animate-pulse bg-muted"
-          style={{ height: `${h}%`, minHeight: 12 }}
-        />
-      ))}
-    </div>
-  );
+    return (
+        <div className="h-full w-full flex flex-col justify-end gap-1 px-2">
+            {[40, 65, 45, 80, 55, 70, 50, 60].map((h, i) => (
+                <div
+                    key={i}
+                    className="rounded animate-pulse bg-muted"
+                    style={{ height: `${h}%`, minHeight: 12 }}
+                />
+            ))}
+        </div>
+    );
 }
 
 export default function BarDiagram({ stats, loading, error }) {
     const [period, setPeriod] = useState('thisYear');
-    const monthlyData = normalizeChartData(stats);
+    const { month: currentNepaliMonth } = useNepaliDate();
 
+    // Pick the right dataset based on toggle.
+    // Industry standard: resolve data at the component boundary, keep chart logic pure.
+    const rawData = period === 'thisYear'
+        ? (stats?.revenueThisYear ?? stats?.revenueTrend ?? stats?.monthlyRevenue ?? stats?.revenueByMonth)
+        : (stats?.revenueLastYear ?? stats?.revenueTrend ?? stats?.monthlyRevenue ?? stats?.revenueByMonth);
+
+    const highlightCurrent = period === "thisYear";
+
+    const monthlyData = normalizeChartData(
+        rawData,
+        currentNepaliMonth,
+        highlightCurrent
+    );
     return (
         <Card className="w-full">
             <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-4 pb-2">
