@@ -49,16 +49,13 @@ const createUnit = async (req, res) => {
 };
 export default async function getUnits(req, res) {
   try {
-    const filter = { isDeleted: { $ne: true } };
-
-    // Only filter by occupancy when explicitly requested; omit param or use "all" to get all units
-    const occupiedParam = req.query.occupied;
-    if (occupiedParam === "true") filter.isOccupied = true;
-    else if (occupiedParam === "false") filter.isOccupied = false;
-    // when occupied is undefined, "all", or anything else: do not add isOccupied (return all)
-
+    const filter = { isDeleted: false };
+    // Whitelist only allowed params; never use isDeleted from req.query (prevents CastError from $ne injection)
     if (req.query.property) filter.property = req.query.property;
     if (req.query.block) filter.block = req.query.block;
+    // occupied=true → only occupied, occupied=false → only unoccupied, omitted → all units
+    if (req.query.occupied === "true") filter.isOccupied = true;
+    else if (req.query.occupied === "false") filter.isOccupied = false;
 
     const units = await Unit.find(filter);
     res.status(200).json({ success: true, units: units });

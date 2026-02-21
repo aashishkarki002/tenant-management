@@ -111,14 +111,15 @@ export const createElectricityReading = async (req, res) => {
 
     // ── Path-specific validation ──────────────────────────────────────────────
     if (meterType === "unit") {
-      if (!tenantId || !unitId) {
+      if (!unitId) {
         await session.abortTransaction();
         session.endSession();
         return res.status(400).json({
           success: false,
-          message: "tenantId and unitId are required for unit readings",
+          message: "unitId is required for unit readings",
         });
       }
+      // tenantId is optional; service will resolve from unit.currentLease.tenant when missing
     } else {
       if (!subMeterId || !propertyId) {
         await session.abortTransaction();

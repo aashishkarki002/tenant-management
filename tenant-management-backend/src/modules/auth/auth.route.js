@@ -1,25 +1,37 @@
 import { Router } from "express";
-import { registerUser } from "./auth.controller.js";
-import { loginUser } from "./auth.controller.js";
-import { verifyEmail } from "./auth.controller.js";
-import { changePassword } from "./auth.controller.js";
-import middleware from "../../middleware/auth.middleware.js";
-import { logoutUser } from "./auth.controller.js";
-import { refreshToken } from "./auth.controller.js";
-import { resendEmailVerification } from "./auth.controller.js";
+import {
+  registerUser,
+  registerStaff,
+  loginUser,
+  verifyEmail,
+  resendEmailVerification,
+  changePassword,
+  logoutUser,
+  refreshToken,
+  getMe,
+  updateAdmin,
+} from "./auth.controller.js";
 import { protect } from "../../middleware/protect.js";
-import { getMe } from "./auth.controller.js";
-import { updateAdmin } from "./auth.controller.js";
-import { registerStaff } from "./auth.controller.js";
+
 const router = Router();
+
+// Public routes
 router.post("/register", registerUser);
-router.post("/register-staff", protect, registerStaff);
 router.post("/login", loginUser);
 router.get("/verify-email", verifyEmail);
-router.patch("/change-password", middleware, changePassword);
-router.post("/logout", middleware, logoutUser);
-router.post("/refresh-token", refreshToken);
 router.post("/resend-email-verification", resendEmailVerification);
+router.post("/refresh-token", refreshToken);
+
+// Protected routes — require a valid access token
+// FIX: change-password and logout were using auth.middleware.js (refresh token guard).
+// They now correctly use protect (access token guard).
+// Using the wrong token type meant the active session was never actually verified.
+router.post("/logout", protect, logoutUser);
+router.patch("/change-password", protect, changePassword);
 router.get("/get-me", protect, getMe);
 router.patch("/update-admin", protect, updateAdmin);
+
+// Admin-only routes
+router.post("/register-staff", protect, registerStaff);
+
 export default router;

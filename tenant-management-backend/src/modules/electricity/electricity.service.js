@@ -31,6 +31,7 @@ import {
   paisaToRupees,
   formatMoney,
 } from "../../utils/moneyUtil.js";
+import { recordElectricityRevenue } from "../revenue/revenue.service.js";
 
 class ElectricityService {
   // ─────────────────────────────────────────────────────────────────────────
@@ -186,17 +187,24 @@ class ElectricityService {
   async createElectricityReading(data, session = null) {
     const isUnitMeter = data.meterType === "unit";
 
-    // ── Branch 1: Unit (tenant-billed) ────────────────────────────────────────
+    // ── Branch 1: Unit (tenant-billed or vacant) ───────────────────────────────
     if (isUnitMeter) {
-      const tenant = await Tenant.findById(data.tenantId).session(session);
-      if (!tenant) throw new Error("Tenant not found");
-
       const unit = await Unit.findById(data.unitId).session(session);
       if (!unit) throw new Error("Unit not found");
 
-      if (!tenant.units.some((u) => u.toString() === data.unitId.toString())) {
-        throw new Error("Unit does not belong to this tenant");
+      // Resolve tenantId from request or from unit's current lease
+      const tenantIdResolved =
+        data.tenantId ?? unit.currentLease?.tenant?.toString?.() ?? unit.currentLease?.tenant ?? null;
+
+      let tenant = null;
+      if (tenantIdResolved) {
+        tenant = await Tenant.findById(tenantIdResolved).session(session);
+        if (!tenant) throw new Error("Tenant not found");
+        if (!tenant.units.some((u) => u.toString() === data.unitId.toString())) {
+          throw new Error("Unit does not belong to this tenant");
+        }
       }
+      const effectiveTenantId = tenant?._id ?? null;
 
       // Resolve previous reading from the unit's history
       const lastReading = await this.getLastReadingForUnit(
@@ -210,7 +218,12 @@ class ElectricityService {
       let previousRecord = null;
 
       if (lastReading) {
-        if (lastReading.tenant.toString() !== data.tenantId.toString()) {
+        const lastTenantId = lastReading.tenant?.toString?.() ?? null;
+        if (effectiveTenantId && lastTenantId && lastTenantId !== effectiveTenantId.toString()) {
+          isTenantTransition = true;
+          previousTenant = lastReading.tenant;
+          previousRecord = lastReading._id;
+        } else if (!effectiveTenantId && lastTenantId) {
           isTenantTransition = true;
           previousTenant = lastReading.tenant;
           previousRecord = lastReading._id;
@@ -229,9 +242,9 @@ class ElectricityService {
         );
       }
 
-      // Resolve rate
+      // Resolve rate (use unit's property when no tenant)
       const ratePerUnitPaisa = await ElectricityRate.resolveRate(
-        tenant.property ?? unit.property, // adjust to wherever propertyId lives on your tenant/unit
+        tenant?.property ?? unit.property,
         "unit",
       );
 
@@ -239,7 +252,7 @@ class ElectricityService {
         [
           {
             meterType: "unit",
-            tenant: data.tenantId,
+            tenant: effectiveTenantId,
             unit: data.unitId,
             property: data.propertyId ?? unit.property,
             subMeter: null,
@@ -267,6 +280,23 @@ class ElectricityService {
         ],
         { session },
       );
+
+      if (electricity.meterType === "unit" && effectiveTenantId) {
+        await recordElectricityRevenue({
+          amountPaisa: electricity.totalAmountPaisa,
+          paymentDate: data.readingDate ?? new Date(),
+          tenantId: effectiveTenantId,
+          electricityId: electricity._id,
+          nepaliMonth: electricity.nepaliMonth,
+          nepaliYear: electricity.nepaliYear,
+          adminId: data.createdBy,
+          session,
+        });
+      } else if (electricity.meterType === "unit" && !effectiveTenantId) {
+        console.warn("  Unit meter electricity reading has no tenant (vacant unit):", {
+          electricityId: electricity._id.toString(),
+        });
+      }
 
       return {
         success: true,

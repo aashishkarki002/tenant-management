@@ -118,22 +118,22 @@ export async function getTenants() {
   const tenants = await Tenant.find({ isDeleted: false })
     .populate({
       path: "property",
-      match: { isDeleted: { $ne: true } },
+      match: { isDeleted: false },
       select: "name address",
     })
     .populate({
       path: "block",
-      match: { isDeleted: { $ne: true } },
+      match: { isDeleted: false },
       select: "name",
     })
     .populate({
       path: "innerBlock",
-      match: { isDeleted: { $ne: true } },
+      match: { isDeleted: false },
       select: "name",
     })
     .populate({
       path: "units",
-      match: { isDeleted: { $ne: true } },
+      match: { isDeleted: false },
       select: "unitNumber sqft price",
     });
 
@@ -164,7 +164,7 @@ export async function getTenantById(id) {
       })
       .populate({
         path: "units",
-        match: { isDeleted: { $ne: true } },
+        match: { isDeleted: false },
         select: "-__v",
       });
 

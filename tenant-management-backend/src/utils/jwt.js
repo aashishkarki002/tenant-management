@@ -10,7 +10,7 @@ const REFRESH_EXPIRES_IN = process.env.REFRESH_EXPIRES_IN || "7d";
 export const generateAccessToken = (payload) => {
   if (!JWT_ACCESS_SECRET) {
     throw new Error(
-      "JWT_ACCESS_SECRET is not defined in environment variables"
+      "JWT_ACCESS_SECRET is not defined in environment variables",
     );
   }
   if (!payload || !payload.id) {
@@ -48,7 +48,7 @@ export const verifyAccessToken = (token) => {
 export const generateRefreshToken = (payload) => {
   if (!JWT_REFRESH_SECRET) {
     throw new Error(
-      "JWT_REFRESH_SECRET is not defined in environment variables"
+      "JWT_REFRESH_SECRET is not defined in environment variables",
     );
   }
   if (!payload || !payload.id) {

@@ -5,7 +5,7 @@ import { connectDB } from "../config/db.js";
 import Property from "../modules/tenant/Property.Model.js";
 import Block from "../modules/tenant/Block.Model.js";
 import InnerBlock from "../modules/tenant/InnerBlock.Model.js";
-import { Unit } from "../modules/tenant/units/unit.model.js";
+import { Unit } from "../modules/units/Unit.Model.js";
 
 async function seedProperty() {
   try {

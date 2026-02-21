@@ -44,20 +44,20 @@ const NEPALI_MONTH_NAMES = [
 function validateNepaliDate(year, month, day) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
     throw new Error(
-      `Invalid Nepali year: ${year}. Must be integer between 2000-2100`
+      `Invalid Nepali year: ${year}. Must be integer between 2000-2100`,
     );
   }
 
   if (!Number.isInteger(month) || month < 0 || month >= NEPALI_MONTHS) {
     throw new Error(
-      `Invalid Nepali month: ${month}. Must be 0-11 (0-based index)`
+      `Invalid Nepali month: ${month}. Must be 0-11 (0-based index)`,
     );
   }
 
   const maxDay = NepaliDate.getDaysOfMonth(year, month);
   if (!Number.isInteger(day) || day < 1 || day > maxDay) {
     throw new Error(
-      `Invalid day ${day} for ${NEPALI_MONTH_NAMES[month]} ${year}. Valid range: 1-${maxDay}`
+      `Invalid day ${day} for ${NEPALI_MONTH_NAMES[month]} ${year}. Valid range: 1-${maxDay}`,
     );
   }
 }
@@ -118,7 +118,7 @@ function parseNepaliISO(isoString) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoString);
   if (!match) {
     throw new Error(
-      `Invalid Nepali ISO format: "${isoString}". Expected YYYY-MM-DD`
+      `Invalid Nepali ISO format: "${isoString}". Expected YYYY-MM-DD`,
     );
   }
 
@@ -161,7 +161,7 @@ function addNepaliDays(npDate, days) {
     throw new Error(
       `Failed to add ${days} days to ${formatNepaliISO(npDate)}: ${
         error.message
-      }`
+      }`,
     );
   }
 }
@@ -261,7 +261,7 @@ function getNepaliMonthDates(year, month) {
   const nepaliToday = new NepaliDate(
     now.getYear(),
     now.getMonth(),
-    now.getDate()
+    now.getDate(),
   );
 
   // English date conversions (for MongoDB queries)
@@ -444,6 +444,21 @@ function toNepalMidnight(npDate) {
   return midnight;
 }
 
+/**
+ * Derive npYear and npMonth (1-based) from a JS Date.
+ * Use this at write time to denormalize Nepali date fields onto documents.
+ *
+ * @param {Date|string} jsDate - JavaScript Date or ISO string
+ * @returns {{ npYear: number, npMonth: number }} 1-based month, matches DB storage convention
+ */
+function getNepaliYearMonthFromDate(jsDate) {
+  const nd = new NepaliDate(jsDate instanceof Date ? jsDate : new Date(jsDate));
+  return {
+    npYear: nd.getYear(),
+    npMonth: nd.getMonth() + 1, // getMonth() is 0-based; store 1-based
+  };
+}
+
 // ============================================================================
 // EXPORTS
 // ============================================================================
@@ -468,6 +483,9 @@ export {
   // Timezone
   getNepalTime,
   toNepalMidnight,
+
+  // Nepali date extraction
+  getNepaliYearMonthFromDate,
 
   // Constants
   NEPALI_MONTH_NAMES,

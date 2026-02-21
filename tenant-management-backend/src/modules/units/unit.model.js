@@ -344,4 +344,6 @@ unitSchema.index({ "currentLease.tenant": 1, isOccupied: 1 });
 unitSchema.index({ "currentLease.leaseEndDate": 1 });
 unitSchema.index({ isDeleted: 1 });
 
-export const Unit = mongoose.models.Unit || mongoose.model("Unit", unitSchema);
+const Unit = mongoose.models.Unit || mongoose.model("Unit", unitSchema);
+export { Unit };
+export default Unit;

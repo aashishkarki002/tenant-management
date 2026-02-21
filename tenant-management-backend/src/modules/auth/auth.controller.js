@@ -1,31 +1,37 @@
 import Admin from "./admin.Model.js";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { loginUserService } from "./auth.services.js";
+import { loginUserService, changePasswordService } from "./auth.services.js";
 import { sendEmail } from "../../config/nodemailer.js";
-import { changePasswordService } from "./auth.services.js";
 import { generateAccessToken, generateRefreshToken } from "../../utils/jwt.js";
 import dotenv from "dotenv";
 import generateEmailVerificationToken from "../../utils/token.js";
 dotenv.config();
 
+// Helper: hash a token the same way auth.services.js does, for comparison.
+const hashToken = (token) =>
+  crypto.createHash("sha256").update(token).digest("hex");
+
+// Shared cookie options — defined once to guarantee consistency everywhere.
+// FIX: All cookies use path "/" so they are sent on every request.
+// Previously refreshToken cookie was set to "/api/auth/refresh-token" in some
+// handlers and "/" in others, causing the cookie to vanish after a password change.
+const cookieOptions = (maxAgeMs) => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+  maxAge: maxAgeMs,
+  path: "/",
+});
+
+const REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+const ACCESS_MAX_AGE = 15 * 60 * 1000; // 15 minutes
+
 export const registerUser = async (req, res) => {
   try {
-    console.log("Registration request received:", {
-      body: req.body,
-      headers: req.headers["content-type"],
-    });
-
     const { name, email, password, phone } = req.body;
 
-    // Validate required fields
     if (!name || !email || !password || !phone) {
-      console.log("Missing required fields:", {
-        name,
-        email,
-        password: !!password,
-        phone,
-      });
       return res.status(400).json({
         success: false,
         message: "All fields (name, email, password, phone) are required",
@@ -41,7 +47,7 @@ export const registerUser = async (req, res) => {
 
     const { rawToken, hashedToken, expires } = generateEmailVerificationToken();
 
-    const newUser = await Admin.create({
+    await Admin.create({
       name,
       email,
       password,
@@ -77,7 +83,7 @@ export const registerUser = async (req, res) => {
   }
 };
 
-/** Same as register but for staff: creates user with role "staff" and sends verification email. Protected - admin only. */
+/** Creates a staff account. Protected — admin/super_admin only. */
 export const registerStaff = async (req, res) => {
   try {
     const { name, email, password, phone, role } = req.body;
@@ -157,9 +163,9 @@ export const verifyEmail = async (req, res) => {
     }
 
     if (user.isEmailVerified) {
-      return res
-        .status(200)
-        .json({ success: true, message: "Email already verified" });
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/login?success=Email already verified. Please login.`,
+      );
     }
 
     user.isEmailVerified = true;
@@ -168,7 +174,7 @@ export const verifyEmail = async (req, res) => {
     await user.save();
 
     return res.redirect(
-      `${process.env.FRONTEND_URL}/login?success=Email verified successfully. Please login.`
+      `${process.env.FRONTEND_URL}/login?success=Email verified successfully. Please login.`,
     );
   } catch (error) {
     console.error("Verify email error:", error);
@@ -177,14 +183,18 @@ export const verifyEmail = async (req, res) => {
       .json({ success: false, message: "Email verification failed" });
   }
 };
+
 export const resendEmailVerification = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await Admin.findOne({ email });
     if (!user) {
-      return res
-        .status(400)
-        .json({ success: false, message: "User not found" });
+      // FIX: Don't reveal whether the email is registered — return 200 either way.
+      return res.status(200).json({
+        success: true,
+        message:
+          "If that email is registered, a verification link has been sent.",
+      });
     }
     if (user.isEmailVerified) {
       return res
@@ -200,15 +210,17 @@ export const resendEmailVerification = async (req, res) => {
       to: email,
       subject: "Verify your email",
       html: `
-      <h2>Verify your email</h2>
-      <p>Click the link below to verify your account:</p>
-      <a href="${verificationUrl}">${verificationUrl}</a>
-      <p>This link expires in 10 minutes.</p>
-    `,
+        <h2>Verify your email</h2>
+        <p>Click the link below to verify your account:</p>
+        <a href="${verificationUrl}">${verificationUrl}</a>
+        <p>This link expires in 10 minutes.</p>
+      `,
     });
-    return res
-      .status(200)
-      .json({ success: true, message: "Email verification link sent" });
+    return res.status(200).json({
+      success: true,
+      message:
+        "If that email is registered, a verification link has been sent.",
+    });
   } catch (error) {
     console.error("Resend email verification error:", error);
     return res
@@ -216,6 +228,7 @@ export const resendEmailVerification = async (req, res) => {
       .json({ success: false, message: "Email verification failed" });
   }
 };
+
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -232,40 +245,18 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: result.message });
     }
 
-    // Validate that tokens were generated
-    if (!result.accessToken) {
-      console.error("Access token not generated in login service");
-      return res.status(500).json({
-        success: false,
-        message: "Failed to generate access token",
-      });
-    }
-
-    if (!result.refreshToken) {
-      console.error("Refresh token not generated in login service");
-      return res.status(500).json({
-        success: false,
-        message: "Failed to generate refresh token",
-      });
-    }
-
-    // Set refresh token as httpOnly cookie
-    res.cookie("refreshToken", result.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/api/auth/refresh-token",
-    });
-
-    // Set access token as httpOnly cookie (for protected routes)
-    res.cookie("accessToken", result.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 15 * 60 * 1000, // 15 minutes (matches token expiry)
-      path: "/",
-    });
+    // Set httpOnly cookies — the frontend must NOT read these via JS.
+    // The axios instance uses withCredentials:true so they are sent automatically.
+    res.cookie(
+      "refreshToken",
+      result.refreshToken,
+      cookieOptions(REFRESH_MAX_AGE),
+    );
+    res.cookie(
+      "accessToken",
+      result.accessToken,
+      cookieOptions(ACCESS_MAX_AGE),
+    );
 
     return res.status(200).json({
       success: true,
@@ -278,21 +269,19 @@ export const loginUser = async (req, res) => {
         phone: result.admin.phone,
         address: result.admin.address,
       },
-      token: result.accessToken, // Also return in response for clients that prefer headers
     });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ success: false, message: "Login failed" });
   }
 };
+
 export const changePassword = async (req, res) => {
   try {
     const adminId = req.admin?.id;
 
     if (!adminId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Admin ID is required" });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
     const { oldPassword, newPassword } = req.body;
@@ -309,56 +298,65 @@ export const changePassword = async (req, res) => {
         message: "New password cannot be the same as the old password",
       });
     }
+
     const result = await changePasswordService(
       adminId,
       oldPassword,
-      newPassword
+      newPassword,
     );
-    // Set new refresh token
-    res.cookie("refreshToken", result.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/api/auth/refresh-token",
-    });
 
-    // Set new access token
-    res.cookie("accessToken", result.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 15 * 60 * 1000, // 15 minutes
-      path: "/",
-    });
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+
+    // FIX: Use consistent cookie options (path: "/") for both tokens.
+    // Previously refreshToken was set to path "/api/auth/refresh-token" here,
+    // meaning it would never be sent to any other endpoint including itself on next refresh.
+    res.cookie(
+      "refreshToken",
+      result.refreshToken,
+      cookieOptions(REFRESH_MAX_AGE),
+    );
+    res.cookie(
+      "accessToken",
+      result.accessToken,
+      cookieOptions(ACCESS_MAX_AGE),
+    );
 
     return res.status(200).json({ success: true, message: result.message });
   } catch (error) {
+    // FIX: Replaced `throw new Error(...)` with a proper response.
+    // Throwing inside an async Express handler swallows the error or
+    // sends it to the global handler without a useful HTTP response.
     console.error("Change password error:", error);
-    throw new Error("Change password failed");
+    return res
+      .status(500)
+      .json({ success: false, message: "Change password failed" });
   }
 };
+
 export const logoutUser = async (req, res) => {
   try {
     const adminId = req.admin?.id;
     if (!adminId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Admin ID is required" });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-    // Clear both tokens
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/api/auth/refresh-token",
-    });
-    res.clearCookie("accessToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-    });
+
+    // FIX: Revoke the refresh token in the database.
+    // Previously only the cookies were cleared client-side, so a captured
+    // refresh token cookie could still be used after logout.
+    const admin = await Admin.findById(adminId);
+    if (admin) {
+      admin.refreshToken = null;
+      await admin.save({ validateBeforeSave: false });
+    }
+
+    // FIX: Clear cookies using the same path they were set with (path: "/").
+    // Previously clearCookie used path "/api/auth/refresh-token" for refreshToken
+    // while it was set with path "/", so the cookie was never actually cleared.
+    res.clearCookie("refreshToken", { httpOnly: true, path: "/" });
+    res.clearCookie("accessToken", { httpOnly: true, path: "/" });
+
     return res
       .status(200)
       .json({ success: true, message: "Logout successful" });
@@ -367,6 +365,7 @@ export const logoutUser = async (req, res) => {
     return res.status(500).json({ success: false, message: "Logout failed" });
   }
 };
+
 export const refreshToken = async (req, res) => {
   try {
     const token = req.cookies.refreshToken;
@@ -374,14 +373,33 @@ export const refreshToken = async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    // Synchronous verify
-    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+    } catch {
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid or expired refresh token" });
+    }
 
-    const admin = await Admin.findById(decoded.id).select("+password");
+    const admin = await Admin.findById(decoded.id);
     if (!admin) {
       return res
         .status(401)
         .json({ success: false, message: "Admin not found" });
+    }
+
+    // FIX: Validate the incoming token against the hashed value in the DB.
+    // Without this check, revoked tokens (from logout or password change)
+    // could still be used to mint new access tokens indefinitely.
+    if (!admin.refreshToken || admin.refreshToken !== hashToken(token)) {
+      // Token reuse or revoked token — clear everything and force re-login.
+      res.clearCookie("refreshToken", { httpOnly: true, path: "/" });
+      res.clearCookie("accessToken", { httpOnly: true, path: "/" });
+      return res.status(401).json({
+        success: false,
+        message: "Refresh token is invalid or has been revoked",
+      });
     }
 
     const newAccessToken = generateAccessToken({
@@ -393,34 +411,16 @@ export const refreshToken = async (req, res) => {
       role: admin.role,
     });
 
-    // Set new refresh token
-    res.cookie("refreshToken", newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/api/auth/refresh-token",
-    });
+    // Rotate: store hash of the new refresh token.
+    admin.refreshToken = hashToken(newRefreshToken);
+    await admin.save({ validateBeforeSave: false });
 
-    // Set new access token
-    res.cookie("accessToken", newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 15 * 60 * 1000, // 15 minutes
-      path: "/",
-    });
+    // FIX: Use consistent cookie options (path: "/") for both tokens.
+    res.cookie("refreshToken", newRefreshToken, cookieOptions(REFRESH_MAX_AGE));
+    res.cookie("accessToken", newAccessToken, cookieOptions(ACCESS_MAX_AGE));
 
     return res.status(200).json({
       success: true,
-      admin: {
-        id: admin._id,
-        name: admin.name,
-        email: admin.email,
-        role: admin.role,
-        phone: admin.phone,
-      },
-      token: newAccessToken, // Also return in response for clients that prefer headers
       message: "Token refreshed",
     });
   } catch (error) {
@@ -440,7 +440,9 @@ export const getMe = async (req, res) => {
       });
     }
 
-    const admin = await Admin.findById(adminId).select("-password");
+    const admin = await Admin.findById(adminId).select(
+      "-password -refreshToken -emailVerificationToken -emailVerificationTokenExpiresAt",
+    );
 
     if (!admin) {
       return res.status(404).json({
@@ -470,6 +472,7 @@ export const getMe = async (req, res) => {
     });
   }
 };
+
 export const updateAdmin = async (req, res) => {
   try {
     const adminId = req.admin?.id;
@@ -477,7 +480,7 @@ export const updateAdmin = async (req, res) => {
     const admin = await Admin.findByIdAndUpdate(
       adminId,
       { name, email, phone, address, company },
-      { new: true }
+      { new: true, runValidators: true },
     );
     return res
       .status(200)

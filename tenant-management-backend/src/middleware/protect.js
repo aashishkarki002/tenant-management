@@ -54,6 +54,7 @@ export const protect = async (req, res, next) => {
       id: decoded.id,
       role: decoded.role,
     };
+    req.admin_id = decoded.id;
 
     next();
   } catch (error) {

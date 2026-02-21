@@ -3,7 +3,7 @@ import {
   getNepaliMonthDates,
   checkNepaliSpecialDays,
 } from "./nepaliDateHelper.js";
-import Notification from "../modules/notifications/Notification.Model.js";
+import Notification from "../modules/notifications/notification.model.js";
 import { getIO } from "../config/socket.js";
 import dotenv from "dotenv";
 dotenv.config();

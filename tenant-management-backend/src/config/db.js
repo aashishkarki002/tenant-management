@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 export const connectDB = async () => {
   try {
+    mongoose.set("sanitizeFilter", true);
     const uri = process.env.MONGODB_URI;
     if (!uri || uri.trim() === "") {
       throw new Error(

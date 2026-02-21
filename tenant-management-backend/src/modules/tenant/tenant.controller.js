@@ -1,10 +1,11 @@
 import * as tenantService from "./tenant.service.js";
 
 export const createTenant = async (req, res) => {
+  const adminId = req.admin_id ?? req.admin?.id;
   const result = await tenantService.createTenant(
     req.body,
     req.files,
-    req.admin?.id
+    adminId
   );
   const statusCode = result.statusCode ?? 500;
   if (result.success) {

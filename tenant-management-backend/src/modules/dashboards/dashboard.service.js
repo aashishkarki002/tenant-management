@@ -7,6 +7,7 @@ import {
   addNepaliDays,
 } from "../../utils/nepaliDateHelper.js";
 import { Revenue } from "../revenue/Revenue.Model.js";
+import { RevenueSource } from "../revenue/RevenueSource.Model.js";
 import { Maintenance } from "../maintenance/Maintenance.Model.js";
 import { Payment } from "../payment/payment.model.js";
 
@@ -55,57 +56,124 @@ export async function getDashboardStatsData() {
      2️⃣ RENT SUMMARY — uses paisa fields for precision
   =============================== */
 
-  const [rentAgg, revenueAgg, revenueByMonthAgg] = await Promise.all([
-    Rent.aggregate([
-      {
-        $project: {
-          rentAmountPaisa: 1,
-          paidAmountPaisa: 1,
-          remaining: {
-            $max: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+  const [rentAgg, revenueAgg, revenueByMonthAgg, revenueBreakdownAgg] =
+    await Promise.all([
+      Rent.aggregate([
+        {
+          $project: {
+            rentAmountPaisa: 1,
+            paidAmountPaisa: 1,
+            remaining: {
+              $max: [
+                { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+                0,
+              ],
+            },
           },
         },
-      },
-      {
-        $group: {
-          _id: null,
-          totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
-          totalRentPaisa: { $sum: "$rentAmountPaisa" },
-          totalOutstandingPaisa: { $sum: "$remaining" },
+        {
+          $group: {
+            _id: null,
+            totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
+            totalRentPaisa: { $sum: "$rentAmountPaisa" },
+            totalOutstandingPaisa: { $sum: "$remaining" },
+          },
         },
-      },
-    ]),
+      ]),
 
-    Revenue.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$amount" },
+      Revenue.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: "$amount" },
+          },
         },
-      },
-    ]),
+      ]),
 
-    // Revenue trend: group by Nepali year + month for chart
-    Revenue.aggregate([
-      {
-        $match: {
-          npYear: { $in: [npYear, npYear - 1] },
+      // Revenue trend: group by npYear + npMonth (stored on document at write time).
+      // Both fields are indexed — this aggregation is O(index scan), not O(collection scan).
+      Revenue.aggregate([
+        {
+          $match: {
+            npYear: { $in: [npYear, npYear - 1] },
+          },
         },
-      },
-      {
-        $group: {
-          _id: { year: "$npYear", month: "$npMonth" },
-          total: { $sum: "$amount" },
+        {
+          $group: {
+            _id: { year: "$npYear", month: "$npMonth" },
+            total: { $sum: { $divide: ["$amountPaisa", 100] } },
+          },
         },
-      },
-      { $sort: { "_id.year": 1, "_id.month": 1 } },
-    ]),
-  ]);
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
+      ]),
+
+      // Revenue breakdown by source — for the summary card.
+      // $lookup replaces the source ObjectId with the source document in one pipeline.
+      Revenue.aggregate([
+        {
+          $group: {
+            _id: "$source",
+            totalAmountPaisa: { $sum: "$amountPaisa" },
+          },
+        },
+        {
+          $lookup: {
+            from: RevenueSource.collection.name,
+            localField: "_id",
+            foreignField: "_id",
+            as: "source",
+          },
+        },
+        { $unwind: { path: "$source", preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            _id: 0,
+            code: "$source.code",
+            name: "$source.name",
+            category: "$source.category",
+            totalAmountPaisa: 1,
+          },
+        },
+        { $sort: { totalAmountPaisa: -1 } }, // highest first
+      ]),
+    ]);
 
   const rentSummary = rentAgg[0] || {};
   const revenueSummary = revenueAgg[0] || {};
 
-  // Normalise revenue trend into a flat array
+  const NEPALI_MONTH_NAMES = [
+    "Baisakh",
+    "Jestha",
+    "Ashadh",
+    "Shrawan",
+    "Bhadra",
+    "Ashwin",
+    "Kartik",
+    "Mangsir",
+    "Poush",
+    "Magh",
+    "Falgun",
+    "Chaitra",
+  ];
+
+  // Build a complete 12-month array for a Nepali year, zero-filling missing months.
+  const buildFullNepaliYear = (year) =>
+    Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1; // 1-based
+      const found = revenueByMonthAgg.find(
+        (r) => r._id.year === year && r._id.month === month,
+      );
+      return {
+        month,
+        name: NEPALI_MONTH_NAMES[i],
+        total: found?.total ?? 0,
+      };
+    });
+
+  const revenueThisYear = buildFullNepaliYear(npYear);
+  const revenueLastYear = buildFullNepaliYear(npYear - 1);
+
+  // Keep flat array for legacy consumers
   const revenueByMonth = revenueByMonthAgg.map((r) => ({
     year: r._id.year,
     month: r._id.month,
@@ -116,28 +184,58 @@ export async function getDashboardStatsData() {
      3️⃣ OVERDUE RENTS (TOP 3) – due before Nepali today
   =============================== */
 
-  const overdueRents = await Rent.find({
-    nepaliDueDate: { $lt: nepaliTodayDate },
-    $expr: {
-      $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+  const overdueRents = await Rent.aggregate([
+    {
+      $match: {
+        nepaliDueDate: { $lt: nepaliTodayDate },
+        $expr: {
+          $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+        },
+      },
     },
-  })
-    .populate("tenant", "name")
-    .populate("property", "name")
-    .select(
-      "tenant property rentAmount paidAmount rentAmountPaisa paidAmountPaisa nepaliDueDate status",
-    )
-    .sort({ nepaliDueDate: 1 })
-    .limit(3)
-    .lean()
-    .then((rents) =>
-      rents.map((rent) => ({
-        ...rent,
-        remaining: rent.rentAmount - rent.paidAmount,
-        remainingPaisa:
-          (rent.rentAmountPaisa || 0) - (rent.paidAmountPaisa || 0),
-      })),
-    );
+    { $sort: { nepaliDueDate: 1 } },
+    { $limit: 3 },
+    {
+      $lookup: {
+        from: "tenants",
+        localField: "tenant",
+        foreignField: "_id",
+        as: "tenant",
+        pipeline: [{ $project: { name: 1 } }],
+      },
+    },
+    { $unwind: { path: "$tenant", preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: "properties",
+        localField: "property",
+        foreignField: "_id",
+        as: "property",
+        pipeline: [{ $project: { name: 1 } }],
+      },
+    },
+    { $unwind: { path: "$property", preserveNullAndEmptyArrays: true } },
+    {
+      $addFields: {
+        remaining: { $subtract: ["$rentAmount", "$paidAmount"] },
+        remainingPaisa: { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+      },
+    },
+    {
+      $project: {
+        tenant: 1,
+        property: 1,
+        rentAmount: 1,
+        paidAmount: 1,
+        rentAmountPaisa: 1,
+        paidAmountPaisa: 1,
+        nepaliDueDate: 1,
+        status: 1,
+        remaining: 1,
+        remainingPaisa: 1,
+      },
+    },
+  ]);
 
   /* ===============================
      4️⃣ MAINTENANCE — count + top 3
@@ -155,31 +253,58 @@ export async function getDashboardStatsData() {
   const nepaliUpcomingEnd = addNepaliDays(nepaliToday, 7);
   const upcomingEndDate = nepaliUpcomingEnd.getDateObject();
 
-  const upcomingRents = await Rent.find({
-    nepaliDueDate: {
-      $gte: nepaliTodayDate,
-      $lte: upcomingEndDate,
+  const upcomingRents = await Rent.aggregate([
+    {
+      $match: {
+        nepaliDueDate: { $gte: nepaliTodayDate, $lte: upcomingEndDate },
+        $expr: {
+          $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+        },
+      },
     },
-    $expr: {
-      $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+    { $sort: { nepaliDueDate: 1 } },
+    { $limit: 3 },
+    {
+      $lookup: {
+        from: "tenants",
+        localField: "tenant",
+        foreignField: "_id",
+        as: "tenant",
+        pipeline: [{ $project: { name: 1 } }],
+      },
     },
-  })
-    .populate("tenant", "name")
-    .populate("property", "name")
-    .select(
-      "tenant property rentAmount paidAmount rentAmountPaisa paidAmountPaisa nepaliDueDate status",
-    )
-    .sort({ nepaliDueDate: 1 })
-    .limit(3)
-    .lean()
-    .then((rents) =>
-      rents.map((rent) => ({
-        ...rent,
-        remaining: rent.rentAmount - rent.paidAmount,
-        remainingPaisa:
-          (rent.rentAmountPaisa || 0) - (rent.paidAmountPaisa || 0),
-      })),
-    );
+    { $unwind: { path: "$tenant", preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: "properties",
+        localField: "property",
+        foreignField: "_id",
+        as: "property",
+        pipeline: [{ $project: { name: 1 } }],
+      },
+    },
+    { $unwind: { path: "$property", preserveNullAndEmptyArrays: true } },
+    {
+      $addFields: {
+        remaining: { $subtract: ["$rentAmount", "$paidAmount"] },
+        remainingPaisa: { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+      },
+    },
+    {
+      $project: {
+        tenant: 1,
+        property: 1,
+        rentAmount: 1,
+        paidAmount: 1,
+        rentAmountPaisa: 1,
+        paidAmountPaisa: 1,
+        nepaliDueDate: 1,
+        status: 1,
+        remaining: 1,
+        remainingPaisa: 1,
+      },
+    },
+  ]);
 
   /* ===============================
      5️⃣ CONTRACTS ENDING SOON (30 NEPALI DAYS)
@@ -188,27 +313,33 @@ export async function getDashboardStatsData() {
   const nepali30DaysLater = addNepaliDays(nepaliToday, 30);
   const leaseEndLimitDate = nepali30DaysLater.getDateObject();
 
-  const contractsEndingSoon = await Tenant.find({
-    isDeleted: false,
-    status: "active",
-    leaseEndDate: {
-      $gte: nepaliTodayDate,
-      $lte: leaseEndLimitDate,
+  const contractsEndingSoon = await Tenant.aggregate([
+    {
+      $match: {
+        isDeleted: false,
+        status: "active",
+        leaseEndDate: {
+          $gte: nepaliTodayDate,
+          $lte: leaseEndLimitDate,
+        },
+      },
     },
-  })
-    .select("name leaseEndDate")
-    .sort({ leaseEndDate: 1 })
-    .limit(3)
-    .lean()
-    .then((tenants) =>
-      tenants.map((tenant) => {
-        const endDate = new Date(tenant.leaseEndDate);
-        const daysUntilEnd = Math.ceil(
-          (endDate - nepaliTodayDate) / (1000 * 60 * 60 * 24),
-        );
-        return { ...tenant, daysUntilEnd };
-      }),
-    );
+    { $sort: { leaseEndDate: 1 } },
+    { $limit: 3 },
+    { $project: { name: 1, leaseEndDate: 1 } },
+    {
+      $addFields: {
+        daysUntilEnd: {
+          $ceil: {
+            $divide: [
+              { $subtract: ["$leaseEndDate", nepaliTodayDate] },
+              1000 * 60 * 60 * 24,
+            ],
+          },
+        },
+      },
+    },
+  ]);
 
   /* ===============================
      6️⃣ RECENT ACTIVITY FEED
@@ -293,7 +424,15 @@ export async function getDashboardStatsData() {
 
       // Revenue
       totalRevenue: revenueSummary.totalRevenue || 0,
-      revenueByMonth, // [{ year, month, total }] — powers the Revenue Trend chart
+      revenueBreakdown: revenueBreakdownAgg.map((item) => ({
+        code: item.code ?? "OTHER",
+        name: item.name ?? "Other",
+        category: item.category ?? "OPERATING",
+        amount: (item.totalAmountPaisa ?? 0) / 100,
+      })),
+      revenueByMonth, // [{ year, month, total }] — legacy, kept for compatibility
+      revenueThisYear, // [{ month: 1-12, name, total }] — 12 entries, zeros filled
+      revenueLastYear, // [{ month: 1-12, name, total }] — 12 entries, zeros filled
 
       // Attention-needed items
       overdueRents,

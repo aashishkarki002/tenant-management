@@ -12,6 +12,7 @@ import {
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildRevenueReceivedJournal } from "../ledger/journal-builders/index.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
 
 async function createRevenue(revenueData) {
   const session = await mongoose.startSession();
@@ -38,9 +39,12 @@ async function createRevenue(revenueData) {
     } = revenueData;
 
     // ✅ Convert to paisa if needed
-    const finalAmountPaisa = amountPaisa !== undefined
-      ? amountPaisa
-      : (amount ? rupeesToPaisa(amount) : 0);
+    const finalAmountPaisa =
+      amountPaisa !== undefined
+        ? amountPaisa
+        : amount
+          ? rupeesToPaisa(amount)
+          : 0;
     const finalAmount = finalAmountPaisa / 100; // For backward compatibility
 
     /* ----------------------------------
@@ -48,7 +52,8 @@ async function createRevenue(revenueData) {
     ---------------------------------- */
 
     if (!source) throw new Error("Revenue source is required");
-    if (!finalAmountPaisa || finalAmountPaisa <= 0) throw new Error("Valid amount is required");
+    if (!finalAmountPaisa || finalAmountPaisa <= 0)
+      throw new Error("Valid amount is required");
     if (!payerType) throw new Error("payerType is required");
 
     if (payerType === "TENANT" && !tenant) {
@@ -132,6 +137,7 @@ async function createRevenue(revenueData) {
           amountPaisa: finalAmountPaisa,
           amount: finalAmount, // Backward compatibility
           date,
+          ...getNepaliYearMonthFromDate(date),
           payerType,
           tenant: payerType === "TENANT" ? tenant : undefined,
           externalPayer: payerType === "EXTERNAL" ? externalPayer : undefined,
@@ -142,7 +148,7 @@ async function createRevenue(revenueData) {
           createdBy: createdBy || adminId,
         },
       ],
-      { session }
+      { session },
     );
 
     /* ----------------------------------
@@ -269,9 +275,12 @@ export async function recordRentRevenue({
 }) {
   try {
     // ✅ Convert to paisa if needed
-    const finalAmountPaisa = amountPaisa !== undefined
-      ? amountPaisa
-      : (amount ? rupeesToPaisa(amount) : 0);
+    const finalAmountPaisa =
+      amountPaisa !== undefined
+        ? amountPaisa
+        : amount
+          ? rupeesToPaisa(amount)
+          : 0;
 
     // Find the RENT revenue source
     const rentRevenueSource = await RevenueSource.findOne({
@@ -289,6 +298,7 @@ export async function recordRentRevenue({
           amountPaisa: finalAmountPaisa,
           amount: finalAmountPaisa / 100, // Backward compatibility
           date: paymentDate,
+          ...getNepaliYearMonthFromDate(paymentDate),
           payerType: "TENANT",
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "RENT",
@@ -298,7 +308,7 @@ export async function recordRentRevenue({
           createdBy: new mongoose.Types.ObjectId(adminId),
         },
       ],
-      { session }
+      { session },
     );
 
     return revenue[0];
@@ -331,9 +341,12 @@ export async function recordCamRevenue({
 }) {
   try {
     // ✅ Convert to paisa if needed
-    const finalAmountPaisa = amountPaisa !== undefined
-      ? amountPaisa
-      : (amount ? rupeesToPaisa(amount) : 0);
+    const finalAmountPaisa =
+      amountPaisa !== undefined
+        ? amountPaisa
+        : amount
+          ? rupeesToPaisa(amount)
+          : 0;
 
     // Find the CAM revenue source
     const camRevenueSource = await RevenueSource.findOne({
@@ -351,6 +364,7 @@ export async function recordCamRevenue({
           amountPaisa: finalAmountPaisa,
           amount: finalAmountPaisa / 100, // Backward compatibility
           date: paymentDate,
+          ...getNepaliYearMonthFromDate(paymentDate),
           payerType: "TENANT",
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "CAM",
@@ -360,7 +374,7 @@ export async function recordCamRevenue({
           createdBy: new mongoose.Types.ObjectId(adminId),
         },
       ],
-      { session }
+      { session },
     );
 
     return revenue[0];
@@ -368,4 +382,59 @@ export async function recordCamRevenue({
     console.error("Failed to record CAM revenue:", error);
     throw error;
   }
+}
+
+/**
+ * Record revenue for an electricity payment (unit meter / tenant-billed only).
+ * Property-billed meter types (common_area, parking, sub_meter) are expenses —
+ * callers must guard with `meterType === "unit"` before calling this helper.
+ *
+ * @param {Object}           params
+ * @param {number}           params.amountPaisa   - Payment amount in paisa
+ * @param {Date}             params.paymentDate   - Date of payment
+ * @param {string|ObjectId}  params.tenantId      - Tenant who paid
+ * @param {string|ObjectId}  params.electricityId - Source Electricity document
+ * @param {string}           params.nepaliMonth   - Nepali billing month (for notes)
+ * @param {string}           params.nepaliYear    - Nepali billing year (for notes)
+ * @param {string|ObjectId}  params.adminId       - Admin creating the record
+ * @param {ClientSession}    params.session       - Mongoose session (required — caller owns the transaction)
+ */
+export async function recordElectricityRevenue({
+  amountPaisa,
+  paymentDate,
+  tenantId,
+  electricityId,
+  nepaliMonth,
+  nepaliYear,
+  adminId,
+  session = null,
+}) {
+  // Resolve (or lazily create) the UTILITY revenue source.
+  // findOneAndUpdate with upsert is idempotent and race-condition-safe.
+  const utilitySource = await RevenueSource.findOneAndUpdate(
+    { code: "UTILITY" },
+    { $setOnInsert: { code: "UTILITY", name: "Electricity / Utility" } },
+    { upsert: true, new: true, session },
+  );
+
+  const [revenue] = await Revenue.create(
+    [
+      {
+        source: utilitySource._id,
+        amountPaisa,
+        date: paymentDate,
+        ...getNepaliYearMonthFromDate(paymentDate),
+        payerType: "TENANT",
+        tenant: new mongoose.Types.ObjectId(tenantId),
+        referenceType: "ELECTRICITY",
+        referenceId: new mongoose.Types.ObjectId(electricityId),
+        status: "RECORDED",
+        notes: `Electricity payment – ${nepaliMonth}/${nepaliYear}`,
+        createdBy: new mongoose.Types.ObjectId(adminId),
+      },
+    ],
+    { session },
+  );
+
+  return revenue;
 }

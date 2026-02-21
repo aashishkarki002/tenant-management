@@ -2,6 +2,11 @@ import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import hpp from "hpp";
+import mongoSanitize from "express-mongo-sanitize";
+import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import authRoute from "./modules/auth/auth.route.js";
 import propertyRoute from "./modules/property/property.route.js";
@@ -24,7 +29,8 @@ import staffRoute from "./modules/staffs/staffs.route.js";
 import broadcastRoute from "./modules/broadcasts/broadcast.route.js";
 import escalationRoute from "./modules/tenant/escalation/rent.escalation.route.js";
 import { startEscalationCron } from "./modules/tenant/escalation/crons/rent.escalation.cron.js";
-// Load cron jobs asynchronously (no top-level await — required for cPanel/LiteSpeed which uses require())
+import generatorRoute from "./modules/maintenance/generators/generator.route.js";
+
 function loadCronJobs() {
   import("./cron/monthlyRentAndCam.cron.js")
     .then(() => import("./cron/monthlyEmail.cron.js"))
@@ -33,19 +39,78 @@ function loadCronJobs() {
 }
 loadCronJobs();
 startEscalationCron();
-const app = express();
 
-/* -------------------- MIDDLEWARE -------------------- */
+const app = express();
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://app.sallyanhouse.com",
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (process.env.NODE_ENV !== "production") {
+      try {
+        const u = new URL(origin);
+        const isLocal =
+          (u.hostname === "localhost" ||
+            u.hostname === "127.0.0.1" ||
+            u.hostname === "[::1]") &&
+          (u.protocol === "http:" || u.protocol === "https:");
+        if (isLocal) return callback(null, true);
+      } catch (_) {}
+    }
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  optionsSuccessStatus: 200,
+};
+
+// CORS must be first — handles OPTIONS preflight before anything else can block it
+app.options("/{*path}", cors(corsOptions));
+app.use(cors(corsOptions));
+
 app.use(
-  cors({
-    origin: process.env.FRONTEND_URL ?? false,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
 
+// Login limiter before the global /api limiter
+const loginLimiter = rateLimit({
+  max: 5,
+  windowMs: 15 * 60 * 1000,
+  message: "Too many login attempts, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api/auth/login", loginLimiter);
+
+const limiter = rateLimit({
+  max: 100,
+  windowMs: 60 * 1000,
+  message: "Too many requests from this IP, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api", limiter);
+
+app.use(hpp());
 app.use(cookieParser());
-app.use(express.json());
+
+app.use(express.json({ limit: "10kb" }));
+
+if (process.env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+} else {
+  app.use(morgan("combined"));
+}
 
 /* -------------------- ROUTES -------------------- */
 app.use("/api/auth", authRoute);
@@ -67,9 +132,30 @@ app.use("/api/maintenance", maintenanceRoute);
 app.use("/api/staff", staffRoute);
 app.use("/api/broadcast", broadcastRoute);
 app.use("/api/escalation", escalationRoute);
+app.use("/api/generator", generatorRoute);
+
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });
+});
+
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
+app.use((err, req, res, next) => {
+  console.error("🔥 ERROR:", err.stack);
+
+  if (err.message === "Not allowed by CORS") {
+    return res.status(403).json({ message: "CORS error" });
+  }
+
+  res.status(500).json({
+    message:
+      process.env.NODE_ENV === "production"
+        ? "Internal Server Error"
+        : err.message,
+  });
 });
 
 /* -------------------- DB CONNECT -------------------- */

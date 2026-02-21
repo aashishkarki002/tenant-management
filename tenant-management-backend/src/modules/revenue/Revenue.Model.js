@@ -24,6 +24,22 @@ const revenueSchema = new mongoose.Schema(
       default: Date.now,
     },
 
+    // ============================================
+    // NEPALI DATE FIELDS — denormalized at write time.
+    // Never derive at read time; aggregating across thousands of
+    // records with JS-side date conversion kills performance.
+    // ============================================
+    npYear: {
+      type: Number,
+      index: true,
+    },
+    npMonth: {
+      type: Number, // 1-based (1 = Baisakh … 12 = Chaitra)
+      min: 1,
+      max: 12,
+      index: true,
+    },
+
     payerType: {
       type: String,
       enum: ["TENANT", "EXTERNAL"],

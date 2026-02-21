@@ -10,7 +10,7 @@ import dotenv from "dotenv";
 import { sendEmail } from "../../config/nodemailer.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildRentChargeJournal } from "../ledger/journal-builders/index.js";
-import Notification from "../notifications/Notification.Model.js";
+import Notification from "../notifications/notification.model.js";
 import NepaliDate from "nepali-datetime";
 import { getIO } from "../../config/socket.js";
 import { Cam } from "../cam/cam.model.js";
@@ -90,10 +90,18 @@ function buildRentsFilter(filters = {}) {
   if (filters.tenantId && mongoose.Types.ObjectId.isValid(filters.tenantId)) {
     query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
   }
-  if (filters.propertyId && mongoose.Types.ObjectId.isValid(filters.propertyId)) {
+  if (
+    filters.propertyId &&
+    mongoose.Types.ObjectId.isValid(filters.propertyId)
+  ) {
     query.property = new mongoose.Types.ObjectId(filters.propertyId);
   }
-  if (filters.status && ["pending", "paid", "partially_paid", "overdue", "cancelled"].includes(filters.status)) {
+  if (
+    filters.status &&
+    ["pending", "paid", "partially_paid", "overdue", "cancelled"].includes(
+      filters.status,
+    )
+  ) {
     query.status = filters.status;
   }
   if (filters.nepaliMonth != null) {
@@ -106,7 +114,8 @@ function buildRentsFilter(filters = {}) {
   }
   if (filters.startDate || filters.endDate) {
     query.englishDueDate = {};
-    if (filters.startDate) query.englishDueDate.$gte = new Date(filters.startDate);
+    if (filters.startDate)
+      query.englishDueDate.$gte = new Date(filters.startDate);
     if (filters.endDate) query.englishDueDate.$lte = new Date(filters.endDate);
   }
   return query;
@@ -261,7 +270,13 @@ export async function getRentByIdService(rentId) {
   }
 }
 
-const ALLOWED_STATUSES = ["pending", "paid", "partially_paid", "overdue", "cancelled"];
+const ALLOWED_STATUSES = [
+  "pending",
+  "paid",
+  "partially_paid",
+  "overdue",
+  "cancelled",
+];
 
 /**
  * Update a rent record (admin only). Allows only safe fields: lateFeePaisa, status, lateFeeApplied, lateFeeDate.
@@ -293,7 +308,12 @@ export async function updateRentService(rentId, body) {
       }
       rent.lateFeePaisa = lateFeePaisa;
       rent.lateFeeApplied = lateFeePaisa > 0;
-      rent.lateFeeDate = lateFeePaisa > 0 ? (body.lateFeeDate ? new Date(body.lateFeeDate) : new Date()) : null;
+      rent.lateFeeDate =
+        lateFeePaisa > 0
+          ? body.lateFeeDate
+            ? new Date(body.lateFeeDate)
+            : new Date()
+          : null;
       rent.lateFeeStatus = lateFeePaisa > 0 ? "pending" : "pending";
     }
 
@@ -319,7 +339,11 @@ export async function updateRentService(rentId, body) {
 
     const result = await getRentByIdService(rentId);
     if (!result.success) {
-      return { success: true, rent: rent.toObject(), message: "Rent updated successfully" };
+      return {
+        success: true,
+        rent: rent.toObject(),
+        message: "Rent updated successfully",
+      };
     }
     return {
       success: true,
@@ -556,14 +580,14 @@ export async function sendEmailToTenants() {
       status: { $in: ["pending", "partially_paid"] },
       nepaliMonth: npMonth,
       nepaliYear: npYear,
-      emailReminderSent: { $ne: true },
+      emailReminderSent: false,
     }).populate("tenant");
 
     const cams = await Cam.find({
       status: { $in: ["pending", "partially_paid"] },
       nepaliMonth: npMonth,
       nepaliYear: npYear,
-      emailReminderSent: { $ne: true },
+      emailReminderSent: false,
     }).populate("tenant");
 
     const allPending = [...rents, ...cams];
