@@ -27,6 +27,24 @@ import {
 } from "../domain/rent.calculator.service.js";
 
 /**
+ * Flatten unit IDs from various shapes (array, { $in: [...] }, mixed).
+ * Prevents CastError when client accidentally sends MongoDB query shape.
+ */
+function normalizeUnitIdsArray(input) {
+  if (!input) return [];
+  const arr = Array.isArray(input) ? input : [input];
+  const result = [];
+  for (const item of arr) {
+    if (item && typeof item === "object" && Array.isArray(item.$in)) {
+      result.push(...item.$in);
+    } else if (item != null && item !== "") {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
+/**
  * ✅ REFACTORED: Calculate multi-unit lease financials using rent.calculator.service
  * Converts results to PAISA for storage
  */
@@ -155,14 +173,18 @@ export async function createTenantTransaction(body, files, adminId, session) {
       : [body.unitNumber];
   }
   // ✅ Normalize unit IDs (support string | array | unitLeases)
+  // Guard: unwrap accidental { $in: [ids] } from client/query leakage
   let unitIds = [];
 
   if (Array.isArray(body.unitLeases)) {
-    unitIds = parseUnitIds(body.unitLeases.map((ul) => ul.unitId));
+    const idsFromLeases = body.unitLeases.map((ul) => ul.unitId);
+    unitIds = parseUnitIds(normalizeUnitIdsArray(idsFromLeases));
   } else {
     const rawUnits = body.unitIds ?? body.units ?? body.unitNumber;
-
-    unitIds = Array.isArray(rawUnits) ? rawUnits : rawUnits ? [rawUnits] : [];
+    const flatIds = normalizeUnitIdsArray(
+      Array.isArray(rawUnits) ? rawUnits : rawUnits ? [rawUnits] : [],
+    );
+    unitIds = parseUnitIds(flatIds);
   }
 
   if (unitIds.length === 0) {

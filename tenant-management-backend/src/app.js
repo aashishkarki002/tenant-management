@@ -30,6 +30,7 @@ import escalationRoute from "./modules/tenant/escalation/rent.escalation.route.j
 import { startEscalationCron } from "./modules/tenant/escalation/crons/rent.escalation.cron.js";
 import generatorRoute from "./modules/maintenance/generators/generator.route.js";
 import searchRoute from "./modules/search/search.route.js";
+import systemSettingRoute from "./modules/systemConfig/systemSetting.route.js";
 
 function loadCronJobs() {
   import("./cron/monthlyRentAndCam.cron.js")
@@ -134,6 +135,7 @@ app.use("/api/broadcast", broadcastRoute);
 app.use("/api/escalation", escalationRoute);
 app.use("/api/generator", generatorRoute);
 app.use("/api/search", searchRoute);
+app.use("/api/settings", systemSettingRoute);
 
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {

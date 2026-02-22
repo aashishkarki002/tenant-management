@@ -10,6 +10,7 @@ import { Revenue } from "../revenue/Revenue.Model.js";
 import { RevenueSource } from "../revenue/RevenueSource.Model.js";
 import { Maintenance } from "../maintenance/Maintenance.Model.js";
 import { Payment } from "../payment/payment.model.js";
+import { Transaction } from "../ledger/transactions/Transaction.Model.js";
 
 /**
  * Fetches dashboard stats (Nepali-date-based). Use this when you need the data
@@ -343,58 +344,52 @@ export async function getDashboardStatsData() {
 
   /* ===============================
      6️⃣ RECENT ACTIVITY FEED
-     Merges latest payments, maintenance updates, and new tenants
-     into a single timeline for the dashboard activity widget.
+     Pulls the 10 most recent non-voided Transactions and maps them
+     to the normalised shape expected by RecentActivities component.
   =============================== */
 
-  const [recentPayments, recentMaintenance, recentTenants] = await Promise.all([
-    Payment.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate("tenant", "name")
-      .populate({
-        path: "rent",
-        populate: { path: "property", select: "name" },
-      })
-      .select("tenant rent amountPaisa createdAt paymentMethod")
-      .lean(),
-
-    Maintenance.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select("title status unit createdAt")
-      .lean(),
-
-    Tenant.find({ isDeleted: false })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select("name createdAt")
-      .lean(),
-  ]);
-
-  const recentActivity = [
-    ...recentPayments.map((p) => ({
+  const TX_TYPE_MAP = {
+    RENT_PAYMENT_RECEIVED: { type: "payment", label: "Rent payment received" },
+    CAM_PAYMENT_RECEIVED: { type: "payment", label: "CAM payment received" },
+    ELECTRICITY_PAYMENT: {
       type: "payment",
-      label: `${p.tenant?.name || "Tenant"} paid rent`,
-      sub: p.rent?.property?.name || "",
-      amount: p.amountPaisa / 100,
-      time: p.createdAt,
-    })),
-    ...recentMaintenance.map((m) => ({
-      type: "maintenance",
-      label: `Maintenance ${m.status === "OPEN" ? "scheduled" : "updated"}`,
-      sub: m.title || "",
-      time: m.createdAt,
-    })),
-    ...recentTenants.map((t) => ({
-      type: "tenant",
-      label: `New tenant added`,
-      sub: t.name,
-      time: t.createdAt,
-    })),
-  ]
-    .sort((a, b) => new Date(b.time) - new Date(a.time))
-    .slice(0, 10);
+      label: "Electricity payment received",
+    },
+    RENT_CHARGE: { type: "rent", label: "Rent charged" },
+    CAM_CHARGE: { type: "rent", label: "CAM charged" },
+    ELECTRICITY_CHARGE: { type: "rent", label: "Electricity charged" },
+    SECURITY_DEPOSIT: { type: "rent", label: "Security deposit recorded" },
+    MAINTENANCE_EXPENSE: { type: "maintenance", label: "Maintenance expense" },
+    REVENUE_STREAM: { type: "revenue", label: "Revenue recorded" },
+    OTHER_INCOME: { type: "revenue", label: "Other income" },
+    UTILITY_EXPENSE: { type: "expense", label: "Utility expense" },
+    OTHER_EXPENSE: { type: "expense", label: "Other expense" },
+    ADJUSTMENT: { type: "expense", label: "Adjustment" },
+  };
+
+  const recentTransactions = await Transaction.find({
+    status: { $ne: "VOIDED" },
+  })
+    .sort({ transactionDate: -1 })
+    .limit(10)
+    .lean();
+
+  const recentActivity = recentTransactions.map((tx, i) => {
+    const mapped = TX_TYPE_MAP[tx.type] ?? {
+      type: "default",
+      label: tx.description ?? "Transaction",
+    };
+    const amount =
+      tx.totalAmountPaisa != null ? tx.totalAmountPaisa / 100 : null;
+    return {
+      id: tx._id?.toString() ?? i,
+      type: mapped.type,
+      mainText: mapped.label,
+      sub: tx.description ?? "",
+      amount,
+      time: tx.transactionDate ?? tx.createdAt,
+    };
+  });
 
   /* ===============================
      7️⃣ RESPONSE DATA

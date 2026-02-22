@@ -9,6 +9,8 @@ import { paisaToRupees, rupeesToPaisa } from "../../utils/moneyUtil.js";
 import { calculateMultiUnitLease } from "./domain/rent.calculator.service.js";
 import { Rent } from "../rents/rent.Model.js";
 import { Cam } from "../cam/cam.model.js";
+import { SystemConfig } from "../systemConfig/SystemConfig.Model.js";
+import { enableEscalation } from "./escalation/rent.escalation.service.js";
 
 export async function createTenant(body, files, adminId) {
   const session = await mongoose.startSession();
@@ -77,6 +79,22 @@ export async function createTenant(body, files, adminId) {
 
     await session.commitTransaction();
     session.endSession();
+
+    // ── Auto-apply system-wide escalation defaults (fire & forget) ────────────
+    // Runs after the transaction commits so it never blocks tenant creation.
+    // If no defaults are configured yet, it silently skips.
+    applyDefaultEscalationIfEnabled(tenant._id.toString())
+      .then((result) => {
+        if (result?.applied) {
+          console.log(
+            `📈 Default escalation applied to new tenant: ${tenant.name}`,
+          );
+        }
+      })
+      .catch((err) =>
+        console.error("Failed to apply default escalation:", err.message),
+      );
+    // ──────────────────────────────────────────────────────────────────────────
 
     if (tenant.email) {
       sendWelcomeEmail({
@@ -789,4 +807,43 @@ export async function searchTenants(query) {
   });
 
   return validTenants;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERNAL: Auto-apply system escalation defaults to a newly created tenant
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Read system-wide escalation defaults from SystemConfig.
+ * If enabled, call enableEscalation on the given tenant.
+ *
+ * Called fire-and-forget after createTenant transaction commits.
+ * Safe to fail — tenant creation is never affected.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<{ applied: boolean }>}
+ */
+async function applyDefaultEscalationIfEnabled(tenantId) {
+  const CONFIG_KEY = "rentEscalationDefaults";
+
+  const config = await SystemConfig.findOne({ key: CONFIG_KEY });
+
+  // No defaults saved yet, or admin disabled the system switch — skip
+  if (!config?.value?.enabled) {
+    return { applied: false };
+  }
+
+  const {
+    percentageIncrease,
+    intervalMonths = 12,
+    appliesTo = "rent_only",
+  } = config.value;
+
+  const result = await enableEscalation(tenantId, {
+    percentageIncrease,
+    intervalMonths,
+    appliesTo,
+  });
+
+  return { applied: result.success };
 }
