@@ -116,21 +116,48 @@ export const registerStaff = async (req, res) => {
     });
 
     const verificationUrl = `${process.env.BACKEND_URL}/api/auth/verify-email?token=${rawToken}`;
+    const loginUrl = `${process.env.FRONTEND_URL}/login`;
 
+    // Send a single combined email: credentials + verification CTA.
+    // Industry standard: one transactional email per action — don't flood the inbox.
+    // NOTE: Sending a plaintext password in email is acceptable ONLY at account
+    // creation time when the admin sets it. Instruct staff to change it on first login.
     await sendEmail({
       to: email,
-      subject: "Verify your email",
+      subject: `Your ${process.env.APP_NAME || "platform"} staff account is ready`,
       html: `
-        <h2>Verify your email</h2>
-        <p>Click the link below to verify your account:</p>
-        <a href="${verificationUrl}">${verificationUrl}</a>
-        <p>This link expires in 10 minutes.</p>
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+          <h2 style="margin-bottom:4px">Welcome, ${name}!</h2>
+          <p style="color:#555;margin-top:0">Your staff account has been created.</p>
+
+          <div style="background:#f4f4f5;border-radius:8px;padding:20px;margin:24px 0">
+            <p style="margin:0 0 8px 0;font-weight:600">Your login credentials</p>
+            <p style="margin:4px 0">Email: <strong>${email}</strong></p>
+            <p style="margin:4px 0">Password: <strong>${password}</strong></p>
+            <p style="margin:12px 0 0 0;font-size:12px;color:#888">
+              Please change your password immediately after your first login.
+            </p>
+          </div>
+
+          <p>Before you can log in you must verify your email address. 
+             This link expires in <strong>10 minutes</strong>.</p>
+
+          <a href="${verificationUrl}"
+             style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;
+                    border-radius:6px;text-decoration:none;font-weight:600;margin:8px 0">
+            Verify Email &amp; Activate Account
+          </a>
+
+          <p style="margin-top:24px;font-size:13px;color:#888">
+            After verifying, log in at <a href="${loginUrl}">${loginUrl}</a>
+          </p>
+        </div>
       `,
     });
 
     return res.status(201).json({
       success: true,
-      message: "Staff account created. Verification link sent to their email.",
+      message: "Staff account created. Credentials sent to their email.",
     });
   } catch (error) {
     console.error("Register staff error:", error);
@@ -151,12 +178,14 @@ export const verifyEmail = async (req, res) => {
 
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
+    // FIX: Do NOT use $gt inside the query — mongoose.set("sanitizeFilter", true)
+    // strips $ operators, causing a CastError on the Date field.
+    // Fetch by token only, then validate expiry in JS.
     const user = await Admin.findOne({
       emailVerificationToken: hashedToken,
-      emailVerificationTokenExpiresAt: { $gt: Date.now() },
     });
 
-    if (!user) {
+    if (!user || user.emailVerificationTokenExpiresAt < new Date()) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid or expired token" });
@@ -169,8 +198,8 @@ export const verifyEmail = async (req, res) => {
     }
 
     user.isEmailVerified = true;
-    user.emailVerificationToken = undefined;
-    user.emailVerificationTokenExpiresAt = undefined;
+    user.emailVerificationToken = null;
+    user.emailVerificationTokenExpiresAt = null;
     await user.save();
 
     return res.redirect(

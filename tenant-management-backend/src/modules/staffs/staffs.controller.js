@@ -32,13 +32,11 @@ export const deleteStaffController = async (req, res) => {
   try {
     const staff = await deleteStaffService(req.params.id);
     res.status(200).json({
-      success: staff.success,
-      message: staff.message,
+      success: true,
+      message: "Staff deleted successfully",
     });
   } catch (error) {
     console.log(error);
-    res
-      .status(500)
-      .json({ success: false, message: error.message, error: error });
+    res.status(500).json({ success: false, message: error.message });
   }
 };

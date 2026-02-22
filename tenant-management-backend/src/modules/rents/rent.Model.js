@@ -447,3 +447,7 @@ rentSchema.methods.getFinancialSummary = function () {
 };
 
 export const Rent = mongoose.model("Rent", rentSchema);
+rentSchema.index(
+  { nepaliMonth: "text", nepaliYear: "text" },
+  { name: "rent_text_search" },
+);

@@ -5,7 +5,6 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import hpp from "hpp";
-import mongoSanitize from "express-mongo-sanitize";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import authRoute from "./modules/auth/auth.route.js";
@@ -30,6 +29,7 @@ import broadcastRoute from "./modules/broadcasts/broadcast.route.js";
 import escalationRoute from "./modules/tenant/escalation/rent.escalation.route.js";
 import { startEscalationCron } from "./modules/tenant/escalation/crons/rent.escalation.cron.js";
 import generatorRoute from "./modules/maintenance/generators/generator.route.js";
+import searchRoute from "./modules/search/search.route.js";
 
 function loadCronJobs() {
   import("./cron/monthlyRentAndCam.cron.js")
@@ -133,6 +133,7 @@ app.use("/api/staff", staffRoute);
 app.use("/api/broadcast", broadcastRoute);
 app.use("/api/escalation", escalationRoute);
 app.use("/api/generator", generatorRoute);
+app.use("/api/search", searchRoute);
 
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {

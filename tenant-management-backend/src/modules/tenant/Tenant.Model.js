@@ -318,3 +318,10 @@ tenantSchema.set("toObject", { virtuals: true, getters: false });
 
 export const Tenant =
   mongoose.models.Tenant || mongoose.model("Tenant", tenantSchema);
+tenantSchema.index(
+  { name: "text", email: "text", phone: "text" },
+  {
+    weights: { name: 10, email: 5, phone: 3 },
+    name: "tenant_text_search",
+  },
+);

@@ -768,7 +768,10 @@ export async function searchTenants(query) {
   if (property) filters.property = property;
   if (block) filters.block = block;
   if (innerBlock) filters.innerBlock = innerBlock;
-  if (search) filters.name = { $regex: search, $options: "i" };
+  if (search) {
+    const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filters.name = new RegExp(escaped, "i");
+  }
 
   const tenants = await Tenant.find(filters)
     .populate("property")
