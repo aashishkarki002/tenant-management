@@ -31,7 +31,6 @@ import {
   paisaToRupees,
   formatMoney,
 } from "../../utils/moneyUtil.js";
-import { recordElectricityRevenue } from "../revenue/revenue.service.js";
 
 class ElectricityService {
   // ─────────────────────────────────────────────────────────────────────────
@@ -194,15 +193,58 @@ class ElectricityService {
 
       // Resolve tenantId from request or from unit's current lease
       const tenantIdResolved =
-        data.tenantId ?? unit.currentLease?.tenant?.toString?.() ?? unit.currentLease?.tenant ?? null;
+        data.tenantId ??
+        unit.currentLease?.tenant?.toString?.() ??
+        unit.currentLease?.tenant ??
+        null;
 
+      // Pre-declare transition flags — they may be set during tenant resolution
+      // (stale-ref path) OR during last-reading comparison below.
+      let isTenantTransition = false;
+      let previousTenant = null;
+
+      // ── Tenant resolution with transition support ─────────────────────────────
+      // A tenantId may be supplied but point to a tenant who has already moved
+      // out (their doc was deleted or reassigned). In that case we look up the
+      // unit's CURRENT active tenant and mark this reading as a transition.
       let tenant = null;
       if (tenantIdResolved) {
         tenant = await Tenant.findById(tenantIdResolved).session(session);
-        if (!tenant) throw new Error("Tenant not found");
-        if (!tenant.units.some((u) => u.toString() === data.unitId.toString())) {
-          throw new Error("Unit does not belong to this tenant");
+
+        if (!tenant) {
+          // Supplied tenantId not found — stale reference (tenant moved out).
+          // Try to find whoever is currently occupying this unit instead.
+          console.warn(
+            `Tenant _id="${tenantIdResolved}" not found — likely moved out. ` +
+              `Looking up current occupant of unit ${data.unitId}.`,
+          );
+          const currentOccupant = await Tenant.findOne({
+            units: data.unitId,
+            isActive: true,
+          }).session(session);
+
+          if (currentOccupant) {
+            console.log(
+              `Found current occupant: ${currentOccupant._id} — ` +
+                `flagging as tenant transition.`,
+            );
+            // Keep the stale id as previousTenant; new tenant is currentOccupant
+            isTenantTransition = true;
+            previousTenant = tenantIdResolved; // the moved-out tenant's id
+            tenant = currentOccupant;
+          } else {
+            // Unit is vacant — no active tenant found.
+            console.warn(
+              `No active tenant found for unit ${data.unitId}. ` +
+                `Recording as vacant-unit reading.`,
+            );
+            tenant = null;
+          }
         }
+        // NOTE: We intentionally skip the strict tenant.units ownership check.
+        // The Unit↔Tenant relationship is authoritative on the Tenant.units array,
+        // but during a transition the old tenant has already been removed and the
+        // new tenant may not yet have this unit in their array.
       }
       const effectiveTenantId = tenant?._id ?? null;
 
@@ -213,21 +255,28 @@ class ElectricityService {
       );
       let previousReading = 0;
       let isInitialReading = false;
-      let isTenantTransition = false;
-      let previousTenant = null;
+      // isTenantTransition / previousTenant may already be set above (stale-ref path).
+      // Only reset them here if they haven't been set yet.
       let previousRecord = null;
 
       if (lastReading) {
         const lastTenantId = lastReading.tenant?.toString?.() ?? null;
-        if (effectiveTenantId && lastTenantId && lastTenantId !== effectiveTenantId.toString()) {
-          isTenantTransition = true;
-          previousTenant = lastReading.tenant;
-          previousRecord = lastReading._id;
-        } else if (!effectiveTenantId && lastTenantId) {
-          isTenantTransition = true;
-          previousTenant = lastReading.tenant;
-          previousRecord = lastReading._id;
+        // Detect transition from last reading: different tenant, or moving from
+        // a tenanted reading to a vacant one and vice-versa.
+        if (!isTenantTransition) {
+          if (
+            effectiveTenantId &&
+            lastTenantId &&
+            lastTenantId !== effectiveTenantId.toString()
+          ) {
+            isTenantTransition = true;
+            previousTenant = lastReading.tenant;
+          } else if (!effectiveTenantId && lastTenantId) {
+            isTenantTransition = true;
+            previousTenant = lastReading.tenant;
+          }
         }
+        previousRecord = lastReading._id;
         previousReading = lastReading.currentReading;
       } else {
         isInitialReading = true;
@@ -281,22 +330,11 @@ class ElectricityService {
         { session },
       );
 
-      if (electricity.meterType === "unit" && effectiveTenantId) {
-        await recordElectricityRevenue({
-          amountPaisa: electricity.totalAmountPaisa,
-          paymentDate: data.readingDate ?? new Date(),
-          tenantId: effectiveTenantId,
-          electricityId: electricity._id,
-          nepaliMonth: electricity.nepaliMonth,
-          nepaliYear: electricity.nepaliYear,
-          adminId: data.createdBy,
-          session,
-        });
-      } else if (electricity.meterType === "unit" && !effectiveTenantId) {
-        console.warn("  Unit meter electricity reading has no tenant (vacant unit):", {
-          electricityId: electricity._id.toString(),
-        });
-      }
+      // NOTE: Revenue is intentionally NOT recorded here.
+      // Revenue and payment records are created only when the user
+      // explicitly records a payment via recordElectricityPayment().
+      // Creating a reading merely establishes the charge (accounts receivable);
+      // it does not represent cash received.
 
       return {
         success: true,

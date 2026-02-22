@@ -130,10 +130,10 @@ app.use("/api/electricity", electricityRoute);
 app.use("/api/cam", camRoute);
 app.use("/api/expense", expenseRoute);
 app.use("/api/maintenance", maintenanceRoute);
+app.use("/api/maintenance/generator", generatorRoute);
 app.use("/api/staff", staffRoute);
 app.use("/api/broadcast", broadcastRoute);
 app.use("/api/escalation", escalationRoute);
-app.use("/api/generator", generatorRoute);
 app.use("/api/search", searchRoute);
 app.use("/api/settings", systemSettingRoute);
 

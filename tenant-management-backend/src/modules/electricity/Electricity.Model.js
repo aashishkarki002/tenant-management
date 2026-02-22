@@ -296,8 +296,9 @@ electricitySchema.pre("save", async function () {
 
   // 2. Conditional reference validation
   if (this.meterType === METER_TYPES.UNIT) {
-    if (!this.tenant)
-      throw new Error("tenant is required for meterType 'unit'");
+    // tenant is nullable — a unit can be vacant (tenant moved out) or in transition.
+    // The service sets isTenantTransition = true in those cases for audit purposes.
+    // We only hard-require `unit` since we always need to know which meter was read.
     if (!this.unit) throw new Error("unit is required for meterType 'unit'");
     this.subMeter = null; // ensure no subMeter ref on unit readings
   } else {
