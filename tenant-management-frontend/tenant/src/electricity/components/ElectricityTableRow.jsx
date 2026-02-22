@@ -76,6 +76,22 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
         {/* NAME */}
         <td className="py-3 px-4">
           <div className="font-medium">{unitName}</div>
+          {record.isTenantTransition && (
+            <span
+              title="Previous tenant moved out — reading carried forward to new tenant"
+              className="mt-0.5 inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200"
+            >
+              Tenant transition
+            </span>
+          )}
+          {!record.tenant && record.meterType === "unit" && (
+            <span
+              title="No active tenant — unit is vacant"
+              className="mt-0.5 inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200"
+            >
+              Vacant
+            </span>
+          )}
         </td>
 
         {/* TYPE */}

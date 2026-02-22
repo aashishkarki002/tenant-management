@@ -115,6 +115,12 @@ export default function ElectricityReadingDialog({
     /** Previous reading for the selected meter (fetched when selection changes) */
     const [previousReading, setPreviousReading] = useState(null);
     const [previousReadingLoading, setPreviousReadingLoading] = useState(false);
+    /**
+     * Tenant transition warning — set when the selected unit's last reading
+     * belonged to a different tenant (previous tenant moved out).
+     * The backend handles this gracefully; we just surface it to the user.
+     */
+    const [tenantTransitionWarning, setTenantTransitionWarning] = useState(false);
 
     // ── Single building: set unit tab buildingId from propertyId ───────────────
     useEffect(() => {
@@ -135,6 +141,7 @@ export default function ElectricityReadingDialog({
         let cancelled = false;
         setPreviousReadingLoading(true);
         setPreviousReading(null);
+        setTenantTransitionWarning(false);
         const params =
             selectedMeterType === "unit"
                 ? { propertyId, unitId: selected, meterType: "unit" }
@@ -154,6 +161,25 @@ export default function ElectricityReadingDialog({
                         ? latest.currentReading
                         : null
                 );
+                // Detect tenant transition: last reading had a different tenant
+                // than the one currently linked to this unit.
+                if (selectedMeterType === "unit" && latest) {
+                    const selectedUnit = (units ?? []).find(
+                        (u) => u._id === formData["unit"].selected
+                    );
+                    const currentTenantId =
+                        selectedUnit?.currentLease?.tenant?.toString?.() ??
+                        selectedUnit?.tenantId?.toString?.() ??
+                        selectedUnit?.tenant?._id?.toString?.() ??
+                        selectedUnit?.tenant?.toString?.() ??
+                        null;
+                    const lastTenantId = latest.tenant?._id?.toString?.() ?? latest.tenant?.toString?.() ?? null;
+                    setTenantTransitionWarning(
+                        Boolean(lastTenantId && currentTenantId && lastTenantId !== currentTenantId)
+                    );
+                } else {
+                    setTenantTransitionWarning(false);
+                }
             })
             .catch(() => {
                 if (!cancelled) setPreviousReading(null);
@@ -466,6 +492,18 @@ export default function ElectricityReadingDialog({
                         </SelectContent>
                     </Select>
                 </div>
+
+                {/* Tenant transition warning — shown when the unit changed tenants */}
+                {type === "unit" && tenantTransitionWarning && selected && (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                        <span className="mt-0.5 shrink-0 text-amber-500">⚠</span>
+                        <div>
+                            <span className="font-medium">Tenant transition detected.</span>{" "}
+                            The previous reading on this unit belongs to a different tenant.
+                            This reading will be saved as a <span className="font-medium">tenant transition</span> and the previous meter reading carried forward.
+                        </div>
+                    </div>
+                )}
 
                 {/* Previous reading (when a meter is selected) */}
                 {(selected && (type === selectedMeterType)) && (
