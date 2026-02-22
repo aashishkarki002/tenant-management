@@ -22,9 +22,10 @@ function formatAppliesTo(value) {
     return map[value] || value
 }
 
+// FIX 5: NPR not INR — this is a Nepal property system
 function formatRupee(amount) {
     if (amount == null) return "—"
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount)
+    return new Intl.NumberFormat("ne-NP", { style: "currency", currency: "NPR", maximumFractionDigits: 0 }).format(amount)
 }
 
 export function EscalationTab({ tenantId }) {
@@ -36,8 +37,14 @@ export function EscalationTab({ tenantId }) {
     const [preview, setPreview] = useState(null)
     const [previewLoading, setPreviewLoading] = useState(false)
     const [previewPct, setPreviewPct] = useState("")
-    const [actionLoading, setActionLoading] = useState(null) // "apply" | "disable" | "enable"
-    const [enableForm, setEnableForm] = useState({ percentageIncrease: "", intervalMonths: "12", appliesTo: "rent_only" })
+    const [actionLoading, setActionLoading] = useState(null) // "apply" | "disable" | "enable" | "save"
+    const [enableForm, setEnableForm] = useState({
+        percentageIncrease: "",
+        intervalMonths: "12",
+        appliesTo: "rent_only",
+    })
+    // FIX 2: Track whether the form has unsaved changes so we can show "Save Changes"
+    const [formDirty, setFormDirty] = useState(false)
 
     const enabled = escalation?.enabled ?? false
 
@@ -49,12 +56,12 @@ export function EscalationTab({ tenantId }) {
             setEscalation(response.data?.data ?? null)
             const cfg = response.data?.data?.configuration
             if (cfg) {
-                setEnableForm((f) => ({
-                    ...f,
+                setEnableForm({
                     percentageIncrease: String(cfg.percentageIncrease || ""),
                     intervalMonths: String(cfg.intervalMonths ?? 12),
                     appliesTo: cfg.appliesTo || "rent_only",
-                }))
+                })
+                setFormDirty(false)
             }
         } catch {
             setEscalation(null)
@@ -84,6 +91,8 @@ export function EscalationTab({ tenantId }) {
         if (tenantId && escalation !== null) getHistory()
     }, [tenantId, escalation, getHistory])
 
+    // FIX 4: Added previewPct to the effect deps so re-fetches happen when user
+    // types a custom percentage while the dialog is already open
     const fetchPreview = useCallback(async () => {
         if (!tenantId || !escalation?.enabled) return
         setPreview(null)
@@ -102,9 +111,10 @@ export function EscalationTab({ tenantId }) {
         }
     }, [tenantId, escalation?.enabled, escalation?.configuration?.percentageIncrease, previewPct])
 
+    // FIX 4: previewPct added so typing a new % re-fetches while dialog is open
     useEffect(() => {
         if (previewOpen && escalation?.enabled) fetchPreview()
-    }, [previewOpen, escalation?.enabled, fetchPreview])
+    }, [previewOpen, escalation?.enabled, previewPct, fetchPreview])
 
     const handleApply = async () => {
         setActionLoading("apply")
@@ -122,8 +132,9 @@ export function EscalationTab({ tenantId }) {
         }
     }
 
-    const handleDisable = async () => {
-        if (!window.confirm("Disable rent escalation for this tenant?")) return
+    // FIX 1: Extracted raw disable (no confirm) so the toggle can call it silently.
+    // handleDisable (confirm-guarded) is only wired to the explicit "Disable" button.
+    const rawDisable = async () => {
         setActionLoading("disable")
         try {
             await api.patch(`/api/escalation/disable/${tenantId}`)
@@ -136,12 +147,16 @@ export function EscalationTab({ tenantId }) {
         }
     }
 
+    const handleDisable = async () => {
+        if (!window.confirm("Disable rent escalation for this tenant?")) return
+        await rawDisable()
+    }
+
+    // FIX 1: Toggle off uses rawDisable (no double-confirm)
     const handleEnableToggle = async (checked) => {
         if (checked) {
             const pct = parseFloat(enableForm.percentageIncrease)
-            if (Number.isNaN(pct) || pct <= 0) {
-                return
-            }
+            if (Number.isNaN(pct) || pct <= 0) return
             setActionLoading("enable")
             try {
                 await api.post(`/api/escalation/enable/${tenantId}`, {
@@ -156,8 +171,35 @@ export function EscalationTab({ tenantId }) {
                 setActionLoading(null)
             }
         } else {
-            await handleDisable()
+            // FIX 1: No confirm dialog when using the toggle — the switch itself is confirmation enough
+            await rawDisable()
         }
+    }
+
+    // FIX 2: Save changes while escalation is already enabled (re-calls enable endpoint which does upsert)
+    const handleSaveChanges = async () => {
+        const pct = parseFloat(enableForm.percentageIncrease)
+        if (Number.isNaN(pct) || pct <= 0) return
+        setActionLoading("save")
+        try {
+            await api.post(`/api/escalation/enable/${tenantId}`, {
+                percentageIncrease: pct,
+                intervalMonths: parseInt(enableForm.intervalMonths, 10) || 12,
+                appliesTo: enableForm.appliesTo || "rent_only",
+            })
+            await getEscalation()
+            setFormDirty(false)
+        } catch (err) {
+            console.error(err)
+        } finally {
+            setActionLoading(null)
+        }
+    }
+
+    // FIX 2: Helper to update form and mark dirty
+    const updateForm = (patch) => {
+        setEnableForm((f) => ({ ...f, ...patch }))
+        setFormDirty(true)
     }
 
     if (loading) {
@@ -195,7 +237,11 @@ export function EscalationTab({ tenantId }) {
                     </div>
                     <div>
                         <p className="text-muted-foreground">Increase</p>
-                        <p className="font-medium">{configuration.percentageIncrease ? `${configuration.percentageIncrease}% every ${configuration.intervalMonths ?? 12} months` : "—"}</p>
+                        <p className="font-medium">
+                            {configuration.percentageIncrease
+                                ? `${configuration.percentageIncrease}% every ${configuration.intervalMonths ?? 12} months`
+                                : "—"}
+                        </p>
                     </div>
                     <div>
                         <p className="text-muted-foreground">Applies To</p>
@@ -218,15 +264,17 @@ export function EscalationTab({ tenantId }) {
                             disabled={!!actionLoading}
                         />
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                    {/* FIX 2: Fields always editable — "Save Changes" appears when dirty + enabled */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                             <Label>Percentage Increase (%)</Label>
                             <Input
                                 type="number"
                                 placeholder="5"
                                 value={enableForm.percentageIncrease}
-                                onChange={(e) => setEnableForm((f) => ({ ...f, percentageIncrease: e.target.value }))}
-                                disabled={enabled}
+                                onChange={(e) => updateForm({ percentageIncrease: e.target.value })}
+                                disabled={!!actionLoading}
                             />
                         </div>
                         <div>
@@ -235,14 +283,46 @@ export function EscalationTab({ tenantId }) {
                                 type="number"
                                 placeholder="12"
                                 value={enableForm.intervalMonths}
-                                onChange={(e) => setEnableForm((f) => ({ ...f, intervalMonths: e.target.value }))}
-                                disabled={enabled}
+                                onChange={(e) => updateForm({ intervalMonths: e.target.value })}
+                                disabled={!!actionLoading}
                             />
                         </div>
+                        {/* FIX 3: appliesTo selector was missing from UI entirely */}
+                        <div>
+                            <Label>Applies To</Label>
+                            <select
+                                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                value={enableForm.appliesTo}
+                                onChange={(e) => updateForm({ appliesTo: e.target.value })}
+                                disabled={!!actionLoading}
+                            >
+                                <option value="rent_only">Rent only</option>
+                                <option value="cam_only">CAM only</option>
+                                <option value="both">Rent & CAM</option>
+                            </select>
+                        </div>
                     </div>
+
+                    {/* FIX 2: Show Save Changes when enabled and form has unsaved edits */}
+                    {enabled && formDirty && (
+                        <div className="pt-2">
+                            <Button
+                                onClick={handleSaveChanges}
+                                disabled={!!actionLoading}
+                                variant="secondary"
+                            >
+                                {actionLoading === "save" ? "Saving…" : "Save Changes"}
+                            </Button>
+                        </div>
+                    )}
+
                     {enabled && (
-                        <div className="flex gap-2 pt-4">
-                            <Button onClick={() => { setPreviewPct(""); setPreviewOpen(true); }} variant="outline">
+                        <div className="flex gap-2 pt-2">
+                            <Button
+                                onClick={() => { setPreviewPct(""); setPreviewOpen(true) }}
+                                variant="outline"
+                                disabled={!!actionLoading}
+                            >
                                 Preview Increase
                             </Button>
                             <Button onClick={handleApply} disabled={!!actionLoading}>
@@ -323,12 +403,23 @@ export function EscalationTab({ tenantId }) {
             </Card>
 
             {/* 5️⃣ PREVIEW DIALOG */}
+            {/* FIX 4: previewPct input inside the dialog so user can try custom % and get live re-fetch */}
             <Dialog open={previewOpen} onOpenChange={(open) => { setPreviewOpen(open); if (!open) setPreview(null) }}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Preview Rent Escalation</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-2 text-sm">
+                    <div className="space-y-3 text-sm">
+                        <div>
+                            <Label>Override Percentage (optional)</Label>
+                            <Input
+                                type="number"
+                                placeholder={`Default: ${configuration.percentageIncrease ?? "—"}%`}
+                                value={previewPct}
+                                onChange={(e) => setPreviewPct(e.target.value)}
+                                className="mt-1"
+                            />
+                        </div>
                         {previewLoading ? (
                             <p className="text-muted-foreground">Loading preview…</p>
                         ) : preview ? (
@@ -336,6 +427,8 @@ export function EscalationTab({ tenantId }) {
                                 <p>Current Rent: {formatRupee(currentValues.totalRent)}</p>
                                 <p>Increase: {preview.percentageApplied ?? configuration.percentageIncrease}%</p>
                                 <p className="font-semibold text-base">New Rent: {formatRupee(preview.totalRent)}</p>
+                                <p>CAM Charges: {formatRupee(preview.camCharges)}</p>
+                                <p>Net Amount: {formatRupee(preview.netAmount)}</p>
                                 {preview.context?.nextEscalation && (
                                     <p className="text-muted-foreground">
                                         Effective from (next escalation): {preview.context.nextEscalation.nepali}
