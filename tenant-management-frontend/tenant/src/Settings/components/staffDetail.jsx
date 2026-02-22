@@ -114,15 +114,7 @@ function StaffDetail({ staff }) {
 
                                 {/* Right: Actions */}
                                 <div className="flex items-center gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="border-border hover:bg-accent/10 hover:text-accent gap-1"
-                                    // Wire up edit logic later
-                                    >
-                                        <Edit className="w-4 h-4" />
-                                        <span>Edit</span>
-                                    </Button>
+
                                     <Button
                                         variant="outline"
                                         size="sm"

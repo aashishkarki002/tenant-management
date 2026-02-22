@@ -10,7 +10,7 @@ import SettingTab from "./components/settingTab";
 import StaffDetail from "./components/staffDetail";
 import SubMetersTab from "./components/SubMetersTab";
 import useProperty from "@/hooks/use-property";
-import RentEscalationTab from "./components/RentEscalationTab";
+import SystemSettingsTab from "./components/SystemSettingTab";
 
 // ─── Main Admin / Settings Page ───────────────────────────────────────────────
 
@@ -208,7 +208,7 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="rentEscalation">
-          <RentEscalationTab />
+          <SystemSettingsTab />
         </TabsContent>
       </Tabs>
     </>

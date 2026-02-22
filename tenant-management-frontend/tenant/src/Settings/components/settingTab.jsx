@@ -198,7 +198,10 @@ function SettingTab({
 
                         <div className="pt-4 flex gap-3">
                             {!isEditingProfile ? (
-                                <Button type="button" onClick={() => setIsEditingProfile(true)}>
+                                <Button type="button" onClick={(e) => {
+                                    e.preventDefault();
+                                    setIsEditingProfile(true);
+                                }}>
                                     Edit Profile
                                 </Button>
                             ) : (
@@ -211,7 +214,7 @@ function SettingTab({
                                         {formik.isSubmitting ? "Saving..." : "Save Changes"}
                                     </Button>
                                     <Button
-                                        type="button"
+                                        type="submit"
                                         variant="ghost"
                                         onClick={() => {
                                             formik.resetForm();

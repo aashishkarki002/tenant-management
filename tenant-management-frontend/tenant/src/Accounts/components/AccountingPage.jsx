@@ -83,8 +83,8 @@ function NetMarginBadge({ revenue, netCashFlow }) {
     const isPositive = netCashFlow >= 0;
     return (
         <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold border ${isPositive
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800"
-                : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800"
+            ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800"
+            : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800"
             }`}>
             {isPositive ? <TrendingUpIcon className="w-3 h-3" /> : <TrendingDownIcon className="w-3 h-3" />}
             {margin}% margin
@@ -105,8 +105,8 @@ function DeltaBadge({ pct }) {
     const Icon = up ? TrendingUpIcon : TrendingDownIcon;
     return (
         <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${up
-                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+            : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
             }`}>
             <Icon className="w-3 h-3" />
             {Math.abs(pct).toFixed(1)}%
