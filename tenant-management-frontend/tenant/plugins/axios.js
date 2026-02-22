@@ -81,6 +81,7 @@ api.interceptors.response.use(
 
         // Refresh failed (token revoked, expired, or reused) — send to login.
         if (!isPublicRoute) {
+          console.warn("[axios] 401 + refresh failed, redirecting to /login. Failed request:", originalRequest.url);
           window.location.href = "/login";
         }
 

@@ -22,12 +22,15 @@ export const AuthProvider = ({ children }) => {
       const response = await api.get("/api/auth/get-me");
       if (response.data.success && response.data.admin) {
         setUser(response.data.admin);
+        console.log("[AuthContext] fetchMe succeeded, user set");
       } else {
+        console.warn("[AuthContext] fetchMe: success=false or no admin, user=null", response.data);
         setUser(null);
       }
     } catch (error) {
+      console.error("[AuthContext] fetchMe failed:", error?.response?.status, error?.message, error);
       if (error.response?.status !== 401) {
-        console.error("Error fetching user:", error);
+        console.error("[AuthContext] Error details:", error);
       }
       setUser(null);
     } finally {

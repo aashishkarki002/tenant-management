@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, useLocation, useParams, Navigate } from "react-router-dom";
 import Signup from "./Auth/Signup";
 import Login from "./Auth/Login";
 
@@ -23,6 +23,12 @@ import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail/ViewDetail";
 import BroadCast from "./BroadCast";
+
+function TenantDetailRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/tenant/viewDetail/${id}`} replace />;
+}
+
 export default function App() {
   const location = useLocation();
   const path = location.pathname.toLowerCase();
@@ -46,6 +52,15 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <Tenants />
+          </ProtectedRoutes>
+        }
+      />
+      {/* Redirect old /tenants/:id URLs (e.g. from search) to tenant detail */}
+      <Route
+        path="/tenants/:id"
+        element={
+          <ProtectedRoutes>
+            <TenantDetailRedirect />
           </ProtectedRoutes>
         }
       />

@@ -1,136 +1,137 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Mail, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
+import api from "../plugins/axios";
 
-function VerifyEmail() {
-  const navigate = useNavigate();
+export default function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
-  const [isResending, setIsResending] = useState(false);
-  const [resendSuccess, setResendSuccess] = useState(false);
-
-  // Get email from URL params if available
   const email = searchParams.get("email") || "";
 
-  const handleResendEmail = async () => {
-    setIsResending(true);
-    setResendSuccess(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
+  const handleResend = async () => {
+    if (!email) {
+      toast.error("No email address found. Please sign up again.");
+      return;
+    }
+
+    setResendLoading(true);
     try {
-      // TODO: Replace with your actual API endpoint
-      const response = await fetch(
-        "http://localhost:3000/api/auth/resend-verification",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email }),
-        }
-      );
+      await api.post("/api/auth/resend-email-verification", { email });
+      toast.success("Verification email sent! Check your inbox.");
+      setResendSent(true);
 
-      if (response.ok) {
-        setResendSuccess(true);
-        toast.success("Verification email has been resent successfully!");
-      } else {
-        const data = await response.json();
-        toast.error(data.message || "Failed to resend verification email");
-      }
+      // 60 second cooldown to prevent spam clicking
+      setCooldown(60);
+      const interval = setInterval(() => {
+        setCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setResendSent(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } catch (error) {
-      toast.error("An error occurred. Please try again later.");
-      console.error("Resend email error:", error);
+      toast.error(
+        error.response?.data?.message || "Failed to resend. Please try again."
+      );
     } finally {
-      setIsResending(false);
+      setResendLoading(false);
     }
   };
 
-  const handleGoToLogin = () => {
-    navigate("/login");
-  };
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md border-border shadow-lg">
-        <CardHeader className="space-y-4 text-center">
-          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/10">
-            <Mail className="size-8 text-primary" />
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-md text-center">
+        <CardHeader>
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
+            {/* Email icon */}
+            <svg
+              className="h-8 w-8 text-blue-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+              />
+            </svg>
           </div>
-          <div className="space-y-2">
-            <CardTitle className="text-2xl font-semibold tracking-tight">
-              Verify Your Email
-            </CardTitle>
-            <CardDescription className="text-balance text-base">
-              {email ? (
-                <>
-                  Welcome{" "}
-                  <span className="font-medium text-foreground">{email}</span>
-                </>
-              ) : (
-                "Please verify your email address to continue"
-              )}
-            </CardDescription>
-          </div>
+          <CardTitle className="text-2xl">Check your email</CardTitle>
+          <CardDescription className="text-base">
+            We sent a verification link to{" "}
+            {email ? (
+              <span className="font-medium text-foreground">{email}</span>
+            ) : (
+              "your email address"
+            )}
+          </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-6">
-          <p className="text-center text-sm text-muted-foreground text-balance leading-relaxed">
-            We&apos;ve sent a verification link to your email address. Please
-            check your inbox and click the link to verify your account.
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Click the link in the email to verify your account. The link
+            expires in <span className="font-medium">10 minutes</span>.
           </p>
 
-          {resendSuccess && (
-            <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground">
-              <CheckCircle2 className="size-4 text-primary" />
-              <span>Verification email has been resent successfully!</span>
-            </div>
-          )}
+          <div className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
+            Didn&apos;t receive it? Check your spam folder first.
+          </div>
 
-          <div className="space-y-3">
+          <div className="flex flex-col gap-2">
             <Button
-              onClick={handleResendEmail}
-              disabled={isResending}
-              className="w-full"
-              size="lg"
+              variant="outline"
+              onClick={handleResend}
+              disabled={resendLoading || cooldown > 0}
             >
-              {isResending ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  Sending...
-                </>
+              {resendLoading ? (
+                <Spinner />
+              ) : cooldown > 0 ? (
+                `Resend in ${cooldown}s`
               ) : (
-                <>
-                  <Mail className="mr-2 size-4" />
-                  Resend Email
-                </>
+                "Resend verification email"
               )}
             </Button>
 
-            <Button
-              onClick={handleGoToLogin}
-              variant="outline"
-              className="w-full bg-transparent"
-              size="lg"
-            >
-              <ArrowLeft className="mr-2 size-4" />
-              Go to Login
-            </Button>
+            {resendSent && (
+              <p className="text-sm text-green-600">
+                ✓ New verification email sent successfully.
+              </p>
+            )}
           </div>
 
-          <p className="text-center text-xs text-muted-foreground">
-            Didn&apos;t receive the email? Check your spam folder or try
-            resending.
-          </p>
+          <div className="border-t pt-4">
+            <p className="text-sm text-muted-foreground">
+              Wrong email address?{" "}
+              <a
+                href="/signup"
+                className="underline underline-offset-4 hover:text-foreground"
+              >
+                Sign up again
+              </a>
+            </p>
+          </div>
+
+          <div>
+            <a
+              href="/login"
+              className="text-sm underline underline-offset-4 hover:text-foreground text-muted-foreground"
+            >
+              Already verified? Sign in
+            </a>
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-export default VerifyEmail;

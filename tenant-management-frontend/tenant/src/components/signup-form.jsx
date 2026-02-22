@@ -2,22 +2,38 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFormik } from "formik";
+import * as Yup from "yup";
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import axios from "axios";
+// FIX: Use the configured api instance, not raw axios.
+// Raw axios bypasses all interceptors and uses a hardcoded localhost URL.
+import api from "../../plugins/axios";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+
+const validationSchema = Yup.object({
+  name: Yup.string().required("Name is required"),
+  phone: Yup.string().required("Phone is required"),
+  email: Yup.string().email("Invalid email address").required("Email is required"),
+  password: Yup.string()
+    .min(8, "Password must be at least 8 characters")
+    .required("Password is required"),
+  confirmPassword: Yup.string()
+    .oneOf([Yup.ref("password")], "Passwords do not match")
+    .required("Please confirm your password"),
+});
+
 export default function SignupForm({ className, ...props }) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+
   const formik = useFormik({
     initialValues: {
       name: "",
@@ -26,56 +42,32 @@ export default function SignupForm({ className, ...props }) {
       password: "",
       confirmPassword: "",
     },
-    onSubmit: async (values, { setFieldError }) => {
-      // Validate password confirmation
-      if (values.password !== values.confirmPassword) {
-        setFieldError("confirmPassword", "Passwords do not match");
-        return;
-      }
-
-      // Validate password length
-      if (values.password.length < 8) {
-        setFieldError("password", "Password must be at least 8 characters");
-        return;
-      }
-
+    validationSchema,
+    onSubmit: async (values) => {
       setIsLoading(true);
       try {
-        // Only send the fields the backend expects
-        const payload = {
+        const response = await api.post("/api/auth/register", {
           name: values.name,
           email: values.email,
           password: values.password,
           phone: values.phone,
-        };
+        });
 
-        const response = await axios.post(
-          "http://localhost:3000/api/auth/register",
-          payload,
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        // Check for successful status codes (200-299)
-        if (response.status >= 200 && response.status < 300) {
-          toast.success(
-            "Account created successfully please login to continue"
-          );
-          setIsLoading(false);
-          // URL encode the email to handle special characters
+        if (response.data.success) {
+          toast.success("Account created! Please check your email to verify your account.");
+          // Pass email to verify-email page so it can offer resend
           navigate("/verify-email?email=" + encodeURIComponent(values.email));
         } else {
           toast.error(response.data?.message || "Registration failed");
-          setIsLoading(false);
         }
       } catch (error) {
         toast.error(
-          error.response?.data?.message ||
-          "An error occurred during registration"
+          error.response?.data?.message || "An error occurred during registration"
         );
         console.error("Signup error:", error);
+      } finally {
+        // FIX: Always runs, even if an unexpected error bypasses catch.
+        // Previously setIsLoading(false) was duplicated in both success and catch paths.
         setIsLoading(false);
       }
     },
@@ -90,9 +82,10 @@ export default function SignupForm({ className, ...props }) {
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">Create your account</h1>
                 <p className="text-muted-foreground text-sm text-balance">
-                  Enter your email below to create your account
+                  Enter your details below to create your account
                 </p>
               </div>
+
               <Field>
                 <FieldLabel htmlFor="name">Name</FieldLabel>
                 <Input
@@ -101,10 +94,15 @@ export default function SignupForm({ className, ...props }) {
                   placeholder="John Doe"
                   required
                   onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
                   value={formik.values.name}
                   name="name"
                 />
+                {formik.errors.name && formik.touched.name && (
+                  <div className="text-sm text-red-500 mt-1">{formik.errors.name}</div>
+                )}
               </Field>
+
               <Field>
                 <FieldLabel htmlFor="phone">Phone</FieldLabel>
                 <Input
@@ -113,10 +111,15 @@ export default function SignupForm({ className, ...props }) {
                   placeholder="1234567890"
                   required
                   onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
                   value={formik.values.phone}
                   name="phone"
                 />
+                {formik.errors.phone && formik.touched.phone && (
+                  <div className="text-sm text-red-500 mt-1">{formik.errors.phone}</div>
+                )}
               </Field>
+
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
@@ -125,57 +128,57 @@ export default function SignupForm({ className, ...props }) {
                   placeholder="m@example.com"
                   required
                   onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
                   value={formik.values.email}
                   name="email"
                 />
+                {formik.errors.email && formik.touched.email && (
+                  <div className="text-sm text-red-500 mt-1">{formik.errors.email}</div>
+                )}
                 <FieldDescription>
                   We&apos;ll use this to contact you. We will not share your
                   email with anyone else.
                 </FieldDescription>
               </Field>
-              <Field>
-                <Field className="grid grid-cols-2 gap-4">
-                  <Field>
-                    <FieldLabel htmlFor="password">Password</FieldLabel>
-                    <Input
-                      id="password"
-                      type="password"
-                      required
-                      onChange={formik.handleChange}
-                      onBlur={formik.handleBlur}
-                      value={formik.values.password}
-                      name="password"
-                    />
-                    {formik.errors.password && formik.touched.password && (
-                      <div className="text-sm text-red-500 mt-1">
-                        {formik.errors.password}
-                      </div>
-                    )}
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="confirm-password">
-                      Confirm Password
-                    </FieldLabel>
-                    <Input
-                      id="confirm-password"
-                      type="password"
-                      required
-                      onChange={formik.handleChange}
-                      onBlur={formik.handleBlur}
-                      value={formik.values.confirmPassword}
-                      name="confirmPassword"
-                    />
-                    {formik.errors.confirmPassword && formik.touched.confirmPassword && (
-                      <div className="text-sm text-red-500 mt-1">
-                        {formik.errors.confirmPassword}
-                      </div>
-                    )}
-                  </Field>
+
+              <Field className="grid grid-cols-2 gap-4">
+                <Field>
+                  <FieldLabel htmlFor="password">Password</FieldLabel>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    value={formik.values.password}
+                    name="password"
+                  />
+                  {formik.errors.password && formik.touched.password && (
+                    <div className="text-sm text-red-500 mt-1">
+                      {formik.errors.password}
+                    </div>
+                  )}
                 </Field>
-                <FieldDescription>
-                  Must be at least 8 characters long.
-                </FieldDescription>
+                <Field>
+                  <FieldLabel htmlFor="confirm-password">Confirm Password</FieldLabel>
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    required
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    value={formik.values.confirmPassword}
+                    name="confirmPassword"
+                  />
+                  {formik.errors.confirmPassword && formik.touched.confirmPassword && (
+                    <div className="text-sm text-red-500 mt-1">
+                      {formik.errors.confirmPassword}
+                    </div>
+                  )}
+                </Field>
               </Field>
+              <FieldDescription>Must be at least 8 characters long.</FieldDescription>
+
               <Field>
                 <Button type="submit" disabled={isLoading}>
                   {isLoading ? <Spinner /> : "Create Account"}
@@ -187,6 +190,7 @@ export default function SignupForm({ className, ...props }) {
               </FieldDescription>
             </FieldGroup>
           </form>
+
           <div className="bg-muted relative hidden md:block">
             <img
               src="/digi.jpg"
@@ -196,6 +200,7 @@ export default function SignupForm({ className, ...props }) {
           </div>
         </CardContent>
       </Card>
+
       <FieldDescription className="px-6 text-center">
         By clicking continue, you agree to our{" "}
         <a href="/terms-of-service">Terms of Service</a> and{" "}

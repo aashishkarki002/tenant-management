@@ -132,15 +132,10 @@ export function useTenantEdit(tenantId) {
         };
         setTenant(optimisticTenant);
 
-        // Send update request
+        // Send update request — do NOT set Content-Type; axios sets multipart/form-data; boundary=... automatically
         const response = await api.patch(
           `/api/tenant/update-tenant/${tenantId}`,
           formData,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          },
         );
 
         if (response.data.success) {

@@ -41,7 +41,7 @@ export default function Tenants() {
       const data = await response.data;
       setProperties(data.property || []);
     } catch (error) {
-      console.error("Error fetching properties:", error);
+      console.error("[Tenants] fetchProperties failed:", error?.response?.status, error?.message);
       if (error.response?.status === 401) {
         // Don't show toast for properties 401 - it's already handled by tenants or interceptor
         setProperties([]);
@@ -82,7 +82,7 @@ export default function Tenants() {
       const data = await response.data;
       setTenants(data.tenants || []);
     } catch (error) {
-      console.error("Error filtering tenants:", error);
+      console.error("[Tenants] filterTenants failed:", error?.response?.status, error?.message);
       if (error.response?.status === 401) {
         toast.error("Session expired. Please login again.");
         setTenants([]);
@@ -98,21 +98,14 @@ export default function Tenants() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Check if token exists
-      const token = localStorage.getItem("token");
-      if (!token) {
-        toast.error("Please login to continue");
-        navigate("/login");
-        return;
-      }
-
+      // Auth is handled by ProtectedRoutes + httpOnly cookies. No localStorage check.
       const fetchtenants = async () => {
         try {
           const response = await api.get("/api/tenant/get-tenants");
           const data = await response.data;
           setTenants(data.tenants || []);
         } catch (error) {
-          console.error("Error fetching tenants:", error);
+          console.error("[Tenants] get-tenants failed:", error?.response?.status, error?.message);
           if (error.response?.status === 401) {
             toast.error("Session expired. Please login again.");
             // The axios interceptor should handle redirect, but we'll set empty state
@@ -126,7 +119,7 @@ export default function Tenants() {
       // Fetch both in parallel
       await Promise.all([fetchtenants(), fetchProperties()]);
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.error("[Tenants] fetchData failed:", error?.response?.status, error?.message);
       if (error.response?.status === 401) {
         toast.error("Authentication failed. Please login again.");
       } else {
@@ -181,7 +174,7 @@ export default function Tenants() {
           const data = await response.data;
           setTenants(data.tenants || []);
         } catch (error) {
-          console.error("Error fetching tenants:", error);
+          console.error("[Tenants] get-tenants (in fetchData) failed:", error?.response?.status, error?.message);
           if (error.response?.status === 401) {
             toast.error("Session expired. Please login again.");
             setTenants([]);

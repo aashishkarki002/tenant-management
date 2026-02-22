@@ -12,6 +12,7 @@ export default function ProtectedRoutes({ children }) {
     // which is populated by /api/auth/get-me on mount (using the cookie automatically).
     if (!user) {
         // Preserve the attempted URL so we can redirect back after login
+        console.warn("[ProtectedRoutes] Redirecting to login — user is null. Path:", location.pathname);
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
