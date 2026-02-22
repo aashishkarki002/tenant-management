@@ -1,6 +1,7 @@
 import { Tenant } from "../tenant/Tenant.Model.js";
 import { Rent } from "../rents/rent.Model.js";
 import { LedgerEntry } from "../ledger/Ledger.Model.js";
+import { Transaction } from "../ledger/transactions/Transaction.Model.js";
 
 /**
  * Global search across Tenants, Rents, and Ledger entries.
@@ -19,44 +20,54 @@ export const globalSearch = async (query, limit = 5) => {
   const isNumeric = !isNaN(q) && q.length > 0;
 
   // ── Run all searches in parallel ──────────────────────────────────────────
-  const [tenants, rents, ledgerEntries] = await Promise.allSettled([
-    // 1. Tenants — search by name, email, phone
-    Tenant.find(
-      {
-        $text: { $search: q },
-        isDeleted: false,
-      },
-      { score: { $meta: "textScore" } },
-    )
-      .sort({ score: { $meta: "textScore" } })
-      .limit(limit)
-      .select("name email phone status property")
-      .populate("property", "name")
-      .lean(),
-
-    // 2. Rents — text search on month name + numeric fallback for year/amount
-    Rent.find({
-      $or: [
-        ...(isNumeric
-          ? [{ nepaliYear: parseInt(q) }, { rentAmount: parseInt(q) }]
-          : [{ $text: { $search: q } }]),
-      ],
-    })
-      .limit(limit)
-      .select("nepaliMonth nepaliYear rentAmount status tenant property")
-      .populate("tenant", "name email")
-      .populate("property", "name")
-      .lean(),
-
-    // 3. Ledger entries — search by description text
-    LedgerEntry.find({ $text: { $search: q } })
-      .limit(limit)
-      .select(
-        "description debitAmount creditAmount nepaliMonth nepaliYear tenant transactionDate",
+  const [tenants, rents, ledgerEntries, transactions] =
+    await Promise.allSettled([
+      // 1. Tenants — search by name, email, phone
+      Tenant.find(
+        {
+          $text: { $search: q },
+          isDeleted: false,
+        },
+        { score: { $meta: "textScore" } },
       )
-      .populate("tenant", "name")
-      .lean(),
-  ]);
+        .sort({ score: { $meta: "textScore" } })
+        .limit(limit)
+        .select("name email phone status property")
+        .populate("property", "name")
+        .lean(),
+
+      // 2. Rents — text search on month name + numeric fallback for year/amount
+      Rent.find({
+        $or: [
+          ...(isNumeric
+            ? [{ nepaliYear: parseInt(q) }, { rentAmount: parseInt(q) }]
+            : [{ $text: { $search: q } }]),
+        ],
+      })
+        .limit(limit)
+        .select("nepaliMonth nepaliYear rentAmount status tenant property")
+        .populate("tenant", "name email")
+        .populate("property", "name")
+        .lean(),
+
+      // 3. Ledger entries — search by description text
+      LedgerEntry.find({ $text: { $search: q } })
+        .limit(limit)
+        .select(
+          "description debitAmount creditAmount nepaliMonth nepaliYear tenant transactionDate",
+        )
+        .populate("tenant", "name")
+        .lean(),
+
+      // 4. Transactions — search by description text
+      Transaction.find({ $text: { $search: q } })
+        .limit(limit)
+        .select(
+          "description type status referenceType referenceId transactionDate",
+        )
+        .populate("referenceType", "name")
+        .lean(),
+    ]);
 
   // ── Shape into a unified result format ────────────────────────────────────
   const shaped = [];

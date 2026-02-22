@@ -249,9 +249,9 @@ ledgerEntrySchema.statics.calculateTotals = async function (filters = {}) {
     entryCount,
   };
 };
-
-export const LedgerEntry = mongoose.model("LedgerEntry", ledgerEntrySchema);
 ledgerEntrySchema.index(
   { description: "text" },
   { name: "ledger_text_search" },
 );
+
+export const LedgerEntry = mongoose.model("LedgerEntry", ledgerEntrySchema);

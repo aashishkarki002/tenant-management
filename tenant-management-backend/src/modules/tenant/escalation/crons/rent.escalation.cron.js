@@ -13,39 +13,54 @@
  */
 
 import cron from "node-cron";
-import NepaliDate from "nepali-datetime";
 import { processDueEscalations } from "../rent.escalation.service.js";
-import { formatNepaliISO } from "../../../../utils/nepaliDateHelper.js";
+import {
+  formatNepaliISO,
+  getNepaliMonthDates,
+} from "../../../../utils/nepaliDateHelper.js";
 import { getCurrentQuarterInfo } from "../../../../utils/quarterlyRentHelper.js";
+
 export function startEscalationCron() {
-  // 00:05 every day — runs slightly after midnight to avoid edge cases
-  cron.schedule("5 0 * * *", async () => {
-    const now = new Date();
-    const todayNp = new NepaliDate(now);
-    const { quarter, year } = getCurrentQuarterInfo();
+  // 00:05 every day, pinned to Nepal timezone (UTC+5:45).
+  // Without the timezone option, node-cron uses server local time —
+  // on a UTC server this would fire at 05:50 Nepal time instead of 00:05.
+  cron.schedule(
+    "5 0 * * *",
+    async () => {
+      const now = new Date();
 
-    console.log(
-      `[EscalationCron] ▶ Started at ${now.toISOString()} ` +
-        `| Nepali: ${formatNepaliISO(todayNp)} | Q${quarter} ${year}`,
-    );
-
-    try {
-      const summary = await processDueEscalations(now);
+      // Use getNepaliMonthDates() for consistent Nepali context
+      const { nepaliToday, npYear, npMonth } = getNepaliMonthDates();
+      const { quarter, year } = getCurrentQuarterInfo();
 
       console.log(
-        `[EscalationCron] ✅ Processed: ${summary.processed} | Failed: ${summary.failed}`,
+        `[EscalationCron] ▶ Started at ${now.toISOString()} ` +
+          `| Nepali: ${formatNepaliISO(nepaliToday)} | Q${quarter} ${year}`,
       );
 
-      if (summary.failed > 0) {
-        console.warn(
-          "[EscalationCron] Failed entries:",
-          summary.details.filter((d) => d.status !== "ok"),
-        );
-      }
-    } catch (err) {
-      console.error("[EscalationCron] ❌ Fatal error:", err);
-    }
-  });
+      try {
+        const summary = await processDueEscalations(now);
 
-  console.log("✅ Escalation cron scheduled — runs daily at 00:05");
+        console.log(
+          `[EscalationCron] ✅ Processed: ${summary.processed} | Failed: ${summary.failed}`,
+        );
+
+        if (summary.failed > 0) {
+          console.warn(
+            "[EscalationCron] Failed entries:",
+            summary.details.filter((d) => d.status !== "ok"),
+          );
+        }
+      } catch (err) {
+        console.error("[EscalationCron] ❌ Fatal error:", err);
+      }
+    },
+    {
+      timezone: "Asia/Kathmandu", // ← critical: ensures 00:05 Nepal time
+    },
+  );
+
+  console.log(
+    "✅ Escalation cron scheduled — runs daily at 00:05 Nepal time (Asia/Kathmandu)",
+  );
 }

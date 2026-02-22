@@ -315,9 +315,6 @@ tenantSchema.index({ "rentEscalation.nextEscalationDate": 1 });
 // JSON / Object output
 tenantSchema.set("toJSON", { virtuals: true, getters: false });
 tenantSchema.set("toObject", { virtuals: true, getters: false });
-
-export const Tenant =
-  mongoose.models.Tenant || mongoose.model("Tenant", tenantSchema);
 tenantSchema.index(
   { name: "text", email: "text", phone: "text" },
   {
@@ -325,3 +322,5 @@ tenantSchema.index(
     name: "tenant_text_search",
   },
 );
+export const Tenant =
+  mongoose.models.Tenant || mongoose.model("Tenant", tenantSchema);

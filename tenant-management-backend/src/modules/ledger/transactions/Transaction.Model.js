@@ -63,7 +63,7 @@ const transactionSchema = new mongoose.Schema(
       required: true,
       refPath: "referenceType",
     },
-    
+
     // ============================================
     // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
     // ============================================
@@ -73,7 +73,7 @@ const transactionSchema = new mongoose.Schema(
       min: 0,
       get: paisaToRupees,
     },
-    
+
     // Backward compatibility getter
     totalAmount: {
       type: Number,
@@ -118,5 +118,9 @@ const transactionSchema = new mongoose.Schema(
 transactionSchema.index({ transactionDate: 1, type: 1 });
 transactionSchema.index({ referenceType: 1, referenceId: 1 });
 transactionSchema.index({ status: 1 });
+transactionSchema.index(
+  { description: "text" },
+  { name: "transaction_text_search" },
+);
 
 export const Transaction = mongoose.model("Transaction", transactionSchema);
