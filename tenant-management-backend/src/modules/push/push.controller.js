@@ -1,5 +1,5 @@
 import PushSubscription from "./push.Model.js";
-import { sendPushToAdmin } from "../../config/webPush.js";
+import { sendPushToAdmin } from "../../config/webpush.js";
 
 /** Test route: POST /send-notification with { title, body } — sends to all admins with push subscriptions */
 export const sendTestNotification = async (req, res) => {

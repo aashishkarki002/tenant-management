@@ -34,7 +34,7 @@ import systemSettingRoute from "./modules/systemConfig/systemSetting.route.js";
 import { masterCron } from "./cron/service/master-cron.js";
 import pushRoute from "./modules/push/push.route.js";
 import { sendTestNotification } from "./modules/push/push.controller.js";
-import { initializeWebPush } from "./config/webPush.js";
+import { initializeWebPush } from "./config/webpush.js";
 
 initializeWebPush();
 startEscalationCron();

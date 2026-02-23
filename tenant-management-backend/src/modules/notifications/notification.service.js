@@ -1,6 +1,6 @@
 import Notification from "./notification.model.js";
 import { emitNotification } from "../../config/socket.js";
-import { sendPushToAdmin } from "../../config/webPush.js";
+import { sendPushToAdmin } from "../../config/webpush.js";
 import Admin from "../auth/admin.Model.js";
 
 /**
