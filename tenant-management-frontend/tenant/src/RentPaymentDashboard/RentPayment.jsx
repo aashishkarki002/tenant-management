@@ -15,6 +15,8 @@ import { PaymentsTable } from "./components/PaymentsTable";
 import { PaymentFilters } from "./components/PaymentFilters";
 import { RentSummaryCard } from "./components/RentSummaryCard";
 import { getPaymentAmounts } from "./utils/paymentUtil";
+import { RentFilter } from "./components/RentFilter";
+import { AdminRentActions } from "./components/AdminRentAction";
 
 /**
  * Main component for Rent & Payments dashboard
@@ -23,14 +25,19 @@ import { getPaymentAmounts } from "./utils/paymentUtil";
 const RentPayment = () => {
   const {
     rents,
-    filteredRents,
     payments,
     bankAccounts,
     cams,
     loading,
     paymentsLoading,
     filterRentMonth,
+    filterRentYear,
+    filterStatus,
+    filterPropertyId,
     setFilterRentMonth,
+    setFilterRentYear,
+    setFilterStatus,
+    setFilterPropertyId,
     filterStartDate,
     filterEndDate,
     filterPaymentMethod,
@@ -46,29 +53,15 @@ const RentPayment = () => {
   const [datePickerResetKey, setDatePickerResetKey] = useState(0);
   const [frequencyView, setFrequencyView] = useState("monthly");
 
-  // Filter rents by selected frequency (monthly / quarterly)
+  // Split server-filtered rents by frequency view (client-only toggle, no round-trip needed)
   const frequencyFilteredRents = useMemo(
-    () =>
-      filteredRents.filter((rent) => {
-        const rawFrequency =
-          rent.rentFrequency || rent.tenant?.rentPaymentFrequency;
-        const frequency = rawFrequency?.toLowerCase();
-        if (!frequency) return false;
-        return frequencyView === "monthly"
-          ? frequency === "monthly"
-          : frequency === "quarterly";
-      }),
-    [filteredRents, frequencyView]
+    () => rents.filter((r) => (r.rentFrequency || "monthly") === frequencyView),
+    [rents, frequencyView],
   );
 
   /**
-   * Industry standard: derive summary figures directly from the filtered
-   * rent list rather than a separate API call so the progress bar always
-   * stays in sync with what is visible in the table.
-   *
-   * - totalDue   → sum of (rentAmount + camAmount) for every visible rent
-   * - totalCollected → paid rents count in full; partial rents use the
-   *                    paidAmountPaisa field set by the backend; others = 0
+   * Derive summary totals from the visible rent list so the progress bar
+   * always stays in sync with the table — no separate API call needed.
    */
   const { frequencyTotalDue, frequencyTotalCollected } = useMemo(() => {
     return frequencyFilteredRents.reduce(
@@ -79,8 +72,7 @@ const RentPayment = () => {
         let collected = 0;
         if (status === "paid") {
           collected = totalDue;
-        } else if (status === "partial") {
-          // Prefer paisa-precision field; fall back to rupee field
+        } else if (status === "partially_paid" || status === "partial") {
           collected =
             rent.paidAmountPaisa != null
               ? rent.paidAmountPaisa / 100
@@ -92,7 +84,7 @@ const RentPayment = () => {
           frequencyTotalCollected: acc.frequencyTotalCollected + collected,
         };
       },
-      { frequencyTotalDue: 0, frequencyTotalCollected: 0 }
+      { frequencyTotalDue: 0, frequencyTotalCollected: 0 },
     );
   }, [frequencyFilteredRents, cams]);
 
@@ -116,6 +108,11 @@ const RentPayment = () => {
     setFilterEndDate("");
     setFilterPaymentMethod("all");
     setDatePickerResetKey((prev) => prev + 1);
+  };
+
+  const handleClearRentFilters = () => {
+    setFilterStatus("all");
+    setFilterPropertyId("");
   };
 
   if (loading) {
@@ -144,6 +141,11 @@ const RentPayment = () => {
               </Tabs>
             </div>
           </CardHeader>
+          <div className="flex items-center justify-between px-6 pt-6">
+            <h2 className="text-xl font-bold">Rent Management</h2>
+
+            <AdminRentActions onProcessSuccess={getRents} />
+          </div>
 
           <TabsContent value="rent">
             <RentSummaryCard
@@ -154,6 +156,7 @@ const RentPayment = () => {
               onMonthChange={setFilterRentMonth}
             />
             <CardContent>
+
               <RentTable
                 rents={frequencyFilteredRents}
                 cams={cams}

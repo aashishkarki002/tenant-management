@@ -1,11 +1,20 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import api from "../../../plugins/axios";
 import { toast } from "sonner";
 import { getCurrentNepaliMonthYear } from "@/constants/nepaliMonths";
 
 /**
- * Custom hook for managing rent and payment data
- * Handles fetching rents, payments, units, bank accounts, CAMs, and summary data
+ * Custom hook for managing rent and payment data.
+ *
+ * CHANGE: getRents now passes all rent-tab filters as query params
+ * instead of fetching everything and filtering client-side.
+ *
+ * Industry Standard: server-side filtering is preferred over client-side
+ * for paginated/large datasets — reduces payload, avoids stale data, and
+ * keeps the server as the single source of truth for filter logic.
+ *
+ * filteredRents (useMemo) is removed — the API now returns only matching
+ * records, so `rents` is already the filtered set.
  */
 export const useRentData = () => {
   const [rents, setRents] = useState([]);
@@ -19,36 +28,41 @@ export const useRentData = () => {
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Rent tab: filter by Nepali month/year (default current month)
+  // ── Rent tab filters ──────────────────────────────────────────────────
   const { month: defaultMonth, year: defaultYear } =
     getCurrentNepaliMonthYear();
   const [filterRentMonth, setFilterRentMonth] = useState(defaultMonth);
   const [filterRentYear, setFilterRentYear] = useState(defaultYear);
+  const [filterStatus, setFilterStatus] = useState("all"); // NEW
+  const [filterPropertyId, setFilterPropertyId] = useState(""); // NEW
 
-  // Filter states (payments tab)
+  // ── Payment tab filters ───────────────────────────────────────────────
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterPaymentMethod, setFilterPaymentMethod] = useState("all");
 
-  // Rents filtered by selected Nepali month/year
-  const filteredRents = useMemo(
-    () =>
-      rents.filter(
-        (r) =>
-          Number(r.nepaliMonth) === filterRentMonth &&
-          Number(r.nepaliYear) === filterRentYear,
-      ),
-    [rents, filterRentMonth, filterRentYear],
-  );
-
   /**
-   * Fetches all rents from the API
+   * Fetches rents with all active filters sent as query params.
+   *
+   * Matches the filter shape already supported by getRentsController:
+   *   nepaliMonth, nepaliYear, status, propertyId
    */
   const getRents = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get("/api/rent/get-rents");
+
+      const params = new URLSearchParams();
+      if (filterRentMonth) params.append("nepaliMonth", filterRentMonth);
+      if (filterRentYear) params.append("nepaliYear", filterRentYear);
+      if (filterStatus && filterStatus !== "all")
+        params.append("status", filterStatus);
+      if (filterPropertyId) params.append("propertyId", filterPropertyId);
+
+      const qs = params.toString();
+      const url = qs ? `/api/rent/get-rents?${qs}` : "/api/rent/get-rents";
+
+      const response = await api.get(url);
       if (response.data.success) {
         setRents(response.data.rents || []);
       } else {
@@ -64,27 +78,22 @@ export const useRentData = () => {
   };
 
   /**
-   * Fetches payments with optional filters
+   * Fetches payments with optional filters.
    */
   const getPayments = async () => {
     try {
       setPaymentsLoading(true);
       setError(null);
-      // Build query parameters for filtering
-      const params = new URLSearchParams();
-      if (filterStartDate) {
-        params.append("startDate", filterStartDate);
-      }
-      if (filterEndDate) {
-        params.append("endDate", filterEndDate);
-      }
-      if (filterPaymentMethod && filterPaymentMethod !== "all") {
-        params.append("paymentMethod", filterPaymentMethod);
-      }
 
-      const queryString = params.toString();
-      const endpoint = queryString
-        ? `/api/payment/get-filtered-payment-history?${queryString}`
+      const params = new URLSearchParams();
+      if (filterStartDate) params.append("startDate", filterStartDate);
+      if (filterEndDate) params.append("endDate", filterEndDate);
+      if (filterPaymentMethod && filterPaymentMethod !== "all")
+        params.append("paymentMethod", filterPaymentMethod);
+
+      const qs = params.toString();
+      const endpoint = qs
+        ? `/api/payment/get-filtered-payment-history?${qs}`
         : "/api/payment/get-all-payment-history";
 
       const response = await api.get(endpoint);
@@ -102,9 +111,6 @@ export const useRentData = () => {
     }
   };
 
-  /**
-   * Fetches rent summary (total collected and total due)
-   */
   const fetchRentSummary = async () => {
     try {
       const response = await api.get("/api/payment/get-rent-summary");
@@ -118,23 +124,16 @@ export const useRentData = () => {
     }
   };
 
-  /**
-   * Fetches bank accounts
-   */
   const getBankAccounts = async () => {
     try {
       const response = await api.get("/api/bank/get-bank-accounts");
-      const data = await response.data;
-      setBankAccounts(data.bankAccounts || []);
+      setBankAccounts(response.data.bankAccounts || []);
     } catch (error) {
       console.error("Error fetching bank accounts:", error);
       toast.error("Failed to fetch bank accounts");
     }
   };
 
-  /**
-   * Fetches units
-   */
   const getUnits = async () => {
     try {
       const response = await api.get("/api/unit/get-units");
@@ -145,10 +144,6 @@ export const useRentData = () => {
     }
   };
 
-  /**
-   * Fetches CAMs (required for CAM payment allocation).
-   * Optional filters: nepaliMonth, nepaliYear.
-   */
   const getCams = async (filters = {}) => {
     try {
       const params = new URLSearchParams();
@@ -171,19 +166,14 @@ export const useRentData = () => {
     }
   };
 
-  /**
-   * Initializes all data on mount
-   */
+  // ── Effects ────────────────────────────────────────────────────────────
+
+  // Initial load of non-rent data
   useEffect(() => {
     const init = async () => {
       try {
         setLoading(true);
-        await Promise.all([
-          getRents(),
-          getBankAccounts(),
-          getUnits(),
-          fetchRentSummary(),
-        ]);
+        await Promise.all([getBankAccounts(), getUnits(), fetchRentSummary()]);
       } catch (error) {
         console.error("Init load failed:", error);
         setError(error);
@@ -191,24 +181,27 @@ export const useRentData = () => {
         setLoading(false);
       }
     };
-
     init();
   }, []);
 
-  // Refetch CAMs when rent month/year filter changes
+  // Refetch rents whenever any rent filter changes (server-side)
+  useEffect(() => {
+    getRents();
+  }, [filterRentMonth, filterRentYear, filterStatus, filterPropertyId]);
+
+  // Refetch CAMs when month/year changes (needed for payment allocation)
   useEffect(() => {
     getCams({ nepaliMonth: filterRentMonth, nepaliYear: filterRentYear });
   }, [filterRentMonth, filterRentYear]);
 
-  // Refetch payments when filters change
+  // Refetch payments when payment filters change
   useEffect(() => {
     getPayments();
   }, [filterStartDate, filterEndDate, filterPaymentMethod]);
 
   return {
     // Data
-    rents,
-    filteredRents,
+    rents, // already filtered by server — use directly (replaces filteredRents)
     payments,
     units,
     bankAccounts,
@@ -219,12 +212,16 @@ export const useRentData = () => {
     loading,
     paymentsLoading,
     error,
-    // Rent tab filters (Nepali month/year)
+    // Rent tab filters
     filterRentMonth,
     filterRentYear,
+    filterStatus,
+    filterPropertyId,
     setFilterRentMonth,
     setFilterRentYear,
-    // Payments tab filters
+    setFilterStatus,
+    setFilterPropertyId,
+    // Payment tab filters
     filterStartDate,
     filterEndDate,
     filterPaymentMethod,
