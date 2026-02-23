@@ -31,16 +31,14 @@ import { startEscalationCron } from "./modules/tenant/escalation/crons/rent.esca
 import generatorRoute from "./modules/maintenance/generators/generator.route.js";
 import searchRoute from "./modules/search/search.route.js";
 import systemSettingRoute from "./modules/systemConfig/systemSetting.route.js";
+import { masterCron } from "./cron/service/master-cron.js";
+import pushRoute from "./modules/push/push.route.js";
+import { sendTestNotification } from "./modules/push/push.controller.js";
+import { initializeWebPush } from "./config/webPush.js";
 
-function loadCronJobs() {
-  import("./cron/monthlyRentAndCam.cron.js")
-    .then(() => import("./cron/monthlyEmail.cron.js"))
-    .then(() => console.log("✅ Cron jobs loaded"))
-    .catch((err) => console.error("❌ Error loading cron jobs:", err));
-}
-loadCronJobs();
+initializeWebPush();
 startEscalationCron();
-
+masterCron();
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -136,7 +134,9 @@ app.use("/api/broadcast", broadcastRoute);
 app.use("/api/escalation", escalationRoute);
 app.use("/api/search", searchRoute);
 app.use("/api/settings", systemSettingRoute);
-
+app.use("/api/push", pushRoute);
+/* -------------------- TEST: push notification (POST body: { title, body }) -------------------- */
+app.post("/send-notification", sendTestNotification);
 /* -------------------- HEALTH CHECK -------------------- */
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });

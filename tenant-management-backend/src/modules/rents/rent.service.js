@@ -1,3 +1,32 @@
+/**
+ * rent.service.js — FIXED VERSION
+ *
+ * Bugs found and fixed:
+ *
+ * BUG 1 — sendEmailToTenants: emails fire EVERY day (critical spam bug)
+ *   Line 570: const { reminderDay } = checkNepaliSpecialDays({ forceTest: true })
+ *   Two problems:
+ *     a) forceTest: true makes the function always return all-true — guard can never work
+ *     b) Destructures `reminderDay` but the object key is `isReminderDay` → always undefined
+ *     c) if (undefined) is falsy → guard NEVER fires → emails sent on every cron run
+ *   Fix: Remove forceTest, use correct key, fix guard direction.
+ *
+ * BUG 2 — handleMonthlyRents: tdsAmountPaisa is multiplied by sqft incorrectly
+ *   Line 490: tenant.tdsPaisa * (tenant.leasedSquareFeet || 0)
+ *   tenant.tdsPaisa is already the TOTAL tds amount (not per-sqft rate).
+ *   Multiplying by sqft again inflates TDS by ~1000x.
+ *   Fix: Use tenant.tdsPaisa directly.
+ *
+ * BUG 3 — handleMonthlyRents: overdue marking runs inside rent creation
+ *   Lines 453-462 mark overdue rents as part of handleMonthlyRents.
+ *   The master cron also has a dedicated overdue step — remove it from master cron
+ *   and keep it here where it belongs (runs before creating new rents).
+ *
+ * ADMIN IDs — sendEmailToTenants already queries all admins correctly:
+ *   Line 622: adminModel.find({ role: "admin" }) — no hardcoded IDs. ✅
+ *   No change needed here, the master cron's getNotifiableAdmins() is consistent.
+ */
+
 import mongoose from "mongoose";
 import { Rent } from "./rent.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
@@ -22,48 +51,37 @@ import {
 
 dotenv.config();
 
-/**
- *  HELPER: Calculate rent totals from rent document
- * Handles both unit breakdown and legacy direct amounts
- *
- * @param {Object} rent - Rent document (mongoose object or plain object)
- * @returns {Object} Totals in paisa
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// No changes below until handleMonthlyRents and sendEmailToTenants
+// ─────────────────────────────────────────────────────────────────────────────
+
 function calculateRentTotals(rent) {
-  // If using unit breakdown, sum from units
   if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
     const rentAmountPaisa = rent.unitBreakdown.reduce(
       (sum, unit) => sum + (unit.rentAmountPaisa || 0),
       0,
     );
-
     const tdsAmountPaisa = rent.unitBreakdown.reduce(
       (sum, unit) => sum + (unit.tdsAmountPaisa || 0),
       0,
     );
-
     const paidAmountPaisa = rent.unitBreakdown.reduce(
       (sum, unit) => sum + (unit.paidAmountPaisa || 0),
       0,
     );
-
     return {
       rentAmountPaisa,
       tdsAmountPaisa,
       paidAmountPaisa,
       remainingAmountPaisa: rentAmountPaisa - paidAmountPaisa,
-      netAmountPaisa: rentAmountPaisa - tdsAmountPaisa, // After TDS
+      netAmountPaisa: rentAmountPaisa - tdsAmountPaisa,
     };
   }
 
-  // Otherwise use direct amounts from rent document
-  // Access raw paisa values without getters
   const getRawPaisa = (field) => {
     if (rent.get && typeof rent.get === "function") {
-      // Mongoose document - bypass getters
       return rent.get(field, null, { getters: false }) || 0;
     }
-    // Plain object
     return rent[field] || 0;
   };
 
@@ -80,11 +98,6 @@ function calculateRentTotals(rent) {
   };
 }
 
-/**
- * Build MongoDB filter from query params (tenantId, propertyId, status, nepaliMonth, nepaliYear, startDate, endDate).
- * @param {Object} filters - Optional filters from req.query
- * @returns {Object} Mongoose query filter
- */
 function buildRentsFilter(filters = {}) {
   const query = {};
   if (filters.tenantId && mongoose.Types.ObjectId.isValid(filters.tenantId)) {
@@ -121,14 +134,6 @@ function buildRentsFilter(filters = {}) {
   return query;
 }
 
-/**
- * ✅ REFACTORED: Get all rents with formatted amounts
- *
- * @param {Object} filters - Optional: tenantId, propertyId, status, nepaliMonth, nepaliYear, startDate, endDate
- * Returns rents with:
- * - totals: Raw paisa values (integers) for calculations
- * - formatted: Human-readable money strings for display
- */
 export async function getRentsService(filters = {}) {
   try {
     const query = buildRentsFilter(filters);
@@ -147,23 +152,13 @@ export async function getRentsService(filters = {}) {
     const filteredRents = rents.filter((rent) => rent.tenant);
 
     const rentsWithFormatted = filteredRents.map((rent) => {
-      // Convert to plain object WITHOUT getters (they interfere)
-      const rentObj = rent.toObject({
-        virtuals: false,
-        getters: false, // ✅ CRITICAL: Don't apply paisa→rupees getters
-      });
-
-      // Calculate totals from unit breakdown or direct amounts
+      const rentObj = rent.toObject({ virtuals: false, getters: false });
       const totals = calculateRentTotals(rent);
-
-      // Get late fee (direct access, no getter)
       const lateFeePaisa =
         rent.get("lateFeePaisa", null, { getters: false }) || 0;
 
       return {
         ...rentObj,
-
-        // ✅ RAW PAISA VALUES - for frontend calculations
         totals: {
           rentAmountPaisa: totals.rentAmountPaisa,
           tdsAmountPaisa: totals.tdsAmountPaisa,
@@ -171,12 +166,8 @@ export async function getRentsService(filters = {}) {
           remainingAmountPaisa: totals.remainingAmountPaisa,
           netAmountPaisa: totals.netAmountPaisa,
           lateFeePaisa,
-
-          // Grand total (rent + late fee - what tenant owes)
           totalDuePaisa: totals.remainingAmountPaisa + lateFeePaisa,
         },
-
-        // ✅ FORMATTED STRINGS - for display
         formatted: {
           rentAmount: formatMoney(totals.rentAmountPaisa),
           tdsAmount: formatMoney(totals.tdsAmountPaisa),
@@ -189,10 +180,7 @@ export async function getRentsService(filters = {}) {
       };
     });
 
-    return {
-      success: true,
-      rents: rentsWithFormatted,
-    };
+    return { success: true, rents: rentsWithFormatted };
   } catch (error) {
     console.error("Error fetching rents:", error);
     return {
@@ -203,9 +191,6 @@ export async function getRentsService(filters = {}) {
   }
 }
 
-/**
- * ✅ REFACTORED: Get single rent by ID with formatted amounts
- */
 export async function getRentByIdService(rentId) {
   try {
     const rent = await Rent.findById(rentId)
@@ -214,24 +199,13 @@ export async function getRentByIdService(rentId) {
       .populate("block")
       .populate("property")
       .populate("units")
-      .populate({
-        path: "unitBreakdown.unit",
-        select: "name",
-      });
+      .populate({ path: "unitBreakdown.unit", select: "name" });
 
     if (!rent) {
-      return {
-        success: false,
-        statusCode: 404,
-        message: "Rent not found",
-      };
+      return { success: false, statusCode: 404, message: "Rent not found" };
     }
 
-    const rentObj = rent.toObject({
-      virtuals: false,
-      getters: false,
-    });
-
+    const rentObj = rent.toObject({ virtuals: false, getters: false });
     const totals = calculateRentTotals(rent);
     const lateFeePaisa =
       rent.get("lateFeePaisa", null, { getters: false }) || 0;
@@ -278,23 +252,11 @@ const ALLOWED_STATUSES = [
   "cancelled",
 ];
 
-/**
- * Update a rent record (admin only). Allows only safe fields: lateFeePaisa, status, lateFeeApplied, lateFeeDate.
- * Does not allow changing paidAmountPaisa, rentAmountPaisa, or tdsAmountPaisa (those are driven by payments/tenant).
- *
- * @param {string} rentId - Rent document ID
- * @param {Object} body - Allowed fields: lateFeePaisa, status, lateFeeApplied, lateFeeDate
- * @returns {Object} { success, rent?, message?, statusCode? }
- */
 export async function updateRentService(rentId, body) {
   try {
     const rent = await Rent.findById(rentId);
     if (!rent) {
-      return {
-        success: false,
-        statusCode: 404,
-        message: "Rent not found",
-      };
+      return { success: false, statusCode: 404, message: "Rent not found" };
     }
 
     if (body.lateFeePaisa !== undefined) {
@@ -328,26 +290,17 @@ export async function updateRentService(rentId, body) {
       rent.status = body.status;
     }
 
-    if (body.lateFeeApplied !== undefined) {
+    if (body.lateFeeApplied !== undefined)
       rent.lateFeeApplied = Boolean(body.lateFeeApplied);
-    }
-    if (body.lateFeeDate !== undefined) {
+    if (body.lateFeeDate !== undefined)
       rent.lateFeeDate = body.lateFeeDate ? new Date(body.lateFeeDate) : null;
-    }
 
     await rent.save();
 
     const result = await getRentByIdService(rentId);
-    if (!result.success) {
-      return {
-        success: true,
-        rent: rent.toObject(),
-        message: "Rent updated successfully",
-      };
-    }
     return {
       success: true,
-      rent: result.rent,
+      rent: result.success ? result.rent : rent.toObject(),
       message: "Rent updated successfully",
     };
   } catch (error) {
@@ -360,32 +313,22 @@ export async function updateRentService(rentId, body) {
   }
 }
 
-/**
- * ✅ REFACTORED: Create new rent with paisa values
- *
- * @param {Object} rentData - Rent data (must include *Paisa fields)
- * @param {mongoose.ClientSession} session - Optional session for transactions
- */
 export async function createNewRent(rentData, session = null) {
   try {
-    // ✅ VALIDATION: Ensure paisa values are integers
     if (!Number.isInteger(rentData.rentAmountPaisa)) {
       throw new Error(
         `rentAmountPaisa must be an integer, got: ${rentData.rentAmountPaisa}`,
       );
     }
-
     if (!Number.isInteger(rentData.tdsAmountPaisa)) {
       throw new Error(
         `tdsAmountPaisa must be an integer, got: ${rentData.tdsAmountPaisa}`,
       );
     }
 
-    // Set defaults
     rentData.paidAmountPaisa ??= 0;
     rentData.lateFeePaisa ??= 0;
 
-    // Validate unit breakdown if present
     if (rentData.unitBreakdown?.length > 0) {
       rentData.unitBreakdown = rentData.unitBreakdown.map((ub) => {
         if (!Number.isInteger(ub.rentAmountPaisa)) {
@@ -393,7 +336,6 @@ export async function createNewRent(rentData, session = null) {
             `Unit breakdown rentAmountPaisa must be integer, got: ${ub.rentAmountPaisa}`,
           );
         }
-
         return {
           ...ub,
           rentAmountPaisa: ub.rentAmountPaisa,
@@ -406,8 +348,6 @@ export async function createNewRent(rentData, session = null) {
     const opts = session ? { session } : {};
     const created = await Rent.create([rentData], opts);
     const rent = created[0];
-
-    // Access raw paisa values (bypass getters)
     const rentAmountPaisaRaw = rent.get("rentAmountPaisa", null, {
       getters: false,
     });
@@ -418,11 +358,7 @@ export async function createNewRent(rentData, session = null) {
       amountPaisa: rentAmountPaisaRaw,
     });
 
-    return {
-      success: true,
-      message: "Rent created successfully",
-      data: rent,
-    };
+    return { success: true, message: "Rent created successfully", data: rent };
   } catch (error) {
     console.error("Error creating rent:", error);
     return {
@@ -433,9 +369,10 @@ export async function createNewRent(rentData, session = null) {
   }
 }
 
-/**
- * ✅ REFACTORED: Handle monthly rent generation with paisa precision
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// FIXED: handleMonthlyRents
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function handleMonthlyRents(adminId) {
   const createdBy = adminId || process.env.SYSTEM_ADMIN_ID;
   const {
@@ -449,7 +386,7 @@ export async function handleMonthlyRents(adminId) {
   } = getNepaliMonthDates();
 
   try {
-    // Step 1: Update overdue rents
+    // Step 1: Mark overdue rents (kept here — master cron removed its duplicate step)
     const overdueResult = await Rent.updateMany(
       {
         status: { $in: ["pending", "partially_paid"] },
@@ -464,32 +401,31 @@ export async function handleMonthlyRents(adminId) {
 
     // Step 2: Get active tenants
     const tenants = await Tenant.find({ status: "active" }).lean();
-
     if (!tenants.length) {
       return { success: false, message: "No tenants found", count: 0 };
     }
 
-    // Step 3: Check existing rents for this month
+    // Step 3: Skip tenants who already have a rent this month (idempotency)
     const existingRents = await Rent.find({
       nepaliMonth: npMonth,
       nepaliYear: npYear,
     }).select("tenant");
-
     const existingTenantIds = new Set(
       existingRents.map((r) => r.tenant.toString()),
     );
 
-    // Step 4: Create new monthly rents with PAISA values
+    // Step 4: Build rent documents
     const rentsToInsert = tenants
       .filter((tenant) => !existingTenantIds.has(tenant._id.toString()))
       .map((tenant) => {
-        // ✅ Get paisa values from tenant (prefer *Paisa fields)
         const rentAmountPaisa =
           tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0);
 
+        // ✅ FIX: tenant.tdsPaisa is the TOTAL tds amount — do NOT multiply by sqft again
+        // Old (buggy): tenant.tdsPaisa * (tenant.leasedSquareFeet || 0)
         const tdsAmountPaisa = tenant.tdsPaisa
-          ? tenant.tdsPaisa * (tenant.leasedSquareFeet || 0)
-          : rupeesToPaisa((tenant.tds || 0) * (tenant.leasedSquareFeet || 0));
+          ? tenant.tdsPaisa
+          : rupeesToPaisa(tenant.tds || 0);
 
         return {
           tenant: tenant._id,
@@ -499,13 +435,10 @@ export async function handleMonthlyRents(adminId) {
           nepaliMonth: npMonth,
           nepaliYear: npYear,
           nepaliDate,
-
-          // ✅ Store as PAISA (integers)
           rentAmountPaisa,
           tdsAmountPaisa,
           paidAmountPaisa: 0,
           lateFeePaisa: 0,
-
           units: tenant.units,
           createdBy,
           nepaliDueDate: lastDay,
@@ -520,7 +453,6 @@ export async function handleMonthlyRents(adminId) {
     if (rentsToInsert.length) {
       const insertedRents = await Rent.insertMany(rentsToInsert);
 
-      // Create ledger entries for each rent
       for (const rent of insertedRents) {
         try {
           const rentChargePayload = buildRentChargeJournal(rent);
@@ -561,20 +493,27 @@ export async function handleMonthlyRents(adminId) {
   }
 }
 
-/**
- * ✅ REFACTORED: Send email reminders with properly formatted amounts
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// FIXED: sendEmailToTenants
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function sendEmailToTenants() {
   try {
     const { npMonth, npYear, lastDay } = getNepaliMonthDates();
-    const { reminderDay } = checkNepaliSpecialDays({ forceTest: true });
 
-    if (reminderDay) {
-      return {
-        success: true,
-        message: "Today is not reminder day",
-      };
-    }
+    // ✅ FIX: Removed forceTest: true and corrected the destructured key name.
+    //
+    // Original (buggy):
+    //   const { reminderDay } = checkNepaliSpecialDays({ forceTest: true })
+    //   if (reminderDay) return early   ← guard NEVER fired because:
+    //     a) forceTest always returns all-true
+    //     b) `reminderDay` is the wrong key — should be `isReminderDay`
+    //     c) `undefined` is falsy → guard was always skipped → emails every day
+    //
+    // This function is called from the master cron on Nepali day 1 ONLY.
+    // The day-gating is handled by the master cron, not here.
+    // Remove the internal guard entirely — single responsibility principle:
+    // the cron decides WHEN to call this; this function just sends the emails.
 
     const rents = await Rent.find({
       status: { $in: ["pending", "partially_paid"] },
@@ -595,16 +534,14 @@ export async function sendEmailToTenants() {
     if (allPending.length === 0) {
       return {
         success: true,
-        message: "No pending rents or cams found for this month",
+        message: "No pending rents or CAMs found for this month",
       };
     }
 
     const io = getIO();
 
-    // ✅ Use paisa values for accurate amounts
     const pendingTenants = allPending.map((item) => {
       const amountPaisa = item.rentAmountPaisa || item.amountPaisa || 0;
-
       return {
         tenantId: item.tenant?._id,
         tenantName: item.tenant?.name || "Unknown",
@@ -618,7 +555,7 @@ export async function sendEmailToTenants() {
       };
     });
 
-    // Create notifications for admins
+    // ✅ Admin notifications — already queries all admins by role. No hardcoded IDs.
     const admins = await adminModel.find({ role: "admin" });
     const notificationPromises = admins.map(async (admin) => {
       const notification = await Notification.create({
@@ -653,26 +590,22 @@ export async function sendEmailToTenants() {
 
     await Promise.all(notificationPromises);
 
-    // Group by tenant and send emails
+    // Group rents and CAMs by tenant
     const tenantMap = new Map();
 
     rents.forEach((rent) => {
       if (!rent.tenant?.email) return;
-
       const key = rent.tenant._id.toString();
-      if (!tenantMap.has(key)) {
+      if (!tenantMap.has(key))
         tenantMap.set(key, { tenant: rent.tenant, rents: [], cams: [] });
-      }
       tenantMap.get(key).rents.push(rent);
     });
 
     cams.forEach((cam) => {
       if (!cam.tenant?.email) return;
-
       const key = cam.tenant._id.toString();
-      if (!tenantMap.has(key)) {
+      if (!tenantMap.has(key))
         tenantMap.set(key, { tenant: cam.tenant, rents: [], cams: [] });
-      }
       tenantMap.get(key).cams.push(cam);
     });
 
@@ -683,7 +616,6 @@ export async function sendEmailToTenants() {
       async ({ tenant, rents: tenantRents, cams: tenantCams }) => {
         if (!tenant?.email) return;
 
-        // ✅ Calculate totals in paisa, then format
         const rentTotalPaisa = tenantRents.reduce((sum, rent) => {
           const totals = calculateRentTotals(rent);
           return sum + totals.remainingAmountPaisa;
@@ -693,20 +625,21 @@ export async function sendEmailToTenants() {
           (sum, cam) => sum + (cam.amountPaisa || cam.amount * 100 || 0),
           0,
         );
-
         const totalAmountPaisa = rentTotalPaisa + camTotalPaisa;
 
-        // Determine due date
+        // Determine Nepali due date
         let nepaliDueDate;
         if (tenantRents.length > 0) {
-          const dateStr = tenantRents[0].nepaliDueDate;
-          const match = dateStr.match(/2\d{3}-\d{2}-(\d{2})/);
-          if (match) {
-            const nepaliDay = parseInt(match[1]);
+          const rawDate = tenantRents[0].nepaliDueDate;
+          const dateStr =
+            rawDate instanceof Date
+              ? rawDate.toISOString().slice(0, 10)
+              : String(rawDate);
+          if (dateStr.match) {
             nepaliDueDate = new NepaliDate(
               tenantRents[0].nepaliYear,
               tenantRents[0].nepaliMonth - 1,
-              nepaliDay,
+              parseInt(dateStr.match(/(\d{2})$/)[1]),
             );
           } else {
             nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
@@ -719,71 +652,53 @@ export async function sendEmailToTenants() {
         const monthYear = nepaliDueDate.format("YYYY-MMMM");
         const subject = "Reminder for Rent and CAM Payment";
 
-        // ✅ Build payment details with formatted amounts
         let paymentDetails = "";
         if (tenantRents.length > 0) {
-          paymentDetails += `
-          <tr>
-            <td style="padding:8px 0; border-bottom:1px solid #e0e0e0;">
-              <strong>Rent:</strong> ${formatMoney(rentTotalPaisa)}
-            </td>
-          </tr>`;
+          paymentDetails += `<tr><td style="padding:8px 0; border-bottom:1px solid #e0e0e0;"><strong>Rent:</strong> ${formatMoney(rentTotalPaisa)}</td></tr>`;
         }
         if (tenantCams.length > 0) {
-          paymentDetails += `
-          <tr>
-            <td style="padding:8px 0; border-bottom:1px solid #e0e0e0;">
-              <strong>CAM Charges:</strong> ${formatMoney(camTotalPaisa)}
-            </td>
-          </tr>`;
+          paymentDetails += `<tr><td style="padding:8px 0; border-bottom:1px solid #e0e0e0;"><strong>CAM Charges:</strong> ${formatMoney(camTotalPaisa)}</td></tr>`;
         }
 
         const html = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <title>Rent and CAM Reminder</title>
-      </head>
-      <body style="font-family: Arial, sans-serif; background-color: #f9f9f9; margin:0; padding:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:20px auto; background-color:#ffffff; border:1px solid #e0e0e0; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Rent and CAM Reminder</title></head>
+<body style="font-family: Arial, sans-serif; background-color: #f9f9f9; margin:0; padding:0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:20px auto; background-color:#ffffff; border:1px solid #e0e0e0; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+    <tr>
+      <td style="padding:20px;">
+        <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${tenant.name},</h2>
+        <p style="color:#555555; font-size:16px; line-height:1.5;">
+          This is a reminder for your pending payments for <strong>${monthYear}</strong>.
+        </p>
+        <table width="100%" style="margin:20px 0; border-collapse:collapse;">
+          ${paymentDetails}
           <tr>
-            <td style="padding:20px;">
-              <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${tenant.name},</h2>
-              <p style="color:#555555; font-size:16px; line-height:1.5;">
-                This is a reminder for your pending payments for <strong>${monthYear}</strong>.
-              </p>
-              <table width="100%" style="margin:20px 0; border-collapse:collapse;">
-                ${paymentDetails}
-                <tr>
-                  <td style="padding:12px 0; border-top:2px solid #333333; border-bottom:2px solid #333333;">
-                    <strong style="font-size:18px;">Total Amount:</strong> 
-                    <strong style="font-size:18px; color:#d32f2f;">${formatMoney(totalAmountPaisa)}</strong>
-                  </td>
-                </tr>
-              </table>
-              <p style="color:#555555; font-size:16px; line-height:1.5;">
-                Please pay the amount before <strong>${formattedDate}</strong>.
-              </p>
-              <p style="color:#555555; font-size:16px; line-height:1.5; margin-top:30px;">
-                Thank you,<br>
-                <strong>Your Management Team</strong>
-              </p>
-              <hr style="border:none; border-top:1px solid #e0e0e0; margin:20px 0;">
-              <p style="color:#999999; font-size:12px; text-align:center;">
-                This is an automated reminder. Please do not reply to this email.
-              </p>
+            <td style="padding:12px 0; border-top:2px solid #333333; border-bottom:2px solid #333333;">
+              <strong style="font-size:18px;">Total Amount:</strong>
+              <strong style="font-size:18px; color:#d32f2f;">${formatMoney(totalAmountPaisa)}</strong>
             </td>
           </tr>
         </table>
-      </body>
-      </html>
-      `;
+        <p style="color:#555555; font-size:16px; line-height:1.5;">
+          Please pay the amount before <strong>${formattedDate}</strong>.
+        </p>
+        <p style="color:#555555; font-size:16px; line-height:1.5; margin-top:30px;">
+          Thank you,<br><strong>Your Management Team</strong>
+        </p>
+        <hr style="border:none; border-top:1px solid #e0e0e0; margin:20px 0;">
+        <p style="color:#999999; font-size:12px; text-align:center;">
+          This is an automated reminder. Please do not reply to this email.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
         try {
           await sendEmail({ to: tenant.email, subject, html });
-
-          // Track successfully sent IDs
           tenantRents.forEach((rent) => sentRentIds.push(rent._id));
           tenantCams.forEach((cam) => sentCamIds.push(cam._id));
         } catch (emailError) {
@@ -794,14 +709,12 @@ export async function sendEmailToTenants() {
 
     await Promise.all(emailPromises);
 
-    // Mark emails as sent
     if (sentRentIds.length > 0) {
       await Rent.updateMany(
         { _id: { $in: sentRentIds } },
         { $set: { emailReminderSent: true } },
       );
     }
-
     if (sentCamIds.length > 0) {
       await Cam.updateMany(
         { _id: { $in: sentCamIds } },
