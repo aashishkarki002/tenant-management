@@ -1,10 +1,11 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
-
+import { usePushNotifications } from "./hooks/usePushNotification";
 export default function ProtectedRoutes({ children }) {
+
     const { user, loading } = useAuth();
     const location = useLocation();
-
+    usePushNotifications(user);
     if (loading) return <div>Loading...</div>;
 
     // Auth is cookie-based (httpOnly). There is no localStorage token.
