@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { Bell, BellOff, Share, X } from "lucide-react";
-import { usePushNotifications } from "../hooks/usePushNotifications";
+import { usePushNotifications } from "../hooks/usePushNotification";
 import { useAuth } from "../context/AuthContext";
 
 export default function PushNotificationBanner() {
