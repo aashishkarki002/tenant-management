@@ -16,7 +16,7 @@ export default function Dashboard() {
   const { stats, loading, error, refetch } = useStats();
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen ">
       {/* ── Header ── */}
       <div className="p-4 sm:p-6">
         <p className="text-2xl sm:text-3xl font-bold text-orange-900 leading-tight">
