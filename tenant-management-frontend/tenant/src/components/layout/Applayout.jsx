@@ -7,6 +7,7 @@ import {
 } from "../ui/sidebar";
 import AppSidebar from "../app-sidebar";
 import Header from "../header";
+import PushNotificationBanner from "../PushNotificationBanner";
 
 export default function AppLayout({ children }) {
   const { pathname } = useLocation();
@@ -17,6 +18,7 @@ export default function AppLayout({ children }) {
   return (
     <SidebarProvider>
       <AppSidebar />
+      <PushNotificationBanner />
       <SidebarRail />
       <SidebarInset className="relative">
         {!hideHeader && (
