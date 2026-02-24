@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import api from "../../../plugins/axios";
 import { Button } from "@/components/ui/button";
-import { METER_TYPE_META } from "./constants";
-import Modal from "./Modal";
+import { METER_TYPE_META } from "../../Settings/components/constants";
+import Modal from "../../Settings/components/Modal";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,7 +22,8 @@ export default function CreateSubMeterModal({ propertyId, onClose, onSuccess }) 
 
   const formik = useFormik({
     initialValues: {
-      propertyId: propertyId,
+      propertyId:
+        propertyId || (Array.isArray(property) ? property[0]?._id : ""),
       blockId: "",
       innerBlockId: "",
       name: "",
@@ -57,6 +58,16 @@ export default function CreateSubMeterModal({ propertyId, onClose, onSuccess }) 
       }
     },
   });
+
+  useEffect(() => {
+    if (!formik.values.propertyId) {
+      const fallbackId =
+        propertyId || (Array.isArray(property) ? property[0]?._id : undefined);
+      if (fallbackId) {
+        formik.setFieldValue("propertyId", fallbackId, false);
+      }
+    }
+  }, [propertyId, property, formik.values.propertyId, formik.setFieldValue]);
 
   const blocks = useMemo(() => {
     if (!propertyId || !property || !Array.isArray(property)) return [];

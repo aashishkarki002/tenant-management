@@ -42,63 +42,63 @@ export const RentTable = ({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Tenant / Unit</TableHead>
-            <TableHead>Frequency</TableHead>
-            <TableHead>Rent Amount</TableHead>
-            <TableHead>CAM Amount</TableHead>
-            <TableHead>Total Amount</TableHead>
-            <TableHead>Due Date</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rents.length === 0 ? (
-            /* Industry standard: use a full-width colSpan cell for empty states
-               rather than rendering outside the table, to keep DOM structure valid. */
+      <div className="overflow-x-auto -mx-4 sm:mx-0 rounded-md border">
+        <Table className="min-w-[800px]">
+          <TableHeader>
             <TableRow>
-              <TableCell
-                colSpan={8}
-                className="py-16 text-center text-muted-foreground"
-              >
-                <div className="flex flex-col items-center gap-2">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-10 w-10 text-muted-foreground/40"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 17v-2a4 4 0 014-4h0a4 4 0 014 4v2M3 21h18M12 3a4 4 0 100 8 4 4 0 000-8z"
-                    />
-                  </svg>
-                  <p className="text-sm font-medium">No rents for this month</p>
-                  <p className="text-xs text-muted-foreground/70">
-                    Try selecting a different month or switching the frequency
-                    filter.
-                  </p>
-                </div>
-              </TableCell>
+              <TableHead className="whitespace-nowrap">Tenant / Unit</TableHead>
+              <TableHead className="whitespace-nowrap">Frequency</TableHead>
+              <TableHead className="whitespace-nowrap">Rent Amount</TableHead>
+              <TableHead className="whitespace-nowrap">CAM Amount</TableHead>
+              <TableHead className="whitespace-nowrap">Total Amount</TableHead>
+              <TableHead className="whitespace-nowrap">Due Date</TableHead>
+              <TableHead className="whitespace-nowrap">Status</TableHead>
+              <TableHead className="whitespace-nowrap">Actions</TableHead>
             </TableRow>
-          ) : (
-            rents.map((rent, idx) => (
-              <RentTableRow
-                key={rent._id || idx}
-                rent={rent}
-                cams={cams}
-                onOpenPaymentDialog={handleOpen}
-              />
-            ))
-          )}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {rents.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={8}
+                  className="py-16 text-center text-muted-foreground"
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-10 w-10 text-muted-foreground/40"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 17v-2a4 4 0 014-4h0a4 4 0 014 4v2M3 21h18M12 3a4 4 0 100 8 4 4 0 000-8z"
+                      />
+                    </svg>
+                    <p className="text-sm font-medium">No rents for this month</p>
+                    <p className="text-xs text-muted-foreground/70">
+                      Try selecting a different month or switching the frequency
+                      filter.
+                    </p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              rents.map((rent, idx) => (
+                <RentTableRow
+                  key={rent._id || idx}
+                  rent={rent}
+                  cams={cams}
+                  onOpenPaymentDialog={handleOpen}
+                />
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {/* Payment Dialog — only mounted when a rent is selected */}
       {selectedRent && (

@@ -371,7 +371,7 @@ export default function ChequeDraft() {
             {/* Header */}
             <div style={{ background: 'rgb(255, 255, 255)', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', marginRight: '30px' }}>
                     <button onClick={handlePrint} style={{ padding: '8px 18px', borderRadius: '6px', border: '1.5px solid rgba(255,255,255,0.5)', background: 'transparent', color: '#000', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
                         <PrinterIcon className="w-4 h-4" /> Print
                     </button>

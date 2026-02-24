@@ -3,7 +3,7 @@ import api from "../../../plugins/axios";
 import { Button } from "@/components/ui/button";
 import { METER_TYPE_META, NEPALI_MONTHS } from "./constants";
 import Modal from "./Modal";
-import MeterTypeBadge from "./MeterTypeBadge";
+import MeterTypeBadge from "../../submeter/components/MeterTypeBadge";
 
 export default function AddReadingModal({ subMeter, onClose, onSuccess }) {
   const today = new Date();

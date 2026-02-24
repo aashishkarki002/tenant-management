@@ -1,4 +1,4 @@
-import { METER_TYPE_META } from "./constants";
+import { METER_TYPE_META } from "../../Settings/components/constants";
 
 export default function MeterTypeBadge({ type }) {
   const meta = METER_TYPE_META[type];

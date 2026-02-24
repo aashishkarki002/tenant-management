@@ -4,23 +4,22 @@ import api from "../../plugins/axios";
 import { useAuth } from "../context/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import ElectricityRateTab from "./components/electricityRateTab";
 import SettingTab from "./components/settingTab";
 import StaffDetail from "./components/staffDetail";
-import SubMetersTab from "./components/SubMetersTab";
+import SubMetersTab from "../Submeter/components/SubMetersTab";
 import useProperty from "@/hooks/use-property";
 import SystemSettingsTab from "./components/SystemSettingTab";
 import {
   Settings,
   Users,
-  Zap,
-  Grid,
   TrendingUp
 } from "lucide-react";
+import { useLocation } from "react-router-dom";
 
 export default function Admin() {
   const { user } = useAuth();
   const { property } = useProperty();
+  const location = useLocation();
 
   const [bankAccounts, setBankAccounts] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -35,6 +34,13 @@ export default function Admin() {
 
   const languages = [{ code: "en", name: "English", flag: "🇺🇸" }];
   const propertyId = property?.[0]?._id;
+
+  const searchParams = new URLSearchParams(location.search);
+  const urlTab = searchParams.get("tab");
+  const initialTab =
+    urlTab === "subMeters" || location.pathname.includes("sub-meters")
+      ? "subMeters"
+      : "settings";
 
   // ─── API Calls
   const GetBankAccounts = async () => {
@@ -146,7 +152,7 @@ export default function Admin() {
 
       {/* Vertical Tabs Layout */}
       <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6">
-        <Tabs defaultValue="settings" className="flex-1 flex sm:flex-row">
+        <Tabs defaultValue={initialTab} className="flex-1 flex sm:flex-row">
           {/* Tabs List */}
           <TabsList className="flex sm:flex-col w-full sm:w-52 flex-row justify-start sm:justify-start overflow-x-auto sm:overflow-visible space-x-2 sm:space-x-0 sm:space-y-2">
             <TabsTrigger className="flex items-center space-x-2 sm:space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded" value="settings">
@@ -157,17 +163,9 @@ export default function Admin() {
               <Users size={20} />
               <span className="hidden sm:inline">Staff Details</span>
             </TabsTrigger>
-            <TabsTrigger className="flex items-center space-x-2 sm:space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded" value="electricityRate">
-              <Zap size={20} />
-              <span className="hidden sm:inline">Electricity Rate</span>
-            </TabsTrigger>
-            <TabsTrigger className="flex items-center space-x-2 sm:space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded" value="subMeters">
-              <Grid size={20} />
-              <span className="hidden sm:inline">Sub-Meters</span>
-            </TabsTrigger>
             <TabsTrigger className="flex items-center space-x-2 sm:space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded" value="rentEscalation">
               <TrendingUp size={20} />
-              <span className="hidden sm:inline">Rent Escalation</span>
+              <span className="hidden sm:inline">Rate & Fees</span>
             </TabsTrigger>
           </TabsList>
 
@@ -207,12 +205,6 @@ export default function Admin() {
               </div>
             </TabsContent>
 
-            <TabsContent value="electricityRate">
-              <div className="overflow-x-auto">
-                <ElectricityRateTab propertyId={propertyId} />
-              </div>
-            </TabsContent>
-
             <TabsContent value="subMeters">
               <div className="overflow-x-auto">
                 <SubMetersTab propertyId={propertyId} />
@@ -221,7 +213,7 @@ export default function Admin() {
 
             <TabsContent value="rentEscalation">
               <div className="overflow-x-auto">
-                <SystemSettingsTab />
+                <SystemSettingsTab propertyId={propertyId} />
               </div>
             </TabsContent>
           </div>

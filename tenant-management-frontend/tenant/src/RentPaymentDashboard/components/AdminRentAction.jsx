@@ -33,14 +33,14 @@ export const AdminRentActions = ({ onProcessSuccess }) => {
         useAdminRentActions({ onProcessSuccess });
 
     return (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col sm:flex-row w-full gap-2 sm:justify-end">
             {/* ── Process Monthly Rents ── */}
             <AlertDialog>
                 <AlertDialogTrigger asChild>
                     <Button
                         variant="outline"
                         disabled={processingRents}
-                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                        className="border-blue-300 text-blue-700 hover:bg-blue-50 w-full sm:w-auto justify-center"
                     >
                         {processingRents ? (
                             <>
@@ -98,7 +98,7 @@ export const AdminRentActions = ({ onProcessSuccess }) => {
                     <Button
                         variant="outline"
                         disabled={sendingEmails}
-                        className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                        className="border-orange-300 text-orange-700 hover:bg-orange-50 w-full sm:w-auto justify-center"
                     >
                         {sendingEmails ? (
                             <>

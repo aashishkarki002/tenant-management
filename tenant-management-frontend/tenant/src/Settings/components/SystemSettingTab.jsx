@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import ElectricityRateTab from "./electricityRateTab";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -43,7 +44,7 @@ const LATE_FEE_DEFAULTS = {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-export default function SystemSettingsTab() {
+export default function SystemSettingsTab({ propertyId }) {
     const [escalation, setEscalation] = useState(ESCALATION_DEFAULTS);
     const [lateFee, setLateFee] = useState(LATE_FEE_DEFAULTS);
     const [tenantsConfigured, setTenantsConfigured] = useState(0);
@@ -170,6 +171,21 @@ export default function SystemSettingsTab() {
 
     return (
         <div className="space-y-8">
+
+            {/* ════════════════════════════════════════════════════════════
+                ELECTRICITY RATE
+            ════════════════════════════════════════════════════════════ */}
+            <section>
+                <div className="mb-4">
+                    <h3 className="text-base font-semibold">Electricity Rate</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Configure default electricity rates and per-meter-type overrides.
+                    </p>
+                </div>
+                <ElectricityRateTab propertyId={propertyId} />
+            </section>
+
+            <Separator />
 
             {/* ════════════════════════════════════════════════════════════
                 RENT ESCALATION

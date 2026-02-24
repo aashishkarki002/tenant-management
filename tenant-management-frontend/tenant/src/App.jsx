@@ -23,6 +23,7 @@ import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail/ViewDetail";
 import BroadCast from "./BroadCast";
+import Submeter from "./submeter/Submeter";
 import HashLoader from "react-spinners/HashLoader";
 
 function TenantDetailRedirect() {
@@ -161,6 +162,14 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <Admin />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
+        path="/submeter"
+        element={
+          <ProtectedRoutes>
+            <Submeter />
           </ProtectedRoutes>
         }
       />

@@ -19,13 +19,13 @@ export const PaymentTableRow = ({ payment }) => {
 
   return (
     <TableRow key={payment._id}>
-      <TableCell>
+      <TableCell className="min-w-[100px]">
         <div className="font-medium">{payment.tenant?.name || "N/A"}</div>
       </TableCell>
-      <TableCell>{formatPaymentDate(payment.paymentDate)}</TableCell>
-      <TableCell>₹{payment.amount?.toLocaleString() || "0"}</TableCell>
-      <TableCell>{formatPaymentMethod(payment.paymentMethod)}</TableCell>
-      <TableCell>
+      <TableCell className="whitespace-nowrap">{formatPaymentDate(payment.paymentDate)}</TableCell>
+      <TableCell className="whitespace-nowrap">₹{payment.amount?.toLocaleString() || "0"}</TableCell>
+      <TableCell className="whitespace-nowrap">{formatPaymentMethod(payment.paymentMethod)}</TableCell>
+      <TableCell className="whitespace-nowrap">
         <Badge
           className={`capitalize border ${
             statusStyles[normalizeStatus(payment.paymentStatus)] ||
@@ -35,12 +35,12 @@ export const PaymentTableRow = ({ payment }) => {
           {formatPaymentStatus(payment.paymentStatus)}
         </Badge>
       </TableCell>
-      <TableCell>{payment.note || "—"}</TableCell>
-      <TableCell>
+      <TableCell className="max-w-[120px] truncate" title={payment.note || ""}>{payment.note || "—"}</TableCell>
+      <TableCell className="whitespace-nowrap">
         <Button
           variant="outline"
           size="sm"
-          className="bg-gray-200 text-black hover:bg-gray-200 w-full sm:w-50"
+          className="bg-gray-200 text-black hover:bg-gray-200 min-w-[60px]"
           onClick={() => {
             navigate(`/rent-payment/payments/${payment._id}`);
           }}

@@ -8,7 +8,7 @@ import {
   PlusIcon,
   Trash2Icon,
 } from "lucide-react";
-import { METER_TYPE_META } from "./constants";
+import { METER_TYPE_META } from "../../Settings/components/constants";
 import MeterTypeBadge from "./MeterTypeBadge";
 
 export default function SubMeterCard({ meter, onAddReading, onDeactivate }) {

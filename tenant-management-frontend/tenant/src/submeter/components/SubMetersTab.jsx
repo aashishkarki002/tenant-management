@@ -10,9 +10,9 @@ import {
   ToggleLeftIcon,
   ActivityIcon,
 } from "lucide-react";
-import { METER_TYPE_META } from "./constants";
+import { METER_TYPE_META } from "../../Settings/components/constants";
 import CreateSubMeterModal from "./CreateSubMeterModal";
-import AddReadingModal from "./AddReadingModal";
+import AddReadingModal from "../../Settings/components/AddReadingModal";
 import SubMeterCard from "./SubMeterCard";
 
 export default function SubMetersTab({ propertyId }) {

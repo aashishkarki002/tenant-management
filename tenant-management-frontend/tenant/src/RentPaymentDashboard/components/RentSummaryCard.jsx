@@ -21,14 +21,14 @@ export const RentSummaryCard = ({
     frequencyView === "quarterly" ? "Quarterly" : "Monthly";
 
   return (
-    <div className="px-6 pt-6">
-      <CardDescription className="text-gray-500 font-bold text-xl">
-        <div className="text-black font-bold text-xl">
+    <div className="px-4 sm:px-6 pt-4 sm:pt-6">
+      <CardDescription className="text-gray-500 font-bold text-lg sm:text-xl">
+        <div className="text-black font-bold text-lg sm:text-xl">
           Track {frequencyLabel.toLowerCase()} rent collection
         </div>
       </CardDescription>
 
-      <div className="mt-2 text-sm text-muted-foreground">
+      <div className="mt-2 text-xs sm:text-sm text-muted-foreground">
         <div className="flex items-center justify-between mb-1">
           <strong>
             {frequencyLabel} Collection

@@ -54,13 +54,13 @@ export const RentFilter = ({
         (defaultYear != null && year !== defaultYear);
 
     return (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap justify-end gap-2">
             {/* ── Month ── */}
             <Select
                 value={month != null ? String(month) : undefined}
                 onValueChange={(v) => onMonthChange?.(Number(v))}
             >
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full min-w-0 sm:w-[140px]">
                     <SelectValue placeholder="Month" />
                 </SelectTrigger>
                 <SelectContent>
@@ -77,7 +77,7 @@ export const RentFilter = ({
                 value={year != null ? String(year) : undefined}
                 onValueChange={(v) => onYearChange?.(Number(v))}
             >
-                <SelectTrigger className="w-[100px]">
+                <SelectTrigger className="w-full min-w-0 sm:w-[100px]">
                     <SelectValue placeholder="Year" />
                 </SelectTrigger>
                 <SelectContent>
@@ -94,7 +94,7 @@ export const RentFilter = ({
                 value={status}
                 onValueChange={(v) => onStatusChange?.(v)}
             >
-                <SelectTrigger className="w-[150px]">
+                <SelectTrigger className="w-full min-w-0 sm:w-[150px]">
                     <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
@@ -112,7 +112,7 @@ export const RentFilter = ({
                     value={propertyId || "all"}
                     onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
                 >
-                    <SelectTrigger className="w-[160px]">
+                    <SelectTrigger className="w-full min-w-0 sm:w-[160px]">
                         <SelectValue placeholder="All Properties" />
                     </SelectTrigger>
                     <SelectContent>
@@ -134,9 +134,9 @@ export const RentFilter = ({
                     onStatusChange?.(status === "overdue" ? "all" : "overdue")
                 }
                 className={
-                    status !== "overdue"
+                    (status !== "overdue"
                         ? "border-red-300 text-red-600 hover:bg-red-50"
-                        : ""
+                        : "") + " shrink-0 w-full sm:w-auto"
                 }
             >
                 Overdue only
@@ -144,7 +144,7 @@ export const RentFilter = ({
 
             {/* ── Clear filters (only visible when non-default filters are active) ── */}
             {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={onReset}>
+                <Button variant="ghost" size="sm" onClick={onReset} className="shrink-0 w-full sm:w-auto">
                     Clear filters
                 </Button>
             )}

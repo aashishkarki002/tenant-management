@@ -10,7 +10,15 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Building2 } from "lucide-react";
+import {
+  Building2,
+  UserCircle2,
+  FileText,
+  Wrench,
+  Zap,
+  CreditCard,
+  AlertTriangle,
+} from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { OverviewLeaseTab } from "./OverviewLeaseTab";
 import { DocumentsTab } from "./DocumentsTab";
@@ -25,36 +33,42 @@ const DEFAULT_TABS = [
     label: "Overview & Lease",
     shortLabel: "Overview",
     component: OverviewLeaseTab,
+    icon: UserCircle2,
   },
   {
     value: "documents",
     label: "Documents",
     shortLabel: "Documents",
     component: DocumentsTab,
+    icon: FileText,
   },
   {
     value: "propertyDetails",
     label: "Maintenance",
     shortLabel: "Maintenance",
     component: MaintenanceTab,
+    icon: Wrench,
   },
   {
     value: "electricity",
     label: "Electricity",
     shortLabel: "Electricity",
     component: ElectricityTab,
+    icon: Zap,
   },
   {
     value: "paymentHistory",
     label: "Payment History",
     shortLabel: "Payments",
     component: PaymentHistoryTab,
+    icon: CreditCard,
   },
   {
     value: "escalation",
     label: "Escalation",
     shortLabel: "Escalation",
     component: EscalationTab,
+    icon: AlertTriangle,
   },
 ];
 
@@ -239,19 +253,18 @@ function ViewDetail({ tabs: tabsProp }) {
       </Card>
       <Tabs defaultValue={tabs[0]?.value ?? "personalInfo"} className="mt-4 gap-2">
         <TabsList
-          className="grid w-full h-auto"
-          style={{
-            gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
-          }}
+          className="flex w-full h-auto overflow-x-auto gap-1 rounded-lg bg-muted/40 p-1"
         >
           {tabs.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="text-xs sm:text-sm px-2 py-2"
+              className="flex-1 min-w-[56px] text-xs sm:text-sm px-2 py-2"
             >
-              <span className="hidden sm:inline">{tab.label}</span>
-              <span className="sm:hidden">{tab.shortLabel ?? tab.label}</span>
+              <div className="flex flex-col items-center justify-center gap-1 w-full">
+                {tab.icon && <tab.icon className="h-4 w-4 sm:hidden" />}
+                <span className="hidden sm:inline">{tab.label}</span>
+              </div>
             </TabsTrigger>
           ))}
         </TabsList>

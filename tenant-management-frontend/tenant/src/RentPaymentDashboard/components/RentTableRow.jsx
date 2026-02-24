@@ -22,21 +22,21 @@ export const RentTableRow = ({ rent, cams, onOpenPaymentDialog }) => {
 
   return (
     <TableRow key={rent._id}>
-      <TableCell>
+      <TableCell className="min-w-[140px]">
         <div className="font-medium">
           {rent.tenant ? rent.tenant.name : "No Tenant Assigned"}
         </div>
-        <div className="text-sm text-muted-foreground">
+        <div className="text-sm text-muted-foreground truncate max-w-[200px] sm:max-w-none">
           {rent.innerBlock?.name || "N/A"} - {rent.block?.name || "N/A"}-
           {rent.units?.map((unit) => unit.name).join(", ")}
         </div>
       </TableCell>
-      <TableCell>{displayFrequency}</TableCell>
-      <TableCell>₹{rentAmount.toLocaleString()}</TableCell>
-      <TableCell>₹{camAmount.toLocaleString()}</TableCell>
-      <TableCell>₹{totalDue.toLocaleString()}</TableCell>
-      <TableCell>{formatNepaliDueDate(rent)}</TableCell>
-      <TableCell>
+      <TableCell className="whitespace-nowrap">{displayFrequency}</TableCell>
+      <TableCell className="whitespace-nowrap">₹{rentAmount.toLocaleString()}</TableCell>
+      <TableCell className="whitespace-nowrap">₹{camAmount.toLocaleString()}</TableCell>
+      <TableCell className="whitespace-nowrap">₹{totalDue.toLocaleString()}</TableCell>
+      <TableCell className="whitespace-nowrap">{formatNepaliDueDate(rent)}</TableCell>
+      <TableCell className="whitespace-nowrap">
         <Badge
           className={`capitalize border ${statusStyles[status] ||
             "bg-gray-100 text-gray-700 border-gray-300"
@@ -45,14 +45,14 @@ export const RentTableRow = ({ rent, cams, onOpenPaymentDialog }) => {
           {status === "partial" ? "Partially Paid" : status}
         </Badge>
       </TableCell>
-      <TableCell>
+      <TableCell className="whitespace-nowrap">
         <Dialog>
           <DialogTrigger asChild>
             <Button
               variant="outline"
               size="sm"
               disabled={rent.status === "paid"}
-              className="bg-blue-600 text-white hover:bg-blue-700 hover:text-white"
+              className="bg-blue-600 text-white hover:bg-blue-700 hover:text-white text-xs sm:text-sm"
               onClick={() => onOpenPaymentDialog(rent)}
             >
               {rent.status === "paid" ? "Paid" : "Record Payment"}
