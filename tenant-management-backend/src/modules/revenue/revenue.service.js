@@ -14,6 +14,21 @@ import { buildRevenueReceivedJournal } from "../ledger/journal-builders/index.js
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
 
+function rebuildJournalFromRevenue(revenue) {
+  const description =
+    revenue.payerType === "EXTERNAL"
+      ? `Revenue from ${revenue.externalPayer?.name}`
+      : "Manual revenue received";
+  return buildRevenueReceivedJournal(revenue, {
+    amountPaisa: revenue.amountPaisa,
+    paymentDate: revenue.date,
+    description,
+    createdBy: revenue.createdBy,
+    nepaliMonth: revenue.npMonth,
+    nepaliYear: revenue.npYear,
+  });
+}
+
 async function createRevenue(revenueData) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -135,7 +150,7 @@ async function createRevenue(revenueData) {
         {
           source,
           amountPaisa: finalAmountPaisa,
-          amount: finalAmount, // Backward compatibility
+
           date,
           ...getNepaliYearMonthFromDate(date),
           payerType,
@@ -165,7 +180,12 @@ async function createRevenue(revenueData) {
       description: ledgerDescription,
       createdBy: createdBy || adminId,
     });
-    await ledgerService.postJournalEntry(revenuePayload, session);
+    const { transaction } = await ledgerService.postJournalEntry(
+      revenuePayload,
+      session,
+    );
+    revenue.transactionId = transaction._id;
+    await revenue.save({ session });
 
     /* ----------------------------------
        COMMIT
@@ -196,15 +216,66 @@ async function createRevenue(revenueData) {
 }
 
 export { createRevenue };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE  →  Reverse the ledger entry + soft-delete the Revenue doc
+//
+// Flow:
+//   1. Load Revenue doc (must be RECORDED or SYNCED)
+//   2. Re-build the original journal payload from stored fields
+//   3. Build reversal payload  (flip DR ↔ CR)
+//   4. Post reversal to ledger  (new Transaction + LedgerEntries created)
+//   5. Mark Revenue.status = "REVERSED"  — never physically delete
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function deleteRevenue(revenueId, reason, adminId) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const revenue = await Revenue.findById(revenueId).session(session);
+    if (!revenue) throw new Error("Revenue not found");
+    if (revenue.status === "REVERSED")
+      throw new Error("Revenue is already reversed");
+    const originalJournal = rebuildJournalFromRevenue(revenue);
+    const reversePayload = buildRevenueReversedJournal(originalJournal, {
+      adminId,
+      reason,
+      originalTransactionId: revenue.transactionId,
+    });
+    await ledgerService.postJournalEntry(reversePayload, session);
+    revenue.status = "REVERSED";
+    revenue.reversalReason = reason;
+    revenue.reversedBy = adminId;
+    revenue.reversedAt = new Date();
+    await revenue.save({ session });
+    await session.commitTransaction();
+    session.endSession();
+    return {
+      success: true,
+      message: "Revenue deleted successfully",
+      data: revenue,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Failed to delete revenue:", error);
+    return {
+      success: false,
+      message: "Failed to delete revenue",
+      error: error.message,
+    };
+  }
+}
+
 async function getRevenue(revenueId) {
   try {
     const revenue = await Revenue.findById(revenueId)
       .populate("source")
       .populate("tenant")
-      .populate("createdBy");
-    if (!revenue) {
-      throw new Error("Revenue not found");
-    }
+      .populate("createdBy")
+      .populate("originalRevenue", "amountPaisa date status") // audit chain
+      .populate("amendedBy", "amountPaisa date status");
+    if (!revenue) throw new Error("Revenue not found");
     return revenue;
   } catch (error) {
     console.error("Failed to get revenue:", error);
@@ -215,7 +286,8 @@ export { getRevenue };
 
 async function getAllRevenue() {
   try {
-    const revenue = await Revenue.find()
+    // Exclude REVERSED docs from normal listing — they are visible in the ledger
+    const revenue = await Revenue.find({ status: { $ne: "REVERSED" } })
       .populate("source", "name code")
       .populate("tenant", "name")
       .sort({ date: -1 });
@@ -234,6 +306,7 @@ async function getAllRevenue() {
   }
 }
 export { getAllRevenue };
+
 async function getRevenueSource() {
   try {
     const revenueSource = await RevenueSource.find();

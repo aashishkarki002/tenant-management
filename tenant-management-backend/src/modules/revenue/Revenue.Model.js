@@ -93,7 +93,7 @@ const revenueSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["RECORDED", "SYNCED"],
+      enum: ["RECORDED", "SYNCED", "REVERSED"],
       default: "RECORDED",
     },
 
@@ -104,7 +104,33 @@ const revenueSchema = new mongoose.Schema(
       ref: "Admin",
       required: true,
     },
+    transactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Transaction",
+    },
+    reversalReason: {
+      type: String,
+    },
+    reversedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+    },
+    reversedAt: {
+      type: Date,
+    },
+    // On a corrected (amended) doc: points back to the original
+    originalRevenue: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Revenue",
+    },
+
+    // On the original doc after amendment: points to the corrected doc
+    amendedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Revenue",
+    },
   },
+
   { timestamps: true },
 );
 

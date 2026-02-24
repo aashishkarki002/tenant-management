@@ -4,16 +4,13 @@ import ExpenseSource from "../expenses/ExpenseSource.Model.js";
 import { createExpense } from "../expenses/expense.service.js";
 import { ACCOUNTING_CONFIG } from "../../config/accounting.config.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
 import { sendMaintenanceAssignmentEmail } from "../../config/nodemailer.js";
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
-/**
- * Fires a non-blocking assignment email to the assigned staff.
- * Relies on populated `assignedTo`, `property`, and `unit` fields.
- */
 function _notifyAssignedStaff(maintenance) {
   const staff = maintenance.assignedTo;
-  if (!staff?.email) return; // nothing to do if no staff or no email
+  if (!staff?.email) return;
 
   sendMaintenanceAssignmentEmail({
     to: staff.email,
@@ -27,13 +24,14 @@ function _notifyAssignedStaff(maintenance) {
     unitName: maintenance.unit?.name,
     maintenanceId: maintenance._id.toString(),
   });
-  // Intentionally NOT awaited — email is a side-effect
+  // Intentionally NOT awaited — email is a fire-and-forget side-effect
 }
 
 // ─── Service functions ────────────────────────────────────────────────────────
 
 export async function createMaintenance(maintenanceData) {
   try {
+    // Normalise rupee → paisa if caller passed the human-readable field
     if (
       maintenanceData.amountPaisa === undefined &&
       maintenanceData.amount !== undefined
@@ -49,9 +47,18 @@ export async function createMaintenance(maintenanceData) {
       );
     }
 
+    // Denormalize Nepali scheduled date fields at write time so they are
+    // queryable via the compound index without a runtime conversion.
+    if (maintenanceData.scheduledDate) {
+      const { npYear, npMonth } = getNepaliYearMonthFromDate(
+        maintenanceData.scheduledDate,
+      );
+      maintenanceData.scheduledNepaliYear = npYear;
+      maintenanceData.scheduledNepaliMonth = npMonth; // 1-based
+    }
+
     const maintenance = await Maintenance.create(maintenanceData);
 
-    // Notify assigned staff if one was set at creation time
     if (maintenanceData.assignedTo) {
       const populated = await Maintenance.findById(maintenance._id)
         .populate("assignedTo", "name email")
@@ -125,12 +132,29 @@ export async function getMaintenanceById(id) {
   }
 }
 
+/**
+ * Update maintenance status + payment info.
+ *
+ * ─── Nepali date handling ─────────────────────────────────────────────────────
+ * The frontend sends { nepaliDate, nepaliMonth, nepaliYear } from the
+ * DualCalendarTailwind picker. If any of these are missing the service
+ * derives them from the current server time using getNepaliYearMonthFromDate()
+ * (Nepali calendar), NOT from JS Date.getMonth() which returns an English
+ * month index.
+ *
+ * ─── Overpayment handling ────────────────────────────────────────────────────
+ * findByIdAndUpdate bypasses Mongoose pre-save hooks, so the model-level
+ * guard never fires on status updates. Business rules are enforced here.
+ *
+ * If allowOverpayment:true is passed the check is skipped and paymentStatus
+ * is automatically set to "overpaid" so accounting can flag it.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 export async function updateMaintenanceStatus(
   id,
   status,
   paymentStatus,
-  paidAmountPaisa = null,
-  paidAmount = null,
+  paidAmountRupees = null, // rupees value from the controller (req.body.paidAmount)
   lastPaidBy = null,
   options = {},
 ) {
@@ -144,19 +168,128 @@ export async function updateMaintenanceStatus(
     };
   }
 
-  const finalPaidAmountPaisa =
-    paidAmountPaisa !== undefined
-      ? paidAmountPaisa
-      : paidAmount !== null
-        ? rupeesToPaisa(paidAmount)
-        : null;
+  // ── Guard: invalid status transitions ────────────────────────────────────
+  // Industry standard: use a state machine / adjacency list rather than
+  // allowing free transitions, to prevent re-opening completed tasks and
+  // accidental double-expense creation.
+  const ALLOWED_TRANSITIONS = {
+    OPEN: ["IN_PROGRESS", "CANCELLED"],
+    IN_PROGRESS: ["OPEN", "COMPLETED", "CANCELLED"],
+    COMPLETED: [], // terminal — no transitions allowed
+    CANCELLED: [], // terminal — no transitions allowed
+  };
 
+  const currentStatus = existing.status;
+  if (
+    currentStatus !== status && // allow no-op patches
+    !ALLOWED_TRANSITIONS[currentStatus]?.includes(status)
+  ) {
+    return {
+      success: false,
+      message: `Cannot transition from ${currentStatus} to ${status}.`,
+      data: null,
+      expense: null,
+    };
+  }
+
+  // ── Guard: block payment on CANCELLED tasks ──────────────────────────────
+  if (
+    status === "CANCELLED" &&
+    paidAmountRupees !== null &&
+    paidAmountRupees > 0
+  ) {
+    return {
+      success: false,
+      message: "Cannot record a payment on a cancelled task.",
+      data: null,
+      expense: null,
+    };
+  }
+
+  // ── Resolve the paid amount in paisa ──────────────────────────────────────
+  const finalPaidAmountPaisa =
+    paidAmountRupees !== null ? rupeesToPaisa(paidAmountRupees) : null;
+
+  // ── Overpayment guard ─────────────────────────────────────────────────────
+  // Only validate when a paid amount is being set and the task has an estimate.
+  // Zero-estimate tasks (amountPaisa === 0) skip this because the admin may
+  // not have set a budget yet.
+  const estimatedPaisa = existing.amountPaisa ?? 0;
+
+  if (
+    finalPaidAmountPaisa !== null &&
+    estimatedPaisa > 0 &&
+    finalPaidAmountPaisa > estimatedPaisa
+  ) {
+    if (!options.allowOverpayment) {
+      // Return a structured error so the controller sends 409 with
+      // isOverpayment:true — the frontend uses this flag to show a
+      // confirmation dialog instead of a generic error toast.
+      return {
+        success: false,
+        isOverpayment: true,
+        message: `Paid amount (₹${paidAmountRupees}) exceeds estimated amount (₹${estimatedPaisa / 100}). Confirm to proceed.`,
+        overpaymentDiffRupees: (finalPaidAmountPaisa - estimatedPaisa) / 100,
+        data: null,
+        expense: null,
+      };
+    }
+
+    // Overpayment explicitly confirmed — mark it so accounting is aware
+    paymentStatus = "overpaid";
+  }
+
+  // ── Resolve Nepali date for the expense record ────────────────────────────
+  // Priority: frontend-supplied values → server-derived Nepali date.
+  //
+  // BUG FIX: The old code fell back to now.getMonth() + 1 and now.getFullYear()
+  // which are English calendar values. getNepaliYearMonthFromDate converts the
+  // current JS Date into the correct Nepali year and 1-based month.
+  const now = new Date();
+  const { npYear: fallbackNpYear, npMonth: fallbackNpMonth } =
+    getNepaliYearMonthFromDate(now);
+
+  const {
+    adminId,
+    nepaliDate: rawNepaliDate,
+    nepaliMonth: rawNepaliMonth,
+    nepaliYear: rawNepaliYear,
+    allowOverpayment,
+  } = options;
+
+  // Coerce string values coming from req.body to numbers (express body-parser
+  // keeps numeric strings as strings unless you use express-validator transforms)
+  const resolvedNepaliMonth =
+    typeof rawNepaliMonth === "number"
+      ? rawNepaliMonth
+      : Number.isFinite(Number(rawNepaliMonth))
+        ? Number(rawNepaliMonth)
+        : fallbackNpMonth; // ← Nepali month, not English
+
+  const resolvedNepaliYear =
+    typeof rawNepaliYear === "number"
+      ? rawNepaliYear
+      : Number.isFinite(Number(rawNepaliYear))
+        ? Number(rawNepaliYear)
+        : fallbackNpYear; // ← Nepali year, not English
+
+  const resolvedNepaliDate = rawNepaliDate ? new Date(rawNepaliDate) : now;
+
+  // ── Build update fields ───────────────────────────────────────────────────
   const updateFields = { status, paymentStatus };
+
   if (finalPaidAmountPaisa !== null) {
     updateFields.paidAmountPaisa = finalPaidAmountPaisa;
-    updateFields.paidAmount = finalPaidAmountPaisa / 100;
   }
   if (lastPaidBy) updateFields.lastPaidBy = lastPaidBy;
+
+  // Denormalize completion Nepali date when the task is being completed
+  if (status === "COMPLETED") {
+    updateFields.completedAt = now;
+    updateFields.completionNepaliDate = resolvedNepaliDate;
+    updateFields.completionNepaliMonth = resolvedNepaliMonth;
+    updateFields.completionNepaliYear = resolvedNepaliYear;
+  }
 
   const updatedTask = await Maintenance.findByIdAndUpdate(
     id,
@@ -164,16 +297,16 @@ export async function updateMaintenanceStatus(
     { new: true },
   );
 
+  // ── Auto-create expense on COMPLETED + paid/overpaid ─────────────────────
   let expense = null;
   const isCompleted = updatedTask?.status === "COMPLETED";
-  const isPaid = updatedTask?.paymentStatus === "paid";
+  const isSettled = ["paid", "overpaid"].includes(updatedTask?.paymentStatus);
 
-  if (isCompleted && isPaid) {
-    const finalPaidAmountPaisa =
-      updatedTask.paidAmountPaisa ||
-      (updatedTask.paidAmount ? rupeesToPaisa(updatedTask.paidAmount) : 0);
+  if (isCompleted && isSettled) {
+    const resolvedPaidPaisa = updatedTask.paidAmountPaisa ?? 0;
 
-    if (finalPaidAmountPaisa > 0) {
+    if (resolvedPaidPaisa > 0) {
+      // Idempotency guard: never create a second expense for the same task
       const existingExpense = await Expense.findOne({
         referenceType: "MAINTENANCE",
         referenceId: updatedTask._id,
@@ -192,20 +325,18 @@ export async function updateMaintenanceStatus(
           );
         }
 
-        const { adminId, nepaliDate, nepaliMonth, nepaliYear } = options;
-        const now = new Date();
         const payeeType = updatedTask.tenant ? "TENANT" : "EXTERNAL";
 
         const expenseData = {
           source: maintenanceSource._id,
-          amountPaisa: finalPaidAmountPaisa,
-          amount: finalPaidAmountPaisa / 100,
+          amountPaisa: resolvedPaidPaisa,
+          amount: resolvedPaidPaisa / 100,
           EnglishDate: now,
-          nepaliDate: nepaliDate ? new Date(nepaliDate) : now,
-          nepaliMonth:
-            typeof nepaliMonth === "number" ? nepaliMonth : now.getMonth() + 1,
-          nepaliYear:
-            typeof nepaliYear === "number" ? nepaliYear : now.getFullYear(),
+          // Use the resolved Nepali values — these are now guaranteed to be
+          // Nepali calendar values, not English month/year.
+          nepaliDate: resolvedNepaliDate,
+          nepaliMonth: resolvedNepaliMonth,
+          nepaliYear: resolvedNepaliYear,
           payeeType,
           ...(payeeType === "TENANT" ? { tenant: updatedTask.tenant } : {}),
           referenceType: "MAINTENANCE",
@@ -219,7 +350,6 @@ export async function updateMaintenanceStatus(
         };
 
         const result = await createExpense(expenseData);
-        console.log("create expense result", result);
         if (!result.success) {
           throw new Error(
             result.error || result.message || "Failed to create expense",
@@ -261,7 +391,6 @@ export async function updateMaintenanceAssignedTo(id, assignedTo) {
     .populate("block")
     .populate("createdBy");
 
-  // Notify newly assigned staff
   if (assignedTo) {
     _notifyAssignedStaff(updated);
   }
