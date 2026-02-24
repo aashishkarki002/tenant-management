@@ -1,7 +1,7 @@
 import { Routes, Route, useLocation, useParams, Navigate } from "react-router-dom";
 import Signup from "./Auth/Signup";
 import Login from "./Auth/Login";
-
+import Transaction from "./Dashboard/component/Transaction";
 import AppLayout from "./components/layout/Applayout";
 import Tenants from "./Tenant/tenants";
 import Dashboard from "./Dashboard/Dashboard";
@@ -23,6 +23,7 @@ import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail/ViewDetail";
 import BroadCast from "./BroadCast";
+import HashLoader from "react-spinners/HashLoader";
 
 function TenantDetailRedirect() {
   const { id } = useParams();
@@ -185,6 +186,14 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <BroadCast />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
+        path="/transactions"
+        element={
+          <ProtectedRoutes>
+            <Transaction />
           </ProtectedRoutes>
         }
       />

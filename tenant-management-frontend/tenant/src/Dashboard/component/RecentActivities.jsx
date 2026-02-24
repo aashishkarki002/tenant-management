@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CheckCircle, Clock, User, Circle, TrendingUp, TrendingDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
-
+import Transaction from './Transaction';
 const ICON_MAP = {
   payment: CheckCircle,
   rent: CheckCircle,
