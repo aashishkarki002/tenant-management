@@ -7,7 +7,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import useProperty from "../hooks/use-property";
-import useUnits from "../hooks/use-units";
+import { useUnits } from "../hooks/use-units";
 import api from "../../plugins/axios";
 import { useElectricityData } from "./hooks/useElectricityData";
 import { useNewElectricityRows } from "./hooks/useNewElectricityRows";

@@ -150,7 +150,7 @@ function ComparisonStats({ stats, labelA, labelB }) {
                                 <span className="text-xs text-muted-foreground">
                                     {s.pct === null
                                         ? "No baseline data"
-                                        : `${Math.abs(s.b - s.a).toLocaleString()} ₹ ${s.pct >= 0 ? "increase" : "decrease"}`}
+                                        : `₹${Math.abs(s.b - s.a).toLocaleString()} ${s.pct >= 0 ? "increase" : "decrease"}`}
                                 </span>
                             </div>
                         </CardContent>
@@ -225,12 +225,10 @@ export default function AccountingPage() {
 
     const activeCompareQuarter = compareMode ? compareQuarter : null;
 
-    const ledgerType = activeTab === "Revenue" ? "revenue"
-        : activeTab === "Expenses" ? "expense"
-            : "all";
-
+    // Ledger is only shown in the Summary tab — always fetch "all" to avoid
+    // unnecessary refetches every time the user switches tabs.
     const { summary, loadingSummary, ledgerEntries, loadingLedger, refetch } =
-        useAccounting(selectedQuarter, ledgerType);
+        useAccounting(selectedQuarter, "all");
 
     const { bankAccounts } = useBankAccounts();
 
@@ -454,44 +452,24 @@ export default function AccountingPage() {
                         </div>
                     )}
 
-                    {/* Chart Card */}
-                    <Card className="border-border">
-                        <CardHeader className="pb-2">
-                            <div className="flex items-start justify-between flex-wrap gap-2">
-                                <div>
-                                    <CardTitle className="text-base font-bold">
-                                        {compareMode ? "Period Comparison" : "Revenue vs Expenses"}
-                                    </CardTitle>
-                                    <p className="text-xs text-muted-foreground mt-0.5">{chartSubtitle}</p>
-                                </div>
-
-                                {compareMode && (
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                                            <span className="w-2 h-2 rounded-sm bg-emerald-500" /> A: {periodALabel}
-                                        </span>
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-100 dark:bg-cyan-900/30 px-2.5 py-1 text-xs font-semibold text-cyan-700 dark:text-cyan-400">
-                                            <span className="w-2 h-2 rounded-sm bg-cyan-500" /> B: {periodBLabel}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                            <RevenueExpensesChart
-                                data={chartData}
-                                compareData={compareData}
-                                loading={loadingChart}
-                            />
-                            {compareMode && comparisonStats && (
-                                <ComparisonStats
-                                    stats={comparisonStats}
-                                    labelA={periodALabel}
-                                    labelB={periodBLabel}
-                                />
-                            )}
-                        </CardContent>
-                    </Card>
+                    {/* Chart — RevenueExpensesChart wraps itself in a Card, so no outer Card needed */}
+                    <RevenueExpensesChart
+                        data={chartData}
+                        compareData={compareData}
+                        loading={loadingChart}
+                        title={compareMode ? "Period Comparison" : "Revenue vs Expenses"}
+                        subtitle={chartSubtitle}
+                        periodALabel={compareMode ? periodALabel : undefined}
+                        periodBLabel={compareMode ? periodBLabel : undefined}
+                        compareMode={compareMode}
+                    />
+                    {compareMode && comparisonStats && (
+                        <ComparisonStats
+                            stats={comparisonStats}
+                            labelA={periodALabel}
+                            labelB={periodBLabel}
+                        />
+                    )}
 
                     {/* Ledger Table */}
                     <Card className="border-border">

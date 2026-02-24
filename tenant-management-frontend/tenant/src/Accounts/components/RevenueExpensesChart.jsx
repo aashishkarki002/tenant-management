@@ -12,7 +12,6 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, Legend, ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 const TOKEN = {
@@ -186,8 +185,11 @@ export default function RevenueExpensesChart({
     data = [],
     compareData = [],
     loading = false,
-    title = "Financial Summary",
-    subtitle = "Revenue, expenses & net profit",
+    title = "Revenue vs Expenses",
+    subtitle = "Monthly financial summary",
+    compareMode = false,
+    periodALabel = null,
+    periodBLabel = null,
 }) {
     // "net" | "breakdown" | "compare"
     const [view, setView] = useState("net");
@@ -208,7 +210,7 @@ export default function RevenueExpensesChart({
     const showCompareTab = hasCompare;
 
     return (
-        <Card className="w-full" style={{ overflow: "hidden" }}>
+        <div className="w-full rounded-xl border border-border bg-card overflow-hidden">
             {/* Google Fonts — DM Sans + DM Mono */}
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -218,35 +220,47 @@ export default function RevenueExpensesChart({
                 }
             `}</style>
 
-            <CardHeader style={{ paddingBottom: 0 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                    <div>
-                        <CardTitle style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
-                            {title}
-                        </CardTitle>
-                        <p style={{ fontSize: 13, color: "var(--muted-foreground)", marginTop: 2, fontFamily: "'DM Sans', sans-serif" }}>
-                            {subtitle}
-                        </p>
-                    </div>
-
-                    {/* View toggle */}
-                    <div style={{
-                        display: "flex",
-                        gap: 4,
-                        background: "var(--muted)",
-                        borderRadius: 8,
-                        padding: 4,
-                    }}>
-                        <ViewTab label="Net Profit" active={view === "net"} onClick={() => setView("net")} />
-                        <ViewTab label="Breakdown" active={view === "breakdown"} onClick={() => setView("breakdown")} />
-                        {showCompareTab && (
-                            <ViewTab label="Compare" active={view === "compare"} onClick={() => setView("compare")} />
-                        )}
-                    </div>
+            {/* Header */}
+            <div style={{ padding: "20px 24px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                <div>
+                    <p style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: "var(--foreground)", margin: 0 }}>
+                        {title}
+                    </p>
+                    <p style={{ fontSize: 13, color: "var(--muted-foreground)", marginTop: 2, fontFamily: "'DM Sans', sans-serif" }}>
+                        {subtitle}
+                    </p>
+                    {/* Compare period legend — shown when compareMode and labels are supplied */}
+                    {compareMode && periodALabel && (
+                        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 20, background: "var(--emerald-100, #d1fae5)", padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "var(--emerald-700, #047857)" }}>
+                                <span style={{ width: 8, height: 8, borderRadius: 2, background: "#10b981", display: "inline-block" }} />
+                                A: {periodALabel}
+                            </span>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 20, background: "var(--cyan-100, #cffafe)", padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "var(--cyan-700, #0e7490)" }}>
+                                <span style={{ width: 8, height: 8, borderRadius: 2, background: "#06b6d4", display: "inline-block" }} />
+                                B: {periodBLabel}
+                            </span>
+                        </div>
+                    )}
                 </div>
-            </CardHeader>
 
-            <CardContent style={{ paddingTop: 20 }}>
+                {/* View toggle */}
+                <div style={{
+                    display: "flex",
+                    gap: 4,
+                    background: "var(--muted)",
+                    borderRadius: 8,
+                    padding: 4,
+                }}>
+                    <ViewTab label="Net Profit" active={view === "net"} onClick={() => setView("net")} />
+                    <ViewTab label="Breakdown" active={view === "breakdown"} onClick={() => setView("breakdown")} />
+                    {showCompareTab && (
+                        <ViewTab label="Compare" active={view === "compare"} onClick={() => setView("compare")} />
+                    )}
+                </div>
+            </div>
+
+            <div style={{ padding: "20px 24px 24px" }}>
                 {loading ? (
                     <ChartSkeleton />
                 ) : !chartData?.length ? (
@@ -336,7 +350,7 @@ export default function RevenueExpensesChart({
                         </ResponsiveContainer>
                     </>
                 )}
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }

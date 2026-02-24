@@ -29,10 +29,7 @@ export default function PushNotificationBanner() {
                 <Share className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
                 <div className="flex-1 text-sm">
                     <p className="font-semibold text-blue-800">Enable push notifications</p>
-                    <p className="text-blue-600 mt-0.5">
-                        Tap the <strong>Share</strong> button in Safari, then <strong>"Add to Home Screen"</strong>.
-                        Open the app from your Home Screen to enable alerts.
-                    </p>
+
                 </div>
                 <button onClick={() => setDismissed(true)} className="text-blue-400 hover:text-blue-600">
                     <X className="w-4 h-4" />

@@ -27,14 +27,20 @@ import {
     getUnitsForInnerBlocks,
 } from "../utils/propertyHelper";
 import { RENT_PAYMENT_FREQUENCY } from "../constants/tenant.constant";
+import { useVacantUnits } from "../../../hooks/use-units";
 
 export const LeaseDetailsTab = ({
     formik,
     property,
-    units,
     onNext,
     onPrevious,
 }) => {
+    // Only vacant units are valid for a new lease.
+    // Block filter is applied once the user selects a block in PersonalInfoTab.
+    const { units = [], loading: unitsLoading } = useVacantUnits({
+        blockId: formik.values.block || undefined,
+    });
+
     const innerBlocks = getInnerBlocksForBlock(formik.values.block, property);
 
     const availableUnits = formik.values.innerBlock
@@ -70,7 +76,12 @@ export const LeaseDetailsTab = ({
                 </div>
 
                 <div className="space-y-2">
-                    <Label>Units *</Label>
+                    <Label>
+                        Units *
+                        {unitsLoading && (
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">Loading…</span>
+                        )}
+                    </Label>
                     <Combobox
                         multiple
                         autoHighlight

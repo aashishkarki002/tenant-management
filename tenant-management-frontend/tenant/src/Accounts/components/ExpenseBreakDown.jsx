@@ -17,6 +17,48 @@ const REF_TYPE_CFG = {
     SALARY: { bg: "#ede9fe", color: "#5b21b6" },
 };
 
+
+// Nepal fiscal quarter → Nepali month numbers (1-indexed)
+// Q1: Shrawan(4), Bhadra(5), Ashwin(6)
+// Q2: Kartik(7), Mangsir(8), Poush(9)
+// Q3: Magh(10), Falgun(11), Chaitra(12)
+// Q4: Baishakh(1), Jestha(2), Ashadh(3)
+const QUARTER_NEPALI_MONTHS = {
+    1: [4, 5, 6],
+    2: [7, 8, 9],
+    3: [10, 11, 12],
+    4: [1, 2, 3],
+};
+
+const QUARTER_LABELS_EXP = {
+    1: "Q1 · Shrawan–Ashwin",
+    2: "Q2 · Kartik–Poush",
+    3: "Q3 · Magh–Chaitra",
+    4: "Q4 · Baishakh–Ashadh",
+};
+
+// ─── Filter helpers ───────────────────────────────────────────────────────────
+function filterByNepaliQuarter(expenses, quarter) {
+    if (!quarter || quarter === "custom") return expenses;
+    const months = QUARTER_NEPALI_MONTHS[quarter] ?? [];
+    return expenses.filter((e) => months.includes(e.nepaliMonth));
+}
+
+function filterByCustomDate(expenses, startDate, endDate) {
+    if (!startDate || !endDate) return expenses;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    return expenses.filter((e) => {
+        const d = new Date(e.EnglishDate ?? e.createdAt);
+        return !isNaN(d) && d >= start && d <= end;
+    });
+}
+
+function applyExpenseFilter(expenses, selectedQuarter, customStartDate, customEndDate) {
+    if (selectedQuarter === "custom") return filterByCustomDate(expenses, customStartDate, customEndDate);
+    return filterByNepaliQuarter(expenses, selectedQuarter);
+}
+
 const fmt = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
 const fmtK = (v) => v >= 100_000 ? `${(v / 100_000).toFixed(1)}L` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v;
 const toRs = (p) => (p ?? 0) / 100;  // paisa → rupees
@@ -147,9 +189,17 @@ function EmptyState({ msg = "No data yet" }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function ExpenseBreakDown({ onExpenseAdded }) {
+export default function ExpenseBreakDown({
+    onExpenseAdded,
+    // Period filter props passed down from AccountingPage
+    selectedQuarter = null,
+    compareMode = false,
+    compareQuarter = null,
+    customStartDate = "",
+    customEndDate = "",
+}) {
     const [activeTab, setActiveTab] = useState("overview");
-    const [expenses, setExpenses] = useState([]);
+    const [allExpenses, setAllExpenses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -161,7 +211,7 @@ export default function ExpenseBreakDown({ onExpenseAdded }) {
         try {
             const { data } = await api.get("/api/expense/get-all");
             // Controller returns: { success, expenses: [...] }
-            setExpenses(data?.expenses ?? []);
+            setAllExpenses(data?.expenses ?? []);
         } catch (err) {
             setError(err?.response?.data?.message ?? "Failed to load expense data");
         } finally { setLoading(false); }
@@ -175,9 +225,32 @@ export default function ExpenseBreakDown({ onExpenseAdded }) {
 
     const handleSuccess = useCallback(() => { fetchExpenses(); onExpenseAdded?.(); }, [fetchExpenses, onExpenseAdded]);
 
-    const { bySource, byMonth, payeeSplit, byRefType, recentTxns, topPayees, totals } = useMemo(
-        () => transformExpenses(expenses), [expenses],
+    // Apply period filter — mirrors RevenueBreakDown's filtering pattern
+    const filteredA = useMemo(
+        () => applyExpenseFilter(allExpenses, selectedQuarter, customStartDate, customEndDate),
+        [allExpenses, selectedQuarter, customStartDate, customEndDate],
     );
+    const filteredB = useMemo(
+        () => compareMode ? applyExpenseFilter(allExpenses, compareQuarter, customStartDate, customEndDate) : [],
+        [allExpenses, compareMode, compareQuarter, customStartDate, customEndDate],
+    );
+
+    // Primary display dataset
+    const displayExpenses = filteredA;
+    const { bySource, byMonth, payeeSplit, byRefType, recentTxns, topPayees, totals } = useMemo(
+        () => transformExpenses(displayExpenses), [displayExpenses],
+    );
+    const totalsB = useMemo(
+        () => compareMode ? transformExpenses(filteredB).totals : null,
+        [compareMode, filteredB],
+    );
+
+    // Period label — consistent with AccountingPage and RevenueBreakDown
+    const periodLabel = selectedQuarter === "custom"
+        ? `${customStartDate} → ${customEndDate}`
+        : selectedQuarter
+            ? QUARTER_LABELS_EXP[selectedQuarter] ?? `Q${selectedQuarter}`
+            : "All Periods";
 
     const exportCSV = () => {
         const rows = [["Source", "Ref Type", "Payee Type", "Amount (₹)", "Date (BS)", "Status", "Notes"],
@@ -190,14 +263,17 @@ export default function ExpenseBreakDown({ onExpenseAdded }) {
     };
 
     return (
-        <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", background: "#f9fafb", minHeight: "100vh", padding: "28px 32px" }}>
+        <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
 
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+            {/* Compact sub-header — no standalone h1, page title comes from AccountingPage */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
                 <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>Accounting · Expense</div>
-                    <h1 style={{ fontSize: 26, fontWeight: 800, color: "#111827", margin: 0, letterSpacing: "-0.02em" }}>Expense Overview</h1>
-                    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 3 }}>{loading ? "Loading…" : `${totals.txnCount} transactions`}</div>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 2 }}>
+                        {periodLabel}
+                    </p>
+                    <p style={{ fontSize: 13, color: "#6b7280" }}>
+                        {loading ? "Loading…" : `${totals.txnCount} transactions · ${fmt(totals.total)}`}
+                    </p>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
                     <button onClick={fetchExpenses} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "9px 10px", cursor: "pointer" }}>
@@ -397,7 +473,7 @@ export default function ExpenseBreakDown({ onExpenseAdded }) {
                                 // Since we don't have that in populated data, group by known operating codes
                                 const operatingCodes = ["MAINTENANCE", "UTILITY", "SALARY"];
                                 let operatingAmt = 0, nonOperatingAmt = 0;
-                                expenses.forEach((e) => {
+                                allExpenses.forEach((e) => {
                                     operatingCodes.includes(e.source?.code) ? (operatingAmt += toRs(e.amountPaisa)) : (nonOperatingAmt += toRs(e.amountPaisa));
                                 });
                                 return [

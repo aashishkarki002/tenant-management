@@ -12,7 +12,9 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DualCalendarTailwind from '@/components/dualDate';
+import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import api from '../../plugins/axios';
+import { useUnits } from '../hooks/use-units';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useFormik } from 'formik';
 import { Spinner } from '@/components/ui/spinner';
@@ -50,7 +52,7 @@ const PRIORITY_FILTERS = ['All', 'Urgent', 'High', 'Medium', 'Low'];
 /* ─────────────────────────────────────────────────────────────────────────── */
 export default function Maintenance() {
   const [tenant, setTenant] = useState([]);
-  const [unit, setUnit] = useState([]);
+  const { units = [] } = useUnits();
   const [maintenance, setMaintenance] = useState([]);
   const [expandedCards, setExpandedCards] = useState(new Set());
   const [selectedTenant, setSelectedTenant] = useState(null);
@@ -68,20 +70,6 @@ export default function Maintenance() {
     const getTenants = async () => {
       const response = await api.get('/api/tenant/get-tenants');
       setTenant(response.data.tenants);
-      const occupiedUnits = [];
-      response.data.tenants.forEach((t) => {
-        if (t.units && Array.isArray(t.units)) {
-          t.units.forEach((u) => {
-            if (u && !occupiedUnits.find((x) => x._id === u._id)) occupiedUnits.push(u);
-          });
-        }
-      });
-      const unitResponse = await api.get('/api/unit/get-units');
-      const allUnits = [...occupiedUnits];
-      (unitResponse.data.units || []).forEach((u) => {
-        if (!allUnits.find((x) => x._id === u._id)) allUnits.push(u);
-      });
-      setUnit(allUnits);
     };
     getTenants();
   }, []);
@@ -108,6 +96,8 @@ export default function Maintenance() {
       title: '', category: '', priority: '', status: '',
       unit: '', tenant: '', assignTo: '', estimatedCost: '',
       description: '', scheduledDate: '',
+      // Nepali equivalents — populated by DualCalendarTailwind's second onChange arg
+      scheduledNepaliDate: '', scheduledNepaliMonth: null, scheduledNepaliYear: null,
     },
     onSubmit: async (values) => {
       try {
@@ -124,6 +114,10 @@ export default function Maintenance() {
           assignedTo: values.assignTo || undefined,
           amount: values.estimatedCost ? parseFloat(values.estimatedCost) : 0,
           scheduledDate: values.scheduledDate ? new Date(values.scheduledDate) : new Date(),
+          // Pass denormalised Nepali fields so the service can index them.
+          // If the user didn't pick a date via the BS picker, derive from the
+          // English date as a safe fallback.
+          ...parseNepaliFields(values.scheduledDate || new Date().toISOString().slice(0, 10)),
         };
         const response = await api.post('/api/maintenance/create', maintenanceData);
         if (response.data.success) {
@@ -198,151 +192,7 @@ export default function Maintenance() {
     return list;
   }, [maintenance, statusFilter, priorityFilter]);
 
-  /* ── Add task dialog (extracted for reuse) ── */
-  const AddTaskDialog = () => (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button className="w-full sm:w-auto bg-blue-600 text-white hover:bg-blue-700 shadow-sm">
-          <Plus className="mr-2 h-4 w-4" /> Schedule Repair
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl lg:max-w-3xl bg-white text-black max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900">Add Maintenance Task</DialogTitle>
-          <DialogDescription className="text-gray-600">Log new repair or upkeep request</DialogDescription>
-        </DialogHeader>
 
-        <form onSubmit={formik.handleSubmit} className="mt-4">
-          <div className="space-y-4">
-
-            {/* General Info */}
-            <FormSection title="General Information" open={formSections.general} toggle={() => toggleFormSection('general')}>
-              <div>
-                <Label htmlFor="title" className="text-gray-700">Task Title</Label>
-                <Input id="title" name="title" placeholder="e.g., AC Repair or Leaking Faucet"
-                  value={formik.values.title} onChange={formik.handleChange}
-                  className="mt-1.5 bg-white border-gray-300" />
-              </div>
-              <div>
-                <Label className="text-gray-700">Task Description</Label>
-                <Input name="description" placeholder="Enter description"
-                  value={formik.values.description} onChange={formik.handleChange}
-                  className="mt-1.5 bg-white border-gray-300" />
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label className="text-gray-700">Category</Label>
-                  <Select value={formik.values.category} onValueChange={(v) => formik.setFieldValue('category', v)}>
-                    <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select category" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="repair">Repair</SelectItem>
-                      <SelectItem value="maintenance">Maintenance</SelectItem>
-                      <SelectItem value="inspection">Inspection</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-gray-700">Status</Label>
-                  <Select value={formik.values.status} onValueChange={(v) => formik.setFieldValue('status', v)}>
-                    <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select status" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="OPEN">Open</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="COMPLETED">Completed</SelectItem>
-                      <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-700">Priority Level</Label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {PRIORITY_OPTIONS.map(({ value, dot, label }) => (
-                    <Button key={value} type="button" variant="outline"
-                      onClick={() => formik.setFieldValue('priority', value)}
-                      className={cn('rounded-full text-sm font-medium transition',
-                        formik.values.priority === value
-                          ? 'border-gray-700 bg-gray-700 text-white'
-                          : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50')}>
-                      <span className={cn('mr-1.5 h-2 w-2 rounded-full', dot)} />{label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </FormSection>
-
-            {/* Property & Tenant */}
-            <FormSection title="Property & Tenant" open={formSections.property} toggle={() => toggleFormSection('property')}>
-              <div>
-                <Label className="text-gray-700">Unit Number</Label>
-                <Select value={formik.values.unit} onValueChange={(v) => formik.setFieldValue('unit', v)}>
-                  <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select unit" /></SelectTrigger>
-                  <SelectContent>{unit.map((u) => <SelectItem key={u._id} value={u._id}>{u.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              {selectedTenant && (
-                <div className="rounded-md border border-gray-200 bg-white p-4">
-                  <p className="mb-2 text-sm font-medium text-gray-700">Tenant Details</p>
-                  <div className="grid gap-2 text-sm sm:grid-cols-2">
-                    <div><span className="text-gray-500">Name</span><p className="font-medium text-gray-900">{selectedTenant.name || 'N/A'}</p></div>
-                    <div><span className="text-gray-500">Email</span><p className="text-gray-900">{selectedTenant.email || 'N/A'}</p></div>
-                    <div><span className="text-gray-500">Phone</span><p className="text-gray-900">{selectedTenant.phone || 'N/A'}</p></div>
-                    {selectedTenant.address && <div className="sm:col-span-2"><span className="text-gray-500">Address</span><p className="text-gray-900">{selectedTenant.address}</p></div>}
-                  </div>
-                </div>
-              )}
-            </FormSection>
-
-            {/* Assign + Timing */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <FormSection title="Assign To" open={formSections.assign} toggle={() => toggleFormSection('assign')}>
-                <div>
-                  <Label className="text-gray-700">Assign To Staff</Label>
-                  <Select value={formik.values.assignTo || ''} onValueChange={(v) => formik.setFieldValue('assignTo', v)} disabled={staffs.length === 0}>
-                    <SelectTrigger className="mt-1.5 bg-white border-gray-300">
-                      <SelectValue placeholder={staffs.length === 0 ? 'No staff available' : 'Select staff'} />
-                    </SelectTrigger>
-                    {staffs.length > 0 && (
-                      <SelectContent>{staffs.map((s) => <SelectItem key={s._id} value={s._id}>{s.name || s.email || 'Unnamed'}</SelectItem>)}</SelectContent>
-                    )}
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-gray-700">Estimated Cost</Label>
-                  <div className="relative mt-1.5">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600">₹</span>
-                    <Input name="estimatedCost" type="number" value={formik.values.estimatedCost}
-                      onChange={formik.handleChange} className="pl-8 bg-white border-gray-300" />
-                  </div>
-                </div>
-              </FormSection>
-
-              <FormSection title="Timing & Documentation" open={formSections.timing} toggle={() => toggleFormSection('timing')}>
-                <Label className="text-gray-700">Scheduled Date (English/Nepali)</Label>
-                <div className="mt-1.5">
-                  <DualCalendarTailwind
-                    value={formik.values.scheduledDate || ''}
-                    onChange={(englishDate) => formik.setFieldValue('scheduledDate', englishDate)}
-                  />
-                </div>
-              </FormSection>
-            </div>
-          </div>
-
-          <DialogFooter className="mt-6 flex gap-2">
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={isLoading}>Cancel</Button>
-            </DialogClose>
-            {isLoading
-              ? <Spinner className="h-4 w-4 animate-spin" />
-              : <Button type="submit" className="bg-blue-600 text-white hover:bg-blue-700">Save</Button>
-            }
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
 
   /* ────────────────────────────────────────────────────────────────────────
      RENDER
@@ -375,7 +225,15 @@ export default function Maintenance() {
           {/* Header row with Add button — only on list tab */}
           <div className="flex items-center justify-between gap-4">
             <div /> {/* spacer */}
-            <AddTaskDialog />
+            <AddTaskDialog
+              formik={formik}
+              formSections={formSections}
+              toggleFormSection={toggleFormSection}
+              unit={units ?? []}
+              staffs={staffs ?? []}
+              selectedTenant={selectedTenant}
+              isLoading={isLoading}
+            />
           </div>
 
           {/* Stats — 4 cards */}
@@ -506,6 +364,164 @@ export default function Maintenance() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/* ── Add Task Dialog — extracted to avoid remount-on-every-keystroke bug ─── */
+function AddTaskDialog({ formik, formSections, toggleFormSection, unit, staffs, selectedTenant, isLoading }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button className="w-full sm:w-auto bg-blue-600 text-white hover:bg-blue-700 shadow-sm">
+          <Plus className="mr-2 h-4 w-4" /> Schedule Repair
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl lg:max-w-3xl bg-white text-black max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold text-gray-900">Add Maintenance Task</DialogTitle>
+          <DialogDescription className="text-gray-600">Log new repair or upkeep request</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={formik.handleSubmit} className="mt-4">
+          <div className="space-y-4">
+
+            {/* General Info */}
+            <FormSection title="General Information" open={formSections.general} toggle={() => toggleFormSection('general')}>
+              <div>
+                <Label htmlFor="title" className="text-gray-700">Task Title</Label>
+                <Input id="title" name="title" placeholder="e.g., AC Repair or Leaking Faucet"
+                  value={formik.values.title} onChange={formik.handleChange}
+                  className="mt-1.5 bg-white border-gray-300" />
+              </div>
+              <div>
+                <Label className="text-gray-700">Task Description</Label>
+                <Input name="description" placeholder="Enter description"
+                  value={formik.values.description} onChange={formik.handleChange}
+                  className="mt-1.5 bg-white border-gray-300" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label className="text-gray-700">Category</Label>
+                  <Select value={formik.values.category} onValueChange={(v) => formik.setFieldValue('category', v)}>
+                    <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select category" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="repair">Repair</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                      <SelectItem value="inspection">Inspection</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-700">Status</Label>
+                  <Select value={formik.values.status} onValueChange={(v) => formik.setFieldValue('status', v)}>
+                    <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="OPEN">Open</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="COMPLETED">Completed</SelectItem>
+                      <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label className="text-gray-700">Priority Level</Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {PRIORITY_OPTIONS.map(({ value, dot, label }) => (
+                    <Button key={value} type="button" variant="outline"
+                      onClick={() => formik.setFieldValue('priority', value)}
+                      className={cn('rounded-full text-sm font-medium transition',
+                        formik.values.priority === value
+                          ? 'border-gray-700 bg-gray-700 text-white'
+                          : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50')}>
+                      <span className={cn('mr-1.5 h-2 w-2 rounded-full', dot)} />{label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </FormSection>
+
+            {/* Property & Tenant */}
+            <FormSection title="Property & Tenant" open={formSections.property} toggle={() => toggleFormSection('property')}>
+              <div>
+                <Label className="text-gray-700">Unit Number</Label>
+                <Select value={formik.values.unit} onValueChange={(v) => formik.setFieldValue('unit', v)}>
+                  <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select unit" /></SelectTrigger>
+                  <SelectContent>{(unit ?? []).map((u) => <SelectItem key={u._id} value={u._id}>{u.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              {selectedTenant && (
+                <div className="rounded-md border border-gray-200 bg-white p-4">
+                  <p className="mb-2 text-sm font-medium text-gray-700">Tenant Details</p>
+                  <div className="grid gap-2 text-sm sm:grid-cols-2">
+                    <div><span className="text-gray-500">Name</span><p className="font-medium text-gray-900">{selectedTenant.name || 'N/A'}</p></div>
+                    <div><span className="text-gray-500">Email</span><p className="text-gray-900">{selectedTenant.email || 'N/A'}</p></div>
+                    <div><span className="text-gray-500">Phone</span><p className="text-gray-900">{selectedTenant.phone || 'N/A'}</p></div>
+                    {selectedTenant.address && <div className="sm:col-span-2"><span className="text-gray-500">Address</span><p className="text-gray-900">{selectedTenant.address}</p></div>}
+                  </div>
+                </div>
+              )}
+            </FormSection>
+
+            {/* Assign + Timing */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FormSection title="Assign To" open={formSections.assign} toggle={() => toggleFormSection('assign')}>
+                <div>
+                  <Label className="text-gray-700">Assign To Staff</Label>
+                  <Select value={formik.values.assignTo || ''} onValueChange={(v) => formik.setFieldValue('assignTo', v)} disabled={(staffs ?? []).length === 0}>
+                    <SelectTrigger className="mt-1.5 bg-white border-gray-300">
+                      <SelectValue placeholder={(staffs ?? []).length === 0 ? 'No staff available' : 'Select staff'} />
+                    </SelectTrigger>
+                    {(staffs ?? []).length > 0 && (
+                      <SelectContent>{(staffs ?? []).map((s) => <SelectItem key={s._id} value={s._id}>{s.name || s.email || 'Unnamed'}</SelectItem>)}</SelectContent>
+                    )}
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-700">Estimated Cost</Label>
+                  <div className="relative mt-1.5">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600">₹</span>
+                    <Input name="estimatedCost" type="number" value={formik.values.estimatedCost}
+                      onChange={formik.handleChange} className="pl-8 bg-white border-gray-300" />
+                  </div>
+                </div>
+              </FormSection>
+
+              <FormSection title="Timing & Documentation" open={formSections.timing} toggle={() => toggleFormSection('timing')}>
+                <Label className="text-gray-700">Scheduled Date (English/Nepali)</Label>
+                <div className="mt-1.5">
+                  <DualCalendarTailwind
+                    value={formik.values.scheduledDate || ''}
+                    onChange={(englishDate, nepaliDateStr) => {
+                      formik.setFieldValue('scheduledDate', englishDate);
+                      // Store the Nepali fields so the submit handler can send
+                      // them to the backend without a second conversion.
+                      if (nepaliDateStr) {
+                        const { nepaliMonth, nepaliYear } = parseNepaliFields(englishDate);
+                        formik.setFieldValue('scheduledNepaliDate', nepaliDateStr);
+                        formik.setFieldValue('scheduledNepaliMonth', nepaliMonth);
+                        formik.setFieldValue('scheduledNepaliYear', nepaliYear);
+                      }
+                    }}
+                  />
+                </div>
+              </FormSection>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-6 flex gap-2">
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={isLoading}>Cancel</Button>
+            </DialogClose>
+            {isLoading
+              ? <Spinner className="h-4 w-4 animate-spin" />
+              : <Button type="submit" className="bg-blue-600 text-white hover:bg-blue-700">Save</Button>
+            }
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

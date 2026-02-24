@@ -26,6 +26,8 @@ import { NEPALI_MONTHS } from "@/constants/nepaliMonths";
  *   onStatusChange   {fn}
  *   onPropertyChange {fn}
  *   onReset          {fn}    - resets all filters to defaults
+ *   defaultMonth     {number} - optional; when set, month !== defaultMonth counts as active
+ *   defaultYear      {number} - optional; when set, year !== defaultYear counts as active
  */
 export const RentFilter = ({
     month,
@@ -33,17 +35,23 @@ export const RentFilter = ({
     status = "all",
     propertyId = "",
     properties = [],
+    defaultMonth,
+    defaultYear,
     onMonthChange,
     onYearChange,
     onStatusChange,
     onPropertyChange,
     onReset,
 }) => {
-    // Build a year range: current Nepali year ± 2
-    const yearOptions = Array.from({ length: 5 }, (_, i) => year - 2 + i);
+    // Build a year range: current Nepali year ± 2 (guard against NaN/undefined)
+    const baseYear = Number.isFinite(year) ? year : 2081;
+    const yearOptions = Array.from({ length: 5 }, (_, i) => baseYear - 2 + i);
 
     const hasActiveFilters =
-        status !== "all" || propertyId !== "";
+        status !== "all" ||
+        propertyId !== "" ||
+        (defaultMonth != null && month !== defaultMonth) ||
+        (defaultYear != null && year !== defaultYear);
 
     return (
         <div className="flex flex-wrap items-center gap-2">

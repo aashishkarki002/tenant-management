@@ -28,6 +28,7 @@ const RentPayment = () => {
     payments,
     bankAccounts,
     cams,
+    properties,
     loading,
     paymentsLoading,
     filterRentMonth,
@@ -38,6 +39,8 @@ const RentPayment = () => {
     setFilterRentYear,
     setFilterStatus,
     setFilterPropertyId,
+    defaultRentMonth,
+    defaultRentYear,
     filterStartDate,
     filterEndDate,
     filterPaymentMethod,
@@ -111,6 +114,8 @@ const RentPayment = () => {
   };
 
   const handleClearRentFilters = () => {
+    setFilterRentMonth(defaultRentMonth);
+    setFilterRentYear(defaultRentYear);
     setFilterStatus("all");
     setFilterPropertyId("");
   };
@@ -152,9 +157,23 @@ const RentPayment = () => {
               totalCollected={frequencyTotalCollected}
               totalDue={frequencyTotalDue}
               frequencyView={frequencyView}
-              filterRentMonth={filterRentMonth}
-              onMonthChange={setFilterRentMonth}
             />
+            <div className="px-6">
+              <RentFilter
+                month={filterRentMonth}
+                year={filterRentYear}
+                status={filterStatus}
+                propertyId={filterPropertyId}
+                properties={properties}
+                defaultMonth={defaultRentMonth}
+                defaultYear={defaultRentYear}
+                onMonthChange={setFilterRentMonth}
+                onYearChange={setFilterRentYear}
+                onStatusChange={setFilterStatus}
+                onPropertyChange={setFilterPropertyId}
+                onReset={handleClearRentFilters}
+              />
+            </div>
             <CardContent>
 
               <RentTable

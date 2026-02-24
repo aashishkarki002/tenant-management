@@ -1,7 +1,6 @@
 import React from "react";
 import { CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { RentFilter } from "./RentFilter";
 
 /**
  * Component for displaying rent collection summary.
@@ -13,8 +12,6 @@ export const RentSummaryCard = ({
   totalCollected,
   totalDue,
   frequencyView,      // "monthly" | "quarterly"
-  filterRentMonth,
-  onMonthChange,
 }) => {
   // Guard against divide-by-zero; clamp to [0, 100] for safety
   const progressPercentage =
@@ -26,11 +23,8 @@ export const RentSummaryCard = ({
   return (
     <div className="px-6 pt-6">
       <CardDescription className="text-gray-500 font-bold text-xl">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-black font-bold text-xl">
-            Track {frequencyLabel.toLowerCase()} rent collection
-          </div>
-          <RentFilter value={filterRentMonth} onMonthChange={onMonthChange} />
+        <div className="text-black font-bold text-xl">
+          Track {frequencyLabel.toLowerCase()} rent collection
         </div>
       </CardDescription>
 

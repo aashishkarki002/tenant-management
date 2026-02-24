@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import useUnits from "../../hooks/use-units";
+import { useUnits } from "../../hooks/use-units";
 import { useSubMeterOptions, filterSubMeterOptions } from "../utils/useSubMeterOptions";
 import { createReading, getReadings } from "../utils/electricityApi";
 import { getUnitsForInnerBlocks } from "../../Tenant/addTenant/utils/propertyHelper";

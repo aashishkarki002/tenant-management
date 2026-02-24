@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClipboardListIcon } from "lucide-react";
 import { TAB_KEYS } from "./constants/tenant.constant";
 import { useTenantForm } from "./hooks/useTenantForm";
-import useUnits from "../../hooks/use-units";
+import { useUnits } from "../../hooks/use-units";
 import useProperty from "../../hooks/use-property";
 import { PersonalInfoTab } from "./components/PersonalInfoTab";
 import { LeaseDetailsTab } from "./components/LeaseDetailsTab";

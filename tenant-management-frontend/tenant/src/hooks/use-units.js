@@ -1,55 +1,108 @@
 import { useState, useEffect } from "react";
-import api from "../../plugins/axios";
 import { toast } from "sonner";
+import {
+  fetchUnits,
+  fetchOccupiedUnits,
+  fetchVacantUnits,
+} from "./unit.service";
 
 /**
- * @param {Object} [options]
- * @param {string} [options.propertyId] - Filter units by property
- * @param {string} [options.blockId] - Filter units by block
- * @param {boolean|'all'} [options.occupied] - true = only occupied, false = only unoccupied, omitted or 'all' = all units
+ * @typedef {Object} UseUnitsResult
+ * @property {Unit[]  | null} units
+ * @property {boolean}        loading
+ * @property {string  | null} error
+ * @property {()=>void}       refetch
  */
-function useUnits(options = {}) {
-    const { propertyId, blockId, occupied } = options;
-    const [units, setUnits] = useState(null);
-    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        let cancelled = false;
-        setLoading(true);
+/**
+ * Base hook — all unit-fetching hooks are built on this.
+ * Accepts a fetcher function so each derived hook controls
+ * exactly what it fetches without duplicating state/effect logic.
+ *
+ * @param {Function}  fetcher      - One of the service functions
+ * @param {Object}    [filters]    - { propertyId, blockId }
+ * @returns {UseUnitsResult}
+ */
+function useUnitBase(fetcher, filters = {}) {
+  const { propertyId, blockId } = filters;
 
-        const getUnits = async () => {
-            try {
-                const params = new URLSearchParams();
-                if (propertyId) params.set("property", propertyId);
-                if (blockId) params.set("block", blockId);
-                // Only send occupied when explicitly true/false; omit or 'all' = all units
-                if (occupied === true) params.set("occupied", "true");
-                else if (occupied === false) params.set("occupied", "false");
+  const [units, setUnits] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-                const url = params.toString()
-                    ? `/api/unit/get-units?${params.toString()}`
-                    : "/api/unit/get-units";
-                const response = await api.get(url);
-                if (cancelled) return;
-                if (response.data.success) {
-                    setUnits(response.data.units || []);
-                } else {
-                    throw new Error(response.data.message || "Failed to fetch units");
-                }
-            } catch (error) {
-                if (!cancelled) {
-                    console.error("Error fetching units:", error);
-                    toast.error("Failed to fetch units. Please try again.");
-                    setUnits([]);
-                }
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        };
-        getUnits();
-        return () => { cancelled = true; };
-    }, [propertyId, blockId, occupied]);
+  // A counter we can increment to force a re-fetch (refetch pattern).
+  const [tick, setTick] = useState(0);
+  const refetch = () => setTick((t) => t + 1);
 
-    return { units, loading };
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    fetcher({ propertyId, blockId }, controller.signal)
+      .then((data) => {
+        setUnits(data);
+      })
+      .catch((err) => {
+        // AbortError fires on cleanup — not a real error, ignore it.
+        if (err.name === "AbortError" || err.code === "ERR_CANCELED") return;
+
+        console.error("[useUnits]", err);
+        setError(err.message);
+        setUnits([]);
+        toast.error("Failed to fetch units. Please try again.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    // Cleanup: cancel in-flight request on unmount or dep change.
+    return () => controller.abort();
+  }, [propertyId, blockId, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  // `fetcher` is a module-level reference — stable, intentionally omitted from deps.
+
+  return { units, loading, error, refetch };
 }
-export default useUnits;
+
+// ─────────────────────────────────────────────
+// PUBLIC HOOKS
+// ─────────────────────────────────────────────
+
+/**
+ * All units (occupied + vacant).
+ *
+ * @param {{ propertyId?: string; blockId?: string }} [filters]
+ * @returns {UseUnitsResult}
+ *
+ * @example
+ * const { units, loading } = useUnits({ propertyId: "abc123" });
+ */
+export function useUnits(filters = {}) {
+  return useUnitBase(fetchUnits, filters);
+}
+
+/**
+ * Only occupied units — units with an active lease.
+ *
+ * @param {{ propertyId?: string; blockId?: string }} [filters]
+ * @returns {UseUnitsResult}
+ *
+ * @example
+ * const { units, loading } = useOccupiedUnits({ propertyId: "abc123" });
+ */
+export function useOccupiedUnits(filters = {}) {
+  return useUnitBase(fetchOccupiedUnits, filters);
+}
+
+/**
+ * Only vacant units — units with no active lease.
+ *
+ * @param {{ propertyId?: string; blockId?: string }} [filters]
+ * @returns {UseUnitsResult}
+ *
+ * @example
+ * const { units, loading } = useVacantUnits({ blockId: "xyz456" });
+ */
+export function useVacantUnits(filters = {}) {
+  return useUnitBase(fetchVacantUnits, filters);
+}

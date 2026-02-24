@@ -264,7 +264,8 @@ export default function RevenueBreakDown({
         [allRevenues, compareQuarter, customStartDate, customEndDate],
     );
 
-    const displayRevenues = compareMode ? filteredA : filteredA;
+    // displayRevenues is always filteredA (primary period); compare uses filteredB via compareTrend/totalsB
+    const displayRevenues = filteredA;
     const { incomeStreams, monthlyTrend, payerSplit, recentTxns, topTenants, totals } = useMemo(
         () => transform(displayRevenues), [displayRevenues],
     );
@@ -292,16 +293,17 @@ export default function RevenueBreakDown({
     };
 
     return (
-        <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", background: "#f9fafb", minHeight: "100vh", padding: "24px 28px" }}>
+        <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
 
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+            {/* Compact sub-header — no standalone h1, page title comes from AccountingPage */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
                 <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>Accounting · Revenue</div>
-                    <h1 style={{ fontSize: 24, fontWeight: 800, color: "#111827", margin: 0, letterSpacing: "-0.02em" }}>Revenue Overview</h1>
-                    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 3 }}>
-                        {loading ? "Loading…" : `${totals.txnCount} transactions · ${periodLabel}`}
-                    </div>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 2 }}>
+                        {periodLabel}
+                    </p>
+                    <p style={{ fontSize: 13, color: "#6b7280" }}>
+                        {loading ? "Loading…" : `${totals.txnCount} transactions · ${fmt(totals.totalRevenue)}`}
+                    </p>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
                     <button onClick={fetchRevenues} style={{ background: "#f3f4f6", border: "none", borderRadius: 8, padding: "9px 10px", cursor: "pointer" }}>

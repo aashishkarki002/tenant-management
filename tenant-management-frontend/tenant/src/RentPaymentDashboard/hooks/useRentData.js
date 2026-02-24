@@ -20,6 +20,7 @@ export const useRentData = () => {
   const [rents, setRents] = useState([]);
   const [payments, setPayments] = useState([]);
   const [units, setUnits] = useState([]);
+  const [properties, setProperties] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [cams, setCams] = useState([]);
   const [totalCollected, setTotalCollected] = useState(0);
@@ -29,10 +30,10 @@ export const useRentData = () => {
   const [error, setError] = useState(null);
 
   // ── Rent tab filters ──────────────────────────────────────────────────
-  const { month: defaultMonth, year: defaultYear } =
+  const { month: defaultRentMonth, year: defaultRentYear } =
     getCurrentNepaliMonthYear();
-  const [filterRentMonth, setFilterRentMonth] = useState(defaultMonth);
-  const [filterRentYear, setFilterRentYear] = useState(defaultYear);
+  const [filterRentMonth, setFilterRentMonth] = useState(defaultRentMonth);
+  const [filterRentYear, setFilterRentYear] = useState(defaultRentYear);
   const [filterStatus, setFilterStatus] = useState("all"); // NEW
   const [filterPropertyId, setFilterPropertyId] = useState(""); // NEW
 
@@ -144,6 +145,17 @@ export const useRentData = () => {
     }
   };
 
+  const getProperties = async () => {
+    try {
+      const response = await api.get("/api/property/get-property");
+      setProperties(response.data.property || []);
+    } catch (error) {
+      console.error("Error fetching properties:", error);
+      toast.error("Failed to load properties");
+      setProperties([]);
+    }
+  };
+
   const getCams = async (filters = {}) => {
     try {
       const params = new URLSearchParams();
@@ -173,7 +185,12 @@ export const useRentData = () => {
     const init = async () => {
       try {
         setLoading(true);
-        await Promise.all([getBankAccounts(), getUnits(), fetchRentSummary()]);
+        await Promise.all([
+          getBankAccounts(),
+          getUnits(),
+          getProperties(),
+          fetchRentSummary(),
+        ]);
       } catch (error) {
         console.error("Init load failed:", error);
         setError(error);
@@ -204,6 +221,7 @@ export const useRentData = () => {
     rents, // already filtered by server — use directly (replaces filteredRents)
     payments,
     units,
+    properties,
     bankAccounts,
     cams,
     totalCollected,
@@ -234,6 +252,9 @@ export const useRentData = () => {
     fetchRentSummary,
     getBankAccounts,
     getUnits,
+    getProperties,
     getCams,
+    defaultRentMonth,
+    defaultRentYear,
   };
 };

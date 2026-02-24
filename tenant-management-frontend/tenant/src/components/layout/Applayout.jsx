@@ -18,13 +18,14 @@ export default function AppLayout({ children }) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <PushNotificationBanner />
+
       <SidebarRail />
       <SidebarInset className="relative">
         {!hideHeader && (
           <header className="flex items-center border-b sm:px-4">
             <SidebarTrigger />
             <Header />
+            <PushNotificationBanner />
           </header>
         )}
 
