@@ -1,4 +1,4 @@
-import { Transaction } from "../transaction/Transaction.Model.js";
+import { Transaction } from "./Transaction.Model.js";
 
 /**
  * Maps a Transaction.type enum value to the activity type
@@ -111,18 +111,11 @@ export async function getRecentTransactions(limit = 10) {
 }
 
 /**
- * Express route handler — GET /api/transactions/recent
+ * Fetches all non-voided transactions, sorted by date descending.
+ * @returns {Promise<Array>} List of transaction documents
  */
-export async function getRecentTransactionsHandler(req, res) {
-  try {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
-    const activities = await getRecentTransactions(limit);
-    res.json({ success: true, data: activities });
-  } catch (error) {
-    console.error("getRecentTransactions error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch recent transactions",
-    });
-  }
+export async function getAllTransactionsList() {
+  return Transaction.find({ status: { $ne: "VOIDED" } })
+    .sort({ transactionDate: -1 })
+    .lean();
 }

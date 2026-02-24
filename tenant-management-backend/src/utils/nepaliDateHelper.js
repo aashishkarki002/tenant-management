@@ -458,6 +458,25 @@ function getNepaliYearMonthFromDate(jsDate) {
     npMonth: nd.getMonth() + 1, // getMonth() is 0-based; store 1-based
   };
 }
+/**
+ * Assert that the nepaliYear and nepaliMonth are valid.
+ * @param {Object} params
+ * @param {number} params.nepaliYear
+ * @param {number} params.nepaliMonth
+ * @throws {Error} If the nepaliYear or nepaliMonth are invalid
+ */
+function assertNepaliFields({ nepaliYear, nepaliMonth }) {
+  if (!Number.isInteger(nepaliYear) || nepaliYear < 2000 || nepaliYear > 2200) {
+    throw new Error(
+      `Invalid nepaliYear: ${nepaliYear}. Must be an integer between 2000 and 2200.`,
+    );
+  }
+  if (!Number.isInteger(nepaliMonth) || nepaliMonth < 1 || nepaliMonth > 12) {
+    throw new Error(
+      `Invalid nepaliMonth: ${nepaliMonth}. Must be an integer between 1 and 12.`,
+    );
+  }
+}
 
 // ============================================================================
 // EXPORTS
@@ -486,6 +505,7 @@ export {
 
   // Nepali date extraction
   getNepaliYearMonthFromDate,
+  assertNepaliFields,
 
   // Constants
   NEPALI_MONTH_NAMES,

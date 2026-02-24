@@ -17,16 +17,19 @@ export function buildPaymentReceivedJournal(
   rent,
   amountPaisa = undefined,
   amount = undefined, // Backward compatibility
-  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK
+  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK,
 ) {
   // Use paisa if provided, otherwise convert from payment or amount parameter
-  const recordedAmountPaisa = amountPaisa !== undefined
-    ? amountPaisa
-    : (payment.amountPaisa !== undefined
+  const recordedAmountPaisa =
+    amountPaisa !== undefined
+      ? amountPaisa
+      : payment.amountPaisa !== undefined
         ? payment.amountPaisa
-        : (amount !== undefined
-            ? rupeesToPaisa(amount)
-            : (payment.amount ? rupeesToPaisa(payment.amount) : 0)));
+        : amount !== undefined
+          ? rupeesToPaisa(amount)
+          : payment.amount
+            ? rupeesToPaisa(payment.amount)
+            : 0;
 
   const transactionDate = payment.paymentDate || new Date();
   const nepaliDate = payment.nepaliDate || transactionDate;

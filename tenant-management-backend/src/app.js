@@ -35,7 +35,7 @@ import { masterCron } from "./cron/service/master-cron.js";
 import pushRoute from "./modules/push/push.route.js";
 import { sendTestNotification } from "./modules/push/push.controller.js";
 import { initializeWebPush } from "./config/webpush.js";
-
+import transactionRoute from "./modules/ledger/transactions/transaction.route.js";
 initializeWebPush();
 startEscalationCron();
 masterCron();
@@ -135,6 +135,7 @@ app.use("/api/escalation", escalationRoute);
 app.use("/api/search", searchRoute);
 app.use("/api/settings", systemSettingRoute);
 app.use("/api/push", pushRoute);
+app.use("/api/transactions", transactionRoute);
 /* -------------------- TEST: push notification (POST body: { title, body }) -------------------- */
 app.post("/send-notification", sendTestNotification);
 /* -------------------- HEALTH CHECK -------------------- */

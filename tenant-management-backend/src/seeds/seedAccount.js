@@ -33,7 +33,24 @@ export async function seedAccounts() {
         isActive: true,
         description: "Money owed by tenants for rent",
       },
-
+      {
+        code: "1100",
+        name: "Cash in Hand",
+        type: "ASSET",
+        parentAccount: null,
+        currentBalance: 0,
+        isActive: true,
+        description: "Cash in hand for daily transactions",
+      },
+      {
+        code: "4200",
+        name: "Late Fee Revenue",
+        type: "REVENUE",
+        parentAccount: null,
+        currentBalance: 0,
+        isActive: true,
+        description: "Income from late payment fees",
+      },
       // LIABILITIES
       {
         code: "2000",
@@ -165,11 +182,11 @@ export async function seedAccounts() {
       if (!existing) {
         await Account.create(accountData);
         console.log(
-          `✓ Created account: ${accountData.code} - ${accountData.name}`
+          `✓ Created account: ${accountData.code} - ${accountData.name}`,
         );
       } else {
         console.log(
-          `- Account exists: ${accountData.code} - ${accountData.name}`
+          `- Account exists: ${accountData.code} - ${accountData.name}`,
         );
       }
     }

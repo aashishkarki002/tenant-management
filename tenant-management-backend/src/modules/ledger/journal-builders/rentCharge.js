@@ -22,10 +22,10 @@ export function buildRentChargeJournal(rent) {
   if (rent._doc?.rentAmountPaisa !== undefined) {
     // Raw document value (bypasses getter)
     rentAmountPaisa = rent._doc.rentAmountPaisa;
-  } else if (rent.get && typeof rent.get === 'function') {
+  } else if (rent.get && typeof rent.get === "function") {
     // Mongoose document - try to get raw value
     try {
-      rentAmountPaisa = rent.get('rentAmountPaisa', null, { getters: false });
+      rentAmountPaisa = rent.get("rentAmountPaisa", null, { getters: false });
     } catch (e) {
       // Fallback to direct access
       rentAmountPaisa = rent.rentAmountPaisa;
@@ -78,7 +78,7 @@ export function buildRentChargeJournal(rent) {
     totalAmount: rentAmountPaisa / 100, // Backward compatibility
     tenant: rent.tenant,
     property: rent.property,
-     // Custom metadata used by ledger/transaction
+    // Custom metadata used by ledger/transaction
     billingFrequency,
     quarter,
     entries: [
