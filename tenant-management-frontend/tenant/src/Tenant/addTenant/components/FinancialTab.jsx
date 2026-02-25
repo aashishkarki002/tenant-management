@@ -26,7 +26,13 @@ import {
 import { PAYMENT_METHODS, SECURITY_DEPOSIT_MODES } from "../constants/tenant.constant";
 import { FinancialTotalsDisplay } from "./FinancialTotalsDisplay";
 
-export const FinancialTab = ({ formik, units, onNext, onPrevious }) => {
+export const FinancialTab = ({
+    formik,
+    units,
+    bankAccounts = [],
+    onNext,
+    onPrevious,
+}) => {
     const selectedUnits = formik.values.unitNumber
         ?.map((unitId) => units.find((u) => u._id === unitId))
         .filter(Boolean);
@@ -201,25 +207,34 @@ export const FinancialTab = ({ formik, units, onNext, onPrevious }) => {
 
                     {/* Bank details - only shown when money changes hands via bank */}
                     {sdNeedsBankDetails && (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Bank Account ID *</Label>
-                                <Input
-                                    name="sdBankAccountId"
-                                    placeholder="Bank account ObjectId"
-                                    value={formik.values.sdBankAccountId}
-                                    onChange={formik.handleChange}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Bank Account Code *</Label>
-                                <Input
-                                    name="sdBankAccountCode"
-                                    placeholder="e.g. 1010-NABIL"
-                                    value={formik.values.sdBankAccountCode}
-                                    onChange={formik.handleChange}
-                                />
-                            </div>
+                        <div className="space-y-2">
+                            <Label>Bank Account *</Label>
+                            <Select
+                                value={formik.values.sdBankAccountId || ""}
+                                onValueChange={(value) => {
+                                    const bank = Array.isArray(bankAccounts)
+                                        ? bankAccounts.find((b) => b._id === value)
+                                        : null;
+
+                                    formik.setFieldValue("sdBankAccountId", bank?._id || "");
+                                    formik.setFieldValue(
+                                        "sdBankAccountCode",
+                                        bank?.accountCode || "",
+                                    );
+                                }}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select bank account" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {Array.isArray(bankAccounts) &&
+                                        bankAccounts.map((bank) => (
+                                            <SelectItem key={bank._id} value={bank._id}>
+                                                {bank.bankName} — {bank.accountName}
+                                            </SelectItem>
+                                        ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                     )}
 

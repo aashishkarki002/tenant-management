@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "../../../plugins/axios";
 import { toast } from "sonner";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INITIAL STATE (matches seed defaults — shown to admin before any save)
+// INITIAL STATE  (matches systemSettingSeed.js defaults)
 // ─────────────────────────────────────────────────────────────────────────────
 const ESCALATION_DEFAULTS = {
     enabled: false,
@@ -34,12 +34,39 @@ const ESCALATION_DEFAULTS = {
 const LATE_FEE_DEFAULTS = {
     enabled: false,
     gracePeriodDays: 5,
-    type: "percentage",
+    type: "simple_daily",   // ← matches seed default
     amount: 2,
     appliesTo: "rent",
     compounding: false,
     maxLateFeeAmount: 5000,
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEE TYPE CONFIG  (single source of truth for labels + descriptions)
+// ─────────────────────────────────────────────────────────────────────────────
+const FEE_TYPES = [
+    {
+        value: "simple_daily",
+        label: "Daily (Linear)",
+        description: "balance × rate% × days overdue — grows linearly each day",
+        example: (rent, rate, days) => rent * (rate / 100) * days,
+        recommended: true,
+    },
+    {
+        value: "percentage",
+        label: "One-Time %",
+        description: "balance × rate% charged once on the first day past grace",
+        example: (rent, rate) => rent * (rate / 100),
+        recommended: false,
+    },
+    {
+        value: "fixed",
+        label: "Fixed Amount",
+        description: "flat rupee amount charged once regardless of overdue balance",
+        example: (_rent, amount) => amount,
+        recommended: false,
+    },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
@@ -54,7 +81,6 @@ export default function SystemSettingsTab({ propertyId }) {
     const [savingLateFee, setSavingLateFee] = useState(false);
     const [applying, setApplying] = useState(false);
 
-    // ── Fetch all settings in one call ──────────────────────────────────────
     async function fetchSettings() {
         try {
             setFetching(true);
@@ -73,7 +99,6 @@ export default function SystemSettingsTab({ propertyId }) {
         }
     }
 
-    // ── Save escalation defaults ─────────────────────────────────────────────
     async function saveEscalation() {
         try {
             setSavingEscalation(true);
@@ -96,7 +121,6 @@ export default function SystemSettingsTab({ propertyId }) {
         }
     }
 
-    // ── Apply escalation to all tenants ─────────────────────────────────────
     async function applyEscalationToAll() {
         try {
             setApplying(true);
@@ -117,7 +141,6 @@ export default function SystemSettingsTab({ propertyId }) {
         }
     }
 
-    // ── Disable escalation for all tenants ──────────────────────────────────
     async function disableEscalationAll() {
         try {
             setSavingEscalation(true);
@@ -133,7 +156,6 @@ export default function SystemSettingsTab({ propertyId }) {
         }
     }
 
-    // ── Save late fee policy ─────────────────────────────────────────────────
     async function saveLateFeePolicy() {
         try {
             setSavingLateFee(true);
@@ -143,7 +165,8 @@ export default function SystemSettingsTab({ propertyId }) {
                 type: lateFee.type,
                 amount: Number(lateFee.amount),
                 appliesTo: lateFee.appliesTo,
-                compounding: lateFee.compounding,
+                // compounding only meaningful for type="percentage" — backend also guards this
+                compounding: lateFee.type === "percentage" ? lateFee.compounding : false,
                 maxLateFeeAmount: Number(lateFee.maxLateFeeAmount),
             });
             if (res.data.success) {
@@ -159,6 +182,15 @@ export default function SystemSettingsTab({ propertyId }) {
         }
     }
 
+    // When the type changes, clear compounding so it doesn't silently persist
+    function handleTypeChange(newType) {
+        setLateFee((p) => ({
+            ...p,
+            type: newType,
+            compounding: newType === "percentage" ? p.compounding : false,
+        }));
+    }
+
     useEffect(() => { fetchSettings(); }, []);
 
     if (fetching) {
@@ -172,9 +204,7 @@ export default function SystemSettingsTab({ propertyId }) {
     return (
         <div className="space-y-8">
 
-            {/* ════════════════════════════════════════════════════════════
-                ELECTRICITY RATE
-            ════════════════════════════════════════════════════════════ */}
+            {/* ── Electricity Rate ─────────────────────────────────────── */}
             <section>
                 <div className="mb-4">
                     <h3 className="text-base font-semibold">Electricity Rate</h3>
@@ -187,9 +217,7 @@ export default function SystemSettingsTab({ propertyId }) {
 
             <Separator />
 
-            {/* ════════════════════════════════════════════════════════════
-                RENT ESCALATION
-            ════════════════════════════════════════════════════════════ */}
+            {/* ── Rent Escalation ──────────────────────────────────────── */}
             <section>
                 <div className="mb-4">
                     <h3 className="text-base font-semibold">Rent Escalation Policy</h3>
@@ -216,9 +244,7 @@ export default function SystemSettingsTab({ propertyId }) {
                                 </Badge>
                                 <Switch
                                     checked={escalation.enabled}
-                                    onCheckedChange={(v) =>
-                                        setEscalation((p) => ({ ...p, enabled: v }))
-                                    }
+                                    onCheckedChange={(v) => setEscalation((p) => ({ ...p, enabled: v }))}
                                 />
                             </div>
                         </div>
@@ -229,27 +255,19 @@ export default function SystemSettingsTab({ propertyId }) {
                             <div className="space-y-1.5">
                                 <Label>Percentage Increase (%)</Label>
                                 <Input
-                                    type="number"
-                                    min={0.1}
-                                    step={0.1}
+                                    type="number" min={0.1} step={0.1}
                                     value={escalation.percentageIncrease}
-                                    onChange={(e) =>
-                                        setEscalation((p) => ({ ...p, percentageIncrease: e.target.value }))
-                                    }
+                                    onChange={(e) => setEscalation((p) => ({ ...p, percentageIncrease: e.target.value }))}
                                     disabled={!escalation.enabled}
                                 />
                                 <p className="text-xs text-muted-foreground">Typical range: 3–10%</p>
                             </div>
-
                             <div className="space-y-1.5">
                                 <Label>Interval (Months)</Label>
                                 <Input
-                                    type="number"
-                                    min={1}
+                                    type="number" min={1}
                                     value={escalation.intervalMonths}
-                                    onChange={(e) =>
-                                        setEscalation((p) => ({ ...p, intervalMonths: e.target.value }))
-                                    }
+                                    onChange={(e) => setEscalation((p) => ({ ...p, intervalMonths: e.target.value }))}
                                     disabled={!escalation.enabled}
                                 />
                                 <p className="text-xs text-muted-foreground">12 = annual, 6 = semi-annual</p>
@@ -265,12 +283,9 @@ export default function SystemSettingsTab({ propertyId }) {
                                     { value: "both", label: "Both" },
                                 ].map(({ value, label }) => (
                                     <Button
-                                        key={value}
-                                        size="sm"
+                                        key={value} size="sm"
                                         variant={escalation.appliesTo === value ? "default" : "outline"}
-                                        onClick={() =>
-                                            setEscalation((p) => ({ ...p, appliesTo: value }))
-                                        }
+                                        onClick={() => setEscalation((p) => ({ ...p, appliesTo: value }))}
                                         disabled={!escalation.enabled}
                                     >
                                         {label}
@@ -283,7 +298,6 @@ export default function SystemSettingsTab({ propertyId }) {
                             <Button onClick={saveEscalation} disabled={savingEscalation}>
                                 {savingEscalation ? "Saving…" : "Save Escalation Settings"}
                             </Button>
-
                             {escalation.enabled && (
                                 <ConfirmDialog
                                     trigger={
@@ -296,21 +310,15 @@ export default function SystemSettingsTab({ propertyId }) {
                                         <>
                                             This will configure <strong>{escalation.percentageIncrease}%</strong>{" "}
                                             escalation every <strong>{escalation.intervalMonths} month(s)</strong>{" "}
-                                            on <strong>{escalation.appliesTo.replace("_", " ")}</strong> for
-                                            every active tenant.
+                                            on <strong>{escalation.appliesTo.replace("_", " ")}</strong> for every active tenant.
                                         </>
                                     }
                                     onConfirm={applyEscalationToAll}
                                 />
                             )}
-
                             {tenantsConfigured > 0 && (
                                 <ConfirmDialog
-                                    trigger={
-                                        <Button variant="destructive" size="sm">
-                                            Disable for All Tenants
-                                        </Button>
-                                    }
+                                    trigger={<Button variant="destructive" size="sm">Disable for All Tenants</Button>}
                                     title="Disable system-wide escalation?"
                                     description={
                                         <>
@@ -323,30 +331,30 @@ export default function SystemSettingsTab({ propertyId }) {
                                 />
                             )}
                         </div>
-
                     </CardContent>
                 </Card>
             </section>
 
-            {/* ════════════════════════════════════════════════════════════
-                LATE FEE POLICY
-            ════════════════════════════════════════════════════════════ */}
+            <Separator />
+
+            {/* ── Late Fee Policy ──────────────────────────────────────── */}
             <section>
                 <div className="mb-4">
                     <h3 className="text-base font-semibold">Late Fee Policy</h3>
                     <p className="text-sm text-muted-foreground">
-                        Charged when rent is unpaid past the grace period.
+                        Charged automatically when rent remains unpaid past the grace period.
                     </p>
                 </div>
 
                 <Card className="rounded-xl shadow-sm">
                     <CardContent className="pt-6 space-y-6">
 
+                        {/* Enable toggle */}
                         <div className="flex items-center justify-between">
                             <div>
                                 <Label className="font-medium">Enable Late Fee</Label>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                    Automatically applied when generating overdue charges
+                                    Applied by the nightly cron when overdue rents are processed
                                 </p>
                             </div>
                             <div className="flex items-center gap-3">
@@ -355,98 +363,92 @@ export default function SystemSettingsTab({ propertyId }) {
                                 </Badge>
                                 <Switch
                                     checked={lateFee.enabled}
-                                    onCheckedChange={(v) =>
-                                        setLateFee((p) => ({ ...p, enabled: v }))
-                                    }
+                                    onCheckedChange={(v) => setLateFee((p) => ({ ...p, enabled: v }))}
                                 />
                             </div>
                         </div>
 
                         <Separator />
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {/* Grace period */}
-                            <div className="space-y-1.5">
-                                <Label>Grace Period (Days)</Label>
-                                <Input
-                                    type="number"
-                                    min={0}
-                                    value={lateFee.gracePeriodDays}
-                                    onChange={(e) =>
-                                        setLateFee((p) => ({ ...p, gracePeriodDays: e.target.value }))
-                                    }
-                                    disabled={!lateFee.enabled}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Days after due date before fee applies
-                                </p>
-                            </div>
-
-                            {/* Fee type */}
-                            <div className="space-y-1.5">
-                                <Label>Fee Type</Label>
-                                <div className="flex gap-2 mt-1">
-                                    {[
-                                        { value: "percentage", label: "Percentage %" },
-                                        { value: "fixed", label: "Fixed Amount (Rs.)" },
-                                    ].map(({ value, label }) => (
-                                        <Button
-                                            key={value}
-                                            size="sm"
-                                            variant={lateFee.type === value ? "default" : "outline"}
-                                            onClick={() => setLateFee((p) => ({ ...p, type: value }))}
-                                            disabled={!lateFee.enabled}
-                                        >
-                                            {label}
-                                        </Button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Amount */}
-                            <div className="space-y-1.5">
-                                <Label>
-                                    {lateFee.type === "percentage"
-                                        ? "Percentage of Overdue Amount (%)"
-                                        : "Fixed Fee Amount (Rs.)"}
-                                </Label>
-                                <Input
-                                    type="number"
-                                    min={0.1}
-                                    step={lateFee.type === "percentage" ? 0.1 : 50}
-                                    value={lateFee.amount}
-                                    onChange={(e) =>
-                                        setLateFee((p) => ({ ...p, amount: e.target.value }))
-                                    }
-                                    disabled={!lateFee.enabled}
-                                />
-                                {lateFee.type === "percentage" && (
-                                    <p className="text-xs text-muted-foreground">
-                                        e.g. 2% of Rs. 50,000 rent = Rs. 1,000 late fee
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* Max cap */}
-                            <div className="space-y-1.5">
-                                <Label>Maximum Late Fee Cap (Rs.)</Label>
-                                <Input
-                                    type="number"
-                                    min={0}
-                                    step={500}
-                                    value={lateFee.maxLateFeeAmount}
-                                    onChange={(e) =>
-                                        setLateFee((p) => ({ ...p, maxLateFeeAmount: e.target.value }))
-                                    }
-                                    disabled={!lateFee.enabled}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    0 = no cap
-                                </p>
+                        {/* Fee type selector — 3 options */}
+                        <div className="space-y-2">
+                            <Label>Fee Calculation Type</Label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
+                                {FEE_TYPES.map(({ value, label, description, recommended }) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        disabled={!lateFee.enabled}
+                                        onClick={() => handleTypeChange(value)}
+                                        className={[
+                                            "relative text-left rounded-lg border px-3.5 py-3 transition-all",
+                                            "disabled:opacity-50 disabled:cursor-not-allowed",
+                                            lateFee.type === value
+                                                ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                                : "border-border hover:border-muted-foreground/40 hover:bg-muted/30",
+                                        ].join(" ")}
+                                    >
+                                        {recommended && (
+                                            <span className="absolute top-2 right-2 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                                                Recommended
+                                            </span>
+                                        )}
+                                        <p className="font-medium text-sm">{label}</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed pr-16">
+                                            {description}
+                                        </p>
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
-                        {/* Applies To + Compounding */}
+                        {/* Grace + Amount + Cap */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="space-y-1.5">
+                                <Label>Grace Period (Nepali Days)</Label>
+                                <Input
+                                    type="number" min={0}
+                                    value={lateFee.gracePeriodDays}
+                                    onChange={(e) => setLateFee((p) => ({ ...p, gracePeriodDays: e.target.value }))}
+                                    disabled={!lateFee.enabled}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    No fee charged within this many days of the Nepali due date
+                                </p>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label>
+                                    {lateFee.type === "fixed" ? "Fixed Amount (Rs.)" : "Rate (% of overdue balance)"}
+                                </Label>
+                                <Input
+                                    type="number" min={0.1}
+                                    step={lateFee.type === "fixed" ? 50 : 0.1}
+                                    value={lateFee.amount}
+                                    onChange={(e) => setLateFee((p) => ({ ...p, amount: e.target.value }))}
+                                    disabled={!lateFee.enabled}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    {lateFee.type === "simple_daily" && "Applied per day after grace period"}
+                                    {lateFee.type === "percentage" && !lateFee.compounding && "Applied once on first overdue day"}
+                                    {lateFee.type === "percentage" && lateFee.compounding && "Compounds daily after grace period"}
+                                    {lateFee.type === "fixed" && "Flat charge in rupees, once per overdue period"}
+                                </p>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label>Maximum Cap (Rs.)</Label>
+                                <Input
+                                    type="number" min={0} step={500}
+                                    value={lateFee.maxLateFeeAmount}
+                                    onChange={(e) => setLateFee((p) => ({ ...p, maxLateFeeAmount: e.target.value }))}
+                                    disabled={!lateFee.enabled}
+                                />
+                                <p className="text-xs text-muted-foreground">0 = no cap</p>
+                            </div>
+                        </div>
+
+                        {/* Applies to + Compounding (compounding only shown for percentage type) */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label>Applies To</Label>
@@ -457,12 +459,9 @@ export default function SystemSettingsTab({ propertyId }) {
                                         { value: "both", label: "Both" },
                                     ].map(({ value, label }) => (
                                         <Button
-                                            key={value}
-                                            size="sm"
+                                            key={value} size="sm"
                                             variant={lateFee.appliesTo === value ? "default" : "outline"}
-                                            onClick={() =>
-                                                setLateFee((p) => ({ ...p, appliesTo: value }))
-                                            }
+                                            onClick={() => setLateFee((p) => ({ ...p, appliesTo: value }))}
                                             disabled={!lateFee.enabled}
                                         >
                                             {label}
@@ -471,19 +470,20 @@ export default function SystemSettingsTab({ propertyId }) {
                                 </div>
                             </div>
 
+                            {/* Compounding only available for one-time percentage */}
                             {lateFee.type === "percentage" && (
                                 <div className="flex items-start gap-3 pt-1">
                                     <Switch
                                         checked={lateFee.compounding}
-                                        onCheckedChange={(v) =>
-                                            setLateFee((p) => ({ ...p, compounding: v }))
-                                        }
+                                        onCheckedChange={(v) => setLateFee((p) => ({ ...p, compounding: v }))}
                                         disabled={!lateFee.enabled}
                                     />
                                     <div>
                                         <Label className="font-medium">Daily Compounding</Label>
                                         <p className="text-xs text-muted-foreground mt-0.5">
-                                            Fee compounds each day past grace period
+                                            Instead of charging once, compounds the rate daily:
+                                            balance × ((1 + rate%)^days − 1).
+                                            Warning: grows exponentially.
                                         </p>
                                     </div>
                                 </div>
@@ -491,7 +491,7 @@ export default function SystemSettingsTab({ propertyId }) {
                         </div>
 
                         {/* Live preview */}
-                        {lateFee.enabled && lateFee.amount > 0 && (
+                        {lateFee.enabled && Number(lateFee.amount) > 0 && (
                             <LateFeePreview lateFee={lateFee} />
                         )}
 
@@ -509,45 +509,142 @@ export default function SystemSettingsTab({ propertyId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LATE FEE PREVIEW (no API call — calculated in browser)
+// LATE FEE PREVIEW
+// Shows a comparison table across day 1, 5, 10, 30 so the admin can see
+// exactly how the fee grows (or doesn't) under the current settings.
+// No API call — calculated entirely in browser to match lateFee.cron.js logic.
 // ─────────────────────────────────────────────────────────────────────────────
 function LateFeePreview({ lateFee }) {
-    // Example: Rs. 50,000 rent, 10 days late
-    const exampleRent = 50000;
-    const exampleDaysLate = 10;
-    const effectiveDays = exampleDaysLate - Number(lateFee.gracePeriodDays);
+    const EXAMPLE_RENT = 50000;   // Rs. 50,000
+    const grace = Number(lateFee.gracePeriodDays) || 0;
+    const rate = Number(lateFee.amount) || 0;
+    const cap = Number(lateFee.maxLateFeeAmount) || 0;
 
-    let fee = 0;
-    if (effectiveDays > 0) {
+    function feeAt(totalDaysLate) {
+        const effectiveDays = totalDaysLate - grace;
+        if (effectiveDays <= 0 || EXAMPLE_RENT <= 0) return null; // within grace
+
+        let fee = 0;
         if (lateFee.type === "fixed") {
-            fee = Number(lateFee.amount);
-        } else if (lateFee.compounding) {
-            const rate = Number(lateFee.amount) / 100;
-            fee = exampleRent * (Math.pow(1 + rate, effectiveDays) - 1);
+            fee = rate;
+        } else if (lateFee.type === "simple_daily") {
+            // linear: balance × rate% × days
+            fee = EXAMPLE_RENT * (rate / 100) * effectiveDays;
+        } else if (lateFee.type === "percentage" && lateFee.compounding) {
+            // exponential compound
+            fee = EXAMPLE_RENT * (Math.pow(1 + rate / 100, effectiveDays) - 1);
         } else {
-            fee = exampleRent * (Number(lateFee.amount) / 100);
+            // flat one-time percentage
+            fee = EXAMPLE_RENT * (rate / 100);
         }
-        if (Number(lateFee.maxLateFeeAmount) > 0) {
-            fee = Math.min(fee, Number(lateFee.maxLateFeeAmount));
-        }
+
+        if (cap > 0) fee = Math.min(fee, cap);
+        return Math.round(fee * 100) / 100; // 2dp
     }
 
+    const PREVIEW_DAYS = [1, grace + 1, 5, 10, 30].filter((d, i, arr) => {
+        // Remove duplicates and day≤0
+        return d > 0 && arr.indexOf(d) === i;
+    });
+
+    // Build a human-readable formula label
+    const formulaLabel =
+        lateFee.type === "simple_daily"
+            ? `Rs. ${EXAMPLE_RENT.toLocaleString("en-NP")} × ${rate}% × days`
+            : lateFee.type === "percentage" && lateFee.compounding
+                ? `Rs. ${EXAMPLE_RENT.toLocaleString("en-NP")} × ((1 + ${rate}%)^days − 1)`
+                : lateFee.type === "percentage"
+                    ? `Rs. ${EXAMPLE_RENT.toLocaleString("en-NP")} × ${rate}% (once)`
+                    : `Rs. ${rate} flat (once)`;
+
     return (
-        <div className="rounded-lg bg-muted/50 border px-4 py-3 text-sm">
-            <p className="font-medium text-xs text-muted-foreground mb-1.5 uppercase tracking-wide">
-                Example Preview
-            </p>
-            <p className="text-muted-foreground">
-                Rent of <strong>Rs. {exampleRent.toLocaleString("en-NP")}</strong>, paid{" "}
-                <strong>{exampleDaysLate} days late</strong>{" "}
-                (grace: {lateFee.gracePeriodDays} days) →{" "}
-                <strong className="text-foreground">
-                    Late fee: Rs.{" "}
-                    {fee > 0
-                        ? fee.toLocaleString("en-NP", { maximumFractionDigits: 2 })
-                        : "0 (within grace period)"}
-                </strong>
-            </p>
+        <div className="rounded-lg border bg-muted/30 px-4 py-4 space-y-3">
+            <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">
+                    Live Preview · Rent of Rs. {EXAMPLE_RENT.toLocaleString("en-NP")}
+                </p>
+                <p className="text-xs text-muted-foreground font-mono">{formulaLabel}</p>
+                {grace > 0 && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                        Grace period: {grace} Nepali day{grace !== 1 ? "s" : ""} — no fee before day {grace + 1}
+                    </p>
+                )}
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="border-b">
+                            <th className="text-left py-1.5 pr-4 font-medium text-muted-foreground text-xs">
+                                Day overdue
+                            </th>
+                            <th className="text-left py-1.5 pr-4 font-medium text-muted-foreground text-xs">
+                                Effective days<br />
+                                <span className="font-normal">(after grace)</span>
+                            </th>
+                            <th className="text-right py-1.5 font-medium text-muted-foreground text-xs">
+                                Late fee
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {PREVIEW_DAYS.map((day) => {
+                            const effectiveDays = day - grace;
+                            const fee = feeAt(day);
+                            const inGrace = fee === null;
+                            return (
+                                <tr key={day} className="border-b border-border/50 last:border-0">
+                                    <td className="py-1.5 pr-4 text-muted-foreground">
+                                        Day {day}
+                                    </td>
+                                    <td className="py-1.5 pr-4 text-muted-foreground">
+                                        {inGrace
+                                            ? <span className="text-xs text-muted-foreground/60 italic">within grace</span>
+                                            : effectiveDays
+                                        }
+                                    </td>
+                                    <td className="py-1.5 text-right font-medium tabular-nums">
+                                        {inGrace ? (
+                                            <span className="text-xs text-muted-foreground/60 italic">—</span>
+                                        ) : (
+                                            <span className={cap > 0 && fee >= cap ? "text-amber-600" : ""}>
+                                                Rs. {fee.toLocaleString("en-NP", { maximumFractionDigits: 2 })}
+                                                {cap > 0 && fee >= cap && (
+                                                    <span className="ml-1.5 text-[10px] font-normal text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                                                        capped
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+
+            {lateFee.type === "simple_daily" && (
+                <p className="text-xs text-muted-foreground">
+                    Fee grows by Rs. {((EXAMPLE_RENT * rate) / 100).toLocaleString("en-NP", { maximumFractionDigits: 2 })} per Nepali day
+                    {cap > 0 ? `, capped at Rs. ${cap.toLocaleString("en-NP")}` : ""}.
+                </p>
+            )}
+            {lateFee.type === "percentage" && !lateFee.compounding && (
+                <p className="text-xs text-muted-foreground">
+                    Charged once on the first day past the grace period. Amount does not grow.
+                </p>
+            )}
+            {lateFee.type === "percentage" && lateFee.compounding && (
+                <p className="text-xs text-amber-600">
+                    ⚠ Exponential growth — the fee accelerates each day. Consider using Daily (Linear) instead.
+                </p>
+            )}
+            {lateFee.type === "fixed" && (
+                <p className="text-xs text-muted-foreground">
+                    Flat charge regardless of overdue balance or number of days.
+                </p>
+            )}
         </div>
     );
 }

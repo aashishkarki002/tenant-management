@@ -5,6 +5,7 @@ import { TAB_KEYS } from "./constants/tenant.constant";
 import { useTenantForm } from "./hooks/useTenantForm";
 import { useUnits } from "../../hooks/use-units";
 import useProperty from "../../hooks/use-property";
+import { useBankAccounts } from "../../Accounts/hooks/useAccounting";
 import { PersonalInfoTab } from "./components/PersonalInfoTab";
 import { LeaseDetailsTab } from "./components/LeaseDetailsTab";
 import { FinancialTab } from "./components/FinancialTab";
@@ -14,6 +15,7 @@ import { FinancialTotalsDisplay } from "./components/FinancialTotalsDisplay";
 function AddTenants() {
   const { units } = useUnits();
   const { property } = useProperty();
+  const { bankAccounts } = useBankAccounts();
   const [activeTab, setActiveTab] = useState(TAB_KEYS.PERSONAL_INFO);
 
   const handleSuccess = (data) => {
@@ -114,6 +116,7 @@ function AddTenants() {
                 <FinancialTab
                   formik={formik}
                   units={units}
+                  bankAccounts={bankAccounts}
                   onNext={handleNext}
                   onPrevious={handlePrevious}
                 />
