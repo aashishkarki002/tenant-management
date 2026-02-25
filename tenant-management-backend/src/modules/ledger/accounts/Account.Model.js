@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { paisaToRupees } from "../../../utils/moneyUtil.js";
+import { safePaisaToRupees } from "../../../utils/moneyUtil.js";
 
 const accountSchema = new mongoose.Schema(
   {
@@ -31,14 +31,15 @@ const accountSchema = new mongoose.Schema(
     currentBalancePaisa: {
       type: Number,
       default: 0,
-      get: paisaToRupees,
+      get: safePaisaToRupees,
     },
     
     // Backward compatibility getter
     currentBalance: {
       type: Number,
       get: function () {
-        return this.currentBalancePaisa ? paisaToRupees(this.currentBalancePaisa) : 0;
+        const raw = this.get("currentBalancePaisa", null, { getters: false });
+        return raw != null ? safePaisaToRupees(raw) : 0;
       },
     },
     

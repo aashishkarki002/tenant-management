@@ -26,11 +26,11 @@ import {
 } from "../revenue/revenue.service.js";
 import { emitPaymentNotification } from "../../utils/payment.Notification.js";
 import { handleReceiptSideEffects } from "../../reciepts/reciept.service.js";
-import { rupeesToPaisa, formatMoney } from "../../utils/moneyUtil.js";
-
-// ============================================
-// IMPORT HELPER FUNCTIONS FOR MULTI-UNIT SUPPORT
-// ============================================
+import {
+  rupeesToPaisa,
+  formatMoney,
+  formatMoneySafe,
+} from "../../utils/moneyUtil.js";
 import {
   getAllocationStrategy,
   calculateUnitPaymentSummary,
@@ -47,28 +47,34 @@ import {
   getUnitPaymentDetails,
 } from "./helpers/rent-payment.helper.js";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CREATE PAYMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * ============================================
- * ENHANCED CREATE PAYMENT - WITH MULTI-UNIT SUPPORT
- * ============================================
+ * Record a rent/CAM payment atomically.
  *
- * Industry Standard: Transaction Script Pattern
- * - Single transaction for all operations
- * - Fail-fast validation
- * - Atomic commits with rollback on error
- *
- * Features:
- * 1. ✅ Supports single-unit rents (backward compatible)
- * 2. ✅ Supports multi-unit rents with automatic allocation
- * 3. ✅ Supports manual unit allocations
- * 4. ✅ Maintains PDF and email generation
- * 5. ✅ All calculations in paisa (integer arithmetic)
- * 6. ✅ Proper validation at each step
- *
- * @param {Object} paymentData - Payment data including allocations
- * @returns {Object} Payment result with success flag
+ * @param {Object} paymentData
+ * @param {string} paymentData.bankAccountCode  chart-of-accounts code for the
+ *                                              bank account (e.g. "1010-NABIL").
+ *                                              Required for bank_transfer / cheque.
+ *                                              Used by journal builders to route
+ *                                              to the correct ledger account.
  */
 export async function createPayment(paymentData) {
+  console.log(
+    "createPayment RAW INPUT:",
+    JSON.stringify(
+      {
+        paymentMethod: paymentData.paymentMethod,
+        bankAccountId: paymentData.bankAccountId,
+        bankAccountCode: paymentData.bankAccountCode,
+        allocations: paymentData.allocations,
+      },
+      null,
+      2,
+    ),
+  );
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -76,90 +82,93 @@ export async function createPayment(paymentData) {
     const {
       allocations,
       allocationStrategy = "proportional",
+      bankAccountCode, // FIX: now accepted and threaded through to journal builders
       ...rest
     } = paymentData;
 
-    // ============================================
-    // STEP 1: CONVERT AMOUNTS TO PAISA
-    // ============================================
-    if (allocations?.rent?.amount) {
-      allocations.rent.amountPaisa = rupeesToPaisa(allocations.rent.amount);
+    // ── Step 1: Convert amounts to paisa (never trust client-sent amountPaisa as-is) ──
+    // Ensure we always derive paisa from rupees when amount is provided, so a mistaken
+    // bankAccountCode in amountPaisa never flows through.
+    if (allocations?.rent) {
+      const rentAmountRupees =
+        typeof allocations.rent.amount === "number" &&
+        Number.isFinite(allocations.rent.amount)
+          ? allocations.rent.amount
+          : null;
+      if (rentAmountRupees != null && rentAmountRupees > 0) {
+        allocations.rent.amountPaisa = rupeesToPaisa(rentAmountRupees);
+      }
+      const rentPaisa = allocations.rent.amountPaisa;
+      if (
+        typeof rentPaisa !== "number" ||
+        !Number.isInteger(rentPaisa) ||
+        rentPaisa < 0
+      ) {
+        throw new Error(
+          "Rent amount must be a positive number (rupees in amount, or integer paisa in amountPaisa). Do not pass bank account code as amount.",
+        );
+      }
     }
-    if (allocations?.cam?.paidAmount) {
-      allocations.cam.paidAmountPaisa = rupeesToPaisa(
-        allocations.cam.paidAmount,
-      );
+    if (allocations?.cam?.paidAmount != null) {
+      const camAmount =
+        typeof allocations.cam.paidAmount === "number" &&
+        Number.isFinite(allocations.cam.paidAmount)
+          ? allocations.cam.paidAmount
+          : 0;
+      allocations.cam.paidAmountPaisa =
+        camAmount > 0 ? rupeesToPaisa(camAmount) : 0;
     }
-
-    // Convert unit allocations to paisa if provided
     if (allocations?.rent?.unitAllocations) {
       allocations.rent.unitAllocations = allocations.rent.unitAllocations.map(
         (ua) => ({
           unitId: ua.unitId,
-          amountPaisa: ua.amountPaisa || rupeesToPaisa(ua.amount || 0),
+          amountPaisa:
+            typeof ua.amountPaisa === "number" &&
+            Number.isInteger(ua.amountPaisa)
+              ? ua.amountPaisa
+              : rupeesToPaisa(ua.amount || 0),
         }),
       );
     }
 
-    // ============================================
-    // STEP 2: VALIDATE PAYMENT ALLOCATIONS
-    // ============================================
+    // ── Step 2: Validate allocation structure ─────────────────────────────────
     const validation = validatePaymentAllocations(allocations);
-    if (!validation.isValid) {
-      throw new Error(validation.error);
-    }
+    console.log("validation", validation);
+    if (!validation.isValid) throw new Error(validation.error);
 
     let cam = null;
     let rent = null;
-    let unitAllocationsResult = null; // Store allocation results for payment record
+    let unitAllocationsResult = null;
 
-    // ============================================
-    // STEP 3: HANDLE RENT PAYMENT (MULTI-UNIT AWARE)
-    // ============================================
+    // ── Step 3: Handle rent payment ───────────────────────────────────────────
     if (allocations?.rent?.rentId) {
       rent = await Rent.findById(allocations.rent.rentId)
         .populate("tenant")
         .populate("property")
         .populate("units")
-        .populate({
-          path: "unitBreakdown.unit",
-          select: "name",
-        })
+        .populate({ path: "unitBreakdown.unit", select: "name" })
         .session(session);
 
       if (!rent) throw new Error("Rent not found");
 
       const rentAmountPaisa =
-        allocations.rent.amountPaisa ||
+        allocations.rent.amountPaisa ??
         rupeesToPaisa(allocations.rent.amount || 0);
+      console.log("rentAmountPaisa", rentAmountPaisa);
 
-      // Validate paisa integrity
       validatePaisaIntegrity({ rentAmountPaisa }, ["rentAmountPaisa"]);
 
-      // ============================================
-      // MULTI-UNIT RENT HANDLING
-      // ============================================
       if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-        console.log("Processing multi-unit rent payment...");
-
-        // Get unit allocations (manual or auto-generated)
         let unitAllocations = allocations.rent.unitAllocations;
 
         if (!unitAllocations || unitAllocations.length === 0) {
-          // Auto-allocate using specified strategy
-          console.log(`Auto-allocating using strategy: ${allocationStrategy}`);
           const strategyFn = getAllocationStrategy(allocationStrategy);
           unitAllocations = strategyFn(rent.unitBreakdown, rentAmountPaisa);
-
-          console.log("Generated allocations:", unitAllocations);
-        } else {
-          console.log("Using manual unit allocations:", unitAllocations);
         }
-
-        // Validate allocations before applying
+        console.log("unitAllocations", unitAllocations);
         validatePaymentNotExceeding(rent, rentAmountPaisa, unitAllocations);
+        console.log("validatePaymentNotExceeding", validatePaymentNotExceeding);
 
-        // Apply payment using helper (mutates rent document)
         unitAllocationsResult = applyPaymentToRentHelper(
           rent,
           rentAmountPaisa,
@@ -169,56 +178,27 @@ export async function createPayment(paymentData) {
           allocationStrategy,
         );
 
-        // Ensure Mongoose persists nested unitBreakdown changes
         rent.markModified("unitBreakdown");
-
-        // Store unit allocations in payment allocations
         allocations.rent.unitAllocations =
           unitAllocationsResult || unitAllocations;
-
-        console.log("Multi-unit payment applied successfully");
-        console.log(
-          "Unit payment summary:",
-          calculateUnitPaymentSummary(rent.unitBreakdown),
-        );
-      }
-      // ============================================
-      // SINGLE-UNIT RENT HANDLING (LEGACY)
-      // ============================================
-      else {
-        console.log("Processing single-unit rent payment...");
-
-        // Validate payment doesn't exceed balance
+      } else {
         const remainingPaisa = calculateRentRemaining(rent);
+
         if (rentAmountPaisa > remainingPaisa) {
           throw new Error(
-            `Payment ${formatMoney(rentAmountPaisa)} exceeds remaining balance ${formatMoney(remainingPaisa)}`,
+            `Payment ${formatMoneySafe(rentAmountPaisa)} exceeds remaining balance ${formatMoneySafe(remainingPaisa)}`,
           );
         }
-
-        // Apply payment directly to rent
         rent.paidAmountPaisa = (rent.paidAmountPaisa || 0) + rentAmountPaisa;
         rent.lastPaidDate = paymentData.paymentDate;
         rent.lastPaidBy = paymentData.receivedBy;
       }
 
-      // Update rent status (works for both single and multi-unit)
       updateRentStatus(rent);
-
-      // Save rent with transaction
       await rent.save({ session });
-
-      console.log("Rent payment completed:", {
-        rentId: rent._id,
-        status: rent.status,
-        paidAmountPaisa: rent.paidAmountPaisa,
-        remainingPaisa: calculateRentRemaining(rent),
-      });
     }
 
-    // ============================================
-    // STEP 4: HANDLE CAM PAYMENT (UNCHANGED)
-    // ============================================
+    // ── Step 4: Handle CAM payment ────────────────────────────────────────────
     if (allocations?.cam?.camId) {
       cam = await Cam.findById(allocations.cam.camId)
         .populate("tenant")
@@ -228,42 +208,37 @@ export async function createPayment(paymentData) {
       if (!cam) throw new Error("CAM not found");
 
       const camAmountPaisa =
-        allocations.cam.paidAmountPaisa ||
+        allocations.cam.paidAmountPaisa ??
         rupeesToPaisa(allocations.cam.paidAmount || 0);
 
       validatePaisaIntegrity({ camAmountPaisa }, ["camAmountPaisa"]);
       validateCamPaymentNotExceeding(cam, camAmountPaisa);
-
       applyPaymentToCam(
         cam,
         camAmountPaisa,
         paymentData.paymentDate,
         paymentData.receivedBy,
       );
-
       await cam.save({ session });
     }
 
-    // ============================================
-    // STEP 5: UPDATE BANK ACCOUNT BALANCE
-    // ============================================
-    // For bank_transfer/cheque: increment bank balance by payment amount (paisa). Cash: no-op.
+    // ── Step 5: Update bank account balance ───────────────────────────────────
     const totalAmountPaisa = calculateTotalAmountFromAllocations(allocations);
     console.log("totalAmountPaisa", totalAmountPaisa);
-    const bankAccount = await applyPaymentToBank({
+    await applyPaymentToBank({
       paymentMethod: paymentData.paymentMethod,
       bankAccountId: paymentData.bankAccountId,
       amountPaisa: totalAmountPaisa,
       session,
     });
 
-    // ============================================
-    // STEP 6: CREATE PAYMENT RECORD
-    // ============================================
+    // ── Step 6: Create payment record ─────────────────────────────────────────
+    // AFTER — only pass amountPaisa (already validated integer from Step 1), never amount
     const rentPayload = rent
       ? buildRentPaymentPayload({
           tenantId: paymentData.tenantId,
-          amountPaisa: allocations.rent.amountPaisa,
+          amountPaisa: allocations.rent.amountPaisa, // guaranteed integer from Step 1
+          // amount intentionally omitted — prevents fallback path in builder
           paymentDate: paymentData.paymentDate,
           nepaliDate: paymentData.nepaliDate,
           paymentMethod: paymentData.paymentMethod,
@@ -274,14 +249,15 @@ export async function createPayment(paymentData) {
           adminId: paymentData.adminId,
           bankAccountId: paymentData.bankAccountId,
           rentId: rent._id,
-          allocations: { rent: allocations.rent }, // Includes unitAllocations if multi-unit
+          allocations: { rent: allocations.rent },
         })
       : null;
 
     const camPayload = cam
       ? buildCamPaymentPayload({
           tenantId: paymentData.tenantId,
-          amountPaisa: allocations.cam.paidAmountPaisa,
+          amountPaisa: allocations.cam.paidAmountPaisa, // guaranteed integer from Step 1
+          // amount intentionally omitted — prevents fallback path in builder
           paymentDate: paymentData.paymentDate,
           nepaliDate: paymentData.nepaliDate,
           paymentMethod: paymentData.paymentMethod,
@@ -299,32 +275,28 @@ export async function createPayment(paymentData) {
     const payload = mergePaymentPayloads(rentPayload, camPayload);
     const payment = await createPaymentRecord(payload, session);
 
-    // ============================================
-    // STEP 7: LEDGER ENTRIES
-    // ============================================
+    // ── Step 7: Ledger entries ────────────────────────────────────────────────
+    // FIX: 3rd argument is bankAccountCode (string), not rentAmountPaisa (number).
+    // The amount is derived from payment.amountPaisa inside the builder.
     if (rent) {
-      const rentAmountPaisa = allocations.rent.amountPaisa;
-      const rentPaymentPayload = buildPaymentReceivedJournal(
+      const rentJournalPayload = buildPaymentReceivedJournal(
         payment,
         rent,
-        rentAmountPaisa,
+        bankAccountCode, // FIX: was "allocations.rent.amountPaisa"
       );
-      await ledgerService.postJournalEntry(rentPaymentPayload, session);
+      await ledgerService.postJournalEntry(rentJournalPayload, session);
     }
 
     if (cam) {
-      const camAmountPaisa = allocations.cam.paidAmountPaisa;
-      const camPaymentPayload = buildCamPaymentReceivedJournal(
+      const camJournalPayload = buildCamPaymentReceivedJournal(
         payment,
         cam,
-        camAmountPaisa,
+        bankAccountCode, // FIX: was "allocations.cam.paidAmountPaisa"
       );
-      await ledgerService.postJournalEntry(camPaymentPayload, session);
+      await ledgerService.postJournalEntry(camJournalPayload, session);
     }
 
-    // ============================================
-    // STEP 8: REVENUE RECORDING
-    // ============================================
+    // ── Step 8: Revenue recording ─────────────────────────────────────────────
     if (rent) {
       await recordRentRevenue({
         amountPaisa: allocations.rent.amountPaisa,
@@ -336,7 +308,6 @@ export async function createPayment(paymentData) {
         session,
       });
     }
-
     if (cam) {
       await recordCamRevenue({
         amountPaisa: allocations.cam.paidAmountPaisa,
@@ -349,20 +320,11 @@ export async function createPayment(paymentData) {
       });
     }
 
-    // ============================================
-    // STEP 9: COMMIT TRANSACTION
-    // ============================================
+    // ── Step 9: Commit ────────────────────────────────────────────────────────
     await session.commitTransaction();
     session.endSession();
 
-    console.log("Payment transaction committed successfully");
-
-    // ============================================
-    // STEP 10: ASYNC SIDE EFFECTS (NON-BLOCKING)
-    // ============================================
-    // These run after transaction commits and don't block the response
-
-    // Emit payment notification
+    // ── Step 10: Async side effects (non-blocking, after commit) ─────────────
     emitPaymentNotification(
       {
         paymentId: payment._id,
@@ -378,20 +340,13 @@ export async function createPayment(paymentData) {
       paymentData.adminId,
     ).catch(console.error);
 
-    // Handle receipt side effects (PDF generation, email with attachment)
-    const rentIdToPass =
-      rent?._id?.toString() || payment.rent?.toString() || null;
-    const camIdToPass = cam?._id?.toString() || payment.cam?.toString() || null;
-
     handleReceiptSideEffects({
       payment,
-      rentId: rentIdToPass,
-      camId: camIdToPass,
+      rentId: rent?._id?.toString() || payment.rent?.toString() || null,
+      camId: cam?._id?.toString() || payment.cam?.toString() || null,
     }).catch(console.error);
 
-    // ============================================
-    // RETURN SUCCESS WITH DETAILED INFO
-    // ============================================
+    // ── Return ────────────────────────────────────────────────────────────────
     return {
       success: true,
       payment: {
@@ -412,21 +367,12 @@ export async function createPayment(paymentData) {
               : null,
           }
         : null,
-      cam: cam
-        ? {
-            id: cam._id,
-            status: cam.status,
-          }
-        : null,
+      cam: cam ? { id: cam._id, status: cam.status } : null,
       message: "Payment recorded successfully",
     };
   } catch (error) {
-    // Rollback on any error
     await session.abortTransaction();
     session.endSession();
-
-    console.error("Payment transaction failed:", error);
-
     return {
       success: false,
       error: error.message,
@@ -435,135 +381,92 @@ export async function createPayment(paymentData) {
   }
 }
 
-/**
- * ============================================
- * SEND PAYMENT RECEIPT EMAIL (ENHANCED FOR MULTI-UNIT)
- * ============================================
- *
- * Generates PDF receipt and sends email
- * Now includes unit-level breakdown for multi-unit rents
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// RECEIPT EMAIL
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NEPALI_MONTHS = [
+  "Baisakh",
+  "Jestha",
+  "Ashadh",
+  "Shrawan",
+  "Bhadra",
+  "Ashwin",
+  "Kartik",
+  "Mangsir",
+  "Poush",
+  "Magh",
+  "Falgun",
+  "Chaitra",
+];
+
 export const sendPaymentReceiptEmail = async (paymentId) => {
   try {
-    // 1️⃣ Fetch payment with all related data
     const payment = await Payment.findById(paymentId)
       .populate("tenant")
       .populate("rent")
       .populate("cam")
       .populate("bankAccount");
 
-    if (!payment) {
-      throw new Error("Payment not found");
-    }
+    if (!payment) throw new Error("Payment not found");
+    if (!payment.tenant?.email) throw new Error("Tenant email not found");
 
-    if (!payment.tenant?.email) {
-      throw new Error("Tenant email not found");
-    }
-
-    // 2️⃣ Fetch full rent details if rent payment exists
     let rent = null;
     if (payment.rent) {
       rent = await Rent.findById(payment.rent)
         .populate("tenant")
         .populate("property")
         .populate("units")
-        .populate({
-          path: "unitBreakdown.unit",
-          select: "name",
-        });
+        .populate({ path: "unitBreakdown.unit", select: "name" });
     }
-
-    // Fetch CAM if exists
     const cam = payment.cam ? await Cam.findById(payment.cam) : null;
 
-    // 3️⃣ Build "Paid For" description
     let paidFor = "";
     if (rent) {
-      const nepaliMonths = [
-        "Baisakh",
-        "Jestha",
-        "Ashadh",
-        "Shrawan",
-        "Bhadra",
-        "Ashwin",
-        "Kartik",
-        "Mangsir",
-        "Poush",
-        "Magh",
-        "Falgun",
-        "Chaitra",
-      ];
       const monthName =
-        nepaliMonths[rent.nepaliMonth - 1] || `Month ${rent.nepaliMonth}`;
+        NEPALI_MONTHS[rent.nepaliMonth - 1] || `Month ${rent.nepaliMonth}`;
       paidFor = `${monthName} ${rent.nepaliYear}`;
     }
     if (cam) {
-      const nepaliMonths = [
-        "Baisakh",
-        "Jestha",
-        "Ashadh",
-        "Shrawan",
-        "Bhadra",
-        "Ashwin",
-        "Kartik",
-        "Mangsir",
-        "Poush",
-        "Magh",
-        "Falgun",
-        "Chaitra",
-      ];
       const camMonth =
-        nepaliMonths[cam.nepaliMonth - 1] || `Month ${cam.nepaliMonth}`;
+        NEPALI_MONTHS[cam.nepaliMonth - 1] || `Month ${cam.nepaliMonth}`;
       paidFor = paidFor
         ? `${paidFor} & ${camMonth} ${cam.nepaliYear} (CAM)`
         : `${camMonth} ${cam.nepaliYear} (CAM)`;
     }
 
-    const formattedPaymentDate = new Date(
-      payment.paymentDate,
-    ).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    const formattedDate = new Date(payment.paymentDate).toLocaleDateString(
+      "en-US",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      },
+    );
 
-    // 4️⃣ Get amounts from allocations
     const rentAmountPaisa =
-      payment.allocations?.rent?.amountPaisa ||
-      (payment.allocations?.rent?.amount
-        ? rupeesToPaisa(payment.allocations.rent.amount)
-        : 0);
+      payment.allocations?.rent?.amountPaisa ??
+      rupeesToPaisa(payment.allocations?.rent?.amount || 0);
     const camAmountPaisa =
-      payment.allocations?.cam?.paidAmountPaisa ||
-      (payment.allocations?.cam?.paidAmount
-        ? rupeesToPaisa(payment.allocations.cam.paidAmount)
-        : 0);
+      payment.allocations?.cam?.paidAmountPaisa ??
+      rupeesToPaisa(payment.allocations?.cam?.paidAmount || 0);
 
-    const rentAmount = rentAmountPaisa / 100;
-    const camAmount = camAmountPaisa / 100;
-
-    // 5️⃣ Build PDF data with multi-unit breakdown if applicable
     const pdfData = {
       receiptNo: payment._id.toString(),
       amount: payment.amountPaisa / 100,
-      paymentDate: formattedPaymentDate,
+      paymentDate: formattedDate,
       tenantName: rent?.tenant?.name || payment.tenant?.name || "N/A",
       property: rent?.property?.name || "N/A",
       paidFor,
       paymentMethod:
-        payment.paymentMethod === "cheque"
-          ? "Cheque"
-          : payment.paymentMethod === "cash"
-            ? "Cash"
-            : "Bank Transfer",
+        { cheque: "Cheque", cash: "Cash" }[payment.paymentMethod] ??
+        "Bank Transfer",
       receivedBy: rent?.lastPaidBy || "",
-      rentAmount,
-      camAmount,
-      // NEW: Unit breakdown for multi-unit rents
+      rentAmount: rentAmountPaisa / 100,
+      camAmount: camAmountPaisa / 100,
       unitBreakdown: null,
     };
 
-    // Add unit breakdown if multi-unit rent
     if (
       rent?.useUnitBreakdown &&
       payment.allocations?.rent?.unitAllocations?.length > 0
@@ -587,78 +490,50 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
       );
     }
 
-    // 6️⃣ Generate PDF
     const pdfBuffer = await generatePDFToBuffer(pdfData);
 
-    // 7️⃣ Build email HTML with unit breakdown if applicable
-    let unitBreakdownHtml = "";
-    if (pdfData.unitBreakdown && pdfData.unitBreakdown.length > 0) {
-      unitBreakdownHtml = `
-        <p style="color:#555555; font-size:14px; line-height:1.5; margin-top:10px;">
-          <strong>Unit Breakdown:</strong><br>
-          ${pdfData.unitBreakdown
-            .map((ub) => `${ub.unitName}: ${formatMoney(ub.amountPaisa)}`)
-            .join("<br>")}
-        </p>
-      `;
-    }
+    const unitBreakdownHtml =
+      pdfData.unitBreakdown?.length > 0
+        ? `<p style="color:#555555;font-size:14px;line-height:1.5;margin-top:10px;">
+           <strong>Unit Breakdown:</strong><br>
+           ${pdfData.unitBreakdown.map((ub) => `${ub.unitName}: ${formatMoneySafe(ub.amountPaisa)}`).join("<br>")}
+         </p>`
+        : "";
 
     const tenantName = payment.tenant?.name || "Tenant";
-    const subject = "Payment Receipt - Rent and CAM Payment Confirmation";
-    const html = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <title>Payment Receipt</title>
-      </head>
-      <body style="font-family: Arial, sans-serif; background-color: #f9f9f9; margin:0; padding:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:20px auto; background-color:#ffffff; border:1px solid #e0e0e0; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
-          <tr>
-            <td style="padding:20px;">
-              <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${tenantName},</h2>
-              <p style="color:#555555; font-size:16px; line-height:1.5;">
-                Thank you for your payment of <strong>${formatMoney(payment.amountPaisa)}</strong> for <strong>${paidFor}</strong>.
-              </p>
-              <p style="color:#555555; font-size:16px; line-height:1.5;">
-                Please find your payment receipt attached to this email.
-              </p>
-              <p style="color:#555555; font-size:14px; line-height:1.5; margin-top:20px;">
-                <strong>Receipt Details:</strong><br>
-                Receipt No: ${payment._id.toString()}<br>
-                ${rentAmount > 0 ? `Rent Amount: Rs. ${rentAmount.toLocaleString()}<br>` : ""}
-                ${camAmount > 0 ? `CAM Charges: Rs. ${camAmount.toLocaleString()}<br>` : ""}
-                Total Amount: ${formatMoney(payment.amountPaisa)}<br>
-                Payment Date: ${formattedPaymentDate}<br>
-                Payment Method: ${pdfData.paymentMethod}
-              </p>
-              ${unitBreakdownHtml}
-              <p style="color:#555555; font-size:16px; line-height:1.5; margin-top:30px;">
-                Please keep this receipt for your records.
-              </p>
-              <p style="color:#555555; font-size:16px; line-height:1.5; margin-top:30px;">
-                Thank you,<br>
-                <strong>Sallyan House Management</strong>
-              </p>
-              <hr style="border:none; border-top:1px solid #e0e0e0; margin:20px 0;">
-              <p style="color:#999999; font-size:12px; text-align:center;">
-                This is an automated receipt. Please do not reply to this email.
-              </p>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Payment Receipt</title></head>
+<body style="font-family:Arial,sans-serif;background-color:#f9f9f9;margin:0;padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background-color:#ffffff;border:1px solid #e0e0e0;border-radius:8px;">
+<tr><td style="padding:20px;">
+  <h2 style="color:#333333;">Hello ${tenantName},</h2>
+  <p style="color:#555555;font-size:16px;line-height:1.5;">
+    Thank you for your payment of <strong>${formatMoneySafe(payment.amountPaisa)}</strong> for <strong>${paidFor}</strong>.
+  </p>
+  <p style="color:#555555;font-size:14px;line-height:1.5;margin-top:20px;">
+    <strong>Receipt Details:</strong><br>
+    Receipt No: ${payment._id.toString()}<br>
+    ${rentAmountPaisa > 0 ? `Rent: ${formatMoneySafe(rentAmountPaisa)}<br>` : ""}
+    ${camAmountPaisa > 0 ? `CAM: ${formatMoneySafe(camAmountPaisa)}<br>` : ""}
+    Total: ${formatMoneySafe(payment.amountPaisa)}<br>
+    Date: ${formattedDate}<br>
+    Method: ${pdfData.paymentMethod}
+  </p>
+  ${unitBreakdownHtml}
+  <p style="color:#555555;font-size:16px;margin-top:30px;">
+    Thank you,<br><strong>Management Team</strong>
+  </p>
+  <hr style="border:none;border-top:1px solid #e0e0e0;margin:20px 0;">
+  <p style="color:#999999;font-size:12px;text-align:center;">Automated receipt. Please do not reply.</p>
+</td></tr>
+</table></body></html>`;
 
-    // 8️⃣ Send email
     await sendEmail({
       to: payment.tenant.email,
-      subject,
+      subject: "Payment Receipt - Rent and CAM Payment Confirmation",
       html,
       attachments: [
         {
-          filename: `receipt-${payment._id.toString()}.pdf`,
+          filename: `receipt-${payment._id}.pdf`,
           content: pdfBuffer,
           contentType: "application/pdf",
         },
@@ -671,7 +546,6 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
       emailSentTo: payment.tenant.email,
     };
   } catch (error) {
-    console.error("Error sending payment receipt email:", error);
     return {
       success: false,
       message: "Failed to send payment receipt email",
@@ -680,9 +554,9 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
   }
 };
 
-// ============================================
-// EXPORT OTHER EXISTING FUNCTIONS (UNCHANGED)
-// ============================================
+// ─────────────────────────────────────────────────────────────────────────────
+// HISTORY / ACTIVITY (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const getFilteredPaymentHistoryService = async (
   tenantId,
@@ -698,19 +572,10 @@ export const getFilteredPaymentHistoryService = async (
       paymentMethod,
       dateField: "paymentDate",
     });
-
     const payments = await Payment.find(filter).sort({ paymentDate: -1 });
-
-    return {
-      success: true,
-      data: payments,
-    };
+    return { success: true, data: payments };
   } catch (error) {
-    console.error("Error getting filtered payment history:", error);
-    return {
-      success: false,
-      error: error.message,
-    };
+    return { success: false, error: error.message };
   }
 };
 
@@ -722,60 +587,37 @@ export const logPaymentActivity = async (
 ) => {
   try {
     const { PaymentActivity } = await import("./paymentActivity.model.js");
-
     const activity = await PaymentActivity.create({
       payment: paymentId,
       activityType,
       performedBy: adminId,
       metadata,
     });
-
     const allActivities = await PaymentActivity.find({ payment: paymentId })
       .sort({ createdAt: -1 })
       .select("_id")
       .lean();
-
     if (allActivities.length > 5) {
-      const activitiesToDelete = allActivities.slice(5);
-      const idsToDelete = activitiesToDelete.map((a) => a._id);
-
       await PaymentActivity.deleteMany({
-        _id: { $in: idsToDelete },
+        _id: { $in: allActivities.slice(5).map((a) => a._id) },
       });
     }
-
-    return {
-      success: true,
-      data: activity,
-    };
+    return { success: true, data: activity };
   } catch (error) {
-    console.error("Error logging payment activity:", error);
-    return {
-      success: false,
-      error: error.message,
-    };
+    return { success: false, error: error.message };
   }
 };
 
 export const getPaymentActivities = async (paymentId) => {
   try {
     const { PaymentActivity } = await import("./paymentActivity.model.js");
-
     const activities = await PaymentActivity.find({ payment: paymentId })
       .populate("performedBy", "name email")
       .sort({ createdAt: -1 })
       .limit(5)
       .lean();
-
-    return {
-      success: true,
-      data: activities,
-    };
+    return { success: true, data: activities };
   } catch (error) {
-    console.error("Error getting payment activities:", error);
-    return {
-      success: false,
-      error: error.message,
-    };
+    return { success: false, error: error.message };
   }
 };

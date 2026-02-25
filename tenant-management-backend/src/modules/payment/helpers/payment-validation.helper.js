@@ -6,7 +6,7 @@
  */
 
 import mongoose from "mongoose";
-import { formatMoney } from "../../../utils/moneyUtil.js";
+import { formatMoneySafe } from "../../../utils/moneyUtil.js";
 
 /**
  * Validate unit allocations match rent structure
@@ -32,7 +32,7 @@ export function validateUnitAllocations(
 
   if (allocatedTotal !== totalPaymentPaisa) {
     throw new Error(
-      `Unit allocations (${formatMoney(allocatedTotal)}) don't match total payment (${formatMoney(totalPaymentPaisa)})`,
+      `Unit allocations (${formatMoneySafe(allocatedTotal)}) don't match total payment (${formatMoneySafe(totalPaymentPaisa)})`,
     );
   }
 
@@ -56,7 +56,7 @@ export function validateUnitAllocations(
     console.log("remaining", remaining);
     if (amountPaisa > remaining) {
       throw new Error(
-        `Payment ${formatMoney(amountPaisa)} exceeds remaining ${formatMoney(remaining)} for unit ${unitId}`,
+        `Payment ${formatMoneySafe(amountPaisa)} exceeds remaining ${formatMoneySafe(remaining)} for unit ${unitId}`,
       );
     }
 
@@ -120,7 +120,7 @@ export function validatePaymentAllocations(allocations) {
       if (unitTotal !== rentAmountPaisa) {
         return {
           isValid: false,
-          error: `Unit allocations total (${formatMoney(unitTotal)}) doesn't match rent amount (${formatMoney(rentAmountPaisa)})`,
+          error: `Unit allocations total (${formatMoneySafe(unitTotal)}) doesn't match rent amount (${formatMoneySafe(rentAmountPaisa)})`,
         };
       }
     }
@@ -185,7 +185,7 @@ export function validatePaymentNotExceeding(
 
       if (paymentPaisa > totalRemaining) {
         throw new Error(
-          `Payment ${formatMoney(paymentPaisa)} exceeds remaining balance ${formatMoney(totalRemaining)}`,
+          `Payment ${formatMoneySafe(paymentPaisa)} exceeds remaining balance ${formatMoneySafe(totalRemaining)}`,
         );
       }
     }
@@ -194,7 +194,7 @@ export function validatePaymentNotExceeding(
     const remaining = (rent.rentAmountPaisa || 0) - (rent.paidAmountPaisa || 0);
     if (paymentPaisa > remaining) {
       throw new Error(
-        `Payment ${formatMoney(paymentPaisa)} exceeds remaining balance ${formatMoney(remaining)}`,
+        `Payment ${formatMoneySafe(paymentPaisa)} exceeds remaining balance ${formatMoneySafe(remaining)}`,
       );
     }
   }
@@ -217,7 +217,7 @@ export function validateCamPaymentNotExceeding(cam, paymentPaisa) {
 
   if (paymentPaisa > remainingPaisa) {
     throw new Error(
-      `CAM payment ${formatMoney(paymentPaisa)} exceeds remaining balance ${formatMoney(remainingPaisa)} (CAM total: ${formatMoney(amountPaisa)}, already paid: ${formatMoney(paidAmountPaisa)})`,
+      `CAM payment ${formatMoneySafe(paymentPaisa)} exceeds remaining balance ${formatMoneySafe(remainingPaisa)} (CAM total: ${formatMoneySafe(amountPaisa)}, already paid: ${formatMoneySafe(paidAmountPaisa)})`,
     );
   }
 }

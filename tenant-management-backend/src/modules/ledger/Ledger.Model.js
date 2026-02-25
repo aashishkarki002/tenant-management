@@ -23,7 +23,6 @@ const ledgerEntrySchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
-      get: paisaToRupees,
     },
 
     // Credit amount in paisa
@@ -31,14 +30,12 @@ const ledgerEntrySchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
-      get: paisaToRupees,
     },
 
     // Balance in paisa (running balance after this entry)
     balancePaisa: {
       type: Number,
       default: 0,
-      get: paisaToRupees,
     },
 
     description: {

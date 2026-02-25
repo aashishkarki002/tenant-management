@@ -337,7 +337,7 @@ export const getElectricityReadingById = async (req, res) => {
 /**
  * Record electricity payment.
  * POST /api/electricity/record-payment
- * Body: { electricityId, amount, paymentDate?, nepaliDate? }
+ * Body: { electricityId, amount, paymentDate?, nepaliDate?, paymentMethod?, bankAccountId? }
  * File: receiptImage (optional, multipart)
  */
 export const recordElectricityPayment = async (req, res) => {
@@ -345,7 +345,7 @@ export const recordElectricityPayment = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { electricityId, amount, paymentDate, nepaliDate } = req.body;
+    const { electricityId, amount, paymentDate, nepaliDate, paymentMethod, bankAccountId } = req.body;
 
     if (!electricityId || !amount) {
       await session.abortTransaction();
@@ -392,6 +392,8 @@ export const recordElectricityPayment = async (req, res) => {
         amount: parseFloat(amount),
         paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
         nepaliDate,
+        paymentMethod: paymentMethod || undefined,
+        bankAccountId: bankAccountId || undefined,
         receipt: receiptImageUrl,
         createdBy: req.admin.id,
       },

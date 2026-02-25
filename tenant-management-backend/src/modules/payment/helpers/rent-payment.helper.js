@@ -1,34 +1,48 @@
 /**
- * Rent Payment Application Helpers
+ * rent-payment.helper.js  (FIXED)
  *
- * Industry Standard: Domain Logic Layer
- * Encapsulates business rules for applying payments to rents
+ * ROOT BUG in every calculation: used gross rentAmountPaisa for "what is owed".
+ * Tenant only pays effectiveRentPaisa = gross - TDS.
+ * The same fix was applied to rent.Model.js pre-save hook and rent.domain.js.
+ *
+ * FIX summary (applies to single-unit AND per-unit breakdown):
+ *   effectiveRentPaisa = rentAmountPaisa - (tdsAmountPaisa || 0)
+ *   remaining          = effectiveRentPaisa - paidAmountPaisa
+ *   paid status        = paidAmountPaisa >= effectiveRentPaisa
  */
 
 import { getAllocationStrategy } from "./payment.allocation.helper.js";
-
-/** Resolve unit ID string from ObjectId, populated doc, or string (handles .populate("unitBreakdown.unit") and strategy-returned unitId) */
-function resolveUnitId(val) {
-  if (val == null) return null;
-  if (val._id) return val._id.toString();
-  return typeof val === "string" ? val : val.toString();
-}
 import {
   validateUnitAllocations,
   validatePaymentNotExceeding,
 } from "./payment-validation.helper.js";
 
+// ── ID normaliser ─────────────────────────────────────────────────────────────
+function resolveUnitId(val) {
+  if (val == null) return null;
+  if (val._id) return val._id.toString();
+  return typeof val === "string" ? val : val.toString();
+}
+
+// ── Effective rent helper (single source of truth in this file) ───────────────
+function effectiveRent(unit) {
+  return (unit.rentAmountPaisa || 0) - (unit.tdsAmountPaisa || 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APPLY PAYMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Apply payment to rent - handles both single-unit and multi-unit rents
+ * Apply payment to rent — handles both single-unit and multi-unit rents.
  *
- * Industry Standard: Command pattern - mutates state with validation
- *
- * @param {Object} rent - Rent document (Mongoose model)
- * @param {number} totalPaymentPaisa - Total payment amount in paisa
- * @param {Array} unitAllocations - Optional unit-specific allocations
- * @param {Date} paymentDate - Payment date
- * @param {ObjectId} receivedBy - Admin who received payment
- * @param {string} allocationStrategy - Strategy: 'proportional', 'fifo', 'manual'
+ * @param {Object}   rent
+ * @param {number}   totalPaymentPaisa
+ * @param {Array}    unitAllocations       optional manual allocations
+ * @param {Date}     paymentDate
+ * @param {ObjectId} receivedBy
+ * @param {string}   allocationStrategy    'proportional' | 'fifo' | 'manual'
+ * @returns {Array|null} unit allocations used (null for single-unit)
  */
 export function applyPaymentToRent(
   rent,
@@ -38,77 +52,69 @@ export function applyPaymentToRent(
   receivedBy,
   allocationStrategy = "proportional",
 ) {
-  // Validate payment doesn't exceed balance
   validatePaymentNotExceeding(rent, totalPaymentPaisa, unitAllocations);
 
-  // MULTI-UNIT RENT: Use unit breakdown
   if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
     let allocations = unitAllocations;
 
-    // Auto-allocate if no manual allocation provided
     if (!allocations || allocations.length === 0) {
       const strategyFn = getAllocationStrategy(allocationStrategy);
       allocations = strategyFn(rent.unitBreakdown, totalPaymentPaisa);
     }
 
-    // Validate allocations
     validateUnitAllocations(rent.unitBreakdown, allocations, totalPaymentPaisa);
 
-    // Apply payment to each unit
     allocations.forEach(({ unitId, amountPaisa }) => {
       const unitIdStr = resolveUnitId(unitId);
       if (!unitIdStr) return;
-      const unitBreakdown = rent.unitBreakdown.find(
+      const ub = rent.unitBreakdown.find(
         (u) => resolveUnitId(u.unit) === unitIdStr,
       );
-
-      if (unitBreakdown) {
-        unitBreakdown.paidAmountPaisa =
-          (unitBreakdown.paidAmountPaisa || 0) + amountPaisa;
-      }
+      if (ub) ub.paidAmountPaisa = (ub.paidAmountPaisa || 0) + amountPaisa;
     });
 
-    // Recalculate rent-level totals from unit breakdown
+    // Sync root paidAmountPaisa from unit breakdown
     rent.paidAmountPaisa = rent.unitBreakdown.reduce(
-      (sum, unit) => sum + (unit.paidAmountPaisa || 0),
+      (sum, u) => sum + (u.paidAmountPaisa || 0),
       0,
     );
 
-    // Update metadata (same as single-unit)
     rent.lastPaidDate = paymentDate;
     rent.lastPaidBy = receivedBy;
 
-    // Return allocations for audit trail
+    // Status update handled by pre-save hook — call updateRentStatus here for
+    // in-memory accuracy before save (hook will confirm on save)
+    updateRentStatus(rent);
+
     return allocations;
   }
 
-  // SINGLE-UNIT RENT: Direct payment to rent
+  // Single-unit
   rent.paidAmountPaisa = (rent.paidAmountPaisa || 0) + totalPaymentPaisa;
-
-  // Update metadata
   rent.lastPaidDate = paymentDate;
   rent.lastPaidBy = receivedBy;
-
-  // Update status
   updateRentStatus(rent);
 
-  return null; // No unit allocations for single-unit
+  return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STATUS
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Update rent status based on payment completion
+ * Update rent status based on payment vs effectiveRentPaisa (gross − TDS).
  *
- * Industry Standard: State machine pattern
- * Automatic status transitions based on payment progress
- *
- * @param {Object} rent - Rent document
+ * FIX: was comparing paidAmountPaisa vs gross rentAmountPaisa.
+ * Tenant who pays effectiveRentPaisa was never marked "paid".
  */
 export function updateRentStatus(rent) {
-  let totalDue, totalPaid;
+  let effectiveDue, totalPaid;
 
   if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    totalDue = rent.unitBreakdown.reduce(
-      (sum, u) => sum + (u.rentAmountPaisa || 0),
+    // FIX: sum effectiveRent per unit (gross - TDS), not gross
+    effectiveDue = rent.unitBreakdown.reduce(
+      (sum, u) => sum + effectiveRent(u),
       0,
     );
     totalPaid = rent.unitBreakdown.reduce(
@@ -116,57 +122,50 @@ export function updateRentStatus(rent) {
       0,
     );
   } else {
-    totalDue = rent.rentAmountPaisa || 0;
+    // FIX: effectiveRentPaisa = gross − TDS
+    effectiveDue = (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
     totalPaid = rent.paidAmountPaisa || 0;
   }
 
-  if (totalPaid >= totalDue) {
-    rent.status = "paid";
-  } else if (totalPaid > 0) {
-    rent.status = "partially_paid";
-  } else {
-    rent.status = "pending";
-  }
+  if (totalPaid >= effectiveDue && effectiveDue > 0) rent.status = "paid";
+  else if (totalPaid > 0) rent.status = "partially_paid";
+  else rent.status = "pending";
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// REMAINING / PROGRESS
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Calculate remaining balance for rent
- *
- * @param {Object} rent - Rent document
- * @returns {number} Remaining balance in paisa
+ * Calculate remaining balance for rent.
+ * FIX: returns (gross − TDS) − paid, not gross − paid.
  */
 export function calculateRentRemaining(rent) {
   if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    return rent.unitBreakdown.reduce((sum, unit) => {
-      return sum + ((unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0));
-    }, 0);
+    return rent.unitBreakdown.reduce(
+      (sum, u) => sum + (effectiveRent(u) - (u.paidAmountPaisa || 0)),
+      0,
+    );
   }
-
-  return (rent.rentAmountPaisa || 0) - (rent.paidAmountPaisa || 0);
+  const effective = (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
+  return effective - (rent.paidAmountPaisa || 0);
 }
 
-/**
- * Check if rent is fully paid
- *
- * @param {Object} rent - Rent document
- * @returns {boolean} True if fully paid
- */
+/** Returns true only when tenant has paid the full effectiveRentPaisa. */
 export function isRentFullyPaid(rent) {
   return calculateRentRemaining(rent) <= 0;
 }
 
 /**
- * Get payment progress percentage
- *
- * @param {Object} rent - Rent document
- * @returns {number} Percentage (0-100)
+ * Payment progress as a percentage of effectiveRentPaisa.
+ * FIX: denominator is gross − TDS, not gross.
  */
 export function getRentPaymentProgress(rent) {
-  let totalDue, totalPaid;
+  let effectiveDue, totalPaid;
 
   if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    totalDue = rent.unitBreakdown.reduce(
-      (sum, u) => sum + (u.rentAmountPaisa || 0),
+    effectiveDue = rent.unitBreakdown.reduce(
+      (sum, u) => sum + effectiveRent(u),
       0,
     );
     totalPaid = rent.unitBreakdown.reduce(
@@ -174,33 +173,35 @@ export function getRentPaymentProgress(rent) {
       0,
     );
   } else {
-    totalDue = rent.rentAmountPaisa || 0;
+    effectiveDue = (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
     totalPaid = rent.paidAmountPaisa || 0;
   }
 
-  if (totalDue === 0) return 0;
-  return Math.round((totalPaid / totalDue) * 100);
+  if (effectiveDue === 0) return 0;
+  return Math.min(100, Math.round((totalPaid / effectiveDue) * 100));
 }
 
 /**
- * Get unit-level payment details
- *
- * @param {Object} rent - Rent document
- * @returns {Array} Unit payment details
+ * Per-unit payment details.
+ * FIX: remaining and progress now use effectiveRentPaisa per unit.
  */
 export function getUnitPaymentDetails(rent) {
-  if (!rent.useUnitBreakdown || !rent.unitBreakdown?.length) {
-    return null;
-  }
+  if (!rent.useUnitBreakdown || !rent.unitBreakdown?.length) return null;
 
-  return rent.unitBreakdown.map((unit) => ({
-    unitId: unit.unit,
-    rentAmountPaisa: unit.rentAmountPaisa || 0,
-    paidAmountPaisa: unit.paidAmountPaisa || 0,
-    tdsAmountPaisa: unit.tdsAmountPaisa || 0,
-    remainingPaisa: (unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0),
-    progress: unit.rentAmountPaisa
-      ? Math.round(((unit.paidAmountPaisa || 0) / unit.rentAmountPaisa) * 100)
-      : 0,
-  }));
+  return rent.unitBreakdown.map((unit) => {
+    const effective = effectiveRent(unit);
+    const paid = unit.paidAmountPaisa || 0;
+    const remaining = effective - paid;
+
+    return {
+      unitId: unit.unit,
+      rentAmountPaisa: unit.rentAmountPaisa || 0,
+      tdsAmountPaisa: unit.tdsAmountPaisa || 0,
+      effectiveRentPaisa: effective,
+      paidAmountPaisa: paid,
+      remainingPaisa: remaining,
+      progress:
+        effective > 0 ? Math.min(100, Math.round((paid / effective) * 100)) : 0,
+    };
+  });
 }

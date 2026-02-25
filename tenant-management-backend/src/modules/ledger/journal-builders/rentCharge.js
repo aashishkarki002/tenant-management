@@ -1,103 +1,86 @@
+/**
+ * rentCharge.js  (FIXED)
+ *
+ * Builds the journal payload for a rent charge:
+ *   DR  Accounts Receivable  (ASSET ↑ — tenant owes more)
+ *   CR  Rent Revenue         (REVENUE ↑ — income earned)
+ *
+ * Changes from original:
+ *   - Removed the dangerous "> 100" paisa heuristic.
+ *   - Uses getRawPaisa() to safely extract the integer paisa value.
+ *   - Uses buildJournalPayload() for a validated, canonical output.
+ *   - Uses assertNepaliFields() to catch wrong calendar fields early.
+ */
+
 import { ACCOUNT_CODES } from "../config/accounts.js";
-import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
+import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
+import { getRawPaisa } from "../../../utils/moneyUtil.js";
+import { assertNepaliFields } from "../../../utils/nepaliDateHelper.js";
 
 /**
- * Build journal payload for a rent charge (DR Accounts Receivable, CR Revenue).
- * Uses paisa for all amounts.
- * @param {Object} rent - Rent document (plain or populated) with _id, tenant, property, nepaliMonth, nepaliYear, nepaliDate, createdAt, createdBy, rentAmountPaisa
- * @returns {Object} Journal payload for postJournalEntry
+ * @param {Object} rent  - Rent document (Mongoose doc or plain object)
+ *   Must have:  _id, tenant, property, nepaliMonth, nepaliYear,
+ *               rentAmountPaisa (integer), rentFrequency
+ *   Optional:   createdAt, createdBy, nepaliDate
+ *
+ * @returns {Object} Canonical journal payload for postJournalEntry
  */
 export function buildRentChargeJournal(rent) {
-  const rentId = rent._id;
-  const transactionDate = rent.createdAt || new Date();
-  const nepaliDate = rent.nepaliDate || transactionDate;
-  const nepaliMonth = rent.nepaliMonth;
-  const nepaliYear = rent.nepaliYear;
-  const description = `Rent charge for ${nepaliMonth} ${nepaliYear} from ${rent?.tenant?.name}`;
+  // ── 1. Nepali calendar validation ────────────────────────────────────────
+  assertNepaliFields({
+    nepaliYear: rent.nepaliYear,
+    nepaliMonth: rent.nepaliMonth,
+  });
 
-  // Get rent amount in paisa (use paisa field if available, otherwise convert)
-  // Note: Rent model has a getter that converts paisa to rupees, so we need to access raw value
-  // Try to get raw value from _doc first, then try get() with getters: false, then fallback to direct access
-  let rentAmountPaisa;
-  if (rent._doc?.rentAmountPaisa !== undefined) {
-    // Raw document value (bypasses getter)
-    rentAmountPaisa = rent._doc.rentAmountPaisa;
-  } else if (rent.get && typeof rent.get === "function") {
-    // Mongoose document - try to get raw value
-    try {
-      rentAmountPaisa = rent.get("rentAmountPaisa", null, { getters: false });
-    } catch (e) {
-      // Fallback to direct access
-      rentAmountPaisa = rent.rentAmountPaisa;
-    }
-  } else {
-    // Plain object
-    rentAmountPaisa = rent.rentAmountPaisa;
-  }
+  // ── 2. Extract raw paisa — no guessing, no coercion ──────────────────────
+  const rentAmountPaisa = getRawPaisa(rent, "rentAmountPaisa");
 
-  // If we got a value, ensure it's an integer paisa
-  // If it's a decimal and > 100, it's likely already in paisa (decimal), round it
-  // If it's a decimal and < 100, it's likely in rupees, convert it
-  if (rentAmountPaisa !== undefined && rentAmountPaisa !== null) {
-    if (!Number.isInteger(rentAmountPaisa)) {
-      if (rentAmountPaisa > 100) {
-        // Likely decimal paisa, round it
-        rentAmountPaisa = Math.round(rentAmountPaisa);
-      } else {
-        // Likely rupees, convert it
-        rentAmountPaisa = rupeesToPaisa(rentAmountPaisa);
-      }
-    }
-  } else if (rent.rentAmount !== undefined && rent.rentAmount !== null) {
-    // Fallback to rentAmount (rupees) and convert
-    rentAmountPaisa = rupeesToPaisa(rent.rentAmount);
-  } else {
-    rentAmountPaisa = 0;
-  }
+  // ── 3. Metadata ──────────────────────────────────────────────────────────
+  const transactionDate =
+    rent.createdAt instanceof Date
+      ? rent.createdAt
+      : new Date(rent.createdAt ?? Date.now());
+  const nepaliDate =
+    rent.nepaliDate instanceof Date ? rent.nepaliDate : transactionDate;
+  const { nepaliMonth, nepaliYear } = rent;
+  const tenantName = rent.tenant?.name ?? "Tenant";
 
-  // Derive billing frequency and quarter (if applicable) so that
-  // the Transaction & ledger clearly know whether this is a
-  // monthly or quarterly rent.
-  const billingFrequency = rent.rentFrequency || "monthly";
+  const billingFrequency = rent.rentFrequency ?? "monthly";
   const quarter =
     billingFrequency === "quarterly" && typeof nepaliMonth === "number"
       ? Math.ceil(nepaliMonth / 3)
       : undefined;
 
-  return {
+  const description = `Rent charge for ${nepaliMonth}/${nepaliYear} — ${tenantName}`;
+
+  // ── 4. Build canonical payload ───────────────────────────────────────────
+  return buildJournalPayload({
     transactionType: "RENT_CHARGE",
     referenceType: "Rent",
-    referenceId: rentId,
+    referenceId: rent._id,
     transactionDate,
     nepaliDate,
     nepaliMonth,
     nepaliYear,
     description,
-    createdBy: rent.createdBy,
+    createdBy: rent.createdBy ?? null,
     totalAmountPaisa: rentAmountPaisa,
-    totalAmount: rentAmountPaisa / 100, // Backward compatibility
     tenant: rent.tenant,
     property: rent.property,
-    // Custom metadata used by ledger/transaction
-    billingFrequency,
-    quarter,
     entries: [
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
         debitAmountPaisa: rentAmountPaisa,
-        debitAmount: rentAmountPaisa / 100, // Backward compatibility
         creditAmountPaisa: 0,
-        creditAmount: 0,
-        description: `Rent receivable for ${nepaliMonth} ${nepaliYear}`,
+        description: `Rent receivable for ${nepaliMonth}/${nepaliYear}`,
       },
       {
         accountCode: ACCOUNT_CODES.REVENUE,
         debitAmountPaisa: 0,
-        debitAmount: 0,
         creditAmountPaisa: rentAmountPaisa,
-        creditAmount: rentAmountPaisa / 100, // Backward compatibility
-        description: `Rental income for ${nepaliMonth} ${nepaliYear}`,
+        description: `Rental income for ${nepaliMonth}/${nepaliYear}`,
       },
     ],
-  };
+    meta: { billingFrequency, quarter },
+  });
 }

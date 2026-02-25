@@ -1,49 +1,76 @@
+/**
+ * paymentReceived.js  (FIXED)
+ *
+ * Builds the journal payload for a rent payment received.
+ *
+ * Correct double-entry:
+ *   DR  Cash / Bank Account   (ASSET ↑ — money received)
+ *   CR  Accounts Receivable   (ASSET ↓ — tenant owes less)
+ *
+ * Changes from original:
+ *   - paymentMethod is now required; routed to correct account via getDebitAccountForPayment().
+ *   - No Gregorian fallback for nepaliMonth/nepaliYear.
+ *   - Uses buildJournalPayload() for canonical, validated output.
+ */
+
 import { ACCOUNT_CODES } from "../config/accounts.js";
-import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
+import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
+import { resolveNepaliPeriod } from "../../../utils/nepaliDateHelper.js";
+import {
+  getDebitAccountForPayment,
+  assertValidPaymentMethod,
+} from "../../../utils/paymentAccountUtils.js";
+import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
 
 /**
- * Build journal payload for a rent payment received (DR Cash/Bank, CR Accounts Receivable).
- * Uses CASH_BANK (1000) for all payment methods; override to CASH (1100) for cash if needed.
- * Uses paisa for all amounts.
- * @param {Object} payment - Payment document with _id, paymentDate, nepaliDate, amountPaisa, createdBy/receivedBy
- * @param {Object} rent - Rent document with tenant, property, nepaliMonth, nepaliYear
- * @param {number} [amountPaisa] - Amount in paisa to record (defaults to payment.amountPaisa)
- * @param {number} [amount] - Amount in rupees (backward compatibility)
- * @param {string} [cashBankAccountCode] - Account code for DR (default CASH_BANK 1000)
- * @returns {Object} Journal payload for postJournalEntry
+ * @param {Object} payment  - Payment document
+ *   Must have:  _id, amountPaisa (integer), paymentMethod
+ *   Optional:   paymentDate, nepaliDate, createdBy / receivedBy
+ *
+ * @param {Object} rent     - Rent document (for context)
+ *   Must have:  nepaliMonth, nepaliYear
+ *   Optional:   tenant, property
+ *
+ * @param {string} [bankAccountCode]
+ *   Required when paymentMethod is "bank_transfer" or "cheque".
+ *   Should be the account code of the specific BankAccount (e.g. "1010-NABIL").
+ *
+ * @returns {Object} Canonical journal payload
  */
-export function buildPaymentReceivedJournal(
-  payment,
-  rent,
-  amountPaisa = undefined,
-  amount = undefined, // Backward compatibility
-  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK,
-) {
-  // Use paisa if provided, otherwise convert from payment or amount parameter
-  const recordedAmountPaisa =
-    amountPaisa !== undefined
-      ? amountPaisa
-      : payment.amountPaisa !== undefined
-        ? payment.amountPaisa
-        : amount !== undefined
-          ? rupeesToPaisa(amount)
-          : payment.amount
-            ? rupeesToPaisa(payment.amount)
-            : 0;
+export function buildPaymentReceivedJournal(payment, rent, bankAccountCode) {
+  // ── 1. Validate payment method ───────────────────────────────────────────
+  assertValidPaymentMethod(payment.paymentMethod);
 
-  const transactionDate = payment.paymentDate || new Date();
-  const nepaliDate = payment.nepaliDate || transactionDate;
-  const nepaliMonth =
-    rent?.nepaliMonth ?? new Date(transactionDate).getMonth() + 1;
-  const nepaliYear =
-    rent?.nepaliYear ?? new Date(transactionDate).getFullYear();
-  const tenantName = rent?.tenant?.name ?? (rent?.tenant ? "Tenant" : "");
-  const description = tenantName
-    ? `Rent payment received for ${nepaliMonth} ${nepaliYear} from ${tenantName}`
-    : `Rent payment received for ${nepaliMonth} ${nepaliYear}`;
-  const createdBy = payment.createdBy ?? payment.receivedBy;
+  // ── 2. Validate amount ───────────────────────────────────────────────────
+  assertIntegerPaisa(payment.amountPaisa, "payment.amountPaisa");
 
-  return {
+  // ── 3. Resolve Nepali period (no Gregorian fallback) ─────────────────────
+  const transactionDate =
+    payment.paymentDate instanceof Date
+      ? payment.paymentDate
+      : new Date(payment.paymentDate ?? Date.now());
+
+  const { nepaliMonth, nepaliYear } = resolveNepaliPeriod({
+    nepaliMonth: rent?.nepaliMonth,
+    nepaliYear: rent?.nepaliYear,
+    fallbackDate: transactionDate,
+  });
+
+  // ── 4. Determine DR account from payment method ───────────────────────────
+  const drAccountCode = getDebitAccountForPayment(
+    payment.paymentMethod,
+    bankAccountCode,
+  );
+
+  const tenantName = rent?.tenant?.name ?? "";
+  const description =
+    `Rent payment received for ${nepaliMonth}/${nepaliYear}` +
+    (tenantName ? ` — ${tenantName}` : "");
+  const nepaliDate =
+    payment.nepaliDate instanceof Date ? payment.nepaliDate : transactionDate;
+
+  // ── 5. Build canonical payload ───────────────────────────────────────────
+  return buildJournalPayload({
     transactionType: "RENT_PAYMENT_RECEIVED",
     referenceType: "RentPayment",
     referenceId: payment._id,
@@ -52,28 +79,23 @@ export function buildPaymentReceivedJournal(
     nepaliMonth,
     nepaliYear,
     description,
-    createdBy,
-    totalAmountPaisa: recordedAmountPaisa,
-    totalAmount: recordedAmountPaisa / 100, // Backward compatibility
+    createdBy: payment.createdBy ?? payment.receivedBy ?? null,
+    totalAmountPaisa: payment.amountPaisa,
     tenant: rent?.tenant,
     property: rent?.property,
     entries: [
       {
-        accountCode: cashBankAccountCode,
-        debitAmountPaisa: recordedAmountPaisa,
-        debitAmount: recordedAmountPaisa / 100, // Backward compatibility
+        accountCode: drAccountCode,
+        debitAmountPaisa: payment.amountPaisa,
         creditAmountPaisa: 0,
-        creditAmount: 0,
         description,
       },
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
         debitAmountPaisa: 0,
-        debitAmount: 0,
-        creditAmountPaisa: recordedAmountPaisa,
-        creditAmount: recordedAmountPaisa / 100, // Backward compatibility
+        creditAmountPaisa: payment.amountPaisa,
         description,
       },
     ],
-  };
+  });
 }

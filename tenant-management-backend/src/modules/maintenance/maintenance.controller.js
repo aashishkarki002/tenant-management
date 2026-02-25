@@ -65,6 +65,8 @@ export async function updateMaintenanceStatusController(req, res) {
       nepaliYear,
       // Frontend sends this flag after the user confirms the overpayment dialog
       allowOverpayment = false,
+      paymentMethod,
+      bankAccountId,
     } = req.body;
 
     const validStatuses = ["OPEN", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
@@ -87,6 +89,8 @@ export async function updateMaintenanceStatusController(req, res) {
         nepaliMonth,
         nepaliYear,
         allowOverpayment,
+        paymentMethod: paymentMethod || null,
+        bankAccountId: bankAccountId || null,
       },
     );
 

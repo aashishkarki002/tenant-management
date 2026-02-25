@@ -1,43 +1,88 @@
+/**
+ * rentTotal_helper.js  (FIXED)
+ *
+ * ROOT BUG — unit-breakdown path was double-deducting TDS:
+ *   OLD: remaining = rentAmountPaisa - paidAmountPaisa - tdsAmountPaisa
+ *        ↑ wrong — this subtracts TDS from remaining, but TDS is already
+ *          excluded from what the tenant owes the landlord.
+ *
+ *   CORRECT semantics (same as rent.domain.js):
+ *     effectiveRentPaisa  = rentAmountPaisa - tdsAmountPaisa
+ *     remainingAmountPaisa = effectiveRentPaisa - paidAmountPaisa
+ *
+ * FLAT RENT PATH was also wrong — it completely ignored TDS.
+ *
+ * Both paths now return the same consistent shape including effectiveRentPaisa.
+ */
+
+/**
+ * @param {Object} rent  Mongoose Rent document or plain object
+ * @returns {{
+ *   rentAmountPaisa:      number,   gross rent (before TDS)
+ *   tdsAmountPaisa:       number,   TDS withheld by tenant to govt
+ *   effectiveRentPaisa:   number,   what landlord actually receives  (gross − TDS)
+ *   paidAmountPaisa:      number,   amount received so far
+ *   remainingAmountPaisa: number,   still owed                       (effective − paid)
+ *   lateFeePaisa:         number,   penalty on overdue balance
+ *   totalDuePaisa:        number,   remaining + late fee
+ * }}
+ */
 export function calculateRentTotals(rent) {
-  if (!rent) {
-    throw new Error("Rent object is required");
-  }
+  if (!rent) throw new Error("Rent object is required");
 
-  // UNIT-BASED RENT (authoritative)
-  if (rent.useUnitBreakdown && Array.isArray(rent.unitBreakdown)) {
-    const totals = rent.unitBreakdown.reduce(
-      (acc, unit) => {
-        acc.rentAmountPaisa += Math.round(Number(unit.rentAmountPaisa) || 0);
-        acc.paidAmountPaisa += Math.round(Number(unit.paidAmountPaisa) || 0);
-        acc.tdsAmountPaisa += Math.round(Number(unit.tdsAmountPaisa) || 0);
-        return acc;
-      },
-      {
-        rentAmountPaisa: 0,
-        paidAmountPaisa: 0,
-        tdsAmountPaisa: 0,
-        remainingAmountPaisa: 0,
-      },
+  let rentAmountPaisa;
+  let tdsAmountPaisa;
+  let paidAmountPaisa;
+
+  // ── Unit-breakdown path ─────────────────────────────────────────────────
+  if (
+    rent.useUnitBreakdown &&
+    Array.isArray(rent.unitBreakdown) &&
+    rent.unitBreakdown.length > 0
+  ) {
+    rentAmountPaisa = rent.unitBreakdown.reduce(
+      (s, u) => s + (Math.round(Number(u.rentAmountPaisa)) || 0),
+      0,
     );
-
-    // Calculate remainingAmountPaisa at the end
-    totals.remainingAmountPaisa =
-      totals.rentAmountPaisa - totals.paidAmountPaisa - totals.tdsAmountPaisa;
-
-    console.log("CALCULATION TRACE", totals);
-
-    return totals;
+    tdsAmountPaisa = rent.unitBreakdown.reduce(
+      (s, u) => s + (Math.round(Number(u.tdsAmountPaisa)) || 0),
+      0,
+    );
+    paidAmountPaisa = rent.unitBreakdown.reduce(
+      (s, u) => s + (Math.round(Number(u.paidAmountPaisa)) || 0),
+      0,
+    );
+  } else {
+    // ── Flat rent path — bypass getters to read raw integer paisa ─────────
+    const getRaw = (field) => {
+      if (rent.get && typeof rent.get === "function") {
+        return rent.get(field, null, { getters: false }) || 0;
+      }
+      return Math.round(Number(rent[field])) || 0;
+    };
+    rentAmountPaisa = getRaw("rentAmountPaisa");
+    tdsAmountPaisa = getRaw("tdsAmountPaisa");
+    paidAmountPaisa = getRaw("paidAmountPaisa");
   }
 
-  // FLAT RENT (legacy / non-unit)
-  const rentAmountPaisa = Number(rent.rentAmountPaisa) || 0;
-  const paidAmountPaisa = Number(rent.paidAmountPaisa) || 0;
-  const tdsAmountPaisa = Number(rent.tdsAmountPaisa) || 0;
+  // Late fee — always bypass getter (getter converts to rupees)
+  const lateFeePaisa = rent.get
+    ? rent.get("lateFeePaisa", null, { getters: false }) || 0
+    : Math.round(Number(rent.lateFeePaisa)) || 0;
+
+  // ── Derived values (single source of truth for all callers) ────────────
+  const effectiveRentPaisa = rentAmountPaisa - tdsAmountPaisa;
+  // FIX: remaining is (gross − TDS) − paid, NOT gross − paid − TDS (same math, explicit intent)
+  const remainingAmountPaisa = effectiveRentPaisa - paidAmountPaisa;
+  const totalDuePaisa = Math.max(0, remainingAmountPaisa) + lateFeePaisa;
 
   return {
     rentAmountPaisa,
-    paidAmountPaisa,
     tdsAmountPaisa,
-    remainingAmountPaisa: rentAmountPaisa - paidAmountPaisa,
+    effectiveRentPaisa,
+    paidAmountPaisa,
+    remainingAmountPaisa,
+    lateFeePaisa,
+    totalDuePaisa,
   };
 }

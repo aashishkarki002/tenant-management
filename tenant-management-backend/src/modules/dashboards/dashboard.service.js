@@ -57,87 +57,121 @@ export async function getDashboardStatsData() {
      2️⃣ RENT SUMMARY — uses paisa fields for precision
   =============================== */
 
-  const [rentAgg, revenueAgg, revenueByMonthAgg, revenueBreakdownAgg] =
-    await Promise.all([
-      Rent.aggregate([
-        {
-          $project: {
-            rentAmountPaisa: 1,
-            paidAmountPaisa: 1,
-            remaining: {
-              $max: [
-                { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
-                0,
-              ],
-            },
+  const [
+    rentAgg,
+    revenueAgg,
+    revenueByMonthAgg,
+    revenueBreakdownAgg,
+    revenueBreakdownThisMonthAgg,
+  ] = await Promise.all([
+    Rent.aggregate([
+      {
+        $project: {
+          rentAmountPaisa: 1,
+          paidAmountPaisa: 1,
+          remaining: {
+            $max: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
           },
         },
-        {
-          $group: {
-            _id: null,
-            totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
-            totalRentPaisa: { $sum: "$rentAmountPaisa" },
-            totalOutstandingPaisa: { $sum: "$remaining" },
-          },
+      },
+      {
+        $group: {
+          _id: null,
+          totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
+          totalRentPaisa: { $sum: "$rentAmountPaisa" },
+          totalOutstandingPaisa: { $sum: "$remaining" },
         },
-      ]),
+      },
+    ]),
 
-      Revenue.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalRevenue: { $sum: "$amount" },
-          },
+    Revenue.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$amount" },
         },
-      ]),
+      },
+    ]),
 
-      // Revenue trend: group by npYear + npMonth (stored on document at write time).
-      // Both fields are indexed — this aggregation is O(index scan), not O(collection scan).
-      Revenue.aggregate([
-        {
-          $match: {
-            npYear: { $in: [npYear, npYear - 1] },
-          },
+    // Revenue trend: group by npYear + npMonth (stored on document at write time).
+    // Both fields are indexed — this aggregation is O(index scan), not O(collection scan).
+    Revenue.aggregate([
+      {
+        $match: {
+          npYear: { $in: [npYear, npYear - 1] },
         },
-        {
-          $group: {
-            _id: { year: "$npYear", month: "$npMonth" },
-            total: { $sum: { $divide: ["$amountPaisa", 100] } },
-          },
+      },
+      {
+        $group: {
+          _id: { year: "$npYear", month: "$npMonth" },
+          total: { $sum: { $divide: ["$amountPaisa", 100] } },
         },
-        { $sort: { "_id.year": 1, "_id.month": 1 } },
-      ]),
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1 } },
+    ]),
 
-      // Revenue breakdown by source — for the summary card.
-      // $lookup replaces the source ObjectId with the source document in one pipeline.
-      Revenue.aggregate([
-        {
-          $group: {
-            _id: "$source",
-            totalAmountPaisa: { $sum: "$amountPaisa" },
-          },
+    // Revenue breakdown by source — for the summary card.
+    // $lookup replaces the source ObjectId with the source document in one pipeline.
+    Revenue.aggregate([
+      {
+        $group: {
+          _id: "$source",
+          totalAmountPaisa: { $sum: "$amountPaisa" },
         },
-        {
-          $lookup: {
-            from: RevenueSource.collection.name,
-            localField: "_id",
-            foreignField: "_id",
-            as: "source",
-          },
+      },
+      {
+        $lookup: {
+          from: RevenueSource.collection.name,
+          localField: "_id",
+          foreignField: "_id",
+          as: "source",
         },
-        { $unwind: { path: "$source", preserveNullAndEmptyArrays: true } },
-        {
-          $project: {
-            _id: 0,
-            code: "$source.code",
-            name: "$source.name",
-            category: "$source.category",
-            totalAmountPaisa: 1,
-          },
+      },
+      { $unwind: { path: "$source", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          code: "$source.code",
+          name: "$source.name",
+          category: "$source.category",
+          totalAmountPaisa: 1,
         },
-        { $sort: { totalAmountPaisa: -1 } }, // highest first
-      ]),
-    ]);
+      },
+      { $sort: { totalAmountPaisa: -1 } }, // highest first
+    ]),
+
+    // Revenue breakdown by source — scoped to current Nepali month only.
+    Revenue.aggregate([
+      {
+        $match: { npYear, npMonth },
+      },
+      {
+        $group: {
+          _id: "$source",
+          totalAmountPaisa: { $sum: "$amountPaisa" },
+        },
+      },
+      {
+        $lookup: {
+          from: RevenueSource.collection.name,
+          localField: "_id",
+          foreignField: "_id",
+          as: "source",
+        },
+      },
+      { $unwind: { path: "$source", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          code: "$source.code",
+          name: "$source.name",
+          category: "$source.category",
+          totalAmountPaisa: 1,
+        },
+      },
+      { $sort: { totalAmountPaisa: -1 } },
+    ]),
+  ]);
 
   const rentSummary = rentAgg[0] || {};
   const revenueSummary = revenueAgg[0] || {};
@@ -420,6 +454,12 @@ export async function getDashboardStatsData() {
       // Revenue
       totalRevenue: revenueSummary.totalRevenue || 0,
       revenueBreakdown: revenueBreakdownAgg.map((item) => ({
+        code: item.code ?? "OTHER",
+        name: item.name ?? "Other",
+        category: item.category ?? "OPERATING",
+        amount: (item.totalAmountPaisa ?? 0) / 100,
+      })),
+      revenueBreakdownThisMonth: revenueBreakdownThisMonthAgg.map((item) => ({
         code: item.code ?? "OTHER",
         name: item.name ?? "Other",
         category: item.category ?? "OPERATING",

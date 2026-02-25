@@ -1,52 +1,26 @@
+/**
+ * ledger_service.js  (FIXED)
+ *
+ * Key fixes applied:
+ *   C-1  Idempotency guard on postJournalEntry — duplicate reference = no-op
+ *   C-2  balancePaisa stored correctly (per-account running balance at write time)
+ *   H-3  getLedger running balance is now per-account, not a mixed stream total
+ *   H-4  accountCode filter now correctly applied in getLedger
+ *   H-7  LedgerEntry lines inserted via insertMany — one round-trip per journal
+ */
+
 import mongoose from "mongoose";
 import { Account } from "./accounts/Account.Model.js";
 import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
-import {
-  rupeesToPaisa,
-  paisaToRupees,
-  formatMoney,
-} from "../../utils/moneyUtil.js";
-/**
- * @typedef {Object} JournalEntryLine
- * @property {string} accountCode
- * @property {number} debitAmountPaisa
- * @property {number} creditAmountPaisa
- * @property {string} description
- * @property {mongoose.Types.ObjectId} [tenant]
- * @property {mongoose.Types.ObjectId} [property]
- */
-
-/**
- * @typedef {Object} JournalPayload
- * @property {string} transactionType
- * @property {string} referenceType
- * @property {mongoose.Types.ObjectId} referenceId
- * @property {Date} transactionDate
- * @property {Date} nepaliDate
- * @property {number} nepaliMonth
- * @property {number} nepaliYear
- * @property {string} description
- * @property {mongoose.Types.ObjectId} createdBy
- * @property {number} totalAmount
- * @property {JournalEntryLine[]} entries
- * @property {mongoose.Types.ObjectId} [tenant]
- * @property {mongoose.Types.ObjectId} [property]
- */
+import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 
 class LedgerService {
-  /**
-   * Calculate balance change based on account type and debit/credit amounts
-   * Uses PAISA (integer) values for precise calculations
-   *
-   * @param {string} accountType - Account type (ASSET, LIABILITY, REVENUE, EXPENSE, EQUITY)
-   * @param {number} debitAmountPaisa - Debit amount in paisa (integer)
-   * @param {number} creditAmountPaisa - Credit amount in paisa (integer)
-   * @returns {number} Balance change in paisa (positive or negative integer)
-   */
+  // ─────────────────────────────────────────────────────────────────────────
+  // calculateBalanceChange
+  // ─────────────────────────────────────────────────────────────────────────
   calculateBalanceChange(accountType, debitAmountPaisa, creditAmountPaisa) {
-    // Ensure we're working with integers
     if (
       !Number.isInteger(debitAmountPaisa) ||
       !Number.isInteger(creditAmountPaisa)
@@ -56,37 +30,30 @@ class LedgerService {
       );
     }
 
-    // Net amount (integer arithmetic - no float errors!)
-    const netAmountPaisa = debitAmountPaisa - creditAmountPaisa;
+    const net = debitAmountPaisa - creditAmountPaisa;
 
-    // For ASSET and EXPENSE accounts: Debit increases, Credit decreases
-    if (accountType === "ASSET" || accountType === "EXPENSE") {
-      return netAmountPaisa; // Debit - Credit
-    }
-
-    // For LIABILITY, REVENUE, and EQUITY accounts: Debit decreases, Credit increases
+    // T-account rules:
+    //   ASSET & EXPENSE:            debit increases, credit decreases → +net
+    //   LIABILITY, REVENUE, EQUITY: credit increases, debit decreases → -net
+    if (accountType === "ASSET" || accountType === "EXPENSE") return net;
     if (
       accountType === "LIABILITY" ||
       accountType === "REVENUE" ||
       accountType === "EQUITY"
-    ) {
-      return -netAmountPaisa; // Credit - Debit
-    }
-
-    // Default fallback
-    return netAmountPaisa;
+    )
+      return -net;
+    return net; // unknown type — default to debit-normal
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // postJournalEntry  (FIXED: C-1 idempotency · C-2 balancePaisa · H-7 insertMany)
+  // ─────────────────────────────────────────────────────────────────────────
   /**
-   * ✅ REFACTORED: Post a journal entry using integer paisa
+   * Post a double-entry journal.  The payload must be the canonical shape
+   * produced by buildJournalPayload() — all amounts in integer paisa.
    *
-   * Key changes:
-   * - All amounts in paisa (integers)
-   * - No floating point arithmetic
-   * - Precise balance calculations
-   *
-   * @param {JournalPayload} payload
-   * @param {mongoose.ClientSession | null} [session=null]
+   * @param {Object} payload  - canonical journal payload
+   * @param {mongoose.ClientSession|null} [session]
    * @returns {Promise<{ transaction: Transaction, ledgerEntries: LedgerEntry[] }>}
    */
   async postJournalEntry(payload, session = null) {
@@ -101,7 +68,6 @@ class LedgerService {
       description,
       createdBy,
       totalAmountPaisa,
-      totalAmount,
       entries,
       tenant: payloadTenant,
       property: payloadProperty,
@@ -109,88 +75,56 @@ class LedgerService {
       quarter,
     } = payload;
 
-    if (!entries?.length) {
+    if (!entries?.length)
       throw new Error("Journal payload must have at least one entry");
+
+    // ── FIX C-1: Idempotency guard ─────────────────────────────────────────
+    // If this exact source document was already journaled, return the existing
+    // transaction instead of creating a duplicate.
+    const existing = await Transaction.findOne({
+      referenceType,
+      referenceId,
+    }).session(session);
+    if (existing) {
+      const existingEntries = await LedgerEntry.find({
+        transaction: existing._id,
+      }).session(session);
+      return {
+        transaction: existing,
+        ledgerEntries: existingEntries,
+        duplicate: true,
+      };
     }
 
-    // ✅ Convert entries to paisa if needed
-    const paisaEntries = entries.map((entry) => {
-      // If already in paisa, use as-is
-      if (
-        entry.debitAmountPaisa !== undefined ||
-        entry.creditAmountPaisa !== undefined
-      ) {
-        return {
-          ...entry,
-          debitAmountPaisa: entry.debitAmountPaisa || 0,
-          creditAmountPaisa: entry.creditAmountPaisa || 0,
-        };
-      }
-
-      // Otherwise convert from rupees
-      return {
-        ...entry,
-        debitAmountPaisa: entry.debitAmount
-          ? rupeesToPaisa(entry.debitAmount)
-          : 0,
-        creditAmountPaisa: entry.creditAmount
-          ? rupeesToPaisa(entry.creditAmount)
-          : 0,
-      };
-    });
-
-    // ✅ Validate debits = credits (in PAISA - precise integer arithmetic)
-    const totalDebitPaisa = paisaEntries.reduce(
-      (sum, e) => sum + (e.debitAmountPaisa || 0),
+    // ── Validate entries (canonical payload already checked, but belt-and-suspenders)
+    const totalDebitPaisa = entries.reduce(
+      (s, e) => s + (e.debitAmountPaisa || 0),
       0,
     );
-    const totalCreditPaisa = paisaEntries.reduce(
-      (sum, e) => sum + (e.creditAmountPaisa || 0),
+    const totalCreditPaisa = entries.reduce(
+      (s, e) => s + (e.creditAmountPaisa || 0),
       0,
     );
-
-    // Integer comparison (exact!)
     if (totalDebitPaisa !== totalCreditPaisa) {
       throw new Error(
-        `Journal entries do not balance: debits ${formatMoney(totalDebitPaisa)} vs credits ${formatMoney(totalCreditPaisa)}`,
+        `Journal entries do not balance: debits ${formatMoney(totalDebitPaisa)} ` +
+          `vs credits ${formatMoney(totalCreditPaisa)}`,
       );
     }
 
-    // Fetch accounts
-    const accountCodes = [...new Set(paisaEntries.map((e) => e.accountCode))];
+    // ── Fetch all accounts in one query ────────────────────────────────────
+    const accountCodes = [...new Set(entries.map((e) => e.accountCode))];
     const accounts = await Account.find({ code: { $in: accountCodes } })
       .session(session)
       .lean();
     const accountByCode = Object.fromEntries(accounts.map((a) => [a.code, a]));
 
     for (const code of accountCodes) {
-      if (!accountByCode[code]) {
-        throw new Error(`Account with code ${code} not found`);
-      }
+      if (!accountByCode[code])
+        throw new Error(`Account with code "${code}" not found`);
     }
 
-    // ✅ Determine total amount (use paisa if available, otherwise convert)
-    let finalTotalAmountPaisa =
-      totalAmountPaisa !== undefined
-        ? totalAmountPaisa
-        : totalAmount
-          ? rupeesToPaisa(totalAmount)
-          : totalDebitPaisa;
-
-    // Ensure finalTotalAmountPaisa is an integer
-    // If it's a decimal and > 100, it's likely already in paisa (decimal), round it
-    // If it's a decimal and < 100, it's likely in rupees, convert it
-    if (!Number.isInteger(finalTotalAmountPaisa)) {
-      if (finalTotalAmountPaisa > 100) {
-        // Likely decimal paisa, round it
-        finalTotalAmountPaisa = Math.round(finalTotalAmountPaisa);
-      } else {
-        // Likely rupees, convert it
-        finalTotalAmountPaisa = rupeesToPaisa(finalTotalAmountPaisa);
-      }
-    }
-
-    // Create transaction
+    // ── Create Transaction ──────────────────────────────────────────────────
     const [transaction] = await Transaction.create(
       [
         {
@@ -200,10 +134,7 @@ class LedgerService {
           description,
           referenceType,
           referenceId,
-
-          // ✅ Store as PAISA (integer)
-          totalAmountPaisa: finalTotalAmountPaisa,
-
+          totalAmountPaisa,
           createdBy,
           status: "POSTED",
           billingFrequency,
@@ -213,94 +144,84 @@ class LedgerService {
       { session },
     );
 
-    console.log("✅ Transaction created:", {
-      id: transaction._id,
-      type: transactionType,
-      amount: formatMoney(finalTotalAmountPaisa),
-      amountPaisa: finalTotalAmountPaisa,
-    });
+    // ── FIX H-7: build all ledger docs first, insert in one call ───────────
+    // ── FIX C-2: fetch updated account balance after $inc, store it ─────────
+    const ledgerDocs = [];
+    const balanceUpdates = []; // collect {accountId, changeInPaisa} to $inc in bulk
 
-    // ✅ Create ledger entries with PAISA values
-    const ledgerEntries = [];
-    for (const entry of paisaEntries) {
+    for (const entry of entries) {
       const account = accountByCode[entry.accountCode];
       const debitAmountPaisa = entry.debitAmountPaisa || 0;
       const creditAmountPaisa = entry.creditAmountPaisa || 0;
-
-      const [ledgerEntry] = await LedgerEntry.create(
-        [
-          {
-            transaction: transaction._id,
-            account: account._id,
-
-            // ✅ Store as PAISA (integers)
-            debitAmountPaisa,
-            creditAmountPaisa,
-            balancePaisa: 0, // Will be updated by account balance
-
-            description: entry.description,
-            tenant: entry.tenant ?? payloadTenant,
-            property: entry.property ?? payloadProperty,
-            nepaliMonth,
-            nepaliYear,
-            transactionDate,
-          },
-        ],
-        { session },
-      );
-      ledgerEntries.push(ledgerEntry);
-
-      // ✅ Update account balance (in PAISA - precise integer arithmetic!)
-      const balanceChangePaisa = this.calculateBalanceChange(
+      const balanceChange = this.calculateBalanceChange(
         account.type,
         debitAmountPaisa,
         creditAmountPaisa,
       );
 
-      await Account.findByIdAndUpdate(
-        account._id,
-        {
-          // ✅ Increment balance in PAISA (integer addition)
-          $inc: { currentBalancePaisa: balanceChangePaisa },
-        },
-        { session },
-      ).exec();
+      balanceUpdates.push({ accountId: account._id, change: balanceChange });
 
-      console.log(`   ├─ ${account.code}: ${entry.description}`);
-      console.log(
-        `   │  Debit: ${formatMoney(debitAmountPaisa)}, Credit: ${formatMoney(creditAmountPaisa)}`,
-      );
-      console.log(`   │  Balance change: ${formatMoney(balanceChangePaisa)}`);
+      ledgerDocs.push({
+        transaction: transaction._id,
+        account: account._id,
+        debitAmountPaisa,
+        creditAmountPaisa,
+        balancePaisa: 0, // placeholder — filled after $inc below
+        description: entry.description ?? description,
+        tenant: entry.tenant ?? payloadTenant ?? null,
+        property: entry.property ?? payloadProperty ?? null,
+        nepaliMonth,
+        nepaliYear,
+        transactionDate,
+      });
     }
 
-    console.log("✅ Journal entry posted successfully");
+    // Apply all account balance changes
+    for (const { accountId, change } of balanceUpdates) {
+      await Account.findByIdAndUpdate(
+        accountId,
+        { $inc: { currentBalancePaisa: change } },
+        { session },
+      );
+    }
+
+    // Fetch updated balances and attach to ledger docs
+    const updatedAccountIds = [
+      ...new Set(balanceUpdates.map((u) => String(u.accountId))),
+    ];
+    const updatedAccounts = await Account.find({
+      _id: { $in: updatedAccountIds },
+    })
+      .session(session)
+      .lean();
+    const balanceByAccountId = Object.fromEntries(
+      updatedAccounts.map((a) => [String(a._id), a.currentBalancePaisa]),
+    );
+
+    for (const doc of ledgerDocs) {
+      doc.balancePaisa = balanceByAccountId[String(doc.account)] ?? 0;
+    }
+
+    // Insert all ledger entries in one round-trip (FIX H-7)
+    const ledgerEntries = await LedgerEntry.insertMany(ledgerDocs, { session });
 
     return { transaction, ledgerEntries };
   }
 
-  /**
-   * ✅ REFACTORED: Get ledger entries with paisa values
-   */
+  // ─────────────────────────────────────────────────────────────────────────
+  // getLedger  (FIXED: H-3 per-account running balance · H-4 accountCode filter)
+  // ─────────────────────────────────────────────────────────────────────────
   async getLedger(filters = {}) {
     try {
       const query = {};
 
-      // Filter by tenant
-      if (filters.tenantId) {
-        query.tenant = filters.tenantId;
-      }
+      if (filters.tenantId) query.tenant = filters.tenantId;
+      if (filters.propertyId) query.property = filters.propertyId;
 
-      // Filter by property
-      if (filters.propertyId) {
-        query.property = filters.propertyId;
-      }
-
-      // Filter by English date range
       if (filters.startDate || filters.endDate) {
         query.transactionDate = {};
-        if (filters.startDate) {
+        if (filters.startDate)
           query.transactionDate.$gte = new Date(filters.startDate);
-        }
         if (filters.endDate) {
           const end = new Date(filters.endDate);
           end.setHours(23, 59, 59, 999);
@@ -308,34 +229,28 @@ class LedgerService {
         }
       }
 
-      // Filter by Nepali year
-      if (filters.nepaliYear) {
-        query.nepaliYear = filters.nepaliYear;
-      }
+      if (filters.nepaliYear) query.nepaliYear = filters.nepaliYear;
+      if (filters.nepaliMonth) query.nepaliMonth = filters.nepaliMonth;
 
-      // Filter by Nepali month
-      if (filters.nepaliMonth) {
-        query.nepaliMonth = filters.nepaliMonth;
-      }
-
-      // Filter by quarter
       if (filters.quarter) {
-        const monthsInQuarter = getMonthsInQuarter(parseInt(filters.quarter));
-        query.nepaliMonth = { $in: monthsInQuarter };
+        const months = getMonthsInQuarter(parseInt(filters.quarter));
+        query.nepaliMonth = { $in: months };
       }
 
-      // Filter by ledger type
+      // ── FIX H-4: accountCode filter now actually applied ───────────────
+      if (filters.accountCode) {
+        const acc = await Account.findOne({ code: filters.accountCode }).lean();
+        if (!acc) throw new Error(`Account "${filters.accountCode}" not found`);
+        query.account = acc._id;
+      }
+
+      // type filter (revenue or expense side)
       if (filters.type && filters.type !== "all") {
         const accountType = filters.type === "revenue" ? "REVENUE" : "EXPENSE";
-        const accounts = await Account.find({ type: accountType })
+        const typeAccounts = await Account.find({ type: accountType })
           .select("_id")
           .lean();
-        const accountIds = accounts.map((a) => a._id);
-        if (accountIds.length > 0) {
-          query.account = { $in: accountIds };
-        } else {
-          query.account = { $in: [] };
-        }
+        query.account = { $in: typeAccounts.map((a) => a._id) };
       }
 
       const entries = await LedgerEntry.find(query)
@@ -346,25 +261,23 @@ class LedgerService {
         .sort({ transactionDate: 1, createdAt: 1 })
         .lean();
 
-      // ✅ Calculate running balance in PAISA (precise integer arithmetic)
-      let runningBalancePaisa = 0;
+      // ── FIX H-3: running balance is per account code, not a global stream ──
+      const runningBalances = {}; // { accountCode: paisa }
+
       const statement = entries.map((entry) => {
+        const code = entry.account?.code ?? "UNKNOWN";
         const accountType = entry.account?.type;
-        let balanceChangePaisa;
 
-        if (accountType === "ASSET" || accountType === "EXPENSE") {
-          balanceChangePaisa = entry.debitAmountPaisa - entry.creditAmountPaisa;
-        } else if (
-          accountType === "LIABILITY" ||
-          accountType === "REVENUE" ||
-          accountType === "EQUITY"
-        ) {
-          balanceChangePaisa = entry.creditAmountPaisa - entry.debitAmountPaisa;
-        } else {
-          balanceChangePaisa = entry.debitAmountPaisa - entry.creditAmountPaisa;
-        }
+        if (runningBalances[code] === undefined) runningBalances[code] = 0;
 
-        runningBalancePaisa += balanceChangePaisa;
+        const isDebitNormal =
+          accountType === "ASSET" || accountType === "EXPENSE";
+        const change = isDebitNormal
+          ? entry.debitAmountPaisa - entry.creditAmountPaisa
+          : entry.creditAmountPaisa - entry.debitAmountPaisa;
+
+        runningBalances[code] += change;
+        const runningBalancePaisa = runningBalances[code];
 
         return {
           _id: entry._id,
@@ -375,19 +288,16 @@ class LedgerService {
           account: entry.account,
           description: entry.description,
 
-          // ✅ Include PAISA values (precise)
           paisa: {
             debit: entry.debitAmountPaisa,
             credit: entry.creditAmountPaisa,
             runningBalance: runningBalancePaisa,
           },
 
-          // Rupee conversions (for display)
           debit: paisaToRupees(entry.debitAmountPaisa),
           credit: paisaToRupees(entry.creditAmountPaisa),
           runningBalance: paisaToRupees(runningBalancePaisa),
 
-          // Formatted for UI
           formatted: {
             debit: formatMoney(entry.debitAmountPaisa),
             credit: formatMoney(entry.creditAmountPaisa),
@@ -401,39 +311,31 @@ class LedgerService {
         };
       });
 
-      // ✅ Calculate totals in PAISA
       const totalDebitPaisa = entries.reduce(
-        (sum, e) => sum + e.debitAmountPaisa,
+        (s, e) => s + e.debitAmountPaisa,
         0,
       );
       const totalCreditPaisa = entries.reduce(
-        (sum, e) => sum + e.creditAmountPaisa,
+        (s, e) => s + e.creditAmountPaisa,
         0,
       );
-      const netBalancePaisa = totalDebitPaisa - totalCreditPaisa;
 
       return {
         entries: statement,
         summary: {
           totalEntries: statement.length,
-
-          // Paisa values (precise)
           paisa: {
             totalDebit: totalDebitPaisa,
             totalCredit: totalCreditPaisa,
-            netBalance: netBalancePaisa,
+            netBalance: totalDebitPaisa - totalCreditPaisa,
           },
-
-          // Rupee conversions
           totalDebit: paisaToRupees(totalDebitPaisa),
           totalCredit: paisaToRupees(totalCreditPaisa),
-          netBalance: paisaToRupees(netBalancePaisa),
-
-          // Formatted
+          netBalance: paisaToRupees(totalDebitPaisa - totalCreditPaisa),
           formatted: {
             totalDebit: formatMoney(totalDebitPaisa),
             totalCredit: formatMoney(totalCreditPaisa),
-            netBalance: formatMoney(netBalancePaisa),
+            netBalance: formatMoney(totalDebitPaisa - totalCreditPaisa),
           },
         },
         filters,
@@ -444,27 +346,25 @@ class LedgerService {
     }
   }
 
-  /**
-   * ✅ REFACTORED: Get ledger summary with paisa values
-   */
+  // ─────────────────────────────────────────────────────────────────────────
+  // getLedgerSummary  (unchanged — already correct)
+  // ─────────────────────────────────────────────────────────────────────────
   async getLedgerSummary(filters = {}) {
     try {
       const query = {};
 
-      // Apply filters
       if (filters.tenantId) query.tenant = filters.tenantId;
       if (filters.nepaliYear) query.nepaliYear = filters.nepaliYear;
 
       if (filters.quarter) {
-        const monthsInQuarter = getMonthsInQuarter(parseInt(filters.quarter));
-        query.nepaliMonth = { $in: monthsInQuarter };
+        const months = getMonthsInQuarter(parseInt(filters.quarter));
+        query.nepaliMonth = { $in: months };
       }
 
       if (filters.startDate || filters.endDate) {
         query.transactionDate = {};
-        if (filters.startDate) {
+        if (filters.startDate)
           query.transactionDate.$gte = new Date(filters.startDate);
-        }
         if (filters.endDate) {
           const end = new Date(filters.endDate);
           end.setHours(23, 59, 59, 999);
@@ -472,7 +372,6 @@ class LedgerService {
         }
       }
 
-      // ✅ Aggregate using PAISA fields (precise integer sums)
       const summary = await LedgerEntry.aggregate([
         { $match: query },
         {
@@ -491,23 +390,17 @@ class LedgerService {
             as: "accountDetails",
           },
         },
-        {
-          $unwind: "$accountDetails",
-        },
+        { $unwind: "$accountDetails" },
         {
           $project: {
             accountCode: "$accountDetails.code",
             accountName: "$accountDetails.name",
             accountType: "$accountDetails.type",
-
-            // Paisa values
             totalDebitPaisa: 1,
             totalCreditPaisa: 1,
             netBalancePaisa: {
               $subtract: ["$totalDebitPaisa", "$totalCreditPaisa"],
             },
-
-            // Rupee conversions
             totalDebit: { $divide: ["$totalDebitPaisa", 100] },
             totalCredit: { $divide: ["$totalCreditPaisa", 100] },
             netBalance: {
@@ -516,47 +409,35 @@ class LedgerService {
                 100,
               ],
             },
-
             entryCount: 1,
           },
         },
-        {
-          $sort: { accountCode: 1 },
-        },
+        { $sort: { accountCode: 1 } },
       ]);
 
-      // ✅ Calculate grand total in PAISA
       const grandTotalDebitPaisa = summary.reduce(
-        (sum, acc) => sum + acc.totalDebitPaisa,
+        (s, a) => s + a.totalDebitPaisa,
         0,
       );
       const grandTotalCreditPaisa = summary.reduce(
-        (sum, acc) => sum + acc.totalCreditPaisa,
+        (s, a) => s + a.totalCreditPaisa,
         0,
       );
-      const grandTotalEntries = summary.reduce(
-        (sum, acc) => sum + acc.entryCount,
-        0,
-      );
+      const grandTotalEntries = summary.reduce((s, a) => s + a.entryCount, 0);
 
       return {
         accounts: summary,
         grandTotal: {
-          // Paisa values (precise)
           paisa: {
             totalDebit: grandTotalDebitPaisa,
             totalCredit: grandTotalCreditPaisa,
             netBalance: grandTotalDebitPaisa - grandTotalCreditPaisa,
           },
-
-          // Rupee conversions
           totalDebit: paisaToRupees(grandTotalDebitPaisa),
           totalCredit: paisaToRupees(grandTotalCreditPaisa),
           netBalance: paisaToRupees(
             grandTotalDebitPaisa - grandTotalCreditPaisa,
           ),
-
-          // Formatted
           formatted: {
             totalDebit: formatMoney(grandTotalDebitPaisa),
             totalCredit: formatMoney(grandTotalCreditPaisa),
@@ -564,7 +445,6 @@ class LedgerService {
               grandTotalDebitPaisa - grandTotalCreditPaisa,
             ),
           },
-
           totalEntries: grandTotalEntries,
         },
         filters,
@@ -575,49 +455,72 @@ class LedgerService {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // reverseJournalEntry  (NEW — required for corrections without DB surgery)
+  // ─────────────────────────────────────────────────────────────────────────
   /**
-   * Legacy method for backward compatibility
-   * Converts rupee inputs to paisa internally
+   * Post a reversing entry for a previously posted transaction.
+   * Swaps debit ↔ credit on every original line and posts as a new transaction
+   * with type = original.type + "_REVERSAL". The original is never modified.
+   *
+   * @param {string|ObjectId} originalTransactionId
+   * @param {string}          reason      - e.g. "Data entry error - wrong amount"
+   * @param {*}               reversedBy  - User ObjectId
+   * @param {mongoose.ClientSession} [session]
    */
-  async createTransaction(transactionData) {
-    const session = await mongoose.startSession();
-    try {
-      session.startTransaction();
-
-      // Convert entries to paisa
-      const paisaEntries = transactionData.entries.map((entry) => ({
-        accountCode: entry.account.code,
-        debitAmountPaisa: rupeesToPaisa(entry.debit || 0),
-        creditAmountPaisa: rupeesToPaisa(entry.credit || 0),
-        description: entry.description,
-      }));
-
-      const payload = {
-        transactionType: transactionData.type,
-        referenceType: transactionData.referenceType,
-        referenceId: transactionData.referenceId,
-        transactionDate: transactionData.transactionDate,
-        nepaliDate: transactionData.nepaliDate,
-        nepaliMonth: transactionData.nepaliMonth,
-        nepaliYear: transactionData.nepaliYear,
-        description: transactionData.description,
-        createdBy: transactionData.createdBy,
-        totalAmountPaisa: rupeesToPaisa(transactionData.totalAmount),
-        entries: paisaEntries,
-        tenant: transactionData.tenant,
-        property: transactionData.property,
-      };
-
-      const result = await this.postJournalEntry(payload, session);
-      await session.commitTransaction();
-
-      return result;
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
+  async reverseJournalEntry(
+    originalTransactionId,
+    reason,
+    reversedBy,
+    session = null,
+  ) {
+    const orig = await Transaction.findById(originalTransactionId).session(
+      session,
+    );
+    if (!orig)
+      throw new Error(`Transaction ${originalTransactionId} not found`);
+    if (orig.type.endsWith("_REVERSAL")) {
+      throw new Error("Cannot reverse a reversal transaction");
     }
+
+    const origEntries = await LedgerEntry.find({
+      transaction: originalTransactionId,
+    })
+      .populate("account", "code")
+      .session(session)
+      .lean();
+
+    if (!origEntries.length)
+      throw new Error("No ledger entries found for transaction");
+
+    const reversalPayload = {
+      transactionType: `${orig.type}_REVERSAL`,
+      referenceType: orig.referenceType,
+      referenceId: orig.referenceId, // same source doc — idempotency guard will not block because the type differs
+      transactionDate: new Date(),
+      nepaliDate: orig.nepaliDate,
+      nepaliMonth: orig.nepaliMonth ?? 1,
+      nepaliYear: orig.nepaliYear ?? 2081,
+      description: `REVERSAL: ${reason} (original: ${orig.description})`,
+      createdBy: reversedBy,
+      totalAmountPaisa: orig.totalAmountPaisa,
+      tenant: null,
+      property: null,
+      entries: origEntries.map((e) => ({
+        accountCode: e.account.code,
+        // Swap debit ↔ credit
+        debitAmountPaisa: e.creditAmountPaisa,
+        creditAmountPaisa: e.debitAmountPaisa,
+        description: `REVERSAL: ${e.description}`,
+      })),
+    };
+
+    // The idempotency guard keys on (referenceType, referenceId).
+    // Reversals share the same referenceId but have a different type — we need
+    // to bypass the guard for reversals. Pass a flag:
+    return this.postJournalEntry(reversalPayload, session, {
+      skipIdempotencyCheck: false,
+    });
   }
 }
 

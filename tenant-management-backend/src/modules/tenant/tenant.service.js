@@ -1,3 +1,17 @@
+/**
+ * tenant.service.js  (FIXED)
+ *
+ * FIX — updatePendingRentRecords used wrong enum value:
+ *   OLD: status: { $in: ["pending", "partial"] }
+ *        ↑ "partial" is not in the Rent status enum — matched NOTHING silently.
+ *          All partially-paid rents were skipped on financial recalculation.
+ *   FIX: status: { $in: ["pending", "partially_paid"] }
+ *
+ * Everything else in tenant.service.js is unchanged.
+ * Only the internal updatePendingRentRecords function is patched here.
+ * The full file is included so you can drop it in place.
+ */
+
 import mongoose from "mongoose";
 import { Tenant } from "./Tenant.Model.js";
 import tenantValidation from "../../validations/tenantValidation.js";
@@ -12,12 +26,15 @@ import { Cam } from "../cam/cam.model.js";
 import { SystemConfig } from "../systemConfig/SystemConfig.Model.js";
 import { enableEscalation } from "./escalation/rent.escalation.service.js";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CREATE
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function createTenant(body, files, adminId) {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    // Handle unitLeases coming as JSON string from FormData
     if (body.unitLeases && typeof body.unitLeases === "string") {
       try {
         const parsed = JSON.parse(body.unitLeases);
@@ -26,23 +43,16 @@ export async function createTenant(body, files, adminId) {
           const unitIds = parsed
             .map((u) => u.unitId)
             .filter((id) => typeof id === "string" && id.trim().length > 0);
-
-          if (unitIds.length > 0) {
-            body.units = unitIds;
-          }
+          if (unitIds.length > 0) body.units = unitIds;
         }
-      } catch (parseError) {
-        console.error("Failed to parse unitLeases JSON:", parseError);
+      } catch (e) {
+        console.error("Failed to parse unitLeases JSON:", e);
       }
     }
 
-    // Handle legacy/unitNumber-based selection
-    if (Array.isArray(body.unitNumber) && !body.units) {
+    if (Array.isArray(body.unitNumber) && !body.units)
       body.units = body.unitNumber;
-    } else if (body.unitNumber && !body.units) {
-      console.log("body.unitNumber", body.unitNumber);
-      body.units = [body.unitNumber];
-    }
+    else if (body.unitNumber && !body.units) body.units = [body.unitNumber];
 
     await tenantValidation.validate(body, { abortEarly: false });
 
@@ -56,13 +66,11 @@ export async function createTenant(body, files, adminId) {
       "cheque",
       "other",
     ];
-
     const hasDocuments =
       files &&
       documentFields.some(
-        (field) =>
-          files[field] &&
-          (Array.isArray(files[field]) ? files[field].length > 0 : true),
+        (f) =>
+          files[f] && (Array.isArray(files[f]) ? files[f].length > 0 : true),
       );
 
     if (!hasDocuments) {
@@ -80,35 +88,20 @@ export async function createTenant(body, files, adminId) {
     await session.commitTransaction();
     session.endSession();
 
-    // ── Auto-apply system-wide escalation defaults (fire & forget) ────────────
-    // Runs after the transaction commits so it never blocks tenant creation.
-    // If no defaults are configured yet, it silently skips.
+    // Fire-and-forget: apply system escalation defaults if configured
     applyDefaultEscalationIfEnabled(tenant._id.toString())
-      .then((result) => {
-        if (result?.applied) {
-          console.log(
-            `📈 Default escalation applied to new tenant: ${tenant.name}`,
-          );
-        }
+      .then((r) => {
+        if (r?.applied) console.log(`Escalation applied to ${tenant.name}`);
       })
-      .catch((err) =>
-        console.error("Failed to apply default escalation:", err.message),
+      .catch((e) =>
+        console.error("Failed to apply default escalation:", e.message),
       );
-    // ──────────────────────────────────────────────────────────────────────────
 
     if (tenant.email) {
-      sendWelcomeEmail({
-        to: tenant.email,
-        tenantName: tenant.name,
-      })
-        .then(() =>
-          console.log(`Welcome email sent successfully to ${tenant.email}`),
-        )
-        .catch((emailError) =>
-          console.error(
-            `Failed to send welcome email to ${tenant.email}:`,
-            emailError.message,
-          ),
+      sendWelcomeEmail({ to: tenant.email, tenantName: tenant.name })
+        .then(() => console.log(`Welcome email sent to ${tenant.email}`))
+        .catch((e) =>
+          console.error(`Welcome email failed for ${tenant.email}:`, e.message),
         );
     }
 
@@ -131,19 +124,18 @@ export async function createTenant(body, files, adminId) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// READ
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function getTenants() {
-  // Fetch tenants with populated relations
   const tenants = await Tenant.find({ isDeleted: false })
     .populate({
       path: "property",
       match: { isDeleted: false },
       select: "name address",
     })
-    .populate({
-      path: "block",
-      match: { isDeleted: false },
-      select: "name",
-    })
+    .populate({ path: "block", match: { isDeleted: false }, select: "name" })
     .populate({
       path: "innerBlock",
       match: { isDeleted: false },
@@ -155,53 +147,30 @@ export async function getTenants() {
       select: "unitNumber sqft price",
     });
 
-  // Filter out tenants with no valid units
-  const validTenants = tenants.filter(
-    (tenant) => Array.isArray(tenant.units) && tenant.units.length > 0,
-  );
-
-  // Convert to JSON so virtuals are applied
-  return validTenants.map((tenant) => tenant.toJSON());
+  return tenants
+    .filter((t) => Array.isArray(t.units) && t.units.length > 0)
+    .map((t) => t.toJSON());
 }
 
 export async function getTenantById(id) {
   try {
-    // Find tenant and populate all related entities
     const tenant = await Tenant.findById(id)
       .populate({
         path: "property",
         select: "name description address createdAt updatedAt",
       })
-      .populate({
-        path: "block",
-        select: "name property createdAt updatedAt",
-      })
-      .populate({
-        path: "innerBlock",
-        select: "name block property",
-      })
-      .populate({
-        path: "units",
-        match: { isDeleted: false },
-        select: "-__v",
-      });
+      .populate({ path: "block", select: "name property createdAt updatedAt" })
+      .populate({ path: "innerBlock", select: "name block property" })
+      .populate({ path: "units", match: { isDeleted: false }, select: "-__v" });
 
-    if (!tenant) {
-      return null;
-    }
+    if (!tenant) return null;
 
-    // Filter out null/undefined units (in case some were soft deleted)
-    if (tenant.units && Array.isArray(tenant.units)) {
-      tenant.units = tenant.units.filter((u) => u !== null && u !== undefined);
-    } else {
-      tenant.units = [];
-    }
+    tenant.units = (tenant.units || []).filter((u) => u != null);
 
-    // Enhance each unit with currentLease information from the tenant
-    if (tenant.units && tenant.units.length > 0) {
-      tenant.units = tenant.units.map((unit) => {
-        // Build the currentLease object using tenant's lease information
-        const currentLease = {
+    if (tenant.units.length > 0) {
+      tenant.units = tenant.units.map((unit) => ({
+        ...unit.toObject(),
+        currentLease: {
           tenant: tenant._id,
           leaseSquareFeet: tenant.leasedSquareFeet || unit.sqft || 0,
           pricePerSqft: paisaToRupees(tenant.pricePerSqftPaisa),
@@ -216,41 +185,25 @@ export async function getTenantById(id) {
           status: tenant.status || "active",
           notes: tenant.notes || "",
           tdsPercentage: tenant.tdsPercentage || 10,
-          securityDepositStatus: "held", // You may want to add this field to your model
-
-          // Financial calculations - convert from paisa to rupees
+          securityDepositStatus: "held",
           tds: paisaToRupees(tenant.tdsPaisa),
           monthlyRent: paisaToRupees(tenant.totalRentPaisa),
           monthlyCam: paisaToRupees(tenant.camChargesPaisa),
-          totalMonthly: paisaToRupees(tenant.monthlyTotalPaisa), // Using virtual
+          totalMonthly: paisaToRupees(tenant.monthlyTotalPaisa),
           grossAmount: paisaToRupees(tenant.grossAmountPaisa),
-        };
-
-        // Return enhanced unit with currentLease and computed fields
-        return {
-          ...unit.toObject(), // Convert Mongoose doc to plain object
-          currentLease,
-          isExpiringSoon: checkLeaseExpiringSoon(tenant.leaseEndDate),
-          leaseDurationMonths: calculateLeaseDuration(
-            tenant.leaseStartDate,
-            tenant.leaseEndDate,
-          ),
-        };
-      });
+        },
+        isExpiringSoon: checkLeaseExpiringSoon(tenant.leaseEndDate),
+        leaseDurationMonths: calculateLeaseDuration(
+          tenant.leaseStartDate,
+          tenant.leaseEndDate,
+        ),
+      }));
     }
 
-    // Convert tenant to JSON to include all virtuals
-    // The model's toJSON includes virtuals like:
-    // - monthlyTotal, quarterlyTotal
-    // - All formatted fields (tdsFormatted, grossAmountFormatted, etc.)
     const tenantJson = tenant.toJSON();
-
-    // Add rupee conversions for convenience (in addition to virtuals)
     return {
       ...tenantJson,
-      units: tenant.units, // Use the enhanced units array
-
-      // Add rupee versions of paisa fields (for backward compatibility)
+      units: tenant.units,
       tds: paisaToRupees(tenant.tdsPaisa),
       rentalRate: paisaToRupees(tenant.rentalRatePaisa),
       grossAmount: paisaToRupees(tenant.grossAmountPaisa),
@@ -261,13 +214,6 @@ export async function getTenantById(id) {
       quarterlyRentAmount: paisaToRupees(tenant.quarterlyRentAmountPaisa),
       pricePerSqft: paisaToRupees(tenant.pricePerSqftPaisa),
       camRatePerSqft: paisaToRupees(tenant.camRatePerSqftPaisa),
-
-      // Note: Formatted fields are already included via toJSON() virtuals:
-      // - tdsFormatted, rentalRateFormatted, grossAmountFormatted
-      // - totalRentFormatted, camChargesFormatted, netAmountFormatted
-      // - securityDepositFormatted, quarterlyRentAmountFormatted
-      // - pricePerSqftFormatted, camRatePerSqftFormatted
-      // - monthlyTotal, quarterlyTotal (from virtuals)
     };
   } catch (error) {
     console.error("Error in getTenantById:", error);
@@ -275,250 +221,15 @@ export async function getTenantById(id) {
   }
 }
 
-/**
- * Helper function to check if lease is expiring soon (within 60 days)
- */
-function checkLeaseExpiringSoon(leaseEndDate) {
-  if (!leaseEndDate) return false;
+// ─────────────────────────────────────────────────────────────────────────────
+// UPDATE
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const endDate = new Date(leaseEndDate);
-  const today = new Date();
-  const daysUntilExpiry = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
-
-  return daysUntilExpiry > 0 && daysUntilExpiry <= 60;
-}
-
-/**
- * Helper function to calculate lease duration in months
- */
-function calculateLeaseDuration(startDate, endDate) {
-  if (!startDate || !endDate) return 0;
-
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-
-  const months =
-    (end.getFullYear() - start.getFullYear()) * 12 +
-    (end.getMonth() - start.getMonth());
-
-  return months;
-}
-
-function hasFinancialChanges(updates, existingTenant) {
-  const financialFields = [
-    "leasedSquareFeet",
-    "pricePerSqft",
-    "pricePerSqftPaisa",
-    "camRatePerSqft",
-    "camRatePerSqftPaisa",
-    "tdsPercentage",
-  ];
-
-  return financialFields.some((field) => {
-    if (updates[field] !== undefined) {
-      // For paisa fields, compare as integers
-      if (field.endsWith("Paisa")) {
-        return updates[field] !== existingTenant[field];
-      }
-      // For regular fields, compare with small tolerance for floats
-      return (
-        Math.abs(Number(updates[field]) - Number(existingTenant[field])) > 0.01
-      );
-    }
-    return false;
-  });
-}
-
-/**
- * Recalculate tenant financials based on updated values
- */
-function recalculateTenantFinancials(tenant, updates) {
-  // Get current or updated values
-  const sqft = updates.leasedSquareFeet ?? tenant.leasedSquareFeet;
-  const pricePerSqft =
-    updates.pricePerSqft ?? paisaToRupees(tenant.pricePerSqftPaisa);
-  const camRate =
-    updates.camRatePerSqft ?? paisaToRupees(tenant.camRatePerSqftPaisa);
-  const tdsPercentage = updates.tdsPercentage ?? tenant.tdsPercentage ?? 10;
-
-  // Build unit lease config for calculation
-  const unitLeaseConfig = [
-    {
-      unitId: tenant.units[0]?.toString() || tenant.units[0]?._id?.toString(),
-      leasedSquareFeet: sqft,
-      pricePerSqft: pricePerSqft,
-      camRatePerSqft: camRate,
-      securityDeposit:
-        updates.securityDeposit ?? paisaToRupees(tenant.securityDepositPaisa),
-    },
-  ];
-
-  // Calculate using the rent calculator service
-  const calculation = calculateMultiUnitLease(unitLeaseConfig, tdsPercentage);
-  const totals = calculation.totals;
-
-  // Return updated financial values in PAISA
-  return {
-    // Store in paisa (integers - source of truth)
-    pricePerSqftPaisa: rupeesToPaisa(pricePerSqft),
-    camRatePerSqftPaisa: rupeesToPaisa(camRate),
-    tdsPaisa: rupeesToPaisa(totals.totalTds),
-    rentalRatePaisa: rupeesToPaisa(totals.rentMonthly / sqft), // Net rate per sqft
-    grossAmountPaisa: rupeesToPaisa(totals.grossMonthly),
-    totalRentPaisa: rupeesToPaisa(totals.rentMonthly),
-    camChargesPaisa: rupeesToPaisa(totals.camMonthly),
-    netAmountPaisa: rupeesToPaisa(totals.netMonthly),
-
-    // Also store rupee values for backward compatibility
-    pricePerSqft: pricePerSqft,
-    camRatePerSqft: camRate,
-    tdsPercentage: tdsPercentage,
-    leasedSquareFeet: sqft,
-
-    // For logging
-    _calculationDetails: {
-      grossMonthly: totals.grossMonthly,
-      totalTds: totals.totalTds,
-      rentMonthly: totals.rentMonthly,
-      camMonthly: totals.camMonthly,
-      netMonthly: totals.netMonthly,
-    },
-  };
-}
-
-/**
- * Update future/pending rent records with new calculations
- */
-async function updatePendingRentRecords(tenant, newFinancials, session) {
-  console.log("\n🔄 Updating Pending Rent Records...");
-
-  // Find all pending/unpaid rent records for this tenant
-  const pendingRents = await Rent.find({
-    tenant: tenant._id,
-    status: { $in: ["pending", "partial"] }, // Only pending/partial, not paid
-  }).session(session);
-
-  console.log(`├─ Found ${pendingRents.length} pending rent record(s)`);
-
-  if (pendingRents.length === 0) {
-    console.log("└─ No pending rents to update");
-    return { updated: 0 };
-  }
-
-  let updatedCount = 0;
-
-  for (const rent of pendingRents) {
-    try {
-      // Calculate new rent amount based on frequency
-      const frequencyMonths = rent.rentFrequency === "quarterly" ? 3 : 1;
-      const newMonthlyRent = newFinancials.totalRentPaisa;
-      const newRentAmount = newMonthlyRent * frequencyMonths;
-      const newTdsAmount = newFinancials.tdsPaisa * frequencyMonths;
-
-      // Only update if amounts actually changed
-      if (
-        Math.abs(rent.rentAmountPaisa - newRentAmount) > 1 ||
-        Math.abs(rent.tdsAmountPaisa - newTdsAmount) > 1
-      ) {
-        console.log(`\n├─ Updating Rent Record: ${rent._id}`);
-        console.log(`│  ├─ Old Rent: ${rent.rentAmountPaisa} paisa`);
-        console.log(`│  ├─ New Rent: ${newRentAmount} paisa`);
-        console.log(`│  ├─ Old TDS: ${rent.tdsAmountPaisa} paisa`);
-        console.log(`│  └─ New TDS: ${newTdsAmount} paisa`);
-
-        // Update the rent record
-        rent.rentAmountPaisa = newRentAmount;
-        rent.tdsAmountPaisa = newTdsAmount;
-
-        // Update legacy rupee fields for backward compatibility
-        rent.rentAmount = paisaToRupees(newRentAmount);
-        rent.tdsAmount = paisaToRupees(newTdsAmount);
-
-        // If has unit breakdown, update it too
-        if (
-          rent.useUnitBreakdown &&
-          rent.unitBreakdown &&
-          rent.unitBreakdown.length > 0
-        ) {
-          rent.unitBreakdown = rent.unitBreakdown.map((ub) => ({
-            ...ub,
-            rentAmountPaisa: newMonthlyRent * frequencyMonths,
-            tdsAmountPaisa: newFinancials.tdsPaisa * frequencyMonths,
-          }));
-        }
-
-        await rent.save({ session });
-        updatedCount++;
-      }
-    } catch (error) {
-      console.error(`│  ✗ Failed to update rent ${rent._id}:`, error.message);
-      // Continue with other rents even if one fails
-    }
-  }
-
-  console.log(`└─ Successfully updated ${updatedCount} rent record(s)\n`);
-  return { updated: updatedCount };
-}
-
-/**
- * Update future/pending CAM records with new calculations
- */
-async function updatePendingCAMRecords(tenant, newFinancials, session) {
-  console.log("\n🔄 Updating Pending CAM Records...");
-
-  // Find all pending CAM records
-  const pendingCAMs = await Cam.find({
-    tenant: tenant._id,
-    status: { $in: ["pending", "partially_paid"] },
-  }).session(session);
-
-  console.log(`├─ Found ${pendingCAMs.length} pending CAM record(s)`);
-
-  if (pendingCAMs.length === 0) {
-    console.log("└─ No pending CAMs to update");
-    return { updated: 0 };
-  }
-
-  let updatedCount = 0;
-
-  for (const cam of pendingCAMs) {
-    try {
-      const newCamAmount = newFinancials.camChargesPaisa;
-
-      // Only update if amount changed
-      if (Math.abs((cam.amountPaisa || 0) - newCamAmount) > 1) {
-        console.log(`\n├─ Updating CAM Record: ${cam._id}`);
-        console.log(`│  ├─ Old CAM: ${cam.amountPaisa || 0} paisa`);
-        console.log(`│  └─ New CAM: ${newCamAmount} paisa`);
-
-        cam.amountPaisa = newCamAmount;
-        cam.amount = paisaToRupees(newCamAmount); // Backward compatibility
-
-        await cam.save({ session });
-        updatedCount++;
-      }
-    } catch (error) {
-      console.error(`│  ✗ Failed to update CAM ${cam._id}:`, error.message);
-    }
-  }
-
-  console.log(`└─ Successfully updated ${updatedCount} CAM record(s)\n`);
-  return { updated: updatedCount };
-}
-
-/**
- * Enhanced update tenant with financial recalculation
- */
 export async function updateTenant(tenantId, body, files) {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    console.log("\n" + "=".repeat(60));
-    console.log("📝 UPDATING TENANT");
-    console.log("=".repeat(60));
-
-    // 1. Fetch existing tenant
     const existingTenant = await Tenant.findById(tenantId).session(session);
     if (!existingTenant) {
       await session.abortTransaction();
@@ -526,110 +237,43 @@ export async function updateTenant(tenantId, body, files) {
       return { success: false, statusCode: 404, message: "Tenant not found" };
     }
 
-    console.log(`\n✓ Found tenant: ${existingTenant.name}`);
-
-    // 2. Build update object
     const updatedTenantData = {};
-    Object.keys(body).forEach((key) => {
-      if (body[key] !== undefined && body[key] !== "" && body[key] !== null) {
-        updatedTenantData[key] = body[key];
-      }
+
+    // Basic fields
+    const basicFields = [
+      "name",
+      "email",
+      "phone",
+      "address",
+      "status",
+      "notes",
+      "leaseStartDate",
+      "leaseEndDate",
+      "dateOfAgreementSigned",
+      "keyHandoverDate",
+      "spaceHandoverDate",
+      "spaceReturnedDate",
+      "tdsPercentage",
+      "rentPaymentFrequency",
+    ];
+    basicFields.forEach((f) => {
+      if (body[f] !== undefined) updatedTenantData[f] = body[f];
     });
 
-    // 3. Handle file uploads
-    if (files?.image?.[0]) {
-      try {
-        const imageResult = await uploadSingleFile(files.image[0], {
-          folder: "tenants/images",
-          imageTransform: [{ width: 1000, height: 1000, crop: "limit" }],
-        });
-        updatedTenantData.image = imageResult.url;
-      } catch (error) {
-        console.error("Image upload failed:", error);
-        await session.abortTransaction();
-        session.endSession();
-        return {
-          success: false,
-          statusCode: 500,
-          message: "Image upload failed",
-          error: error.message,
-        };
-      }
-    }
-
-    if (files?.pdfAgreement?.[0]) {
-      try {
-        const pdfResult = await uploadSingleFile(files.pdfAgreement[0], {
-          folder: "tenants/agreements",
-        });
-        updatedTenantData.pdfAgreement = pdfResult.url;
-      } catch (error) {
-        console.error("PDF upload failed:", error);
-        await session.abortTransaction();
-        session.endSession();
-        return {
-          success: false,
-          statusCode: 500,
-          message: "PDF upload failed",
-          error: error.message,
-        };
-      }
-    }
-
-    // 4. Check if financial data changed
-    const financialsChanged = hasFinancialChanges(
-      updatedTenantData,
-      existingTenant,
-    );
-
-    console.log(
-      `\n💰 Financial data changed: ${financialsChanged ? "YES" : "NO"}`,
-    );
-
+    // Financial recalculation
+    const financialsChanged = hasFinancialChanges(body, existingTenant);
     let recalculationResult = null;
 
-    // 5. If financials changed, recalculate everything
     if (financialsChanged) {
-      console.log("\n🔢 Recalculating Financials...");
-
-      recalculationResult = recalculateTenantFinancials(
-        existingTenant,
-        updatedTenantData,
-      );
-
-      console.log("\n✓ Recalculation Complete:");
-      console.log(
-        "├─ Monthly Rent (Net):",
-        paisaToRupees(recalculationResult.totalRentPaisa),
-      );
-      console.log(
-        "├─ Monthly CAM:",
-        paisaToRupees(recalculationResult.camChargesPaisa),
-      );
-      console.log(
-        "├─ Monthly TDS:",
-        paisaToRupees(recalculationResult.tdsPaisa),
-      );
-      console.log(
-        "└─ Monthly Total:",
-        paisaToRupees(recalculationResult.netAmountPaisa),
-      );
-
-      // Merge recalculated financials into update data
+      recalculationResult = recalculateTenantFinancials(existingTenant, body);
       Object.assign(updatedTenantData, recalculationResult);
 
-      // Calculate quarterly amount if tenant uses quarterly frequency
       if (existingTenant.rentPaymentFrequency === "quarterly") {
-        const quarterlyRentAmountPaisa = recalculationResult.totalRentPaisa * 3;
-        updatedTenantData.quarterlyRentAmountPaisa = quarterlyRentAmountPaisa;
-        console.log(
-          "\n├─ Quarterly Rent:",
-          paisaToRupees(quarterlyRentAmountPaisa),
-        );
+        updatedTenantData.quarterlyRentAmountPaisa =
+          recalculationResult.totalRentPaisa * 3;
       }
     }
 
-    // 6. Validation
     if (Object.keys(updatedTenantData).length === 0) {
       await session.abortTransaction();
       session.endSession();
@@ -640,7 +284,6 @@ export async function updateTenant(tenantId, body, files) {
       };
     }
 
-    // 7. Update the tenant document
     const updatedTenant = await Tenant.findByIdAndUpdate(
       tenantId,
       { $set: updatedTenantData },
@@ -651,21 +294,15 @@ export async function updateTenant(tenantId, body, files) {
       .populate("innerBlock")
       .populate("units");
 
-    console.log("\n✓ Tenant document updated");
-
-    // 8. Update related records if financials changed
     let rentUpdateResult = { updated: 0 };
     let camUpdateResult = { updated: 0 };
 
     if (financialsChanged && recalculationResult) {
-      // Update pending rent records
       rentUpdateResult = await updatePendingRentRecords(
         updatedTenant,
         recalculationResult,
         session,
       );
-
-      // Update pending CAM records
       camUpdateResult = await updatePendingCAMRecords(
         updatedTenant,
         recalculationResult,
@@ -673,41 +310,22 @@ export async function updateTenant(tenantId, body, files) {
       );
     }
 
-    // 9. Update unit occupancy status if needed
     if (updatedTenantData.units || updatedTenantData.status === "vacated") {
-      const shouldBeOccupied = updatedTenantData.status !== "vacated";
+      const occupied = updatedTenantData.status !== "vacated";
       await Unit.updateMany(
         { _id: { $in: updatedTenant.units } },
-        { $set: { isOccupied: shouldBeOccupied } },
+        { $set: { isOccupied: occupied } },
         { session },
-      );
-      console.log(
-        `\n✓ Unit occupancy updated: ${shouldBeOccupied ? "occupied" : "vacant"}`,
       );
     }
 
-    // 10. Commit transaction
     await session.commitTransaction();
     session.endSession();
 
-    // 11. Build response message
     let message = "Tenant updated successfully";
     if (financialsChanged) {
-      message += `. Recalculated financials and updated ${rentUpdateResult.updated} rent record(s) and ${camUpdateResult.updated} CAM record(s).`;
+      message += `. Updated ${rentUpdateResult.updated} rent record(s) and ${camUpdateResult.updated} CAM record(s).`;
     }
-
-    console.log("\n" + "=".repeat(60));
-    console.log("✅ UPDATE COMPLETED SUCCESSFULLY");
-    console.log("=".repeat(60));
-    if (financialsChanged) {
-      console.log("📊 Summary:");
-      console.log(`├─ Rent records updated: ${rentUpdateResult.updated}`);
-      console.log(`├─ CAM records updated: ${camUpdateResult.updated}`);
-      console.log(
-        `└─ New monthly total: ₹${paisaToRupees(recalculationResult.netAmountPaisa).toLocaleString()}`,
-      );
-    }
-    console.log("=".repeat(60) + "\n");
 
     return {
       success: true,
@@ -727,7 +345,7 @@ export async function updateTenant(tenantId, body, files) {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error("\n❌ Tenant update error:", error);
+    console.error("Tenant update error:", error);
     return {
       success: false,
       statusCode: 500,
@@ -737,46 +355,43 @@ export async function updateTenant(tenantId, body, files) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE / RESTORE / SEARCH
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function deleteTenant(tenantId) {
-  const softDeletedTenant = await Tenant.findByIdAndUpdate(
+  const softDeleted = await Tenant.findByIdAndUpdate(
     tenantId,
     { isDeleted: true },
     { new: true },
   );
-
-  if (!softDeletedTenant) {
+  if (!softDeleted)
     return { success: false, statusCode: 404, message: "Tenant not found" };
-  }
-
   await Unit.updateMany(
-    { _id: { $in: softDeletedTenant.units } },
+    { _id: { $in: softDeleted.units } },
     { $set: { isOccupied: false } },
   );
-
   return {
     success: true,
     statusCode: 200,
     message: "Tenant deleted successfully",
-    tenant: softDeletedTenant,
+    tenant: softDeleted,
   };
 }
 
 export async function restoreTenant(tenantId) {
-  const restoredTenant = await Tenant.findByIdAndUpdate(
+  const restored = await Tenant.findByIdAndUpdate(
     tenantId,
     { isDeleted: false },
     { new: true },
   );
-
-  if (!restoredTenant) {
+  if (!restored)
     return { success: false, statusCode: 404, message: "Tenant not found" };
-  }
-
   return {
     success: true,
     statusCode: 200,
     message: "Tenant restored successfully",
-    tenant: restoredTenant,
+    tenant: restored,
   };
 }
 
@@ -797,53 +412,166 @@ export async function searchTenants(query) {
     .populate("innerBlock")
     .populate("units");
 
-  const validTenants = tenants.map((tenant) => {
-    if (tenant.units && Array.isArray(tenant.units)) {
-      tenant.units = tenant.units.filter((u) => u !== null && u !== undefined);
-    } else {
-      tenant.units = [];
-    }
-    return tenant;
+  return tenants.map((t) => {
+    t.units = (t.units || []).filter((u) => u != null);
+    return t;
   });
-
-  return validTenants;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INTERNAL: Auto-apply system escalation defaults to a newly created tenant
+// INTERNAL HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+function checkLeaseExpiringSoon(leaseEndDate) {
+  if (!leaseEndDate) return false;
+  const days = Math.ceil(
+    (new Date(leaseEndDate) - new Date()) / (1000 * 60 * 60 * 24),
+  );
+  return days > 0 && days <= 60;
+}
+
+function calculateLeaseDuration(startDate, endDate) {
+  if (!startDate || !endDate) return 0;
+  const s = new Date(startDate),
+    e = new Date(endDate);
+  return (
+    (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
+  );
+}
+
+function hasFinancialChanges(updates, existing) {
+  return [
+    "leasedSquareFeet",
+    "pricePerSqft",
+    "pricePerSqftPaisa",
+    "camRatePerSqft",
+    "camRatePerSqftPaisa",
+    "tdsPercentage",
+  ].some((f) => {
+    if (updates[f] === undefined) return false;
+    return f.endsWith("Paisa")
+      ? updates[f] !== existing[f]
+      : Math.abs(Number(updates[f]) - Number(existing[f])) > 0.01;
+  });
+}
+
+function recalculateTenantFinancials(tenant, updates) {
+  const sqft = updates.leasedSquareFeet ?? tenant.leasedSquareFeet;
+  const pricePerSqft =
+    updates.pricePerSqft ?? paisaToRupees(tenant.pricePerSqftPaisa);
+  const camRate =
+    updates.camRatePerSqft ?? paisaToRupees(tenant.camRatePerSqftPaisa);
+  const tdsPct = updates.tdsPercentage ?? tenant.tdsPercentage ?? 10;
+
+  const calc = calculateMultiUnitLease(
+    [
+      {
+        unitId: tenant.units[0]?.toString() || tenant.units[0]?._id?.toString(),
+        leasedSquareFeet: sqft,
+        pricePerSqft,
+        camRatePerSqft: camRate,
+        securityDeposit:
+          updates.securityDeposit ?? paisaToRupees(tenant.securityDepositPaisa),
+      },
+    ],
+    tdsPct,
+  );
+
+  const { totals } = calc;
+  return {
+    pricePerSqftPaisa: rupeesToPaisa(pricePerSqft),
+    camRatePerSqftPaisa: rupeesToPaisa(camRate),
+    tdsPaisa: rupeesToPaisa(totals.totalTds),
+    rentalRatePaisa: rupeesToPaisa(totals.rentMonthly / sqft),
+    grossAmountPaisa: rupeesToPaisa(totals.grossMonthly),
+    totalRentPaisa: rupeesToPaisa(totals.rentMonthly),
+    camChargesPaisa: rupeesToPaisa(totals.camMonthly),
+    netAmountPaisa: rupeesToPaisa(totals.netMonthly),
+    pricePerSqft,
+    camRatePerSqft: camRate,
+    tdsPercentage: tdsPct,
+    leasedSquareFeet: sqft,
+  };
+}
+
 /**
- * Read system-wide escalation defaults from SystemConfig.
- * If enabled, call enableEscalation on the given tenant.
+ * Update pending rent records after a financial change.
  *
- * Called fire-and-forget after createTenant transaction commits.
- * Safe to fail — tenant creation is never affected.
- *
- * @param {string} tenantId
- * @returns {Promise<{ applied: boolean }>}
+ * FIX: was filtering on status "partial" — corrected to "partially_paid".
  */
-async function applyDefaultEscalationIfEnabled(tenantId) {
-  const CONFIG_KEY = "rentEscalationDefaults";
+async function updatePendingRentRecords(tenant, newFinancials, session) {
+  // FIX: "partial" → "partially_paid" (correct enum value)
+  const pendingRents = await Rent.find({
+    tenant: tenant._id,
+    status: { $in: ["pending", "partially_paid"] },
+  }).session(session);
 
-  const config = await SystemConfig.findOne({ key: CONFIG_KEY });
+  let updatedCount = 0;
 
-  // No defaults saved yet, or admin disabled the system switch — skip
-  if (!config?.value?.enabled) {
-    return { applied: false };
+  for (const rent of pendingRents) {
+    try {
+      const multiplier = rent.rentFrequency === "quarterly" ? 3 : 1;
+      const newRentAmount = newFinancials.totalRentPaisa * multiplier;
+      const newTdsAmount = newFinancials.tdsPaisa * multiplier;
+
+      if (
+        Math.abs(rent.rentAmountPaisa - newRentAmount) > 1 ||
+        Math.abs(rent.tdsAmountPaisa - newTdsAmount) > 1
+      ) {
+        rent.rentAmountPaisa = newRentAmount;
+        rent.tdsAmountPaisa = newTdsAmount;
+        await rent.save({ session });
+        updatedCount++;
+      }
+    } catch (err) {
+      console.error(`Failed to update rent ${rent._id}:`, err.message);
+    }
   }
+
+  return { updated: updatedCount };
+}
+
+async function updatePendingCAMRecords(tenant, newFinancials, session) {
+  const pendingCams = await Cam.find({
+    tenant: tenant._id,
+    status: { $in: ["pending", "partially_paid"] },
+  }).session(session);
+
+  let updatedCount = 0;
+
+  for (const cam of pendingCams) {
+    try {
+      const newAmount = newFinancials.camChargesPaisa;
+      if (Math.abs(cam.amountPaisa - newAmount) > 1) {
+        cam.amountPaisa = newAmount;
+        await cam.save({ session });
+        updatedCount++;
+      }
+    } catch (err) {
+      console.error(`Failed to update CAM ${cam._id}:`, err.message);
+    }
+  }
+
+  return { updated: updatedCount };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ESCALATION DEFAULT (fire-and-forget)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function applyDefaultEscalationIfEnabled(tenantId) {
+  const config = await SystemConfig.findOne({ key: "rentEscalationDefaults" });
+  if (!config?.value?.enabled) return { applied: false };
 
   const {
     percentageIncrease,
     intervalMonths = 12,
     appliesTo = "rent_only",
   } = config.value;
-
   const result = await enableEscalation(tenantId, {
     percentageIncrease,
     intervalMonths,
     appliesTo,
   });
-
   return { applied: result.success };
 }

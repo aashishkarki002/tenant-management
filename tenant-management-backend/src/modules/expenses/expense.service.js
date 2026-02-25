@@ -1,11 +1,16 @@
 import { Expense } from "./Expense.Model.js";
 import ExpenseSource from "./ExpenseSource.Model.js";
 import Admin from "../auth/admin.Model.js";
+import BankAccount from "../banks/BankAccountModel.js";
 import mongoose from "mongoose";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildExpenseJournal } from "../ledger/journal-builders/index.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 import { ACCOUNTING_CONFIG } from "../../config/accounting.config.js";
+import {
+  PAYMENT_METHODS,
+  assertValidPaymentMethod,
+} from "../../utils/paymentAccountUtils.js";
 
 export async function createExpense(expenseData) {
   const session = await mongoose.startSession();
@@ -27,7 +32,29 @@ export async function createExpense(expenseData) {
       notes,
       createdBy,
       expenseCode,
+      paymentMethod: rawPaymentMethod,
+      bankAccountId,
     } = expenseData;
+
+    const paymentMethod =
+      typeof rawPaymentMethod === "string" &&
+      Object.values(PAYMENT_METHODS).includes(rawPaymentMethod)
+        ? rawPaymentMethod
+        : PAYMENT_METHODS.BANK_TRANSFER;
+    assertValidPaymentMethod(paymentMethod);
+
+    let bankAccountCode = null;
+    if (
+      (paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
+        paymentMethod === PAYMENT_METHODS.CHEQUE) &&
+      bankAccountId
+    ) {
+      const bank = await BankAccount.findById(bankAccountId).session(session);
+      if (!bank || bank.isDeleted) {
+        throw new Error(`Bank account not found or deleted: ${bankAccountId}`);
+      }
+      bankAccountCode = bank.accountCode;
+    }
 
     // ✅ Convert to paisa if needed
     const finalAmountPaisa =
@@ -88,8 +115,12 @@ export async function createExpense(expenseData) {
       ],
       { session },
     );
-    // Record expense in ledger after creation so expense._id exists
-    const expensePayload = buildExpenseJournal(expense);
+    // Record expense in ledger (journal needs paymentMethod and optional bankAccountCode)
+    const expenseForJournal = {
+      ...expense.toObject(),
+      paymentMethod,
+    };
+    const expensePayload = buildExpenseJournal(expenseForJournal, bankAccountCode);
     await ledgerService.postJournalEntry(expensePayload, session);
     await session.commitTransaction();
     session.endSession();

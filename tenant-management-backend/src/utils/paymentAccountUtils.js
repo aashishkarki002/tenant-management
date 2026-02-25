@@ -11,7 +11,7 @@
  *   const drAccountCode = getDebitAccountForPayment(paymentMethod, bankAccountCode);
  */
 
-import { ACCOUNT_CODES } from "../config/accounts.js";
+import { ACCOUNT_CODES } from "../modules/ledger/config/accounts.js";
 
 /** All valid payment methods. Extend here when adding new ones. */
 export const PAYMENT_METHODS = Object.freeze({

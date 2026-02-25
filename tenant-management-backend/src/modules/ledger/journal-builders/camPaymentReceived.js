@@ -1,5 +1,6 @@
 import { ACCOUNT_CODES } from "../config/accounts.js";
-import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
+import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
+import { getDebitAccountForPayment } from "../../../utils/paymentAccountUtils.js";
 
 /**
  * Build journal payload for a CAM payment received (DR Cash/Bank, CR Accounts Receivable).
@@ -11,31 +12,35 @@ import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
  * @param {string} [cashBankAccountCode] - Account code for DR (default CASH_BANK 1000)
  * @returns {Object} Journal payload for postJournalEntry
  */
-export function buildCamPaymentReceivedJournal(
-  payment,
-  cam,
-  amountPaisa = undefined,
-  amount = undefined, // Backward compatibility
-  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK,
-) {
-  // Use paisa if provided, otherwise convert from payment or amount parameter
-  const recordedAmountPaisa = amountPaisa !== undefined
-    ? amountPaisa
-    : (payment.amountPaisa !== undefined
-        ? payment.amountPaisa
-        : (amount !== undefined
-            ? rupeesToPaisa(amount)
-            : (payment.amount ? rupeesToPaisa(payment.amount) : 0)));
+export function buildCamPaymentReceivedJournal(payment, cam, bankAccountCode) {
+  // Validate
+  if (!payment.amountPaisa || !Number.isInteger(payment.amountPaisa)) {
+    throw new Error(
+      `payment.amountPaisa must be an integer, got: ${payment.amountPaisa}`,
+    );
+  }
 
-  const transactionDate = payment.paymentDate || new Date();
-  const nepaliDate = payment.nepaliDate || transactionDate;
+  const transactionDate =
+    payment.paymentDate instanceof Date
+      ? payment.paymentDate
+      : new Date(payment.paymentDate ?? Date.now());
+
   const nepaliMonth =
     cam?.nepaliMonth ?? new Date(transactionDate).getMonth() + 1;
   const nepaliYear = cam?.nepaliYear ?? new Date(transactionDate).getFullYear();
-  const description = `CAM payment received for ${nepaliMonth}/${nepaliYear} from ${cam?.tenant?.name}`;
-  const createdBy = payment.createdBy ?? payment.receivedBy;
+  const nepaliDate =
+    payment.nepaliDate instanceof Date ? payment.nepaliDate : transactionDate;
 
-  return {
+  const drAccountCode = getDebitAccountForPayment(
+    payment.paymentMethod,
+    bankAccountCode,
+  );
+
+  const description =
+    `CAM payment received for ${nepaliMonth}/${nepaliYear}` +
+    (cam?.tenant?.name ? ` — ${cam.tenant.name}` : "");
+
+  return buildJournalPayload({
     transactionType: "CAM_PAYMENT_RECEIVED",
     referenceType: "CamPayment",
     referenceId: payment._id,
@@ -44,28 +49,23 @@ export function buildCamPaymentReceivedJournal(
     nepaliMonth,
     nepaliYear,
     description,
-    createdBy,
-    totalAmountPaisa: recordedAmountPaisa,
-    totalAmount: recordedAmountPaisa / 100, // Backward compatibility
+    createdBy: payment.createdBy ?? payment.receivedBy ?? null,
+    totalAmountPaisa: payment.amountPaisa,
     tenant: cam?.tenant,
     property: cam?.property,
     entries: [
       {
-        accountCode: cashBankAccountCode,
-        debitAmountPaisa: recordedAmountPaisa,
-        debitAmount: recordedAmountPaisa / 100, // Backward compatibility
+        accountCode: drAccountCode,
+        debitAmountPaisa: payment.amountPaisa,
         creditAmountPaisa: 0,
-        creditAmount: 0,
         description,
       },
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
         debitAmountPaisa: 0,
-        debitAmount: 0,
-        creditAmountPaisa: recordedAmountPaisa,
-        creditAmount: recordedAmountPaisa / 100, // Backward compatibility
+        creditAmountPaisa: payment.amountPaisa,
         description,
       },
     ],
-  };
+  });
 }

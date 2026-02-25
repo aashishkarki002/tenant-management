@@ -476,8 +476,52 @@ function assertNepaliFields({ nepaliYear, nepaliMonth }) {
       `Invalid nepaliMonth: ${nepaliMonth}. Must be an integer between 1 and 12.`,
     );
   }
-}
+} /**
+ * Derives nepaliMonth and nepaliYear from a given Date if they are not already
+ * supplied. Use this inside journal builders as a safe fallback.
+ *
+ * @param {{
+ *   nepaliMonth?: number,
+ *   nepaliYear?:  number,
+ *   fallbackDate?: Date | string  // usually transactionDate or createdAt
+ * }} opts
+ * @returns {{ nepaliMonth: number, nepaliYear: number }}
+ */
+function resolveNepaliPeriod({ nepaliMonth, nepaliYear, fallbackDate }) {
+  if (
+    Number.isInteger(nepaliMonth) &&
+    nepaliMonth >= 1 &&
+    nepaliMonth <= 12 &&
+    Number.isInteger(nepaliYear) &&
+    nepaliYear >= 2000
+  ) {
+    return { nepaliMonth, nepaliYear };
+  }
 
+  // Derive from the fallback date — never from raw getMonth() / getFullYear()
+  const dateToConvert = fallbackDate
+    ? fallbackDate instanceof Date
+      ? fallbackDate
+      : new Date(fallbackDate)
+    : new Date();
+
+  const derived = getNepaliYearMonthFromDate(dateToConvert);
+
+  // Log a warning so developers know they should supply these values explicitly
+  console.warn(
+    "[nepaliDateUtil] nepaliMonth/nepaliYear not supplied; derived from date:",
+    dateToConvert.toISOString(),
+    "→ month:",
+    derived.nepaliMonth,
+    "year:",
+    derived.nepaliYear,
+  );
+
+  return {
+    nepaliMonth: derived.nepaliMonth,
+    nepaliYear: derived.nepaliYear,
+  };
+}
 // ============================================================================
 // EXPORTS
 // ============================================================================
@@ -506,6 +550,7 @@ export {
   // Nepali date extraction
   getNepaliYearMonthFromDate,
   assertNepaliFields,
+  resolveNepaliPeriod,
 
   // Constants
   NEPALI_MONTH_NAMES,

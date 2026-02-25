@@ -255,6 +255,8 @@ export async function updateMaintenanceStatus(
     nepaliMonth: rawNepaliMonth,
     nepaliYear: rawNepaliYear,
     allowOverpayment,
+    paymentMethod: paymentMethodOption,
+    bankAccountId: bankAccountIdOption,
   } = options;
 
   // Coerce string values coming from req.body to numbers (express body-parser
@@ -347,6 +349,8 @@ export async function updateMaintenanceStatus(
             "Auto-created from maintenance completion",
           createdBy: adminId || updatedTask.createdBy,
           expenseCode: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE,
+          ...(paymentMethodOption && { paymentMethod: paymentMethodOption }),
+          ...(bankAccountIdOption && { bankAccountId: bankAccountIdOption }),
         };
 
         const result = await createExpense(expenseData);

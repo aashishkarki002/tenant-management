@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { paisaToRupees } from "../../utils/moneyUtil.js";
+import { safePaisaToRupees } from "../../utils/moneyUtil.js";
 const paymentSchema = new mongoose.Schema(
   {
     rent: {
@@ -113,22 +113,21 @@ const paymentSchema = new mongoose.Schema(
     toJSON: {
       virtuals: true,
       transform(doc, ret) {
-        // Top-level amount in rupees (frontend-facing field)
-        ret.amount = paisaToRupees(ret.amountPaisa);
+        // Use safe conversion so corrupted amountPaisa (e.g. account code string) does not throw
+        ret.amount = safePaisaToRupees(ret.amountPaisa);
 
-        // Allocation conversions
         if (ret.allocations?.rent) {
-          ret.allocations.rent.amount = paisaToRupees(
+          ret.allocations.rent.amount = safePaisaToRupees(
             ret.allocations.rent.amountPaisa ?? 0,
           );
           ret.allocations.rent.unitAllocations =
             ret.allocations.rent.unitAllocations?.map((ua) => ({
               ...ua,
-              amount: paisaToRupees(ua.amountPaisa),
+              amount: safePaisaToRupees(ua.amountPaisa),
             }));
         }
         if (ret.allocations?.cam) {
-          ret.allocations.cam.paidAmount = paisaToRupees(
+          ret.allocations.cam.paidAmount = safePaisaToRupees(
             ret.allocations.cam.paidAmountPaisa ?? 0,
           );
         }

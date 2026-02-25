@@ -77,8 +77,23 @@ export function paisaToRupees(paisa) {
     return 0;
   }
   if (!Number.isInteger(paisa)) {
-    throw new Error(`Paisa must be integer, got: ${paisa}`);
+    const hint =
+      typeof paisa === "string" &&
+      /^[\d]+-[A-Z0-9]+$/i.test(String(paisa).trim())
+        ? " (Looks like a bank account code — did you pass accountCode instead of amountPaisa?)"
+        : "";
+    throw new Error(`Paisa must be integer, got: ${paisa}${hint}`);
   }
+  return paisa / PAISA_PER_RUPEE;
+}
+
+/**
+ * Same as paisaToRupees but returns 0 when value is not a valid integer (e.g. corrupted or wrong type).
+ * Use when serializing documents so one bad record does not break list/get responses.
+ */
+export function safePaisaToRupees(paisa) {
+  if (paisa === undefined || paisa === null) return 0;
+  if (typeof paisa !== "number" || !Number.isInteger(paisa)) return 0;
   return paisa / PAISA_PER_RUPEE;
 }
 
@@ -102,6 +117,25 @@ export function formatMoney(paisa, options = {}) {
     maximumFractionDigits: decimals,
   });
 
+  return showSymbol ? `${symbol} ${formatted}` : formatted;
+}
+
+/**
+ * Format paisa for display; never throws. Use in error messages or when value may be invalid.
+ * Invalid/non-integer values (e.g. wrong type or account code string) show as "Rs. 0.00".
+ */
+export function formatMoneySafe(paisa, options = {}) {
+  const rupees = safePaisaToRupees(paisa);
+  const {
+    symbol = "Rs.",
+    showSymbol = true,
+    decimals = 2,
+    locale = "en-NP",
+  } = options;
+  const formatted = rupees.toLocaleString(locale, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
   return showSymbol ? `${symbol} ${formatted}` : formatted;
 }
 
@@ -215,6 +249,32 @@ export function distributeByWeight(totalPaisa, weights) {
 
   return portions;
 }
+export function assertIntegerPaisa(value, fieldName = "amount") {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `${fieldName} must be a non-negative integer (paisa), got: ${value} ` +
+        `(type: ${typeof value}). ` +
+        "Did you pass rupees instead of paisa? Use rupeesToPaisa() before calling this function.",
+    );
+  }
+}
+export function getRawPaisa(doc, field) {
+  let raw;
+
+  if (doc && typeof doc.get === "function") {
+    // Mongoose document — bypass getters
+    raw = doc.get(field, null, { getters: false });
+  } else if (doc && doc._doc) {
+    // Hydrated document with _doc
+    raw = doc._doc[field];
+  } else {
+    // Plain object
+    raw = doc?.[field];
+  }
+
+  assertIntegerPaisa(raw, `${field} (raw paisa from document)`);
+  return raw;
+}
 
 /**
  * Money object with chainable operations
@@ -287,7 +347,9 @@ export class Money {
 export default {
   rupeesToPaisa,
   paisaToRupees,
+  safePaisaToRupees,
   formatMoney,
+  formatMoneySafe,
   addMoney,
   subtractMoney,
   multiplyMoney,

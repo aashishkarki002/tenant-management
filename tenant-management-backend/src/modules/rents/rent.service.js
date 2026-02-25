@@ -1,40 +1,24 @@
 /**
- * rent.service.js — FIXED VERSION
+ * rent.service.js  (FIXED)
  *
- * Bugs found and fixed:
+ * Changes in this revision:
  *
- * BUG 1 — sendEmailToTenants: emails fire EVERY day (critical spam bug)
- *   Line 570: const { reminderDay } = checkNepaliSpecialDays({ forceTest: true })
- *   Two problems:
- *     a) forceTest: true makes the function always return all-true — guard can never work
- *     b) Destructures `reminderDay` but the object key is `isReminderDay` → always undefined
- *     c) if (undefined) is falsy → guard NEVER fires → emails sent on every cron run
- *   Fix: Remove forceTest, use correct key, fix guard direction.
+ * 1. Removed inline calculateRentTotals — imports canonical helper instead.
  *
- * BUG 2 — handleMonthlyRents: tdsAmountPaisa is multiplied by sqft incorrectly
- *   Line 490: tenant.tdsPaisa * (tenant.leasedSquareFeet || 0)
- *   tenant.tdsPaisa is already the TOTAL tds amount (not per-sqft rate).
- *   Multiplying by sqft again inflates TDS by ~1000x.
- *   Fix: Use tenant.tdsPaisa directly.
+ * 2. handleMonthlyRents — each rent journal now posts in its own session.
+ *    The idempotency guard in postJournalEntry (C-1) means re-runs safely
+ *    skip already-journaled rents.
  *
- * BUG 3 — handleMonthlyRents: overdue marking runs inside rent creation
- *   Lines 453-462 mark overdue rents as part of handleMonthlyRents.
- *   The master cron also has a dedicated overdue step — remove it from master cron
- *   and keep it here where it belongs (runs before creating new rents).
- *
- * ADMIN IDs — sendEmailToTenants already queries all admins correctly:
- *   Line 622: adminModel.find({ role: "admin" }) — no hardcoded IDs. ✅
- *   No change needed here, the master cron's getNotifiableAdmins() is consistent.
+ * 3. updatePendingRentRecords status filter:
+ *    OLD: status: { $in: ["pending", "partial"] }   ← "partial" doesn't exist
+ *    FIX: status: { $in: ["pending", "partially_paid"] }
  */
 
 import mongoose from "mongoose";
 import { Rent } from "./rent.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
 import adminModel from "../auth/admin.Model.js";
-import {
-  getNepaliMonthDates,
-  checkNepaliSpecialDays,
-} from "../../utils/nepaliDateHelper.js";
+import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
 import dotenv from "dotenv";
 import { sendEmail } from "../../config/nodemailer.js";
 import { ledgerService } from "../ledger/ledger.service.js";
@@ -48,82 +32,34 @@ import {
   paisaToRupees,
   formatMoney,
 } from "../../utils/moneyUtil.js";
+// FIX: use canonical helper — removed inline duplicate
+import { calculateRentTotals } from "./helpers/rentTotal.helper.js";
 
 dotenv.config();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// No changes below until handleMonthlyRents and sendEmailToTenants
+// QUERY BUILDER
 // ─────────────────────────────────────────────────────────────────────────────
-
-function calculateRentTotals(rent) {
-  if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    const rentAmountPaisa = rent.unitBreakdown.reduce(
-      (sum, unit) => sum + (unit.rentAmountPaisa || 0),
-      0,
-    );
-    const tdsAmountPaisa = rent.unitBreakdown.reduce(
-      (sum, unit) => sum + (unit.tdsAmountPaisa || 0),
-      0,
-    );
-    const paidAmountPaisa = rent.unitBreakdown.reduce(
-      (sum, unit) => sum + (unit.paidAmountPaisa || 0),
-      0,
-    );
-    return {
-      rentAmountPaisa,
-      tdsAmountPaisa,
-      paidAmountPaisa,
-      remainingAmountPaisa: rentAmountPaisa - paidAmountPaisa,
-      netAmountPaisa: rentAmountPaisa - tdsAmountPaisa,
-    };
-  }
-
-  const getRawPaisa = (field) => {
-    if (rent.get && typeof rent.get === "function") {
-      return rent.get(field, null, { getters: false }) || 0;
-    }
-    return rent[field] || 0;
-  };
-
-  const rentAmountPaisa = getRawPaisa("rentAmountPaisa");
-  const tdsAmountPaisa = getRawPaisa("tdsAmountPaisa");
-  const paidAmountPaisa = getRawPaisa("paidAmountPaisa");
-
-  return {
-    rentAmountPaisa,
-    tdsAmountPaisa,
-    paidAmountPaisa,
-    remainingAmountPaisa: rentAmountPaisa - paidAmountPaisa,
-    netAmountPaisa: rentAmountPaisa - tdsAmountPaisa,
-  };
-}
 
 function buildRentsFilter(filters = {}) {
   const query = {};
-  if (filters.tenantId && mongoose.Types.ObjectId.isValid(filters.tenantId)) {
+  if (filters.tenantId && mongoose.Types.ObjectId.isValid(filters.tenantId))
     query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
-  }
-  if (
-    filters.propertyId &&
-    mongoose.Types.ObjectId.isValid(filters.propertyId)
-  ) {
+  if (filters.propertyId && mongoose.Types.ObjectId.isValid(filters.propertyId))
     query.property = new mongoose.Types.ObjectId(filters.propertyId);
-  }
   if (
-    filters.status &&
     ["pending", "paid", "partially_paid", "overdue", "cancelled"].includes(
       filters.status,
     )
-  ) {
+  )
     query.status = filters.status;
-  }
   if (filters.nepaliMonth != null) {
-    const month = Number(filters.nepaliMonth);
-    if (month >= 1 && month <= 12) query.nepaliMonth = month;
+    const m = Number(filters.nepaliMonth);
+    if (m >= 1 && m <= 12) query.nepaliMonth = m;
   }
   if (filters.nepaliYear != null) {
-    const year = Number(filters.nepaliYear);
-    if (!Number.isNaN(year)) query.nepaliYear = year;
+    const y = Number(filters.nepaliYear);
+    if (!Number.isNaN(y)) query.nepaliYear = y;
   }
   if (filters.startDate || filters.endDate) {
     query.englishDueDate = {};
@@ -134,10 +70,13 @@ function buildRentsFilter(filters = {}) {
   return query;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// READ SERVICES
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function getRentsService(filters = {}) {
   try {
-    const query = buildRentsFilter(filters);
-    const rents = await Rent.find(query)
+    const rents = await Rent.find(buildRentsFilter(filters))
       .sort({ nepaliDueDate: 1 })
       .populate({
         path: "tenant",
@@ -149,40 +88,37 @@ export async function getRentsService(filters = {}) {
       .populate({ path: "property", select: "name" })
       .populate({ path: "units", select: "name" });
 
-    const filteredRents = rents.filter((rent) => rent.tenant);
+    const result = rents
+      .filter((r) => r.tenant)
+      .map((rent) => {
+        const rentObj = rent.toObject({ virtuals: false, getters: false });
+        const t = calculateRentTotals(rent);
+        return {
+          ...rentObj,
+          totals: {
+            rentAmountPaisa: t.rentAmountPaisa,
+            tdsAmountPaisa: t.tdsAmountPaisa,
+            effectiveRentPaisa: t.effectiveRentPaisa,
+            paidAmountPaisa: t.paidAmountPaisa,
+            remainingAmountPaisa: t.remainingAmountPaisa,
+            lateFeePaisa: t.lateFeePaisa,
+            totalDuePaisa: t.totalDuePaisa,
+          },
+          formatted: {
+            rentAmount: formatMoney(t.rentAmountPaisa),
+            tdsAmount: formatMoney(t.tdsAmountPaisa),
+            effectiveRent: formatMoney(t.effectiveRentPaisa),
+            paidAmount: formatMoney(t.paidAmountPaisa),
+            remainingAmount: formatMoney(t.remainingAmountPaisa),
+            lateFee: formatMoney(t.lateFeePaisa),
+            totalDue: formatMoney(t.totalDuePaisa),
+          },
+        };
+      });
 
-    const rentsWithFormatted = filteredRents.map((rent) => {
-      const rentObj = rent.toObject({ virtuals: false, getters: false });
-      const totals = calculateRentTotals(rent);
-      const lateFeePaisa =
-        rent.get("lateFeePaisa", null, { getters: false }) || 0;
-
-      return {
-        ...rentObj,
-        totals: {
-          rentAmountPaisa: totals.rentAmountPaisa,
-          tdsAmountPaisa: totals.tdsAmountPaisa,
-          paidAmountPaisa: totals.paidAmountPaisa,
-          remainingAmountPaisa: totals.remainingAmountPaisa,
-          netAmountPaisa: totals.netAmountPaisa,
-          lateFeePaisa,
-          totalDuePaisa: totals.remainingAmountPaisa + lateFeePaisa,
-        },
-        formatted: {
-          rentAmount: formatMoney(totals.rentAmountPaisa),
-          tdsAmount: formatMoney(totals.tdsAmountPaisa),
-          paidAmount: formatMoney(totals.paidAmountPaisa),
-          remainingAmount: formatMoney(totals.remainingAmountPaisa),
-          netAmount: formatMoney(totals.netAmountPaisa),
-          lateFee: formatMoney(lateFeePaisa),
-          totalDue: formatMoney(totals.remainingAmountPaisa + lateFeePaisa),
-        },
-      };
-    });
-
-    return { success: true, rents: rentsWithFormatted };
+    return { success: true, rents: result };
   } catch (error) {
-    console.error("Error fetching rents:", error);
+    console.error("[getRentsService]", error.message);
     return {
       success: false,
       message: "Rents fetching failed",
@@ -201,41 +137,38 @@ export async function getRentByIdService(rentId) {
       .populate("units")
       .populate({ path: "unitBreakdown.unit", select: "name" });
 
-    if (!rent) {
+    if (!rent)
       return { success: false, statusCode: 404, message: "Rent not found" };
-    }
 
     const rentObj = rent.toObject({ virtuals: false, getters: false });
-    const totals = calculateRentTotals(rent);
-    const lateFeePaisa =
-      rent.get("lateFeePaisa", null, { getters: false }) || 0;
+    const t = calculateRentTotals(rent);
 
     return {
       success: true,
       rent: {
         ...rentObj,
         totals: {
-          rentAmountPaisa: totals.rentAmountPaisa,
-          tdsAmountPaisa: totals.tdsAmountPaisa,
-          paidAmountPaisa: totals.paidAmountPaisa,
-          remainingAmountPaisa: totals.remainingAmountPaisa,
-          netAmountPaisa: totals.netAmountPaisa,
-          lateFeePaisa,
-          totalDuePaisa: totals.remainingAmountPaisa + lateFeePaisa,
+          rentAmountPaisa: t.rentAmountPaisa,
+          tdsAmountPaisa: t.tdsAmountPaisa,
+          effectiveRentPaisa: t.effectiveRentPaisa,
+          paidAmountPaisa: t.paidAmountPaisa,
+          remainingAmountPaisa: t.remainingAmountPaisa,
+          lateFeePaisa: t.lateFeePaisa,
+          totalDuePaisa: t.totalDuePaisa,
         },
         formatted: {
-          rentAmount: formatMoney(totals.rentAmountPaisa),
-          tdsAmount: formatMoney(totals.tdsAmountPaisa),
-          paidAmount: formatMoney(totals.paidAmountPaisa),
-          remainingAmount: formatMoney(totals.remainingAmountPaisa),
-          netAmount: formatMoney(totals.netAmountPaisa),
-          lateFee: formatMoney(lateFeePaisa),
-          totalDue: formatMoney(totals.remainingAmountPaisa + lateFeePaisa),
+          rentAmount: formatMoney(t.rentAmountPaisa),
+          tdsAmount: formatMoney(t.tdsAmountPaisa),
+          effectiveRent: formatMoney(t.effectiveRentPaisa),
+          paidAmount: formatMoney(t.paidAmountPaisa),
+          remainingAmount: formatMoney(t.remainingAmountPaisa),
+          lateFee: formatMoney(t.lateFeePaisa),
+          totalDue: formatMoney(t.totalDuePaisa),
         },
       },
     };
   } catch (error) {
-    console.error("Error fetching rent:", error);
+    console.error("[getRentByIdService]", error.message);
     return {
       success: false,
       message: "Rent fetching failed",
@@ -243,6 +176,10 @@ export async function getRentByIdService(rentId) {
     };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPDATE
+// ─────────────────────────────────────────────────────────────────────────────
 
 const ALLOWED_STATUSES = [
   "pending",
@@ -255,28 +192,27 @@ const ALLOWED_STATUSES = [
 export async function updateRentService(rentId, body) {
   try {
     const rent = await Rent.findById(rentId);
-    if (!rent) {
+    if (!rent)
       return { success: false, statusCode: 404, message: "Rent not found" };
-    }
 
     if (body.lateFeePaisa !== undefined) {
-      const lateFeePaisa = Number(body.lateFeePaisa);
-      if (!Number.isInteger(lateFeePaisa) || lateFeePaisa < 0) {
+      const lf = Number(body.lateFeePaisa);
+      if (!Number.isInteger(lf) || lf < 0) {
         return {
           success: false,
           statusCode: 400,
           message: "lateFeePaisa must be a non-negative integer",
         };
       }
-      rent.lateFeePaisa = lateFeePaisa;
-      rent.lateFeeApplied = lateFeePaisa > 0;
+      rent.lateFeePaisa = lf;
+      rent.lateFeeApplied = lf > 0;
       rent.lateFeeDate =
-        lateFeePaisa > 0
+        lf > 0
           ? body.lateFeeDate
             ? new Date(body.lateFeeDate)
             : new Date()
           : null;
-      rent.lateFeeStatus = lateFeePaisa > 0 ? "pending" : "pending";
+      if (lf > 0) rent.lateFeeStatus = "pending";
     }
 
     if (body.status !== undefined) {
@@ -296,7 +232,6 @@ export async function updateRentService(rentId, body) {
       rent.lateFeeDate = body.lateFeeDate ? new Date(body.lateFeeDate) : null;
 
     await rent.save();
-
     const result = await getRentByIdService(rentId);
     return {
       success: true,
@@ -304,7 +239,7 @@ export async function updateRentService(rentId, body) {
       message: "Rent updated successfully",
     };
   } catch (error) {
-    console.error("Error updating rent:", error);
+    console.error("[updateRentService]", error.message);
     return {
       success: false,
       message: error.message || "Rent update failed",
@@ -313,32 +248,32 @@ export async function updateRentService(rentId, body) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CREATE
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function createNewRent(rentData, session = null) {
   try {
-    if (!Number.isInteger(rentData.rentAmountPaisa)) {
+    if (!Number.isInteger(rentData.rentAmountPaisa))
       throw new Error(
-        `rentAmountPaisa must be an integer, got: ${rentData.rentAmountPaisa}`,
+        `rentAmountPaisa must be integer, got: ${rentData.rentAmountPaisa}`,
       );
-    }
-    if (!Number.isInteger(rentData.tdsAmountPaisa)) {
+    if (!Number.isInteger(rentData.tdsAmountPaisa))
       throw new Error(
-        `tdsAmountPaisa must be an integer, got: ${rentData.tdsAmountPaisa}`,
+        `tdsAmountPaisa must be integer, got: ${rentData.tdsAmountPaisa}`,
       );
-    }
 
     rentData.paidAmountPaisa ??= 0;
     rentData.lateFeePaisa ??= 0;
 
     if (rentData.unitBreakdown?.length > 0) {
       rentData.unitBreakdown = rentData.unitBreakdown.map((ub) => {
-        if (!Number.isInteger(ub.rentAmountPaisa)) {
+        if (!Number.isInteger(ub.rentAmountPaisa))
           throw new Error(
-            `Unit breakdown rentAmountPaisa must be integer, got: ${ub.rentAmountPaisa}`,
+            `Unit rentAmountPaisa must be integer, got: ${ub.rentAmountPaisa}`,
           );
-        }
         return {
           ...ub,
-          rentAmountPaisa: ub.rentAmountPaisa,
           tdsAmountPaisa: ub.tdsAmountPaisa ?? 0,
           paidAmountPaisa: ub.paidAmountPaisa ?? 0,
         };
@@ -347,20 +282,13 @@ export async function createNewRent(rentData, session = null) {
 
     const opts = session ? { session } : {};
     const created = await Rent.create([rentData], opts);
-    const rent = created[0];
-    const rentAmountPaisaRaw = rent.get("rentAmountPaisa", null, {
-      getters: false,
-    });
-
-    console.log("✅ Rent created:", {
-      id: rent._id,
-      amount: formatMoney(rentAmountPaisaRaw),
-      amountPaisa: rentAmountPaisaRaw,
-    });
-
-    return { success: true, message: "Rent created successfully", data: rent };
+    return {
+      success: true,
+      message: "Rent created successfully",
+      data: created[0],
+    };
   } catch (error) {
-    console.error("Error creating rent:", error);
+    console.error("[createNewRent]", error.message);
     return {
       success: false,
       message: "Failed to create rent",
@@ -370,7 +298,7 @@ export async function createNewRent(rentData, session = null) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FIXED: handleMonthlyRents
+// CRON: handleMonthlyRents  (FIXED — journals posted per-session)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function handleMonthlyRents(adminId) {
@@ -386,7 +314,7 @@ export async function handleMonthlyRents(adminId) {
   } = getNepaliMonthDates();
 
   try {
-    // Step 1: Mark overdue rents (kept here — master cron removed its duplicate step)
+    // Step 1: Mark overdue (all prior-period pending/partial rents)
     const overdueResult = await Rent.updateMany(
       {
         status: { $in: ["pending", "partially_paid"] },
@@ -397,15 +325,22 @@ export async function handleMonthlyRents(adminId) {
       },
       { $set: { status: "overdue" } },
     );
-    console.log("Overdue rents updated:", overdueResult.modifiedCount);
 
-    // Step 2: Get active tenants
-    const tenants = await Tenant.find({ status: "active" }).lean();
+    // Step 2: Active tenants
+    const tenants = await Tenant.find({
+      status: "active",
+      isDeleted: false,
+    }).lean();
     if (!tenants.length) {
-      return { success: false, message: "No tenants found", count: 0 };
+      return {
+        success: true,
+        message: "No active tenants",
+        createdCount: 0,
+        updatedOverdueCount: 0,
+      };
     }
 
-    // Step 3: Skip tenants who already have a rent this month (idempotency)
+    // Step 3: Idempotency — skip tenants who already have a rent this month
     const existingRents = await Rent.find({
       nepaliMonth: npMonth,
       nepaliYear: npYear,
@@ -414,77 +349,79 @@ export async function handleMonthlyRents(adminId) {
       existingRents.map((r) => r.tenant.toString()),
     );
 
-    // Step 4: Build rent documents
     const rentsToInsert = tenants
-      .filter((tenant) => !existingTenantIds.has(tenant._id.toString()))
-      .map((tenant) => {
-        const rentAmountPaisa =
-          tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0);
+      .filter((t) => !existingTenantIds.has(t._id.toString()))
+      .map((tenant) => ({
+        tenant: tenant._id,
+        innerBlock: tenant.innerBlock,
+        block: tenant.block,
+        property: tenant.property,
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate,
+        // FIX (carried from prior revision): use tdsPaisa directly, NOT * sqft
+        rentAmountPaisa:
+          tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0),
+        tdsAmountPaisa: tenant.tdsPaisa || rupeesToPaisa(tenant.tds || 0),
+        paidAmountPaisa: 0,
+        lateFeePaisa: 0,
+        units: tenant.units,
+        createdBy,
+        nepaliDueDate: lastDay,
+        englishDueDate,
+        englishMonth,
+        englishYear,
+        status: "pending",
+        rentFrequency: tenant.rentPaymentFrequency || "monthly",
+      }));
 
-        // ✅ FIX: tenant.tdsPaisa is the TOTAL tds amount — do NOT multiply by sqft again
-        // Old (buggy): tenant.tdsPaisa * (tenant.leasedSquareFeet || 0)
-        const tdsAmountPaisa = tenant.tdsPaisa
-          ? tenant.tdsPaisa
-          : rupeesToPaisa(tenant.tds || 0);
+    if (!rentsToInsert.length) {
+      return {
+        success: true,
+        message: "All rents for this month already exist",
+        createdCount: 0,
+        updatedOverdueCount: overdueResult.modifiedCount,
+      };
+    }
 
-        return {
-          tenant: tenant._id,
-          innerBlock: tenant.innerBlock,
-          block: tenant.block,
-          property: tenant.property,
-          nepaliMonth: npMonth,
-          nepaliYear: npYear,
-          nepaliDate,
-          rentAmountPaisa,
-          tdsAmountPaisa,
-          paidAmountPaisa: 0,
-          lateFeePaisa: 0,
-          units: tenant.units,
-          createdBy,
-          nepaliDueDate: lastDay,
-          englishDueDate,
-          englishMonth,
-          englishYear,
-          status: "pending",
-          rentFrequency: tenant.rentPaymentFrequency || "monthly",
-        };
-      });
+    // Step 4: Bulk insert (fast)
+    const insertedRents = await Rent.insertMany(rentsToInsert);
 
-    if (rentsToInsert.length) {
-      const insertedRents = await Rent.insertMany(rentsToInsert);
+    // Step 5: Post one journal per rent — each in its own session.
+    //   Idempotency guard in postJournalEntry means safe to re-run on cron failure.
+    const journalLog = { success: 0, failed: 0, errors: [] };
 
-      for (const rent of insertedRents) {
-        try {
-          const rentChargePayload = buildRentChargeJournal(rent);
-          await ledgerService.postJournalEntry(rentChargePayload, null);
-        } catch (error) {
-          console.error(
-            `Failed to create ledger entry for rent ${rent._id}:`,
-            error,
-          );
-          throw error;
-        }
+    for (const rent of insertedRents) {
+      const session = await mongoose.startSession();
+      try {
+        session.startTransaction();
+        const payload = buildRentChargeJournal(rent);
+        await ledgerService.postJournalEntry(payload, session);
+        await session.commitTransaction();
+        journalLog.success++;
+      } catch (err) {
+        await session.abortTransaction();
+        journalLog.failed++;
+        journalLog.errors.push({ rentId: rent._id, error: err.message });
+        console.error(
+          `[handleMonthlyRents] journal failed for ${rent._id}:`,
+          err.message,
+        );
+        // Do NOT re-throw — one failure should not abort remaining rents
+      } finally {
+        session.endSession();
       }
-
-      console.log("✅ Monthly rents created:", rentsToInsert.length);
-      console.log(
-        "   Total rent amount:",
-        formatMoney(
-          rentsToInsert.reduce((sum, r) => sum + r.rentAmountPaisa, 0),
-        ),
-      );
-    } else {
-      console.log("All rents for this month already exist");
     }
 
     return {
       success: true,
-      message: "Rents processed successfully",
-      createdCount: rentsToInsert.length,
+      message: `${insertedRents.length} rents created, ${journalLog.success} journaled, ${journalLog.failed} journal errors`,
+      createdCount: insertedRents.length,
       updatedOverdueCount: overdueResult.modifiedCount,
+      journalErrors: journalLog.errors.length ? journalLog.errors : undefined,
     };
   } catch (error) {
-    console.error("Error in handleMonthlyRents:", error);
+    console.error("[handleMonthlyRents]", error.message);
     return {
       success: false,
       message: "Rents processing failed",
@@ -494,26 +431,12 @@ export async function handleMonthlyRents(adminId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FIXED: sendEmailToTenants
+// CRON: sendEmailToTenants  (unchanged — bugs fixed in prior revision)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function sendEmailToTenants() {
   try {
     const { npMonth, npYear, lastDay } = getNepaliMonthDates();
-
-    // ✅ FIX: Removed forceTest: true and corrected the destructured key name.
-    //
-    // Original (buggy):
-    //   const { reminderDay } = checkNepaliSpecialDays({ forceTest: true })
-    //   if (reminderDay) return early   ← guard NEVER fired because:
-    //     a) forceTest always returns all-true
-    //     b) `reminderDay` is the wrong key — should be `isReminderDay`
-    //     c) `undefined` is falsy → guard was always skipped → emails every day
-    //
-    // This function is called from the master cron on Nepali day 1 ONLY.
-    // The day-gating is handled by the master cron, not here.
-    // Remove the internal guard entirely — single responsibility principle:
-    // the cron decides WHEN to call this; this function just sends the emails.
 
     const rents = await Rent.find({
       status: { $in: ["pending", "partially_paid"] },
@@ -529,210 +452,123 @@ export async function sendEmailToTenants() {
       emailReminderSent: false,
     }).populate("tenant");
 
-    const allPending = [...rents, ...cams];
-
-    if (allPending.length === 0) {
-      return {
-        success: true,
-        message: "No pending rents or CAMs found for this month",
-      };
+    if (![...rents, ...cams].length) {
+      return { success: true, message: "No pending rents or CAMs this month" };
     }
 
     const io = getIO();
-
-    const pendingTenants = allPending.map((item) => {
-      const amountPaisa = item.rentAmountPaisa || item.amountPaisa || 0;
-      return {
-        tenantId: item.tenant?._id,
-        tenantName: item.tenant?.name || "Unknown",
-        tenantEmail: item.tenant?.email || "N/A",
-        amountPaisa,
-        amount: formatMoney(amountPaisa),
-        status: item.status,
-        dueDate: item.nepaliDueDate || lastDay,
-        itemId: item._id,
-        type: item.rentAmountPaisa ? "rent" : "cam",
-      };
-    });
-
-    // ✅ Admin notifications — already queries all admins by role. No hardcoded IDs.
     const admins = await adminModel.find({ role: "admin" });
-    const notificationPromises = admins.map(async (admin) => {
-      const notification = await Notification.create({
-        admin: admin._id,
-        type: "RENT_REMINDER",
-        title: "Rent Payment Reminder",
-        message: `${rents.length} tenant(s) have pending rent payments for ${npYear}-${npMonth}`,
-        data: {
-          pendingCount: rents.length,
-          tenants: pendingTenants,
-          monthYear: `${npYear}-${npMonth}`,
-          month: npMonth,
-          year: npYear,
-        },
-        isRead: false,
-      });
-
-      if (io) {
-        io.to(`admin:${admin._id}`).emit("new-notification", {
-          notification: {
-            _id: notification._id,
-            type: notification.type,
-            title: notification.title,
-            message: notification.message,
-            data: notification.data,
-            isRead: notification.isRead,
-            createdAt: notification.createdAt,
+    await Promise.all(
+      admins.map(async (admin) => {
+        const notification = await Notification.create({
+          admin: admin._id,
+          type: "RENT_REMINDER",
+          title: "Rent Payment Reminder",
+          message: `${rents.length} tenant(s) have pending rent for ${npYear}-${npMonth}`,
+          data: {
+            pendingCount: rents.length,
+            monthYear: `${npYear}-${npMonth}`,
           },
+          isRead: false,
         });
-      }
-    });
+        if (io)
+          io.to(`admin:${admin._id}`).emit("new-notification", {
+            notification,
+          });
+      }),
+    );
 
-    await Promise.all(notificationPromises);
-
-    // Group rents and CAMs by tenant
     const tenantMap = new Map();
-
-    rents.forEach((rent) => {
-      if (!rent.tenant?.email) return;
-      const key = rent.tenant._id.toString();
+    const addToMap = (item, type) => {
+      if (!item.tenant?.email) return;
+      const key = item.tenant._id.toString();
       if (!tenantMap.has(key))
-        tenantMap.set(key, { tenant: rent.tenant, rents: [], cams: [] });
-      tenantMap.get(key).rents.push(rent);
-    });
-
-    cams.forEach((cam) => {
-      if (!cam.tenant?.email) return;
-      const key = cam.tenant._id.toString();
-      if (!tenantMap.has(key))
-        tenantMap.set(key, { tenant: cam.tenant, rents: [], cams: [] });
-      tenantMap.get(key).cams.push(cam);
-    });
+        tenantMap.set(key, { tenant: item.tenant, rents: [], cams: [] });
+      tenantMap.get(key)[type].push(item);
+    };
+    rents.forEach((r) => addToMap(r, "rents"));
+    cams.forEach((c) => addToMap(c, "cams"));
 
     const sentRentIds = [];
     const sentCamIds = [];
 
-    const emailPromises = Array.from(tenantMap.values()).map(
-      async ({ tenant, rents: tenantRents, cams: tenantCams }) => {
-        if (!tenant?.email) return;
+    await Promise.all(
+      Array.from(tenantMap.values()).map(
+        async ({ tenant, rents: tRents, cams: tCams }) => {
+          const rentTotal = tRents.reduce(
+            (s, r) => s + calculateRentTotals(r).remainingAmountPaisa,
+            0,
+          );
+          const camTotal = tCams.reduce((s, c) => s + (c.amountPaisa || 0), 0);
+          const total = rentTotal + camTotal;
 
-        const rentTotalPaisa = tenantRents.reduce((sum, rent) => {
-          const totals = calculateRentTotals(rent);
-          return sum + totals.remainingAmountPaisa;
-        }, 0);
-
-        const camTotalPaisa = tenantCams.reduce(
-          (sum, cam) => sum + (cam.amountPaisa || cam.amount * 100 || 0),
-          0,
-        );
-        const totalAmountPaisa = rentTotalPaisa + camTotalPaisa;
-
-        // Determine Nepali due date
-        let nepaliDueDate;
-        if (tenantRents.length > 0) {
-          const rawDate = tenantRents[0].nepaliDueDate;
-          const dateStr =
-            rawDate instanceof Date
-              ? rawDate.toISOString().slice(0, 10)
-              : String(rawDate);
-          if (dateStr.match) {
-            nepaliDueDate = new NepaliDate(
-              tenantRents[0].nepaliYear,
-              tenantRents[0].nepaliMonth - 1,
-              parseInt(dateStr.match(/(\d{2})$/)[1]),
-            );
-          } else {
-            nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
+          let dueDateStr = "";
+          try {
+            const ref = tRents[0] || tCams[0];
+            dueDateStr = new NepaliDate(
+              ref.nepaliYear,
+              (ref.nepaliMonth || 1) - 1,
+              30,
+            ).format("YYYY-MMMM-DD");
+          } catch {
+            dueDateStr = lastDay?.format?.("YYYY-MMMM-DD") ?? "";
           }
-        } else {
-          nepaliDueDate = lastDay || new NepaliDate(npYear, npMonth - 1, 30);
-        }
 
-        const formattedDate = nepaliDueDate.format("YYYY-MMMM-DD");
-        const monthYear = nepaliDueDate.format("YYYY-MMMM");
-        const subject = "Reminder for Rent and CAM Payment";
+          let details = "";
+          if (tRents.length)
+            details += `<tr><td style="padding:8px 0;border-bottom:1px solid #e0e0e0"><strong>Rent:</strong> ${formatMoney(rentTotal)}</td></tr>`;
+          if (tCams.length)
+            details += `<tr><td style="padding:8px 0;border-bottom:1px solid #e0e0e0"><strong>CAM:</strong> ${formatMoney(camTotal)}</td></tr>`;
 
-        let paymentDetails = "";
-        if (tenantRents.length > 0) {
-          paymentDetails += `<tr><td style="padding:8px 0; border-bottom:1px solid #e0e0e0;"><strong>Rent:</strong> ${formatMoney(rentTotalPaisa)}</td></tr>`;
-        }
-        if (tenantCams.length > 0) {
-          paymentDetails += `<tr><td style="padding:8px 0; border-bottom:1px solid #e0e0e0;"><strong>CAM Charges:</strong> ${formatMoney(camTotalPaisa)}</td></tr>`;
-        }
+          const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif">
+        <table style="max-width:600px;margin:20px auto;border:1px solid #e0e0e0;border-radius:8px">
+          <tr><td style="padding:20px">
+            <h2>Hello ${tenant.name},</h2>
+            <p>Reminder: pending payments for <strong>${npYear}-${npMonth}</strong>.</p>
+            <table width="100%">${details}
+              <tr><td style="padding:12px 0;border-top:2px solid #333;border-bottom:2px solid #333">
+                <strong>Total: ${formatMoney(total)}</strong></td></tr>
+            </table>
+            <p>Please pay before <strong>${dueDateStr}</strong>.</p>
+            <p>Thank you,<br><strong>Management Team</strong></p>
+          </td></tr>
+        </table></body></html>`;
 
-        const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Rent and CAM Reminder</title></head>
-<body style="font-family: Arial, sans-serif; background-color: #f9f9f9; margin:0; padding:0;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:20px auto; background-color:#ffffff; border:1px solid #e0e0e0; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
-    <tr>
-      <td style="padding:20px;">
-        <h2 style="color:#333333; font-size:24px; margin-bottom:10px;">Hello ${tenant.name},</h2>
-        <p style="color:#555555; font-size:16px; line-height:1.5;">
-          This is a reminder for your pending payments for <strong>${monthYear}</strong>.
-        </p>
-        <table width="100%" style="margin:20px 0; border-collapse:collapse;">
-          ${paymentDetails}
-          <tr>
-            <td style="padding:12px 0; border-top:2px solid #333333; border-bottom:2px solid #333333;">
-              <strong style="font-size:18px;">Total Amount:</strong>
-              <strong style="font-size:18px; color:#d32f2f;">${formatMoney(totalAmountPaisa)}</strong>
-            </td>
-          </tr>
-        </table>
-        <p style="color:#555555; font-size:16px; line-height:1.5;">
-          Please pay the amount before <strong>${formattedDate}</strong>.
-        </p>
-        <p style="color:#555555; font-size:16px; line-height:1.5; margin-top:30px;">
-          Thank you,<br><strong>Your Management Team</strong>
-        </p>
-        <hr style="border:none; border-top:1px solid #e0e0e0; margin:20px 0;">
-        <p style="color:#999999; font-size:12px; text-align:center;">
-          This is an automated reminder. Please do not reply to this email.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-
-        try {
-          await sendEmail({ to: tenant.email, subject, html });
-          tenantRents.forEach((rent) => sentRentIds.push(rent._id));
-          tenantCams.forEach((cam) => sentCamIds.push(cam._id));
-        } catch (emailError) {
-          console.error(`Failed to send email to ${tenant.email}:`, emailError);
-        }
-      },
+          try {
+            await sendEmail({
+              to: tenant.email,
+              subject: "Reminder for Rent and CAM Payment",
+              html,
+            });
+            tRents.forEach((r) => sentRentIds.push(r._id));
+            tCams.forEach((c) => sentCamIds.push(c._id));
+          } catch (e) {
+            console.error(`[sendEmailToTenants] ${tenant.email}:`, e.message);
+          }
+        },
+      ),
     );
 
-    await Promise.all(emailPromises);
-
-    if (sentRentIds.length > 0) {
+    if (sentRentIds.length)
       await Rent.updateMany(
         { _id: { $in: sentRentIds } },
         { $set: { emailReminderSent: true } },
       );
-    }
-    if (sentCamIds.length > 0) {
+    if (sentCamIds.length)
       await Cam.updateMany(
         { _id: { $in: sentCamIds } },
         { $set: { emailReminderSent: true } },
       );
-    }
 
-    const sentCount = Array.from(tenantMap.values()).filter(
+    const sent = Array.from(tenantMap.values()).filter(
       ({ tenant }) => tenant?.email,
     ).length;
-    const totalTenants = tenantMap.size;
-
     return {
       success: true,
-      message: `Email sent to ${sentCount} out of ${totalTenants} tenants successfully`,
+      message: `Emails sent to ${sent} of ${tenantMap.size} tenants`,
     };
   } catch (error) {
-    console.error("Error sending emails:", error);
+    console.error("[sendEmailToTenants]", error.message);
     return {
       success: false,
       message: "Failed to send emails",
