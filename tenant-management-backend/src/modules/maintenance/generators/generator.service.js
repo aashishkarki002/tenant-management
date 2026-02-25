@@ -99,24 +99,20 @@ export async function recordDailyCheck(generatorId, checkData, adminId) {
 // ─── Fuel Refill ──────────────────────────────────────────────────────────────
 
 export async function recordFuelRefill(generatorId, refillData, adminId) {
+  console.log(refillData);
   const generator = await Generator.findById(generatorId);
+
   if (!generator)
     return { success: false, message: "Generator not found", data: null };
 
-  const {
-    litersAdded,
-    cost,
-    fuelLevelAfterPercent,
-    supplier,
-    invoiceRef,
-    notes,
-  } = refillData;
+  const { liters, cost, fuelLevelAfterPercent, supplier, invoiceRef, notes } =
+    refillData;
 
   const costPaisa = cost ? rupeesToPaisa(cost) : 0;
 
   generator.fuelRefills.push({
     date: new Date(),
-    litersAdded,
+    litersAdded: liters,
     costPaisa,
     fuelLevelAfterPercent,
     supplier,

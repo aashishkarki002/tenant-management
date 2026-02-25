@@ -1,13 +1,17 @@
 /**
- * SYSTEM SETTINGS SERVICE
+ * systemSetting.service.js
  *
  * Central store for all system-wide policies.
- * Currently manages:
- *   - rentEscalationDefaults  → auto-applied when a new tenant is created
- *   - lateFeePolicy           → applied when rent is overdue past grace period
  *
- * All settings stored in SystemConfig (key/value collection).
- * Add new policies here as the system grows.
+ * Late fee policy types:
+ *
+ *   "percentage"   — one-time flat charge: balance × rate%  (charged once)
+ *   "simple_daily" — linear daily growth:  balance × rate% × days
+ *   "fixed"        — flat rupee amount, charged once
+ *
+ *   "percentage" + compounding=true → daily compound interest (exponential)
+ *   Note: compounding flag is only meaningful when type="percentage".
+ *         For simple_daily and fixed it is ignored.
  */
 
 import { Tenant } from "../tenant/Tenant.Model.js";
@@ -19,14 +23,12 @@ const KEYS = {
   LATE_FEE: "lateFeePolicy",
 };
 
+const VALID_LATE_FEE_TYPES = ["percentage", "simple_daily", "fixed"];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // READ ALL SETTINGS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Return all system settings in a single call.
- * Frontend uses this to populate the entire Settings page on load.
- */
 export async function getAllSystemSettings() {
   const [escalationDoc, lateFeeDoc] = await Promise.all([
     SystemConfig.findOne({ key: KEYS.ESCALATION }),
@@ -49,18 +51,18 @@ export async function getAllSystemSettings() {
     lateFee: {
       enabled: lateFeeDoc?.value?.enabled ?? false,
       gracePeriodDays: lateFeeDoc?.value?.gracePeriodDays ?? 5,
-      type: lateFeeDoc?.value?.type ?? "percentage", // "percentage" | "fixed"
-      amount: lateFeeDoc?.value?.amount ?? 2, // 2% or Rs. 500
-      appliesTo: lateFeeDoc?.value?.appliesTo ?? "rent", // "rent" | "cam" | "both"
-      compounding: lateFeeDoc?.value?.compounding ?? false, // daily compounding?
-      maxLateFeeAmount: lateFeeDoc?.value?.maxLateFeeAmount ?? 0, // 0 = no cap
+      type: lateFeeDoc?.value?.type ?? "simple_daily",
+      amount: lateFeeDoc?.value?.amount ?? 2,
+      appliesTo: lateFeeDoc?.value?.appliesTo ?? "rent",
+      compounding: lateFeeDoc?.value?.compounding ?? false,
+      maxLateFeeAmount: lateFeeDoc?.value?.maxLateFeeAmount ?? 0,
       lastUpdatedAt: lateFeeDoc?.updatedAt ?? null,
     },
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ESCALATION SETTINGS
+// ESCALATION SETTINGS  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function saveEscalationSettings(settings, adminId) {
@@ -176,11 +178,21 @@ export async function disableEscalationForAllTenants() {
 // LATE FEE SETTINGS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Save the late fee policy to SystemConfig.
+ *
+ * Supported types:
+ *   "percentage"   — flat one-time charge (% of overdue balance)
+ *   "simple_daily" — linear daily growth (% × days) ← recommended default
+ *   "fixed"        — flat rupee amount once
+ *
+ *   For "percentage" only: set compounding=true for exponential daily growth.
+ */
 export async function saveLateFeeSettings(settings, adminId) {
   const {
     enabled,
     gracePeriodDays = 5,
-    type = "percentage",
+    type = "simple_daily",
     amount,
     appliesTo = "rent",
     compounding = false,
@@ -188,17 +200,17 @@ export async function saveLateFeeSettings(settings, adminId) {
   } = settings;
 
   if (enabled) {
+    if (!VALID_LATE_FEE_TYPES.includes(type)) {
+      return {
+        success: false,
+        message: `type must be one of: ${VALID_LATE_FEE_TYPES.join(", ")}`,
+        statusCode: 400,
+      };
+    }
     if (!amount || amount <= 0) {
       return {
         success: false,
         message: "Late fee amount must be positive",
-        statusCode: 400,
-      };
-    }
-    if (!["percentage", "fixed"].includes(type)) {
-      return {
-        success: false,
-        message: "Type must be 'percentage' or 'fixed'",
         statusCode: 400,
       };
     }
@@ -216,6 +228,23 @@ export async function saveLateFeeSettings(settings, adminId) {
         statusCode: 400,
       };
     }
+    if (type === "simple_daily" && amount > 100) {
+      return {
+        success: false,
+        message: "Daily rate cannot exceed 100%",
+        statusCode: 400,
+      };
+    }
+    // compounding is only meaningful for "percentage" type
+    if (compounding && type !== "percentage") {
+      return {
+        success: false,
+        message:
+          `compounding=true is only valid for type="percentage". ` +
+          `For daily growth use type="simple_daily" instead.`,
+        statusCode: 400,
+      };
+    }
   }
 
   await SystemConfig.findOneAndUpdate(
@@ -228,7 +257,7 @@ export async function saveLateFeeSettings(settings, adminId) {
         type,
         amount: Number(amount),
         appliesTo,
-        compounding,
+        compounding: type === "percentage" ? Boolean(compounding) : false,
         maxLateFeeAmount: Number(maxLateFeeAmount),
       },
       updatedBy: adminId ?? null,
@@ -240,12 +269,15 @@ export async function saveLateFeeSettings(settings, adminId) {
 }
 
 /**
- * Calculate how much late fee applies to a given overdue amount.
- * Used by the rent processing module when charging late fees.
+ * Calculate the late fee paisa for a given overdue amount.
+ * Used externally when you need a preview without running the cron.
  *
- * @param {number} overdueAmountPaisa  — the overdue rent in paisa
- * @param {number} daysLate            — how many days past due (after grace period)
- * @returns {number}                   — late fee in paisa (0 if policy disabled/not applicable)
+ * Mirrors computeLateFee() in lateFee.cron.js but reads the policy
+ * from DB so callers don't need to load it themselves.
+ *
+ * @param {number} overdueAmountPaisa
+ * @param {number} daysLate            — total days past due (grace is subtracted internally)
+ * @returns {Promise<number>}          — late fee in paisa (0 if disabled)
  */
 export async function calculateLateFee(overdueAmountPaisa, daysLate) {
   const config = await SystemConfig.findOne({ key: KEYS.LATE_FEE });
@@ -255,32 +287,31 @@ export async function calculateLateFee(overdueAmountPaisa, daysLate) {
     config.value;
 
   const effectiveDaysLate = daysLate - gracePeriodDays;
-  if (effectiveDaysLate <= 0) return 0;
+  if (effectiveDaysLate <= 0 || overdueAmountPaisa <= 0) return 0;
 
   let feeInPaisa = 0;
 
   if (type === "fixed") {
-    // Fixed amount in rupees → convert to paisa
-    feeInPaisa = amount * 100;
+    feeInPaisa = Math.round(amount * 100);
+  } else if (type === "simple_daily") {
+    // Linear: balance × rate% × days
+    feeInPaisa = Math.round(
+      overdueAmountPaisa * (amount / 100) * effectiveDaysLate,
+    );
+  } else if (type === "percentage" && compounding) {
+    // Exponential: P × ((1 + r)^d − 1)
+    const r = amount / 100;
+    feeInPaisa = Math.round(
+      overdueAmountPaisa * (Math.pow(1 + r, effectiveDaysLate) - 1),
+    );
   } else {
-    // Percentage of overdue amount
-    if (compounding) {
-      // Daily compounding: amount * (1 + rate/100)^days - amount
-      const dailyRate = amount / 100;
-      feeInPaisa = Math.round(
-        overdueAmountPaisa * (Math.pow(1 + dailyRate, effectiveDaysLate) - 1),
-      );
-    } else {
-      // Simple percentage (flat, not per-day)
-      feeInPaisa = Math.round(overdueAmountPaisa * (amount / 100));
-    }
+    // Flat percentage, charged once
+    feeInPaisa = Math.round(overdueAmountPaisa * (amount / 100));
   }
 
-  // Apply cap if set
   if (maxLateFeeAmount > 0) {
-    const capInPaisa = maxLateFeeAmount * 100;
-    feeInPaisa = Math.min(feeInPaisa, capInPaisa);
+    feeInPaisa = Math.min(feeInPaisa, Math.round(maxLateFeeAmount * 100));
   }
 
-  return feeInPaisa;
+  return Math.max(0, feeInPaisa);
 }

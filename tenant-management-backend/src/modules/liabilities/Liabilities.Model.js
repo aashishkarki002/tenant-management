@@ -7,7 +7,7 @@ const liabilitySchema = new mongoose.Schema(
       ref: "LiabilitySource", // similar to RevenueSource
     },
 
-    amount: {
+    amountPaisa: {
       type: Number,
       required: true,
       min: 0,
@@ -17,6 +17,16 @@ const liabilitySchema = new mongoose.Schema(
       type: Date,
       required: true,
       default: Date.now,
+    },
+    npYear: {
+      type: Number,
+      index: true,
+    },
+    npMonth: {
+      type: Number, // 1-based (1 = Baisakh … 12 = Chaitra)
+      min: 1,
+      max: 12,
+      index: true,
     },
 
     payeeType: {
@@ -35,14 +45,16 @@ const liabilitySchema = new mongoose.Schema(
 
     referenceType: {
       type: String,
-      enum: ["RENT_EXPENSE", "CAM", "SALARY", "MANUAL"  , "SECURITY_DEPOSIT"], // whatever liability types you have
+      enum: ["RENT_EXPENSE", "CAM", "SALARY", "MANUAL", "SECURITY_DEPOSIT"], // whatever liability types you have
       default: "MANUAL",
     },
 
     referenceId: {
       type: mongoose.Schema.Types.ObjectId,
       required: function () {
-        return ["RENT_EXPENSE" , "SALARY" , "SECURITY_DEPOSIT"].includes(this.referenceType);
+        return ["RENT_EXPENSE", "SALARY", "SECURITY_DEPOSIT"].includes(
+          this.referenceType,
+        );
       },
     },
 
@@ -60,7 +72,7 @@ const liabilitySchema = new mongoose.Schema(
       required: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const Liability = mongoose.model("Liability", liabilitySchema);

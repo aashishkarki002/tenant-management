@@ -9,6 +9,9 @@ import {
 import { createNewRent } from "../../rents/rent.service.js";
 import { ledgerService } from "../../ledger/ledger.service.js";
 import { buildRentChargeJournal } from "../../ledger/journal-builders/index.js";
+import { buildSecurityDepositJournal } from "../../ledger/journal-builders/securityDeposit.js";
+import { applyPaymentToBank } from "../../banks/bank.domain.js";
+import { createLiability } from "../../liabilities/liabilty.service.js";
 import { createCam } from "../../cam/cam.service.js";
 import { createSd } from "../../securityDeposits/sd.service.js";
 import { calculateQuarterlyRentCycle } from "../../../utils/quarterlyRentHelper.js";
@@ -504,14 +507,16 @@ export async function createTenantTransaction(body, files, adminId, session) {
       ? Number(body.securityDepositAmount)
       : totals.securityDeposit || 0;
 
+  // FIX: frontend sends "securityDepositPaymentMethod" (formDataBuilder.js line 82)
+  const sdPaymentMethod = body.securityDepositPaymentMethod;
   const hasSecurityDeposit =
-    (body.securityDepositMode &&
-      body.securityDepositMode !== "none" &&
-      body.securityDepositMode !== "disabled") &&
+    sdPaymentMethod &&
+    sdPaymentMethod !== "none" &&
+    sdPaymentMethod !== "disabled" &&
     baseSecurityDeposit > 0;
 
   if (hasSecurityDeposit) {
-    const mode = body.securityDepositMode;
+    const mode = sdPaymentMethod;
 
     const sdPayload = {
       tenant: tenant[0]._id,
@@ -534,8 +539,11 @@ export async function createTenantTransaction(body, files, adminId, session) {
       mode,
     };
 
-    // Allow overriding amount for cash/bank transfer explicitly
-    if (["cash", "bank_transfer"].includes(mode) && hasSecurityDepositAmount) {
+    // Allow overriding amount for all cash-received modes
+    if (
+      ["cash", "bank_transfer", "cheque"].includes(mode) &&
+      hasSecurityDepositAmount
+    ) {
       sdPayload.amountPaisa = rupeesToPaisa(Number(body.securityDepositAmount));
       sdPayload.amount = Number(body.securityDepositAmount);
     }
@@ -557,10 +565,62 @@ export async function createTenantTransaction(body, files, adminId, session) {
       };
     }
 
+    // ── A. Persist the SD document ─────────────────────────────────────────
     const sd = await createSd(sdPayload, adminId, session);
     if (!sd.success) {
       throw new Error(sd.message);
     }
+    const sdDoc = sd.data;
+
+    // ── B. Post double-entry journal (DR Cash/Bank · CR Security Deposit Liability)
+    //      Industry rule: journal fires for EVERY mode except bank_guarantee
+    //      (BG is a contingent liability — it's off-balance-sheet until drawn).
+    if (mode !== "bank_guarantee") {
+      // Determine which Cash/Bank account to debit based on payment mode
+      // bank_transfer & cheque → ACCOUNT_CODES.CASH_BANK (1000)
+      // cash                   → ACCOUNT_CODES.CASH        (1100)
+      // The builder default is CASH_BANK; pass the cash code explicitly for cash.
+      const { ACCOUNT_CODES } = await import("../../ledger/config/accounts.js");
+      const drAccountCode =
+        mode === "cash" ? ACCOUNT_CODES.CASH : ACCOUNT_CODES.CASH_BANK;
+
+      const sdJournalPayload = buildSecurityDepositJournal(
+        sdDoc,
+        {
+          createdBy: adminId,
+          nepaliMonth: npMonth,
+          nepaliYear: npYear,
+          tenantName: tenant[0].name,
+        },
+        drAccountCode,
+      );
+      await ledgerService.postJournalEntry(sdJournalPayload, session);
+
+      // ── C. Update the physical balance of the account that received the money
+      //      Must run inside the SAME session as postJournalEntry (atomicity).
+      await applyPaymentToBank({
+        paymentMethod: mode, // "cash" | "bank_transfer" | "cheque"
+        bankAccountId: body.securityDepositBankAccountId ?? null, // FIX: matches formDataBuilder.js
+        amountPaisa: sdDoc.amountPaisa,
+        session,
+      });
+    }
+
+    // ── D. Record the obligation to return this deposit (LIABILITY record)
+    //      This exists for ALL modes — even bank_guarantee creates a future obligation.
+    await createLiability({
+      source: "SECURITY_DEPOSIT", // LiabilitySource code
+      amountPaisa: sdDoc.amountPaisa, // rupees (Liability.amount field)
+      date: sdDoc.paidDate ?? new Date(),
+      payeeType: "TENANT",
+      tenant: tenant[0]._id,
+      referenceType: "SECURITY_DEPOSIT",
+      referenceId: sdDoc._id,
+      status: "RECORDED",
+      notes: `Security deposit for tenant ${tenant[0].name} — mode: ${mode}`,
+      createdBy: adminId,
+      session,
+    });
   }
 
   // ============================================

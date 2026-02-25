@@ -1,24 +1,29 @@
 /**
- * Master Cron — Sequential rent lifecycle orchestrator
+ * master-cron.js
  *
- * EMAIL FLOWS — two distinct flows, do not confuse them:
+ * Sequential rent lifecycle orchestrator. Runs daily at 00:00 NPT.
  *
- *  Flow A → Tenant email (Step 4):
- *    sendEmailToTenants() sends an email to each TENANT telling them
- *    their rent has been generated and is due this month.
- *    Triggered: Nepali day 1 only.
+ * ── Step order ────────────────────────────────────────────────────────────────
  *
- *  Flow B → Admin notification (Step 5):
- *    sendRentReminders() pushes an in-app Socket.IO notification to
- *    ALL admin dashboards listing which tenants still haven't paid.
- *    This is an ADMIN alert, not a tenant-facing email.
- *    Triggered: Nepali day (monthEnd - 7), e.g. day 23 of a 30-day month.
+ *  Day 1 of each Nepali month:
+ *    [1]  Create rent documents for all active tenants
+ *    [2]  Create CAM documents
+ *    [3a] Mark PREVIOUS month's unpaid/partially-paid rents as "overdue"
+ *    [3b] Apply / recalculate late fees on all overdue rents  ← every day
+ *    [4]  Email tenants about new rent charges
  *
- * ADMIN ID — dynamic resolution:
- *    Previously hardcoded as process.env.SYSTEM_ADMIN_ID.
- *    Now resolved at runtime via getNotifiableAdmins() which queries
- *    the Admin collection for all active admins.
- *    Each admin gets their own Notification document + socket emit.
+ *  Day (lastDayOfMonth − 7):
+ *    [5]  Notify all admins of still-unpaid rents
+ *
+ *  Every other day:
+ *    [3b] Late fee recalculation only (compounding policies grow daily)
+ *
+ * ── Why [3b] runs every day ───────────────────────────────────────────────────
+ *
+ *  Flat fee policies: lateFee.cron skips already-charged rents (idempotent).
+ *  Compounding policies: the fee grows each day → must recalculate daily.
+ *  Running it every day costs one DB query on non-trigger days and is
+ *  significantly simpler than scheduling it separately.
  */
 
 import cron from "node-cron";
@@ -28,9 +33,11 @@ import Admin from "../../modules/auth/admin.Model.js";
 import { Rent } from "../../modules/rents/rent.Model.js";
 import Notification from "../../modules/notifications/notification.model.js";
 import { getIO } from "../../config/socket.js";
-import handleMonthlyRents from "../../modules/rents/rent.service.js";
+import handleMonthlyRents, {
+  sendEmailToTenants,
+} from "../../modules/rents/rent.service.js";
 import { handleMonthlyCams } from "../../modules/cam/cam.service.js";
-import { sendEmailToTenants } from "../../modules/rents/rent.service.js";
+import { applyLateFees } from "./lateFee.cron.js";
 import {
   getNepaliMonthDates,
   addNepaliMonths,
@@ -38,68 +45,36 @@ import {
 import dotenv from "dotenv";
 dotenv.config();
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const LATE_FEE_PERCENTAGE = 5;
-
 // ─── In-process lock ──────────────────────────────────────────────────────────
-// Prevents a second run starting before the first finishes.
-// For multi-server deployments replace with a Redis lock (redlock).
-
+// Replace with redlock for multi-instance deployments.
 let isRunning = false;
 
 // ─── Admin resolver ───────────────────────────────────────────────────────────
 
-/**
- * Fetch all admins who should receive cron notifications at runtime.
- *
- * Industry standard: never hardcode IDs in cron jobs.
- * Query the DB so adding/removing admins requires zero code changes.
- *
- * Adjust the filter to match your Admin schema. Common patterns:
- *   { isActive: true }                                    — all active admins
- *   { isActive: true, role: "super_admin" }               — only super admins
- *   { isActive: true, "notifications.cronAlerts": true }  — opt-in field
- *
- * Falls back to SYSTEM_ADMIN_ID env var if the query returns nothing,
- * so the cron never silently fails during initial setup.
- *
- * @returns {Promise<string[]>} Array of admin ObjectId strings
- */
 async function getNotifiableAdmins() {
   const admins = await Admin.find(
-    { isActive: true, isDeleted: { $ne: true } }, // ← adjust to your schema
-    { _id: 1 }, // only fetch _id, nothing else
+    { isActive: true, isDeleted: { $ne: true } },
+    { _id: 1 },
   ).lean();
 
-  if (admins.length > 0) {
-    return admins.map((a) => a._id.toString());
-  }
+  if (admins.length > 0) return admins.map((a) => a._id.toString());
 
-  // Fallback — useful during initial setup before any admins are seeded
   const fallback = process.env.SYSTEM_ADMIN_ID;
   if (fallback) {
     console.warn(
-      "⚠️  No active admins in DB — falling back to SYSTEM_ADMIN_ID env var",
+      "⚠️  No active admins in DB — falling back to SYSTEM_ADMIN_ID",
     );
     return [fallback];
   }
 
   console.error(
-    "❌ getNotifiableAdmins: no admins found and SYSTEM_ADMIN_ID is not set",
+    "❌ getNotifiableAdmins: no admins found and SYSTEM_ADMIN_ID not set",
   );
   return [];
 }
 
-/**
- * Emit a notification to ALL notifiable admins.
- * Creates one Notification document per admin (separate audit trail per admin).
- *
- * @param {{ type: string, title: string, message: string, data: Object, adminIds: string[] }} params
- */
 async function notifyAdmins({ type, title, message, data, adminIds }) {
   const io = getIO();
-
   for (const adminId of adminIds) {
     try {
       const notification = await Notification.create({
@@ -109,7 +84,6 @@ async function notifyAdmins({ type, title, message, data, adminIds }) {
         message,
         data,
       });
-
       io.to(`admin:${adminId}`).emit("new-notification", {
         notification: {
           _id: notification._id,
@@ -122,13 +96,12 @@ async function notifyAdmins({ type, title, message, data, adminIds }) {
         },
       });
     } catch (err) {
-      // One admin failing must not block the rest
       console.error(`   ❌ Failed to notify admin ${adminId}:`, err.message);
     }
   }
 }
 
-// ─── Nepali date resolver ─────────────────────────────────────────────────────
+// ─── Nepali today ─────────────────────────────────────────────────────────────
 
 function getTodayNepali() {
   const today = new NepaliDate();
@@ -136,7 +109,7 @@ function getTodayNepali() {
   const todayMonth = today.getMonth() + 1; // 1-based
   const todayYear = today.getYear();
   const lastDayOfMonth = NepaliDate.getDaysOfMonth(todayYear, today.getMonth());
-  const reminderDay = lastDayOfMonth - 7; // e.g. 23 of a 30-day month
+  const reminderDay = lastDayOfMonth - 7;
 
   return {
     today,
@@ -148,64 +121,33 @@ function getTodayNepali() {
   };
 }
 
-// ─── Step 3: Overdue marking ──────────────────────────────────────────────────
+// ─── Step 3a: Mark overdue ────────────────────────────────────────────────────
 
-async function markOverdueRents() {
-  const { today, todayMonth, todayYear } = getTodayNepali();
-
+async function markOverdueRents(today) {
   const prevNepali = addNepaliMonths(today, -1);
   const prevYear = prevNepali.getYear();
   const prevMonth = prevNepali.getMonth() + 1;
 
   console.log(
-    `  🔴 [3/5] Overdue marking — targeting ${prevYear}-${String(prevMonth).padStart(2, "0")}`,
+    `  🔴 [3a] Overdue marking — ` +
+      `${prevYear}-${String(prevMonth).padStart(2, "0")}`,
   );
 
-  const updateResult = await Rent.updateMany(
-    { nepaliYear: prevYear, nepaliMonth: prevMonth, status: "pending" },
+  const result = await Rent.updateMany(
+    {
+      nepaliYear: prevYear,
+      nepaliMonth: prevMonth,
+      // Both pending AND partially_paid become overdue if month has turned
+      status: { $in: ["pending", "partially_paid"] },
+    },
     { $set: { status: "overdue", overdueMarkedAt: new Date() } },
   );
 
-  const markedCount = updateResult.modifiedCount;
-  console.log(`       → ${markedCount} rent(s) marked overdue`);
-
-  if (markedCount === 0) return { marked: 0, lateFeeApplied: 0, errors: [] };
-
-  const overdueRents = await Rent.find({
-    nepaliYear: prevYear,
-    nepaliMonth: prevMonth,
-    status: "overdue",
-    lateFeeApplied: { $ne: true },
-  }).lean();
-
-  let lateFeeApplied = 0;
-  const errors = [];
-
-  for (const rent of overdueRents) {
-    try {
-      const lateFeeAmountPaisa = Math.round(
-        (rent.amountPaisa * LATE_FEE_PERCENTAGE) / 100,
-      );
-      await Rent.findByIdAndUpdate(rent._id, {
-        $set: {
-          lateFeeApplied: true,
-          lateFeeAmountPaisa,
-          lateFeeAppliedAt: new Date(),
-          totalDuePaisa: (rent.amountPaisa || 0) + lateFeeAmountPaisa,
-        },
-      });
-      lateFeeApplied++;
-    } catch (err) {
-      errors.push(`rent ${rent._id}: ${err.message}`);
-    }
-  }
-
-  return { marked: markedCount, lateFeeApplied, errors };
+  console.log(`       → ${result.modifiedCount} rent(s) marked overdue`);
+  return { marked: result.modifiedCount };
 }
 
-// ─── Step 5: Admin reminder notifications ────────────────────────────────────
-// Notifies ADMINS about tenants who haven't paid — NOT a tenant-facing email.
-// Tenant email is handled separately in Step 4 via sendEmailToTenants().
+// ─── Step 5: Admin reminders ──────────────────────────────────────────────────
 
 async function sendRentReminders(adminIds) {
   const { todayDay, todayMonth, todayYear, lastDayOfMonth } = getTodayNepali();
@@ -213,20 +155,19 @@ async function sendRentReminders(adminIds) {
   const daysLeft = lastDayOfMonth - todayDay;
 
   console.log(
-    `  📣 [5/5] Admin reminders — Nepali day ${todayDay}, ` +
-      `due ${lastDayNepali} (${daysLeft}d left), ` +
-      `notifying ${adminIds.length} admin(s)`,
+    `  📣 [5] Admin reminders — day ${todayDay}, ` +
+      `${daysLeft}d left, ${adminIds.length} admin(s)`,
   );
 
   const pendingRents = await Rent.find({
     nepaliYear: todayYear,
     nepaliMonth: todayMonth,
-    status: "pending",
+    status: { $in: ["pending", "partially_paid"] },
   })
     .populate("tenant", "name")
     .lean();
 
-  if (pendingRents.length === 0) {
+  if (!pendingRents.length) {
     console.log("       → No pending rents");
     return { notified: 0, skipped: 0, errors: [] };
   }
@@ -237,7 +178,6 @@ async function sendRentReminders(adminIds) {
 
   for (const rent of pendingRents) {
     try {
-      // Idempotency: one existing record for this rent+month = already sent
       const alreadySent = await Notification.exists({
         type: "RENT_REMINDER",
         "data.rentId": rent._id,
@@ -251,16 +191,13 @@ async function sendRentReminders(adminIds) {
       }
 
       const tenantName = rent.tenant?.name ?? "Tenant";
-      const message =
-        `Reminder: Rent for ${tenantName} (Nepali ${todayYear}-` +
-        `${String(todayMonth).padStart(2, "0")}) is still unpaid. ` +
-        `Due by ${lastDayNepali} — ${daysLeft} day(s) left. ` +
-        `A ${LATE_FEE_PERCENTAGE}% late fee applies after the due date.`;
 
       await notifyAdmins({
         type: "RENT_REMINDER",
         title: "Rent Due Reminder",
-        message,
+        message:
+          `${tenantName}'s rent for ${todayYear}-${String(todayMonth).padStart(2, "0")} ` +
+          `is unpaid. Due by ${lastDayNepali} (${daysLeft}d left).`,
         adminIds,
         data: {
           rentId: rent._id,
@@ -276,7 +213,6 @@ async function sendRentReminders(adminIds) {
       notified++;
     } catch (err) {
       errors.push(`rent ${rent._id}: ${err.message}`);
-      console.error(`   ❌ Reminder error (${rent._id}):`, err.message);
     }
   }
 
@@ -288,54 +224,53 @@ async function sendRentReminders(adminIds) {
 
 export async function masterCron({ forceRun = false } = {}) {
   if (isRunning) {
-    console.warn("⚠️  Master cron already running — skipping this trigger");
+    console.warn("⚠️  Master cron already running — skipping");
     return;
   }
   isRunning = true;
 
   const startedAt = new Date();
-  const { todayDay, todayMonth, todayYear, lastDayOfMonth, reminderDay } =
-    getTodayNepali();
+  const {
+    today,
+    todayDay,
+    todayMonth,
+    todayYear,
+    lastDayOfMonth,
+    reminderDay,
+  } = getTodayNepali();
 
   const isFirstDay = forceRun || todayDay === 1;
   const isReminderDay = forceRun || todayDay === reminderDay;
 
   console.log(
-    `\n${"═".repeat(60)}\n` +
-      `⏰ MASTER CRON — Nepali ${todayYear}-${String(todayMonth).padStart(2, "0")}-` +
-      `${String(todayDay).padStart(2, "0")}` +
-      ` | ${lastDayOfMonth}-day month | reminder: day ${reminderDay}` +
-      (forceRun ? " | ⚠️ forceRun" : "") +
-      `\n${"═".repeat(60)}`,
+    `\n${"═".repeat(64)}\n` +
+      `⏰ MASTER CRON  ${todayYear}-${String(todayMonth).padStart(2, "0")}-${String(todayDay).padStart(2, "0")} (Nepali)` +
+      `  |  ${lastDayOfMonth}-day month  |  reminder: day ${reminderDay}` +
+      (forceRun ? "  |  ⚠️ forceRun" : "") +
+      `\n${"═".repeat(64)}`,
   );
 
-  if (!isFirstDay && !isReminderDay) {
-    console.log("⏭️  Not a trigger day — exiting\n");
-    isRunning = false;
-    return;
-  }
-
-  // Resolve admins once — shared across all steps that need them
   const adminIds = await getNotifiableAdmins();
-  console.log(`👥 Notifiable admins resolved: ${adminIds.length}`);
+  console.log(`👥 Admins: ${adminIds.length}`);
 
   try {
+    // ── Day-1 steps ─────────────────────────────────────────────────────────
     if (isFirstDay) {
-      // Step 1 — Create rent documents for all active tenants
-      console.log("\n  📄 [1/5] Creating monthly rents...");
+      // [1] Create rent documents
+      console.log("\n  📄 [1] Creating monthly rents...");
       const rentResult = await handleMonthlyRents();
       console.log(`       → ${rentResult.message}`);
       await CronLog.create({
         type: "MONTHLY_RENT",
         ranAt: startedAt,
         message: rentResult.message,
-        count: rentResult.count || 0,
+        count: rentResult.createdCount || 0,
         success: rentResult.success,
         error: rentResult.error?.toString() ?? null,
       });
 
-      // Step 2 — Create CAM documents
-      console.log("\n  🏢 [2/5] Creating monthly CAMs...");
+      // [2] Create CAM documents
+      console.log("\n  🏢 [2] Creating monthly CAMs...");
       const camResult = await handleMonthlyCams();
       console.log(`       → ${camResult.message}`);
       await CronLog.create({
@@ -347,24 +282,22 @@ export async function masterCron({ forceRun = false } = {}) {
         error: camResult.error?.toString() ?? null,
       });
 
-      // Step 3 — Mark PREVIOUS month's unpaid rents as overdue + apply late fees
-      // Runs after Step 1 so freshly-created rents are never accidentally flagged
+      // [3a] Mark previous month overdue
+      // Must run before [3b] so newly-marked rents are included in the fee query
       console.log();
-      const overdueResult = await markOverdueRents();
+      const overdueResult = await markOverdueRents(today);
       await CronLog.create({
         type: "OVERDUE_MARKING",
         ranAt: startedAt,
-        message: `${overdueResult.marked} overdue, ${overdueResult.lateFeeApplied} late fees applied.`,
+        message: `${overdueResult.marked} rent(s) marked overdue`,
         count: overdueResult.marked,
         success: true,
-        error: overdueResult.errors.length
-          ? overdueResult.errors.join(" | ")
-          : null,
+        error: null,
       });
 
-      // Step 4 — Email TENANTS: "Your rent for this month has been generated, please pay"
-      // Runs after Step 1 so the email can reference real Rent document data
-      console.log("\n  📧 [4/5] Emailing tenants about new rent charges...");
+      // [4] Email tenants
+      // Runs after [3a] so the email reflects the correct status
+      console.log("\n  📧 [4] Emailing tenants...");
       const emailResult = await sendEmailToTenants();
       console.log(`       → ${emailResult?.message ?? "done"}`);
       await CronLog.create({
@@ -377,14 +310,57 @@ export async function masterCron({ forceRun = false } = {}) {
       });
     }
 
-    // Step 5 — Notify ADMINS: "These tenants haven't paid yet" (reminder day only)
+    // ── [3b] Late fees — runs EVERY day ──────────────────────────────────────
+    // Flat policies: no-op on non-first days (lateFeeApplied guard inside cron)
+    // Compounding policies: recalculates and posts delta journal daily
+    console.log("\n  💸 [3b] Late fee run...");
+    const lateFeeResult = await applyLateFees(adminIds[0] ?? null);
+
+    // Only write CronLog if something happened (avoid log spam on quiet days)
+    if (lateFeeResult.processed > 0 || lateFeeResult.failed > 0) {
+      await CronLog.create({
+        type: "LATE_FEE_APPLICATION",
+        ranAt: startedAt,
+        message: lateFeeResult.message,
+        count: lateFeeResult.processed,
+        success: lateFeeResult.failed === 0,
+        error: lateFeeResult.errors?.length
+          ? lateFeeResult.errors
+              .map((e) => `${e.rentId}: ${e.error}`)
+              .join(" | ")
+          : null,
+      });
+    }
+
+    // Notify admins if fees were charged today
+    if (lateFeeResult.processed > 0 && adminIds.length > 0) {
+      await notifyAdmins({
+        type: "LATE_FEE_APPLIED",
+        title: "Late Fees Applied",
+        message:
+          `${lateFeeResult.processed} late fee(s) applied — ` +
+          `Rs${(lateFeeResult.totalDeltaFeePaisa / 100).toFixed(2)} total.`,
+        adminIds,
+        data: {
+          processed: lateFeeResult.processed,
+          totalDeltaFeePaisa: lateFeeResult.totalDeltaFeePaisa,
+          nepaliYear: todayYear,
+          nepaliMonth: todayMonth,
+          failed: lateFeeResult.failed ?? 0,
+        },
+      });
+    }
+
+    // ── [5] Admin reminders (reminder day only) ───────────────────────────────
     if (isReminderDay) {
       console.log();
       const reminderResult = await sendRentReminders(adminIds);
       await CronLog.create({
         type: "RENT_REMINDER",
         ranAt: startedAt,
-        message: `${reminderResult.notified} reminder(s) sent to ${adminIds.length} admin(s), ${reminderResult.skipped} skipped.`,
+        message:
+          `${reminderResult.notified} sent to ${adminIds.length} admin(s), ` +
+          `${reminderResult.skipped} skipped`,
         count: reminderResult.notified,
         success: true,
         error: reminderResult.errors.length
@@ -394,9 +370,7 @@ export async function masterCron({ forceRun = false } = {}) {
     }
 
     const elapsed = ((new Date() - startedAt) / 1000).toFixed(2);
-    console.log(
-      `\n✅ Master cron complete in ${elapsed}s\n${"═".repeat(60)}\n`,
-    );
+    console.log(`\n✅ Master cron done in ${elapsed}s\n${"═".repeat(64)}\n`);
   } catch (err) {
     console.error("❌ Master cron unhandled error:", err);
     await CronLog.create({
@@ -408,11 +382,11 @@ export async function masterCron({ forceRun = false } = {}) {
       error: err.toString(),
     });
   } finally {
-    isRunning = false; // Always release — even if a step throws
+    isRunning = false;
   }
 }
 
-// ─── Schedule ─────────────────────────────────────────────────────────────────
+// ─── Schedule: daily 00:00 NPT ────────────────────────────────────────────────
 cron.schedule(
   "0 0 0 * * *",
   async () => {
@@ -423,6 +397,9 @@ cron.schedule(
 
 console.log("✅ Master cron scheduled — daily 00:00 NPT");
 console.log(
-  "   Day 1:       [1] create rents → [2] create CAMs → [3] mark overdue → [4] email tenants",
+  "   Day 1:       [1] rents → [2] CAMs → [3a] mark overdue → [4] email tenants",
 );
-console.log("   Day (end-7): [5] notify all admins of unpaid rent");
+console.log(
+  "   Every day:   [3b] late fees (flat: once; compounding: daily delta)",
+);
+console.log("   Day (end-7): [5] admin reminders");

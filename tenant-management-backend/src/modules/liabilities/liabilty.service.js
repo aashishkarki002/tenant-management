@@ -7,7 +7,7 @@ async function createLiability(liabilityData) {
   try {
     const {
       source,
-      amount,
+      amountPaisa,
       date,
       payeeType,
       tenant,
@@ -37,7 +37,7 @@ async function createLiability(liabilityData) {
     const createOpts = session ? { session } : {};
     const doc = {
       source: liabilitySource._id,
-      amount,
+      amountPaisa,
       date,
       payeeType: payeeType === "tenant" ? "TENANT" : payeeType,
       tenant,
@@ -48,10 +48,7 @@ async function createLiability(liabilityData) {
       createdBy,
     };
     // With session, Mongoose requires an array as first argument
-    const created = await Liability.create(
-      session ? [doc] : doc,
-      createOpts
-    );
+    const created = await Liability.create(session ? [doc] : doc, createOpts);
     const liability = Array.isArray(created) ? created[0] : created;
 
     return {

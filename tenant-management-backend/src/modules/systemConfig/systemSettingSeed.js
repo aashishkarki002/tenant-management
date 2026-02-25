@@ -1,15 +1,14 @@
 /**
- * SYSTEM SETTINGS SEED
+ * systemSettingSeed.js
  *
- * Run once to populate initial defaults in SystemConfig.
- * Safe to re-run — uses upsert so it won't create duplicates.
+ * Seeds initial defaults into SystemConfig.
+ * Safe to re-run — skips keys that already exist.
  *
- * Usage:
- *   node src/modules/systemConfig/systemSettingSeed.js
- *
- * Or call seedSystemSettings() from your db.js after connecting:
- *   import { seedSystemSettings } from "./systemSettingSeed.js";
- *   await seedSystemSettings();
+ * Late fee default: simple_daily at 2%/day
+ *   Rs 1,000 overdue × 2% × 1 day  = Rs  20
+ *   Rs 1,000 overdue × 2% × 5 days = Rs 100
+ *   Rs 1,000 overdue × 2% × 10 days = Rs 200
+ *   (capped at Rs 5,000 per occurrence)
  */
 
 import mongoose from "mongoose";
@@ -22,22 +21,22 @@ const INITIAL_SETTINGS = [
   {
     key: "rentEscalationDefaults",
     value: {
-      enabled: false, // Admin must explicitly enable
-      percentageIncrease: 5, // 5% yearly increase — industry standard for Nepal commercial
-      intervalMonths: 12, // Annual
-      appliesTo: "rent_only", // Rent only by default; CAM kept separate
+      enabled: false,
+      percentageIncrease: 5, // 5% yearly increase
+      intervalMonths: 12, // annual
+      appliesTo: "rent_only",
     },
   },
   {
     key: "lateFeePolicy",
     value: {
-      enabled: false, // Admin must explicitly enable
-      gracePeriodDays: 5, // 5-day grace period after due date
-      type: "percentage", // Charge a % of overdue rent
-      amount: 2, // 2% of overdue amount
-      appliesTo: "rent", // Apply to rent only
-      compounding: false, // Flat fee, not daily compounding
-      maxLateFeeAmount: 5000, // Cap at Rs. 5,000 per occurrence
+      enabled: false, // admin must explicitly enable
+      gracePeriodDays: 5, // 5 Nepali days grace after due date
+      type: "simple_daily", // linear daily growth ← recommended
+      amount: 2, // 2% per day of overdue balance
+      appliesTo: "rent",
+      compounding: false, // only applies when type="percentage"
+      maxLateFeeAmount: 5000, // cap at Rs 5,000 per overdue period
     },
   },
 ];
@@ -46,7 +45,6 @@ export async function seedSystemSettings() {
   let connected = false;
 
   try {
-    // Connect only if running as standalone script
     if (mongoose.connection.readyState === 0) {
       await connectDB();
       connected = true;
@@ -55,28 +53,30 @@ export async function seedSystemSettings() {
 
     for (const setting of INITIAL_SETTINGS) {
       const existing = await SystemConfig.findOne({ key: setting.key });
-
       if (existing) {
         console.log(`⏭️  Skipped "${setting.key}" — already exists`);
         continue;
       }
-
       await SystemConfig.create(setting);
       console.log(`✅ Seeded "${setting.key}"`);
     }
 
     console.log("\n🌱 System settings seed complete");
+    console.log("\nLate fee type reference:");
+    console.log("  simple_daily  — Rs 1000 × 2% × days (linear, recommended)");
+    console.log("  percentage    — Rs 1000 × 2% once (flat, one-time)");
+    console.log(
+      "  percentage    — Rs 1000 × ((1.02)^days − 1) (exponential, if compounding=true)",
+    );
+    console.log("  fixed         — Rs 500 flat once");
   } catch (error) {
     console.error("❌ Seed failed:", error.message);
     throw error;
   } finally {
-    if (connected) {
-      await mongoose.disconnect();
-    }
+    if (connected) await mongoose.disconnect();
   }
 }
 
-// Run as standalone script
 if (process.argv[1].endsWith("systemSettingSeed.js")) {
   seedSystemSettings().catch(() => process.exit(1));
 }

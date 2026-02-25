@@ -210,13 +210,11 @@ function addNepaliMonths(npDate, months) {
  * @returns {number} Days difference (positive if npDate2 is later)
  */
 function diffNepaliDays(npDate1, npDate2) {
-  validateNepaliDateInstance(npDate1);
   validateNepaliDateInstance(npDate2);
 
-  const date1 = npDate1.getDateObject();
   const date2 = npDate2.getDateObject();
 
-  const diffMs = date2.getTime() - date1.getTime();
+  const diffMs = date2.getTime() - npDate1.getTime();
   return Math.round(diffMs / (1000 * 60 * 60 * 24));
 }
 

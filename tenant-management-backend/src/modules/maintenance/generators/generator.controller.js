@@ -55,6 +55,7 @@ export async function recordFuelRefillController(req, res) {
       req.body,
       req.admin.id,
     );
+
     return res.status(result.success ? 200 : 404).json(result);
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });

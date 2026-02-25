@@ -15,6 +15,7 @@ const notificationSchema = new mongoose.Schema(
         "RENT_PAID",
         "RENT_REMINDER",
         "PAYMENT_NOTIFICATION",
+        "LATE_FEE_NOTIFICATION",
       ],
     },
     title: {
@@ -33,7 +34,7 @@ const notificationSchema = new mongoose.Schema(
       default: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export default mongoose.models.Notification ||

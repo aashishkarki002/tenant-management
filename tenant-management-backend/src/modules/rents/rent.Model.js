@@ -1,18 +1,25 @@
 /**
- * rent.Model.js  (FIXED)
+ * rent.Model.js
  *
- * FIX 1 — pre-save status check used gross rent instead of effective rent:
- *   OLD: if (this.paidAmountPaisa >= this.rentAmountPaisa) → "paid"
- *        ↑ Tenant who pays effectiveRent (gross - TDS) was NEVER marked paid,
- *          because paidAmountPaisa would be < rentAmountPaisa.
- *   FIX: const effectiveRentPaisa = this.rentAmountPaisa - (this.tdsAmountPaisa || 0)
- *        if (this.paidAmountPaisa >= effectiveRentPaisa) → "paid"
+ * Changes in this revision:
  *
- * FIX 2 — remainingAmountPaisa virtual ignored TDS:
- *   OLD: return this.rentAmountPaisa - this.paidAmountPaisa
- *   FIX: return this.rentAmountPaisa - (this.tdsAmountPaisa || 0) - this.paidAmountPaisa
+ * NEW FIELD — latePaidAmountPaisa:
+ *   Tracks how much of the late fee the tenant has actually paid.
+ *   Late fee is a separate receivable from rent — it must never be mixed
+ *   into paidAmountPaisa (which is strictly for the rent principal).
  *
- * All other logic unchanged.
+ * PRE-SAVE:
+ *   lateFeeStatus is now derived from (lateFeePaisa - latePaidAmountPaisa):
+ *     0 paid   → "pending"
+ *     fully paid → "paid"
+ *   Partial late fee payment is NOT supported by design — payment service
+ *   enforces full-or-nothing on the late fee portion.
+ *
+ * VIRTUAL — remainingLateFeePaisa:
+ *   lateFeePaisa - latePaidAmountPaisa  (how much penalty is still owed)
+ *
+ * VIRTUAL — totalDuePaisa:
+ *   remainingRentPaisa + remainingLateFeePaisa  (the "Pay Now" number)
  */
 
 import mongoose from "mongoose";
@@ -92,6 +99,17 @@ const rentSchema = new mongoose.Schema(
       },
     },
 
+    // NEW: how much of the late fee has been received
+    latePaidAmountPaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "latePaidAmountPaisa must be an integer",
+      },
+    },
+
     // ── Status & metadata ────────────────────────────────────────────────
     status: {
       type: String,
@@ -107,24 +125,32 @@ const rentSchema = new mongoose.Schema(
     units: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Unit", required: true },
     ],
+
     nepaliMonth: { type: Number, required: true, min: 1, max: 12 },
     nepaliYear: { type: Number, required: true },
     nepaliDate: { type: Date, required: true },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
       required: true,
     },
+
     lateFeeDate: { type: Date, default: null },
     lateFeeApplied: { type: Boolean, default: false },
     lateFeeStatus: {
       type: String,
-      enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
+      enum: ["pending", "paid"],
       default: "pending",
     },
+
     lastPaidDate: { type: Date, default: null },
     englishDueDate: { type: Date, required: true },
+
+    // Nepali due date — last day of the billing Nepali month.
+    // This is the canonical anchor for overdue calculations (not englishDueDate).
     nepaliDueDate: { type: Date, required: true },
+
     emailReminderSent: { type: Boolean, default: false },
     lastPaidBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -181,7 +207,6 @@ const rentSchema = new mongoose.Schema(
 
 // ── Virtuals ─────────────────────────────────────────────────────────────────
 
-// FIX: remaining is effective rent (gross − TDS) minus what's been paid
 rentSchema.virtual("effectiveRentPaisa").get(function () {
   return this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
 });
@@ -189,7 +214,7 @@ rentSchema.virtual("effectiveRent").get(function () {
   return paisaToRupees(this.effectiveRentPaisa);
 });
 
-// FIX: was (rentAmountPaisa - paidAmountPaisa) — now correctly deducts TDS
+// Remaining rent principal still owed
 rentSchema.virtual("remainingAmountPaisa").get(function () {
   return (
     this.rentAmountPaisa - (this.tdsAmountPaisa || 0) - this.paidAmountPaisa
@@ -197,6 +222,25 @@ rentSchema.virtual("remainingAmountPaisa").get(function () {
 });
 rentSchema.virtual("remainingAmount").get(function () {
   return paisaToRupees(this.remainingAmountPaisa);
+});
+
+// Remaining late fee still owed (separate from rent)
+rentSchema.virtual("remainingLateFeePaisa").get(function () {
+  return (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
+});
+rentSchema.virtual("remainingLateFee").get(function () {
+  return paisaToRupees(this.remainingLateFeePaisa);
+});
+
+// Total amount the tenant needs to pay to be fully clear
+rentSchema.virtual("totalDuePaisa").get(function () {
+  return (
+    Math.max(0, this.remainingAmountPaisa) +
+    Math.max(0, this.remainingLateFeePaisa)
+  );
+});
+rentSchema.virtual("totalDue").get(function () {
+  return paisaToRupees(this.totalDuePaisa);
 });
 
 rentSchema.virtual("rentAmountFormatted").get(function () {
@@ -221,13 +265,14 @@ rentSchema.pre("save", function () {
     "tdsAmountPaisa",
     "paidAmountPaisa",
     "lateFeePaisa",
+    "latePaidAmountPaisa",
   ]) {
     if (this[field] != null && !Number.isInteger(this[field])) {
       this[field] = Math.round(this[field]);
     }
   }
 
-  // Synchronise root fields from unit breakdown (single source of truth)
+  // Sync root fields from unit breakdown (single source of truth)
   if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
     this.rentAmountPaisa = this.unitBreakdown.reduce(
       (s, u) => s + (u.rentAmountPaisa || 0),
@@ -250,12 +295,17 @@ rentSchema.pre("save", function () {
     });
   }
 
-  // FIX: compare against effectiveRentPaisa (gross − TDS), not gross
+  // Rent status — compare against effectiveRentPaisa (gross − TDS), not gross
   const effectiveRentPaisa = this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
-
   if (this.paidAmountPaisa === 0) this.status = "pending";
   else if (this.paidAmountPaisa >= effectiveRentPaisa) this.status = "paid";
   else this.status = "partially_paid";
+
+  // Late fee status — full payment only (by design: no partial late fee)
+  const remainingLateFee =
+    (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
+  this.lateFeeStatus =
+    remainingLateFee <= 0 && (this.lateFeePaisa || 0) > 0 ? "paid" : "pending";
 });
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
@@ -268,6 +318,7 @@ rentSchema.index({ tenant: 1, status: 1 });
 rentSchema.index({ englishYear: 1, englishMonth: 1 });
 rentSchema.index({ "unitBreakdown.unit": 1 });
 rentSchema.index({ useUnitBreakdown: 1 });
+rentSchema.index({ status: 1, lateFeeApplied: 1 }); // for lateFee.cron queries
 
 // ── Instance methods ──────────────────────────────────────────────────────────
 
@@ -290,6 +341,18 @@ rentSchema.methods.applyPayment = function (
     });
   }
   // Status sync happens in pre-save hook
+};
+
+// Apply a late fee payment — separate from rent principal
+rentSchema.methods.applyLateFeePayment = function (
+  amountPaisa,
+  paymentDate,
+  receivedBy,
+) {
+  this.latePaidAmountPaisa = (this.latePaidAmountPaisa || 0) + amountPaisa;
+  this.lastPaidDate = paymentDate;
+  this.lastPaidBy = receivedBy;
+  // lateFeeStatus derived in pre-save
 };
 
 rentSchema.methods.getUnitPaymentStatus = function (unitId) {
@@ -324,6 +387,9 @@ rentSchema.methods.getFinancialSummary = function () {
       paidAmount: this.paidAmountPaisa,
       remainingAmount: this.remainingAmountPaisa,
       lateFee: this.lateFeePaisa || 0,
+      latePaid: this.latePaidAmountPaisa || 0,
+      remainingLateFee: this.remainingLateFeePaisa,
+      totalDue: this.totalDuePaisa,
     },
     formatted: {
       rentAmount: formatMoney(this.rentAmountPaisa),
@@ -332,8 +398,12 @@ rentSchema.methods.getFinancialSummary = function () {
       paidAmount: formatMoney(this.paidAmountPaisa),
       remainingAmount: formatMoney(this.remainingAmountPaisa),
       lateFee: formatMoney(this.lateFeePaisa || 0),
+      latePaid: formatMoney(this.latePaidAmountPaisa || 0),
+      remainingLateFee: formatMoney(this.remainingLateFeePaisa),
+      totalDue: formatMoney(this.totalDuePaisa),
     },
     status: this.status,
+    lateFeeStatus: this.lateFeeStatus,
     rentFrequency: this.rentFrequency,
   };
 };

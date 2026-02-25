@@ -1,30 +1,33 @@
 /**
- * rentTotal_helper.js  (FIXED)
+ * rentTotal.helper.js
  *
- * ROOT BUG — unit-breakdown path was double-deducting TDS:
- *   OLD: remaining = rentAmountPaisa - paidAmountPaisa - tdsAmountPaisa
- *        ↑ wrong — this subtracts TDS from remaining, but TDS is already
- *          excluded from what the tenant owes the landlord.
+ * Single source of truth for rent totals across all callers
+ * (service layer, email templates, API responses).
  *
- *   CORRECT semantics (same as rent.domain.js):
- *     effectiveRentPaisa  = rentAmountPaisa - tdsAmountPaisa
- *     remainingAmountPaisa = effectiveRentPaisa - paidAmountPaisa
+ * Late fee is a SEPARATE receivable from rent principal:
+ *   - remainingRentPaisa  = (gross − TDS) − paidAmountPaisa
+ *   - remainingLateFeePaisa = lateFeePaisa − latePaidAmountPaisa
+ *   - totalDuePaisa       = remainingRentPaisa + remainingLateFeePaisa
  *
- * FLAT RENT PATH was also wrong — it completely ignored TDS.
- *
- * Both paths now return the same consistent shape including effectiveRentPaisa.
+ * Neither remainingRentPaisa nor remainingLateFeePaisa ever bleeds into
+ * the other — they are independently tracked and independently journaled.
  */
 
 /**
  * @param {Object} rent  Mongoose Rent document or plain object
  * @returns {{
- *   rentAmountPaisa:      number,   gross rent (before TDS)
- *   tdsAmountPaisa:       number,   TDS withheld by tenant to govt
- *   effectiveRentPaisa:   number,   what landlord actually receives  (gross − TDS)
- *   paidAmountPaisa:      number,   amount received so far
- *   remainingAmountPaisa: number,   still owed                       (effective − paid)
- *   lateFeePaisa:         number,   penalty on overdue balance
- *   totalDuePaisa:        number,   remaining + late fee
+ *   rentAmountPaisa:        number,   gross rent (before TDS)
+ *   tdsAmountPaisa:         number,   TDS withheld by tenant → govt
+ *   effectiveRentPaisa:     number,   what landlord actually receives (gross − TDS)
+ *   paidAmountPaisa:        number,   rent principal received so far
+ *   remainingRentPaisa:     number,   rent still owed
+ *   lateFeePaisa:           number,   total late fee charged
+ *   latePaidAmountPaisa:    number,   late fee already received
+ *   remainingLateFeePaisa:  number,   late fee still owed
+ *   totalDuePaisa:          number,   remainingRent + remainingLateFee
+ *
+ *   // kept for backward compat — same as remainingRentPaisa
+ *   remainingAmountPaisa:   number,
  * }}
  */
 export function calculateRentTotals(rent) {
@@ -34,7 +37,7 @@ export function calculateRentTotals(rent) {
   let tdsAmountPaisa;
   let paidAmountPaisa;
 
-  // ── Unit-breakdown path ─────────────────────────────────────────────────
+  // ── Unit-breakdown path ───────────────────────────────────────────────────
   if (
     rent.useUnitBreakdown &&
     Array.isArray(rent.unitBreakdown) &&
@@ -53,7 +56,7 @@ export function calculateRentTotals(rent) {
       0,
     );
   } else {
-    // ── Flat rent path — bypass getters to read raw integer paisa ─────────
+    // ── Flat rent path — bypass getters to read raw integer paisa ──────────
     const getRaw = (field) => {
       if (rent.get && typeof rent.get === "function") {
         return rent.get(field, null, { getters: false }) || 0;
@@ -65,24 +68,35 @@ export function calculateRentTotals(rent) {
     paidAmountPaisa = getRaw("paidAmountPaisa");
   }
 
-  // Late fee — always bypass getter (getter converts to rupees)
-  const lateFeePaisa = rent.get
-    ? rent.get("lateFeePaisa", null, { getters: false }) || 0
-    : Math.round(Number(rent.lateFeePaisa)) || 0;
+  // Late fee fields — always bypass getter (getter converts to rupees)
+  const getRawRoot = (field) => {
+    if (rent.get && typeof rent.get === "function") {
+      return rent.get(field, null, { getters: false }) || 0;
+    }
+    return Math.round(Number(rent[field])) || 0;
+  };
 
-  // ── Derived values (single source of truth for all callers) ────────────
+  const lateFeePaisa = getRawRoot("lateFeePaisa");
+  const latePaidAmountPaisa = getRawRoot("latePaidAmountPaisa");
+
+  // ── Derived values ────────────────────────────────────────────────────────
   const effectiveRentPaisa = rentAmountPaisa - tdsAmountPaisa;
-  // FIX: remaining is (gross − TDS) − paid, NOT gross − paid − TDS (same math, explicit intent)
-  const remainingAmountPaisa = effectiveRentPaisa - paidAmountPaisa;
-  const totalDuePaisa = Math.max(0, remainingAmountPaisa) + lateFeePaisa;
+  const remainingRentPaisa = effectiveRentPaisa - paidAmountPaisa;
+  const remainingLateFeePaisa = Math.max(0, lateFeePaisa - latePaidAmountPaisa);
+  const totalDuePaisa = Math.max(0, remainingRentPaisa) + remainingLateFeePaisa;
 
   return {
     rentAmountPaisa,
     tdsAmountPaisa,
     effectiveRentPaisa,
     paidAmountPaisa,
-    remainingAmountPaisa,
+    remainingRentPaisa,
     lateFeePaisa,
+    latePaidAmountPaisa,
+    remainingLateFeePaisa,
     totalDuePaisa,
+
+    // backward-compat alias
+    remainingAmountPaisa: remainingRentPaisa,
   };
 }

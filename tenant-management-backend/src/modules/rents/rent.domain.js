@@ -1,28 +1,19 @@
 /**
- * rent.domain.js  (FIXED)
+ * rent.domain.js
  *
- * FIX 1 — applyPaymentToRent was incomplete:
- *   - effectiveAmountPaisa was calculated but never used
- *   - status was never updated (rent stayed "pending" forever after payment)
- *   - lastPaidDate and lastPaidBy were never set
+ * Pure business logic — no DB calls, no side effects.
+ * All monetary values are INTEGER PAISA throughout.
  *
- * FIX 2 — validateRentPayment remaining calculation ignored TDS:
- *   OLD: remainingPaisa = effectiveRentPaisa - rent.paidAmountPaisa
- *        But effectiveRentPaisa was (rentAmountPaisa - tdsAmountPaisa) — actually correct.
- *        The real bug was it used rent.rentAmountPaisa directly without subtracting TDS
- *        in the original code.  Ensured consistent formula here.
+ * Late fee design:
+ *   - lateFeePaisa is a SEPARATE receivable from rentAmountPaisa
+ *   - paidAmountPaisa tracks rent principal payments only
+ *   - latePaidAmountPaisa tracks late fee payments only
+ *   - Partial late fee payment is not supported (full or nothing)
  */
 
-import mongoose from "mongoose";
-
 /**
- * Apply a flat payment to a rent document.
- * For unit-breakdown rents use applyPaymentWithUnitBreakdown().
- *
- * @param {Object} rent           - Rent Mongoose document
- * @param {number} amountPaisa    - Payment amount (positive integer paisa)
- * @param {Date}   paymentDate
- * @param {*}      receivedBy     - Admin ObjectId
+ * Apply a flat payment to the RENT PRINCIPAL of a rent document.
+ * Does not touch latePaidAmountPaisa.
  */
 export function applyPaymentToRent(rent, amountPaisa, paymentDate, receivedBy) {
   if (!Number.isInteger(amountPaisa) || amountPaisa <= 0) {
@@ -31,33 +22,78 @@ export function applyPaymentToRent(rent, amountPaisa, paymentDate, receivedBy) {
     );
   }
 
-  // Accumulate paid amount
   rent.paidAmountPaisa += amountPaisa;
   rent.lastPaidDate = paymentDate;
   rent.lastPaidBy = receivedBy;
 
-  // FIX: derive status from effectiveRentPaisa (gross - TDS), not gross
   const effectiveAmountPaisa =
     rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
 
-  if (rent.paidAmountPaisa === 0) {
-    rent.status = "pending";
-  } else if (rent.paidAmountPaisa >= effectiveAmountPaisa) {
-    rent.status = "paid";
-  } else {
-    rent.status = "partially_paid";
+  if (rent.paidAmountPaisa === 0) rent.status = "pending";
+  else if (rent.paidAmountPaisa >= effectiveAmountPaisa) rent.status = "paid";
+  else rent.status = "partially_paid";
+}
+
+/**
+ * Add a late fee charge to the rent (used by late-fee cron).
+ * Accumulates delta into lateFeePaisa and marks lateFeeApplied.
+ * Does not touch latePaidAmountPaisa (that is for tenant payments).
+ *
+ * @param {Object} rent   - Mongoose rent document (mutated)
+ * @param {number} deltaFeePaisa - amount to add (paisa)
+ * @param {Date}   chargedAt     - when the charge was applied
+ */
+export function addLateFeeCharge(rent, deltaFeePaisa, chargedAt) {
+  if (!Number.isInteger(deltaFeePaisa) || deltaFeePaisa <= 0) {
+    throw new Error(
+      `Late fee charge must be a positive integer (paisa), got: ${deltaFeePaisa}`,
+    );
   }
+  rent.lateFeePaisa = (rent.lateFeePaisa || 0) + deltaFeePaisa;
+  rent.lateFeeApplied = true;
+  rent.lateFeeDate = chargedAt;
+}
+
+/**
+ * Apply a payment to the LATE FEE portion only.
+ * Full payment only — caller must pass exactly the remaining late fee.
+ *
+ * @param {Object} rent
+ * @param {number} amountPaisa   - must equal rent.remainingLateFeePaisa
+ * @param {Date}   paymentDate
+ * @param {*}      receivedBy
+ */
+export function applyLateFeePayment(
+  rent,
+  amountPaisa,
+  paymentDate,
+  receivedBy,
+) {
+  if (!Number.isInteger(amountPaisa) || amountPaisa <= 0) {
+    throw new Error(
+      `Late fee payment must be a positive integer (paisa), got: ${amountPaisa}`,
+    );
+  }
+
+  const remainingLateFee =
+    (rent.lateFeePaisa || 0) - (rent.latePaidAmountPaisa || 0);
+
+  if (amountPaisa !== remainingLateFee) {
+    throw new Error(
+      `Late fee requires full payment. ` +
+        `Remaining: ${remainingLateFee} paisa, received: ${amountPaisa} paisa.`,
+    );
+  }
+
+  rent.latePaidAmountPaisa = (rent.latePaidAmountPaisa || 0) + amountPaisa;
+  rent.lastPaidDate = paymentDate;
+  rent.lastPaidBy = receivedBy;
+  rent.lateFeeStatus = "paid";
 }
 
 /**
  * Apply a payment distributed across specific units.
  * Updates both per-unit fields and root-level totals.
- *
- * @param {Object}   rent              - Rent Mongoose document
- * @param {number}   totalAmountPaisa  - Total payment (integer paisa)
- * @param {Array}    unitPayments       - [{unitId, amountPaisa}]
- * @param {Date}     paymentDate
- * @param {*}        receivedBy         - Admin ObjectId
  */
 export function applyPaymentWithUnitBreakdown(
   rent,
@@ -75,7 +111,6 @@ export function applyPaymentWithUnitBreakdown(
     throw new Error("Rent does not use unit breakdown");
   }
 
-  // Guard: unit payments must add up to totalAmountPaisa
   const unitSum = unitPayments.reduce((sum, up) => {
     if (!Number.isInteger(up.amountPaisa)) {
       throw new Error(
@@ -91,12 +126,10 @@ export function applyPaymentWithUnitBreakdown(
     );
   }
 
-  // Apply to root totals
   rent.paidAmountPaisa += totalAmountPaisa;
   rent.lastPaidDate = paymentDate;
   rent.lastPaidBy = receivedBy;
 
-  // Apply to each unit and update per-unit status
   unitPayments.forEach(({ unitId, amountPaisa }) => {
     const unitEntry = rent.unitBreakdown.find(
       (ub) => ub.unit.toString() === unitId.toString(),
@@ -107,70 +140,114 @@ export function applyPaymentWithUnitBreakdown(
 
     const effectiveUnitPaisa =
       unitEntry.rentAmountPaisa - (unitEntry.tdsAmountPaisa || 0);
-    if (unitEntry.paidAmountPaisa === 0) {
-      unitEntry.status = "pending";
-    } else if (unitEntry.paidAmountPaisa >= effectiveUnitPaisa) {
+    if (unitEntry.paidAmountPaisa === 0) unitEntry.status = "pending";
+    else if (unitEntry.paidAmountPaisa >= effectiveUnitPaisa)
       unitEntry.status = "paid";
-    } else {
-      unitEntry.status = "partially_paid";
-    }
+    else unitEntry.status = "partially_paid";
   });
 
-  // Update overall rent status from effective rent (gross - TDS)
   const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
-  if (rent.paidAmountPaisa === 0) {
-    rent.status = "pending";
-  } else if (rent.paidAmountPaisa >= effectiveRentPaisa) {
-    rent.status = "paid";
-  } else {
-    rent.status = "partially_paid";
-  }
+  if (rent.paidAmountPaisa === 0) rent.status = "pending";
+  else if (rent.paidAmountPaisa >= effectiveRentPaisa) rent.status = "paid";
+  else rent.status = "partially_paid";
 }
 
 /**
- * Calculate late fee for an overdue rent.
+ * Allocate a total payment between rent principal and late fee.
+ *
+ * Strategy:
+ *   1. Fill remaining rent first (rent is senior to penalty)
+ *   2. Any surplus goes to the late fee (if one exists and is outstanding)
+ *
+ * Caller may provide an explicit split instead by passing
+ * { rentPaymentPaisa, lateFeePaymentPaisa } — those are returned unchanged
+ * after validation.
  *
  * @param {Object} rent
- * @param {number} dailyRatePercent  - e.g. 0.1 for 0.1% per day
- * @param {number} daysOverdue
- * @returns {number} Late fee in paisa (integer)
+ * @param {number} totalAmountPaisa
+ * @param {Object} [explicitSplit]   - { rentPaymentPaisa, lateFeePaymentPaisa }
+ * @returns {{ rentPaymentPaisa: number, lateFeePaymentPaisa: number }}
  */
-export function calculateLateFee(rent, dailyRatePercent, daysOverdue) {
-  if (daysOverdue <= 0) return 0;
-
+export function allocatePayment(rent, totalAmountPaisa, explicitSplit = null) {
   const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
-  const remainingPaisa = effectiveRentPaisa - rent.paidAmountPaisa;
-  if (remainingPaisa <= 0) return 0;
-
-  return Math.max(
+  const remainingRentPaisa = Math.max(
     0,
-    Math.round(remainingPaisa * (dailyRatePercent / 100) * daysOverdue),
+    effectiveRentPaisa - rent.paidAmountPaisa,
   );
-}
+  const remainingLateFeePaisa = Math.max(
+    0,
+    (rent.lateFeePaisa || 0) - (rent.latePaidAmountPaisa || 0),
+  );
+  const totalDuePaisa = remainingRentPaisa + remainingLateFeePaisa;
 
-/**
- * Apply a computed late fee to a rent document.
- *
- * @param {Object} rent
- * @param {number} lateFeePaisa  - Integer paisa
- * @param {Date}   lateFeeDate
- */
-export function applyLateFee(rent, lateFeePaisa, lateFeeDate) {
-  if (!Number.isInteger(lateFeePaisa)) {
-    throw new Error(`Late fee must be integer paisa, got: ${lateFeePaisa}`);
+  // ── Manual split ────────────────────────────────────────────────────────
+  if (explicitSplit) {
+    const { rentPaymentPaisa = 0, lateFeePaymentPaisa = 0 } = explicitSplit;
+
+    if (!Number.isInteger(rentPaymentPaisa) || rentPaymentPaisa < 0) {
+      throw new Error(
+        `rentPaymentPaisa must be a non-negative integer, got: ${rentPaymentPaisa}`,
+      );
+    }
+    if (!Number.isInteger(lateFeePaymentPaisa) || lateFeePaymentPaisa < 0) {
+      throw new Error(
+        `lateFeePaymentPaisa must be a non-negative integer, got: ${lateFeePaymentPaisa}`,
+      );
+    }
+    if (rentPaymentPaisa + lateFeePaymentPaisa !== totalAmountPaisa) {
+      throw new Error(
+        `Explicit split (${rentPaymentPaisa} + ${lateFeePaymentPaisa}) ` +
+          `does not equal total (${totalAmountPaisa}) paisa`,
+      );
+    }
+    if (rentPaymentPaisa > remainingRentPaisa) {
+      throw new Error(
+        `rentPaymentPaisa (${rentPaymentPaisa}) exceeds remaining rent (${remainingRentPaisa}) paisa`,
+      );
+    }
+    if (
+      lateFeePaymentPaisa > 0 &&
+      lateFeePaymentPaisa !== remainingLateFeePaisa
+    ) {
+      throw new Error(
+        `Late fee requires full payment. ` +
+          `Remaining: ${remainingLateFeePaisa} paisa, provided: ${lateFeePaymentPaisa} paisa`,
+      );
+    }
+    return { rentPaymentPaisa, lateFeePaymentPaisa };
   }
-  rent.lateFeePaisa = (rent.lateFeePaisa || 0) + lateFeePaisa;
-  rent.lateFeeDate = lateFeeDate;
-  rent.lateFeeApplied = true;
-  rent.lateFeeStatus = "pending";
+
+  // ── Auto-allocate: rent first, surplus to late fee ──────────────────────
+  if (totalAmountPaisa > totalDuePaisa) {
+    throw new Error(
+      `Payment (${totalAmountPaisa} paisa) exceeds total due ` +
+        `(${totalDuePaisa} paisa = ${remainingRentPaisa} rent + ${remainingLateFeePaisa} late fee)`,
+    );
+  }
+
+  const rentPaymentPaisa = Math.min(totalAmountPaisa, remainingRentPaisa);
+  const surplus = totalAmountPaisa - rentPaymentPaisa;
+
+  // Surplus must exactly match the remaining late fee (full-or-nothing rule)
+  let lateFeePaymentPaisa = 0;
+  if (surplus > 0) {
+    if (surplus !== remainingLateFeePaisa) {
+      throw new Error(
+        `Late fee requires full payment. ` +
+          `Remaining late fee: ${remainingLateFeePaisa} paisa, surplus: ${surplus} paisa. ` +
+          `Total must be either ${remainingRentPaisa} (rent only) or ` +
+          `${totalDuePaisa} (rent + full late fee).`,
+      );
+    }
+    lateFeePaymentPaisa = surplus;
+  }
+
+  return { rentPaymentPaisa, lateFeePaymentPaisa };
 }
 
 /**
- * Validate a proposed payment before applying it.
- *
- * @param {Object} rent
- * @param {number} paymentAmountPaisa
- * @returns {{ valid: boolean, error?: string, remainingAfterPaymentPaisa?: number }}
+ * Validate a proposed RENT PRINCIPAL payment before applying it.
+ * Does not validate late fee payments (those go through allocatePayment).
  */
 export function validateRentPayment(rent, paymentAmountPaisa) {
   if (!Number.isInteger(paymentAmountPaisa)) {
@@ -180,14 +257,13 @@ export function validateRentPayment(rent, paymentAmountPaisa) {
     return { valid: false, error: "Payment amount must be positive" };
   }
 
-  // FIX: remaining is based on effectiveRentPaisa (gross − TDS), not gross
   const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
   const remainingPaisa = effectiveRentPaisa - rent.paidAmountPaisa;
 
   if (paymentAmountPaisa > remainingPaisa) {
     return {
       valid: false,
-      error: `Payment (${paymentAmountPaisa / 100} Rs) exceeds remaining balance (${remainingPaisa / 100} Rs)`,
+      error: `Payment (${paymentAmountPaisa / 100} Rs) exceeds remaining rent balance (${remainingPaisa / 100} Rs)`,
       remainingPaisa,
     };
   }
@@ -200,15 +276,61 @@ export function validateRentPayment(rent, paymentAmountPaisa) {
 }
 
 /**
- * Full payment breakdown for reporting/receipts.
+ * Validate a total payment covering rent + optional late fee.
+ * Use this instead of validateRentPayment when the caller sends a combined amount.
+ */
+export function validateCombinedPayment(
+  rent,
+  totalAmountPaisa,
+  explicitSplit = null,
+) {
+  if (!Number.isInteger(totalAmountPaisa) || totalAmountPaisa <= 0) {
+    return {
+      valid: false,
+      error: "Payment amount must be a positive integer (paisa)",
+    };
+  }
+
+  try {
+    const split = allocatePayment(rent, totalAmountPaisa, explicitSplit);
+    return { valid: true, split };
+  } catch (err) {
+    return { valid: false, error: err.message };
+  }
+}
+
+/**
+ * Calculate the current late fee for a compounding policy.
+ * Called by lateFee.cron.js on each daily run when compounding=true.
  *
- * @param {Object} rent
- * @returns {Object}
+ * @param {number} overdueAmountPaisa
+ * @param {number} effectiveDaysLate   — days past due after grace period
+ * @param {number} dailyRatePercent    — e.g. 0.1 for 0.1% per day
+ * @returns {number} paisa (integer)
+ */
+export function calculateCompoundLateFee(
+  overdueAmountPaisa,
+  effectiveDaysLate,
+  dailyRatePercent,
+) {
+  if (effectiveDaysLate <= 0 || overdueAmountPaisa <= 0) return 0;
+  const r = dailyRatePercent / 100;
+  return Math.max(
+    0,
+    Math.round(overdueAmountPaisa * (Math.pow(1 + r, effectiveDaysLate) - 1)),
+  );
+}
+
+/**
+ * Full payment breakdown for reporting/receipts.
  */
 export function getRentPaymentBreakdown(rent) {
   const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
-  const remainingPaisa = effectiveRentPaisa - rent.paidAmountPaisa;
+  const remainingRentPaisa = effectiveRentPaisa - rent.paidAmountPaisa;
   const lateFeePaisa = rent.lateFeePaisa || 0;
+  const latePaidAmountPaisa = rent.latePaidAmountPaisa || 0;
+  const remainingLateFeePaisa = Math.max(0, lateFeePaisa - latePaidAmountPaisa);
+  const totalDuePaisa = Math.max(0, remainingRentPaisa) + remainingLateFeePaisa;
 
   return {
     paisa: {
@@ -216,20 +338,25 @@ export function getRentPaymentBreakdown(rent) {
       tds: rent.tdsAmountPaisa,
       effectiveRent: effectiveRentPaisa,
       paid: rent.paidAmountPaisa,
-      remaining: remainingPaisa,
+      remainingRent: remainingRentPaisa,
       lateFee: lateFeePaisa,
-      totalDue: Math.max(0, remainingPaisa) + lateFeePaisa,
+      latePaid: latePaidAmountPaisa,
+      remainingLateFee: remainingLateFeePaisa,
+      totalDue: totalDuePaisa,
     },
     rupees: {
       gross: rent.rentAmountPaisa / 100,
       tds: rent.tdsAmountPaisa / 100,
       effectiveRent: effectiveRentPaisa / 100,
       paid: rent.paidAmountPaisa / 100,
-      remaining: remainingPaisa / 100,
+      remainingRent: remainingRentPaisa / 100,
       lateFee: lateFeePaisa / 100,
-      totalDue: (Math.max(0, remainingPaisa) + lateFeePaisa) / 100,
+      latePaid: latePaidAmountPaisa / 100,
+      remainingLateFee: remainingLateFeePaisa / 100,
+      totalDue: totalDuePaisa / 100,
     },
     status: rent.status,
+    lateFeeStatus: rent.lateFeeStatus,
     paymentPercentage:
       effectiveRentPaisa > 0
         ? (rent.paidAmountPaisa / effectiveRentPaisa) * 100
@@ -239,9 +366,12 @@ export function getRentPaymentBreakdown(rent) {
 
 export default {
   applyPaymentToRent,
+  addLateFeeCharge,
+  applyLateFeePayment,
   applyPaymentWithUnitBreakdown,
-  calculateLateFee,
-  applyLateFee,
-  getRentPaymentBreakdown,
+  allocatePayment,
   validateRentPayment,
+  validateCombinedPayment,
+  calculateCompoundLateFee,
+  getRentPaymentBreakdown,
 };

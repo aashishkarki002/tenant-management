@@ -1,207 +1,353 @@
 /**
- * rent-payment.helper.js  (FIXED)
+ * rent.payment.service.js
  *
- * ROOT BUG in every calculation: used gross rentAmountPaisa for "what is owed".
- * Tenant only pays effectiveRentPaisa = gross - TDS.
- * The same fix was applied to rent.Model.js pre-save hook and rent.domain.js.
+ * Single place that atomically records a rent payment.
  *
- * FIX summary (applies to single-unit AND per-unit breakdown):
- *   effectiveRentPaisa = rentAmountPaisa - (tdsAmountPaisa || 0)
- *   remaining          = effectiveRentPaisa - paidAmountPaisa
- *   paid status        = paidAmountPaisa >= effectiveRentPaisa
+ * Payment flow:
+ *   1. Validate total amount
+ *   2. Allocate: rent-first auto-allocation OR explicit caller split
+ *   3. Open ONE session
+ *   4a. Apply rent portion → paidAmountPaisa  (applyPaymentToRent)
+ *   4b. Apply late fee portion → latePaidAmountPaisa  (applyLateFeePayment)  [if any]
+ *   5.  Update bank / cash balance                    (applyPaymentToBank)
+ *   6a. Post RENT_PAYMENT_RECEIVED journal
+ *   6b. Post LATE_FEE_PAYMENT_RECEIVED journal        [if late fee portion > 0]
+ *   7.  Commit — or roll back ALL writes if anything throws
+ *
+ * Journals are built BEFORE the session opens (pure computation, no DB writes).
+ * Only writes happen inside the transaction.
  */
 
-import { getAllocationStrategy } from "./payment.allocation.helper.js";
+import mongoose from "mongoose";
+import { Rent } from "../../rents/rent.Model.js";
 import {
-  validateUnitAllocations,
-  validatePaymentNotExceeding,
-} from "./payment-validation.helper.js";
-
-// ── ID normaliser ─────────────────────────────────────────────────────────────
-function resolveUnitId(val) {
-  if (val == null) return null;
-  if (val._id) return val._id.toString();
-  return typeof val === "string" ? val : val.toString();
-}
-
-// ── Effective rent helper (single source of truth in this file) ───────────────
-function effectiveRent(unit) {
-  return (unit.rentAmountPaisa || 0) - (unit.tdsAmountPaisa || 0);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// APPLY PAYMENT
-// ─────────────────────────────────────────────────────────────────────────────
+  applyPaymentToRent,
+  applyLateFeePayment,
+  validateCombinedPayment,
+} from "../../rents/rent.domain.js";
+import { ledgerService } from "../../ledger/ledger.service.js";
+import { applyPaymentToBank } from "../../banks/bank.domain.js";
+import { buildPaymentReceivedJournal } from "../../ledger/journal-builders/index.js";
+import { buildLateFeePaymentJournal } from "../../ledger/journal-builders/lateFee.js";
+import { assertIntegerPaisa, formatMoney } from "../../../utils/moneyUtil.js";
+import { assertValidPaymentMethod } from "../../../utils/paymentAccountUtils.js";
+import { resolveNepaliPeriod } from "../../../utils/nepaliDateHelper.js";
 
 /**
- * Apply payment to rent — handles both single-unit and multi-unit rents.
+ * Record a rent payment (rent principal + optional late fee) atomically.
  *
- * @param {Object}   rent
- * @param {number}   totalPaymentPaisa
- * @param {Array}    unitAllocations       optional manual allocations
- * @param {Date}     paymentDate
- * @param {ObjectId} receivedBy
- * @param {string}   allocationStrategy    'proportional' | 'fifo' | 'manual'
- * @returns {Array|null} unit allocations used (null for single-unit)
+ * @param {Object}  params
+ * @param {string}  params.rentId
+ * @param {number}  params.amountPaisa          total payment in paisa
+ * @param {string}  params.paymentMethod        "cash"|"bank_transfer"|"cheque"|"mobile_wallet"
+ * @param {string}  [params.bankAccountId]      required for bank_transfer / cheque
+ * @param {string}  [params.bankAccountCode]    chart-of-accounts code for the bank
+ * @param {Date}    [params.paymentDate]        defaults to now
+ * @param {Date}    [params.nepaliDate]
+ * @param {*}       params.receivedBy           Admin ObjectId
+ * @param {Array}   [params.unitPayments]       [{unitId, amountPaisa}]
+ * @param {string}  [params.notes]
+ *
+ * Manual split (optional — omit for auto-allocation):
+ * @param {number}  [params.rentPaymentPaisa]
+ * @param {number}  [params.lateFeePaymentPaisa]
  */
-export function applyPaymentToRent(
-  rent,
-  totalPaymentPaisa,
-  unitAllocations = null,
+export async function recordRentPayment({
+  rentId,
+  amountPaisa,
+  paymentMethod,
+  bankAccountId,
+  bankAccountCode,
   paymentDate,
+  nepaliDate,
   receivedBy,
-  allocationStrategy = "proportional",
-) {
-  validatePaymentNotExceeding(rent, totalPaymentPaisa, unitAllocations);
+  unitPayments,
+  notes,
+  // optional explicit split
+  rentPaymentPaisa: explicitRentPaisa,
+  lateFeePaymentPaisa: explicitLateFeePaisa,
+}) {
+  // ── 0. Pre-session validation ─────────────────────────────────────────────
+  assertIntegerPaisa(amountPaisa, "amountPaisa");
+  assertValidPaymentMethod(paymentMethod);
+  if (!receivedBy) throw new Error("receivedBy (admin id) is required");
 
-  if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    let allocations = unitAllocations;
+  const txDate =
+    paymentDate instanceof Date
+      ? paymentDate
+      : new Date(paymentDate ?? Date.now());
 
-    if (!allocations || allocations.length === 0) {
-      const strategyFn = getAllocationStrategy(allocationStrategy);
-      allocations = strategyFn(rent.unitBreakdown, totalPaymentPaisa);
+  const nepaliTxDate = nepaliDate instanceof Date ? nepaliDate : txDate;
+
+  // ── 1. Load rent ──────────────────────────────────────────────────────────
+  const rent = await Rent.findById(rentId)
+    .populate("tenant", "name")
+    .populate("property", "name");
+
+  if (!rent)
+    return {
+      success: false,
+      message: `Rent not found: ${rentId}`,
+      statusCode: 404,
+    };
+  if (rent.status === "cancelled")
+    return {
+      success: false,
+      message: "Cannot pay a cancelled rent",
+      statusCode: 400,
+    };
+
+  // ── 2. Allocate payment between rent and late fee ─────────────────────────
+  const explicitSplit =
+    explicitRentPaisa != null || explicitLateFeePaisa != null
+      ? {
+          rentPaymentPaisa: explicitRentPaisa ?? 0,
+          lateFeePaymentPaisa: explicitLateFeePaisa ?? 0,
+        }
+      : null;
+
+  const validation = validateCombinedPayment(rent, amountPaisa, explicitSplit);
+  if (!validation.valid)
+    return { success: false, message: validation.error, statusCode: 400 };
+
+  const { rentPaymentPaisa, lateFeePaymentPaisa } = validation.split;
+
+  // ── 3. Build journal payloads before opening session (pure, no DB writes) ──
+  const { nepaliMonth, nepaliYear } = resolveNepaliPeriod({
+    nepaliMonth: rent.nepaliMonth,
+    nepaliYear: rent.nepaliYear,
+    fallbackDate: txDate,
+  });
+
+  const rentPaymentDoc = {
+    _id: new mongoose.Types.ObjectId(),
+    amountPaisa: rentPaymentPaisa,
+    paymentMethod,
+    paymentDate: txDate,
+    nepaliDate: nepaliTxDate,
+    createdBy: receivedBy,
+    receivedBy,
+  };
+
+  // Always build rent journal (rent portion is always > 0 because rent is senior)
+  const rentJournalPayload =
+    rentPaymentPaisa > 0
+      ? buildPaymentReceivedJournal(
+          rentPaymentDoc,
+          { ...rent.toObject({ getters: false }), nepaliMonth, nepaliYear },
+          bankAccountCode,
+        )
+      : null;
+
+  // Build late fee journal only when a late fee portion is being paid
+  const lateFeeJournalPayload =
+    lateFeePaymentPaisa > 0
+      ? buildLateFeePaymentJournal(
+          {
+            _id: new mongoose.Types.ObjectId(),
+            amountPaisa: lateFeePaymentPaisa,
+            paymentMethod,
+            paymentDate: txDate,
+            nepaliDate: nepaliTxDate,
+            createdBy: receivedBy,
+          },
+          { ...rent.toObject({ getters: false }), nepaliMonth, nepaliYear },
+          bankAccountCode,
+        )
+      : null;
+
+  // ── 4. Open session — everything below is atomic ──────────────────────────
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    // 4a. Apply rent principal payment
+    if (rentPaymentPaisa > 0) {
+      applyPaymentToRent(rent, rentPaymentPaisa, txDate, receivedBy);
     }
 
-    validateUnitAllocations(rent.unitBreakdown, allocations, totalPaymentPaisa);
+    // 4b. Apply unit breakdown if provided (mutates unitBreakdown entries)
+    if (unitPayments?.length && rent.useUnitBreakdown) {
+      unitPayments.forEach(({ unitId, amountPaisa: unitAmt }) => {
+        const ub = rent.unitBreakdown.find(
+          (u) => u.unit.toString() === unitId.toString(),
+        );
+        if (ub) ub.paidAmountPaisa += unitAmt;
+      });
+    }
 
-    allocations.forEach(({ unitId, amountPaisa }) => {
-      const unitIdStr = resolveUnitId(unitId);
-      if (!unitIdStr) return;
-      const ub = rent.unitBreakdown.find(
-        (u) => resolveUnitId(u.unit) === unitIdStr,
-      );
-      if (ub) ub.paidAmountPaisa = (ub.paidAmountPaisa || 0) + amountPaisa;
+    // 4c. Apply late fee payment
+    if (lateFeePaymentPaisa > 0) {
+      applyLateFeePayment(rent, lateFeePaymentPaisa, txDate, receivedBy);
+    }
+
+    if (notes) rent.notes = notes;
+    await rent.save({ session });
+
+    // 5. Update cash / bank balance (once, for the total amount)
+    await applyPaymentToBank({
+      paymentMethod,
+      bankAccountId,
+      amountPaisa, // total — bank doesn't care about the rent/fee split
+      session,
     });
 
-    // Sync root paidAmountPaisa from unit breakdown
-    rent.paidAmountPaisa = rent.unitBreakdown.reduce(
-      (sum, u) => sum + (u.paidAmountPaisa || 0),
-      0,
-    );
+    // 6a. Post rent journal
+    if (rentJournalPayload) {
+      const { duplicate } = await ledgerService.postJournalEntry(
+        rentJournalPayload,
+        session,
+      );
+      if (duplicate) {
+        console.warn(
+          `[recordRentPayment] Duplicate rent journal for rent ${rentId}`,
+        );
+      }
+    }
 
-    rent.lastPaidDate = paymentDate;
-    rent.lastPaidBy = receivedBy;
+    // 6b. Post late fee journal
+    if (lateFeeJournalPayload) {
+      const { duplicate } = await ledgerService.postJournalEntry(
+        lateFeeJournalPayload,
+        session,
+      );
+      if (duplicate) {
+        console.warn(
+          `[recordRentPayment] Duplicate late fee journal for rent ${rentId}`,
+        );
+      }
+    }
 
-    // Status update handled by pre-save hook — call updateRentStatus here for
-    // in-memory accuracy before save (hook will confirm on save)
-    updateRentStatus(rent);
+    await session.commitTransaction();
 
-    return allocations;
-  }
-
-  // Single-unit
-  rent.paidAmountPaisa = (rent.paidAmountPaisa || 0) + totalPaymentPaisa;
-  rent.lastPaidDate = paymentDate;
-  rent.lastPaidBy = receivedBy;
-  updateRentStatus(rent);
-
-  return null;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STATUS
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Update rent status based on payment vs effectiveRentPaisa (gross − TDS).
- *
- * FIX: was comparing paidAmountPaisa vs gross rentAmountPaisa.
- * Tenant who pays effectiveRentPaisa was never marked "paid".
- */
-export function updateRentStatus(rent) {
-  let effectiveDue, totalPaid;
-
-  if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    // FIX: sum effectiveRent per unit (gross - TDS), not gross
-    effectiveDue = rent.unitBreakdown.reduce(
-      (sum, u) => sum + effectiveRent(u),
-      0,
-    );
-    totalPaid = rent.unitBreakdown.reduce(
-      (sum, u) => sum + (u.paidAmountPaisa || 0),
-      0,
-    );
-  } else {
-    // FIX: effectiveRentPaisa = gross − TDS
-    effectiveDue = (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
-    totalPaid = rent.paidAmountPaisa || 0;
-  }
-
-  if (totalPaid >= effectiveDue && effectiveDue > 0) rent.status = "paid";
-  else if (totalPaid > 0) rent.status = "partially_paid";
-  else rent.status = "pending";
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REMAINING / PROGRESS
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Calculate remaining balance for rent.
- * FIX: returns (gross − TDS) − paid, not gross − paid.
- */
-export function calculateRentRemaining(rent) {
-  if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    return rent.unitBreakdown.reduce(
-      (sum, u) => sum + (effectiveRent(u) - (u.paidAmountPaisa || 0)),
-      0,
-    );
-  }
-  const effective = (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
-  return effective - (rent.paidAmountPaisa || 0);
-}
-
-/** Returns true only when tenant has paid the full effectiveRentPaisa. */
-export function isRentFullyPaid(rent) {
-  return calculateRentRemaining(rent) <= 0;
-}
-
-/**
- * Payment progress as a percentage of effectiveRentPaisa.
- * FIX: denominator is gross − TDS, not gross.
- */
-export function getRentPaymentProgress(rent) {
-  let effectiveDue, totalPaid;
-
-  if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    effectiveDue = rent.unitBreakdown.reduce(
-      (sum, u) => sum + effectiveRent(u),
-      0,
-    );
-    totalPaid = rent.unitBreakdown.reduce(
-      (sum, u) => sum + (u.paidAmountPaisa || 0),
-      0,
-    );
-  } else {
-    effectiveDue = (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
-    totalPaid = rent.paidAmountPaisa || 0;
-  }
-
-  if (effectiveDue === 0) return 0;
-  return Math.min(100, Math.round((totalPaid / effectiveDue) * 100));
-}
-
-/**
- * Per-unit payment details.
- * FIX: remaining and progress now use effectiveRentPaisa per unit.
- */
-export function getUnitPaymentDetails(rent) {
-  if (!rent.useUnitBreakdown || !rent.unitBreakdown?.length) return null;
-
-  return rent.unitBreakdown.map((unit) => {
-    const effective = effectiveRent(unit);
-    const paid = unit.paidAmountPaisa || 0;
-    const remaining = effective - paid;
+    const summary = rent.getFinancialSummary();
 
     return {
-      unitId: unit.unit,
-      rentAmountPaisa: unit.rentAmountPaisa || 0,
-      tdsAmountPaisa: unit.tdsAmountPaisa || 0,
-      effectiveRentPaisa: effective,
-      paidAmountPaisa: paid,
+      success: true,
+      message: buildSuccessMessage(rentPaymentPaisa, lateFeePaymentPaisa),
+      allocation: {
+        totalPaisa: amountPaisa,
+        rentPaymentPaisa,
+        lateFeePaymentPaisa,
+      },
+      rent: rent.toObject({ virtuals: true, getters: false }),
+      summary,
+      statusCode: 200,
+    };
+  } catch (err) {
+    await session.abortTransaction();
+    console.error("[recordRentPayment] rolled back:", err.message);
+    return {
+      success: false,
+      message: err.message ?? "Payment failed",
+      statusCode: 500,
+    };
+  } finally {
+    session.endSession();
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function buildSuccessMessage(rentPaisa, lateFeePaisa) {
+  if (lateFeePaisa > 0) {
+    return (
+      `Payment of ${formatMoney(rentPaisa + lateFeePaisa)} recorded ` +
+      `(${formatMoney(rentPaisa)} rent + ${formatMoney(lateFeePaisa)} late fee)`
+    );
+  }
+  return `Payment of ${formatMoney(rentPaisa)} recorded`;
+}
+
+// ─── Unit-breakdown variant ───────────────────────────────────────────────────
+
+/**
+ * Validates unit payment distribution then delegates to recordRentPayment.
+ */
+export async function recordUnitRentPayment(params) {
+  const { amountPaisa, unitPayments, rentPaymentPaisa, lateFeePaymentPaisa } =
+    params;
+
+  if (!Array.isArray(unitPayments) || unitPayments.length === 0) {
+    return {
+      success: false,
+      message: "unitPayments array is required",
+      statusCode: 400,
+    };
+  }
+
+  assertIntegerPaisa(amountPaisa, "amountPaisa");
+
+  // Unit payments must add up to the RENT portion only (not late fee)
+  const rentPortion =
+    rentPaymentPaisa ?? amountPaisa - (lateFeePaymentPaisa ?? 0);
+
+  const unitSum = unitPayments.reduce((s, u) => {
+    assertIntegerPaisa(u.amountPaisa, `unitPayment[${u.unitId}].amountPaisa`);
+    return s + u.amountPaisa;
+  }, 0);
+
+  if (unitSum !== rentPortion) {
+    return {
+      success: false,
+      message: `Unit payments sum (${unitSum} paisa) does not match rent portion (${rentPortion} paisa)`,
+      statusCode: 400,
+    };
+  }
+
+  return recordRentPayment(params);
+}
+
+/**
+ * Helpers re‑exported for payment.service.js
+ *
+ * These mirror the logic in rent.domain.js so that createPayment()
+ * can build a concise rent summary and unit breakdown.
+ */
+
+export function calculateRentRemaining(rent) {
+  const effectiveRentPaisa =
+    (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
+  const paid = rent.paidAmountPaisa || 0;
+  const remaining = effectiveRentPaisa - paid;
+  return remaining > 0 ? remaining : 0;
+}
+
+export function updateRentStatus(rent) {
+  const effectiveRentPaisa =
+    (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
+  const paid = rent.paidAmountPaisa || 0;
+
+  if (paid <= 0) rent.status = "pending";
+  else if (paid >= effectiveRentPaisa) rent.status = "paid";
+  else rent.status = "partially_paid";
+
+  return rent.status;
+}
+
+export function getUnitPaymentDetails(rent) {
+  if (!rent.useUnitBreakdown || !Array.isArray(rent.unitBreakdown)) {
+    return [];
+  }
+
+  return rent.unitBreakdown.map((ub) => {
+    const effectiveUnitPaisa =
+      (ub.rentAmountPaisa || 0) - (ub.tdsAmountPaisa || 0);
+    const paid = ub.paidAmountPaisa || 0;
+    const remaining = Math.max(0, effectiveUnitPaisa - paid);
+
+    return {
+      unitId: ub.unit?._id ?? ub.unit,
+      unitName: ub.unit?.name ?? ub.unitName ?? undefined,
+      rentAmountPaisa: ub.rentAmountPaisa,
+      tdsAmountPaisa: ub.tdsAmountPaisa,
+      paidAmountPaisa: ub.paidAmountPaisa,
       remainingPaisa: remaining,
-      progress:
-        effective > 0 ? Math.min(100, Math.round((paid / effective) * 100)) : 0,
+      status: ub.status,
     };
   });
 }
+
+// Re‑export applyPaymentToRent so payment.service.js can alias it
+export { applyPaymentToRent };
