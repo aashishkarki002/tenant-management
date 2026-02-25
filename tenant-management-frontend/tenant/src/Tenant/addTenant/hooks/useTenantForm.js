@@ -1,3 +1,14 @@
+/**
+ * useTenantForm.js  (FIXED)
+ *
+ * FIX 1 - Added sdPaymentMethod, sdBankAccountId, sdBankAccountCode.
+ *   sdPaymentMethod is separate from paymentMethod (rent) because:
+ *     - A tenant may pay rent by cheque but secure the deposit via bank guarantee
+ *     - BANK_GUARANTEE is only valid for the security deposit, never for rent
+ *
+ * FIX 2 - tdsPercentage default is "10" to match the backend default.
+ */
+
 import { useState } from "react";
 import { useFormik } from "formik";
 import { toast } from "sonner";
@@ -7,33 +18,48 @@ import { buildTenantFormData } from "../utils/formDataBuilder";
 import { getPropertyIdFromBlock } from "../utils/propertyHelper";
 
 const INITIAL_VALUES = {
+  // Personal
   name: "",
-  unitNumber: [],
   phone: "",
   email: "",
   address: "",
-  leaseStartDate: "",
-  leaseEndDate: "",
+  status: "",
+
+  // Location
   block: "",
   innerBlock: "",
-  documentType: "",
-  documents: {},
+  unitNumber: [],
+
+  // Lease
+  leaseStartDate: "",
+  leaseEndDate: "",
   dateOfAgreementSigned: "",
-  leasedSquareFeet: "",
-  pricePerSqft: "",
-  camRatePerSqft: "",
-  securityDeposit: "",
-  status: "",
   keyHandoverDate: "",
   spaceHandoverDate: "",
   spaceReturnedDate: "",
+  rentPaymentFrequency: "",
+
+  // Documents
+  documentType: "",
+  documents: {},
+
+  // Financial - per unit
+  unitFinancials: {},
+  tdsPercentage: "10", // matches backend default
+
+  // Rent payment method: cash | bank_transfer | cheque | mobile_wallet
+  // BANK_GUARANTEE is NOT valid here
   paymentMethod: "",
-  bankGuaranteePhoto: null,
   chequeAmount: "",
   chequeNumber: "",
-  unitFinancials: {},
-  tdsPercentage: "0",
-  rentPaymentFrequency: "",
+
+  // Security deposit payment (separate concept from rent payment)
+  // bank_guarantee = document only, no cash/bank journal entry posted
+  // cash | bank_transfer | cheque = money received -> posts DR Cash/Bank CR SD Liability
+  sdPaymentMethod: "",
+  sdBankAccountId: "", // required when sdPaymentMethod is bank_transfer or cheque
+  sdBankAccountCode: "", // chart-of-accounts code for the specific bank account
+  bankGuaranteePhoto: null,
 };
 
 export const useTenantForm = (property, onSuccess) => {
@@ -43,35 +69,27 @@ export const useTenantForm = (property, onSuccess) => {
     try {
       setIsLoading(true);
 
-      // Validate form
       const validationErrors = validateTenantForm(values);
       if (validationErrors.length > 0) {
-        validationErrors.forEach((error) => toast.error(error));
+        validationErrors.forEach((err) => toast.error(err));
         return;
       }
 
-      // Get property ID
       const propertyId = getPropertyIdFromBlock(values.block, property);
       if (!propertyId) {
         toast.error("Please select a valid block");
         return;
       }
 
-      // Build form data
       const formData = buildTenantFormData(values, propertyId);
-      console.log("formData", values);
 
-      // Submit
       const response = await api.post("/api/tenant/create-tenant", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
       toast.success("Tenant registered successfully!");
       resetForm();
-
-      if (onSuccess) {
-        onSuccess(response.data);
-      }
+      if (onSuccess) onSuccess(response.data);
     } catch (error) {
       console.error("Error creating tenant:", error);
       toast.error(error.response?.data?.message || "Failed to register tenant");
@@ -85,8 +103,5 @@ export const useTenantForm = (property, onSuccess) => {
     onSubmit: handleSubmit,
   });
 
-  return {
-    formik,
-    isLoading,
-  };
+  return { formik, isLoading };
 };

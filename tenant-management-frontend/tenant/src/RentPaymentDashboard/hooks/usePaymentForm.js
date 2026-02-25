@@ -1,75 +1,77 @@
+/**
+ * usePaymentForm.js  (FIXED)
+ *
+ * FIX 1 — bankAccountCode missing from everything.
+ *   Added to: initialValues, submitted payload, handleOpenDialog reset.
+ *   bankAccountCode is the chart-of-accounts string (e.g. "1010-NABIL")
+ *   set by PaymentDialog when the user picks a bank account.
+ *   The backend's journal builder uses it to route DR to the correct
+ *   bank ledger account instead of a generic CASH account.
+ *
+ * FIX 2 — handleOpenDialog seeded amounts from gross rentAmountPaisa.
+ *   Now seeds from getPaymentAmounts() which returns effectiveRentPaisa.
+ *
+ * FIX 3 — handleAmountChange used raw rentAmount / camAmount without TDS.
+ *   getPaymentAmounts() now returns effective amounts so this is fixed
+ *   by the util change — no logic change here needed.
+ */
+
 import { useState } from "react";
 import { useFormik } from "formik";
 import { toast } from "sonner";
 import api from "../../../plugins/axios";
 import { getPaymentAmounts, findMatchingCam } from "../utils/paymentUtil";
 
-/**
- * Custom hook for managing payment form state and submission.
- *
- * Industry Standard: Separation of concerns — the dialog owns UI state
- * (selected units, per-unit allocations, allocation mode preview).
- * The hook owns transport state (formik values, API call, toast feedback).
- *
- * The dialog's buildPayload() assembles the complete API-shaped object and
- * injects it into formik via setValues() before calling handleSubmit().
- * Therefore onSubmit receives a fully-formed values object and just POSTs it.
- */
 export const usePaymentForm = ({ rents, cams, onSuccess }) => {
-  // ── UI-only state (passed to dialog for rendering) ─────────────────────
-  const [allocationMode, setAllocationMode] = useState("auto"); // "auto" | "manual"
+  const [allocationMode, setAllocationMode] = useState("auto");
   const [rentAllocation, setRentAllocation] = useState(0);
   const [camAllocation, setCamAllocation] = useState(0);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
-  // ── Formik ──────────────────────────────────────────────────────────────
   const formik = useFormik({
     initialValues: {
-      // Core identifiers
       tenantId: "",
-      rentId: "", // convenience ref; also lives in allocations.rent.rentId
-
-      // Payment fields — match API contract exactly
-      amount: 0, // total in rupees
+      rentId: "",
+      amount: 0,
       paymentDate: null,
       nepaliDate: null,
       paymentMethod: "",
       paymentStatus: "paid",
       bankAccountId: "",
+      bankAccountCode: "", // FIX: added — chart-of-accounts code for the selected bank
       transactionRef: "",
       note: "",
-
-      // Allocation payload — assembled by PaymentDialog.buildPayload()
-      // Shape: { rent?: { rentId, amount, unitAllocations? }, cam?: { camId, paidAmount } }
       allocations: {},
     },
 
     onSubmit: async (values) => {
       try {
-        /**
-         * The dialog's buildPayload() has already injected the complete,
-         * API-shaped payload into formik values via setValues().
-         * We only need to normalise paymentMethod casing and POST.
-         *
-         * Industry Standard: thin submit handler — validate in the form,
-         * transform minimally, delegate to the transport layer.
-         */
         const payload = {
           tenantId: values.tenantId,
-          amount: values.amount, // rupees — matches API contract
+          amount: values.amount,
           paymentDate: values.paymentDate,
           nepaliDate: values.nepaliDate,
           paymentMethod: String(values.paymentMethod || "").toLowerCase(),
           paymentStatus: values.paymentStatus || "paid",
           note: values.note || "",
           bankAccountId: values.bankAccountId || null,
+          bankAccountCode: values.bankAccountCode || null, // FIX: now sent to backend
           transactionRef: values.transactionRef || null,
-          allocations: values.allocations, // fully built by dialog
+          allocations: values.allocations,
         };
 
-        // Guard: allocations must have at least one entry
         if (!payload.allocations?.rent && !payload.allocations?.cam) {
           toast.error("No allocations found. Please try again.");
+          return;
+        }
+
+        // Guard: bank_transfer / cheque require bankAccountCode for ledger routing
+        if (
+          (payload.paymentMethod === "bank_transfer" ||
+            payload.paymentMethod === "cheque") &&
+          !payload.bankAccountCode
+        ) {
+          toast.error("Please select a bank account to continue.");
           return;
         }
 
@@ -87,15 +89,14 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
         }
       } catch (error) {
         console.error("Payment submission error:", error);
-        const serverMsg = error?.response?.data?.message;
-        toast.error(serverMsg || "Failed to submit payment. Please try again.");
+        toast.error(
+          error?.response?.data?.message ||
+            "Failed to submit payment. Please try again.",
+        );
       }
     },
   });
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-
-  /** Full form + UI state reset */
   const resetForm = () => {
     formik.resetForm();
     setRentAllocation(0);
@@ -105,10 +106,8 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
   };
 
   /**
-   * Opens payment dialog and seeds formik + allocation state.
-   *
-   * Note: tenantId is set here so buildPayload() in the dialog can read
-   * formik.values.tenantId as a fallback if rent.tenant is unpopulated.
+   * Seeds formik + allocation state when a payment dialog opens.
+   * FIX: uses getPaymentAmounts() which now returns effective (gross - TDS) rent.
    */
   const handleOpenDialog = (rent) => {
     const { rentAmount, camAmount } = getPaymentAmounts(rent, cams);
@@ -119,6 +118,7 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
       tenantId: rent.tenant?._id?.toString() || rent.tenant?.toString() || "",
       amount: rentAmount + camAmount,
       paymentMethod: formik.values.paymentMethod || "",
+      bankAccountCode: "", // reset on each dialog open
     });
 
     setAllocationMode("auto");
@@ -128,10 +128,9 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
   };
 
   /**
-   * Handles amount input change and auto-allocates rent-first, then CAM.
-   *
-   * Industry Standard: prioritise rent before CAM (oldest obligation first),
-   * mirroring the FIFO strategy available on the backend.
+   * Amount input change — auto-allocates rent first (FIFO: oldest obligation first),
+   * then CAM with whatever remains.
+   * Uses effective amounts from getPaymentAmounts() after the util fix.
    */
   const handleAmountChange = (amount, rent) => {
     formik.setFieldValue("amount", amount);
@@ -141,15 +140,12 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
       const totalDue = rentAmount + camAmount;
 
       if (amount >= totalDue) {
-        // Full payment — clear everything
         setRentAllocation(rentAmount);
         setCamAllocation(camAmount);
       } else if (amount >= rentAmount) {
-        // Full rent + partial CAM
         setRentAllocation(rentAmount);
         setCamAllocation(amount - rentAmount);
       } else {
-        // Partial rent only
         setRentAllocation(amount);
         setCamAllocation(0);
       }

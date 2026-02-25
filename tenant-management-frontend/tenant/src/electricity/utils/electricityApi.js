@@ -42,7 +42,7 @@ export async function createReading(body) {
 
 /**
  * POST /api/electricity/record-payment
- * @param {Object} body - electricityId, amount, paymentDate?, nepaliDate?
+ * @param {Object} body - electricityId, amount, paymentDate?, nepaliDate?, paymentMethod?, bankAccountId?
  * @param {File} [receiptFile] - Optional receipt image/file (sends as multipart with field "receiptImage")
  * @returns {Promise<Object>}
  */
@@ -54,6 +54,8 @@ export async function recordPayment(body, receiptFile = null) {
     formData.append("amount", String(body.amount));
     if (body.paymentDate) formData.append("paymentDate", body.paymentDate);
     if (body.nepaliDate) formData.append("nepaliDate", body.nepaliDate);
+    if (body.paymentMethod) formData.append("paymentMethod", body.paymentMethod);
+    if (body.bankAccountId) formData.append("bankAccountId", body.bankAccountId);
     formData.append("receiptImage", receiptFile);
     response = await api.post("/api/electricity/record-payment", formData);
   } else {

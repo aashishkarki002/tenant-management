@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 
 import { Input } from '@/components/ui/input'
@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from '@/components/ui/drawer'
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { FieldGroup } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { useFormik } from 'formik'
 import api from '../../../plugins/axios'
@@ -28,6 +27,9 @@ import {
     Trash2,
     Pencil,
 } from "lucide-react";
+
+import AddBankAccount from './AddBankAccount'
+import EditBankAccount from './EditBankAccount'
 
 function SettingTab({
     user,
@@ -51,11 +53,21 @@ function SettingTab({
     confirmDelete,
     handleDeleteClick,
     GetBankAccounts,
+    addBankCloseRef,
 }) {
     const usemobile = useIsMobile();
     const { fetchMe } = useAuth();
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
+
+    useEffect(() => {
+        if (!addBankCloseRef) return;
+        addBankCloseRef.current = () => {
+            setDrawerOpen(false);
+            setDialogOpen(false);
+        };
+        return () => { addBankCloseRef.current = null; };
+    }, [addBankCloseRef]);
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
     const [accountToEdit, setAccountToEdit] = useState(null);
@@ -66,11 +78,17 @@ function SettingTab({
             accountNumber: accountToEdit?.accountNumber || "",
             accountName: accountToEdit?.accountName || "",
             bankName: accountToEdit?.bankName || "",
+            accountCode: accountToEdit?.accountCode || "",
         },
         onSubmit: async (values) => {
             if (!accountToEdit?._id) return;
             try {
-                const res = await api.patch(`/api/bank/update-bank-account/${accountToEdit._id}`, values);
+                const res = await api.patch(`/api/bank/update-bank-account/${accountToEdit._id}`, {
+                    accountNumber: values.accountNumber,
+                    accountName: values.accountName,
+                    bankName: values.bankName,
+                    accountCode: values.accountCode?.trim() ? values.accountCode.toUpperCase().trim() : undefined,
+                });
                 if (res.data.success) {
                     toast.success(res.data.message);
                     setEditDialogOpen(false);
@@ -312,65 +330,14 @@ function SettingTab({
                                             security deposits
                                         </p>
                                     </DrawerHeader>
-                                    <form
-                                        onSubmit={bankAccountFormik.handleSubmit}
-                                        className="px-4 pb-4 space-y-4"
-                                    >
-                                        <FieldGroup>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium text-slate-700">
-                                                    Account Number
-                                                </label>
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Account Number"
-                                                    value={bankAccountFormik.values.accountNumber}
-                                                    onChange={bankAccountFormik.handleChange}
-                                                    name="accountNumber"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium text-slate-700">
-                                                    Account Name
-                                                </label>
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Account Name"
-                                                    value={bankAccountFormik.values.accountName}
-                                                    onChange={bankAccountFormik.handleChange}
-                                                    name="accountName"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium text-slate-700">
-                                                    Bank Name
-                                                </label>
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Bank Name"
-                                                    value={bankAccountFormik.values.bankName}
-                                                    onChange={bankAccountFormik.handleChange}
-                                                    name="bankName"
-                                                />
-                                            </div>
-                                        </FieldGroup>
-                                        <div className="flex gap-2 pt-4">
-                                            <Button
-                                                type="submit"
-                                                icon={Save}
-                                                disabled={bankAccountFormik.isSubmitting}
-                                            >
-                                                {bankAccountFormik.isSubmitting
-                                                    ? "Creating..."
-                                                    : "Create Bank Account"}
+                                    <div className="px-4 pb-4">
+                                        <AddBankAccount formik={bankAccountFormik} />
+                                        <DrawerClose asChild>
+                                            <Button type="button" variant="ghost" className="w-full mt-2">
+                                                Cancel
                                             </Button>
-                                            <DrawerClose asChild>
-                                                <Button type="button" variant="ghost">
-                                                    Cancel
-                                                </Button>
-                                            </DrawerClose>
-                                        </div>
-                                    </form>
+                                        </DrawerClose>
+                                    </div>
                                 </DrawerContent>
                             </Drawer>
                         ) : (
@@ -383,70 +350,19 @@ function SettingTab({
                                 <DialogContent>
                                     <DialogHeader>
                                         <DialogTitle>Add New Bank Account</DialogTitle>
-                                        <p className="text-sm text-gray-500 mt-2">
+                                        <DialogDescription>
                                             Add the bank account details for rent collection and
                                             security deposits
-                                        </p>
+                                        </DialogDescription>
                                     </DialogHeader>
-                                    <form
-                                        onSubmit={bankAccountFormik.handleSubmit}
-                                        className="space-y-4"
-                                    >
-                                        <FieldGroup>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium text-slate-700">
-                                                    Account Number
-                                                </label>
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Account Number"
-                                                    value={bankAccountFormik.values.accountNumber}
-                                                    onChange={bankAccountFormik.handleChange}
-                                                    name="accountNumber"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium text-slate-700">
-                                                    Account Name
-                                                </label>
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Account Name"
-                                                    value={bankAccountFormik.values.accountName}
-                                                    onChange={bankAccountFormik.handleChange}
-                                                    name="accountName"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium text-slate-700">
-                                                    Bank Name
-                                                </label>
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Bank Name"
-                                                    value={bankAccountFormik.values.bankName}
-                                                    onChange={bankAccountFormik.handleChange}
-                                                    name="bankName"
-                                                />
-                                            </div>
-                                        </FieldGroup>
-                                        <div className="flex gap-2 pt-4 justify-end">
-                                            <DialogClose asChild>
-                                                <Button type="button" variant="ghost">
-                                                    Cancel
-                                                </Button>
-                                            </DialogClose>
-                                            <Button
-                                                type="submit"
-                                                icon={Save}
-                                                disabled={bankAccountFormik.isSubmitting}
-                                            >
-                                                {bankAccountFormik.isSubmitting
-                                                    ? "Creating..."
-                                                    : "Create Bank Account"}
+                                    <AddBankAccount formik={bankAccountFormik} />
+                                    <div className="flex justify-end pt-2">
+                                        <DialogClose asChild>
+                                            <Button type="button" variant="ghost">
+                                                Cancel
                                             </Button>
-                                        </div>
-                                    </form>
+                                        </DialogClose>
+                                    </div>
                                 </DialogContent>
                             </Dialog>
                         )}
@@ -574,69 +490,14 @@ function SettingTab({
                             Update account details. Balance cannot be changed.
                         </DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={editBankFormik.handleSubmit} className="space-y-4">
-                        {accountToEdit && (
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium text-slate-700">
-                                    Balance (read-only)
-                                </Label>
-                                <Input
-                                    value={accountToEdit.balanceFormatted ?? accountToEdit.balance ?? "-"}
-                                    readOnly
-                                    disabled
-                                    className="bg-slate-100 text-slate-600"
-                                />
-                            </div>
-                        )}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium text-slate-700">
-                                Account Number
-                            </Label>
-                            <Input
-                                name="accountNumber"
-                                value={editBankFormik.values.accountNumber}
-                                onChange={editBankFormik.handleChange}
-                                placeholder="Account Number"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium text-slate-700">
-                                Account Name
-                            </Label>
-                            <Input
-                                name="accountName"
-                                value={editBankFormik.values.accountName}
-                                onChange={editBankFormik.handleChange}
-                                placeholder="Account Name"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium text-slate-700">
-                                Bank Name
-                            </Label>
-                            <Input
-                                name="bankName"
-                                value={editBankFormik.values.bankName}
-                                onChange={editBankFormik.handleChange}
-                                placeholder="Bank Name"
-                            />
-                        </div>
-                        <DialogFooter>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => {
-                                    setEditDialogOpen(false);
-                                    setAccountToEdit(null);
-                                }}
-                            >
-                                Cancel
-                            </Button>
-                            <Button type="submit" disabled={editBankFormik.isSubmitting}>
-                                {editBankFormik.isSubmitting ? "Saving..." : "Save Changes"}
-                            </Button>
-                        </DialogFooter>
-                    </form>
+                    <EditBankAccount
+                        formik={editBankFormik}
+                        balanceDisplay={accountToEdit ? (accountToEdit.balanceFormatted ?? accountToEdit.balance ?? "-") : ""}
+                        onCancel={() => {
+                            setEditDialogOpen(false);
+                            setAccountToEdit(null);
+                        }}
+                    />
                 </DialogContent>
             </Dialog>
 

@@ -31,7 +31,8 @@ const getInitialValues = () => ({
   amount: "",
   date: new Date().toISOString().split("T")[0],
   notes: "",
-  bankAccount: "",
+  paymentMethod: "bank_transfer",
+  bankAccountId: "",
   paymentSchedule: "one_time",
 });
 
@@ -41,10 +42,11 @@ export function AddRevenueDialog({
   onOpenChange,
   tenants,
   revenueSource,
-  bankAccounts,
+  bankAccounts = [],
   onSuccess,
 }) {
   const [submitting, setSubmitting] = React.useState(false);
+  const [selectedBankAccountId, setSelectedBankAccountId] = React.useState("");
 
   const formik = useFormik({
     initialValues: getInitialValues(),
@@ -52,6 +54,7 @@ export function AddRevenueDialog({
       setSubmitting(true);
       try {
         const payerType = values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
+        const paymentMethod = String(values.paymentMethod || "bank_transfer").toLowerCase();
         const payload = {
           source: values.referenceType,
           amount: Number(values.amount),
@@ -60,10 +63,12 @@ export function AddRevenueDialog({
           referenceType: "MANUAL",
           referenceId: values.referenceId || undefined,
           notes: values.notes || undefined,
-          bankAccountId: values.bankAccount,
-          paymentMethod: "bank_transfer",
+          paymentMethod,
           createdBy: undefined,
         };
+        if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
+          if (values.bankAccountId) payload.bankAccountId = values.bankAccountId;
+        }
 
         if (payerType === "TENANT") {
           payload.tenant = typeof values.tenantId === "object" ? values.tenantId?._id : values.tenantId;
@@ -91,12 +96,14 @@ export function AddRevenueDialog({
 
   const handleClose = () => {
     formik.resetForm({ values: getInitialValues() });
+    setSelectedBankAccountId("");
     onOpenChange(false);
   };
 
   useEffect(() => {
     if (!open) return;
     formik.resetForm({ values: getInitialValues() });
+    setSelectedBankAccountId("");
   }, [open]);
 
   const payerType = formik.values.payerType ?? "tenant";
@@ -214,56 +221,108 @@ export function AddRevenueDialog({
             <div className="flex-1 border-t border-border" />
           </div>
 
-          {/* Revenue source + Bank account */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Revenue source
-              </Label>
-              <Select
-                value={formik.values.referenceType ?? ""}
-                onValueChange={(value) =>
-                  formik.setFieldValue("referenceType", value)
-                }
-              >
-                <SelectTrigger className="w-full rounded-md">
-                  <SelectValue placeholder="— select source —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.isArray(revenueSource) &&
-                    revenueSource.map((source) => (
-                      <SelectItem key={source._id} value={source._id}>
-                        {source.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Bank account
-              </Label>
-              <Select
-                value={formik.values.bankAccount ?? ""}
-                onValueChange={(value) =>
-                  formik.setFieldValue("bankAccount", value)
-                }
-              >
-                <SelectTrigger className="w-full rounded-md">
-                  <SelectValue placeholder="— select account —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.isArray(bankAccounts) &&
-                    bankAccounts.map((bank) => (
-                      <SelectItem key={bank._id} value={bank._id}>
-                        {bank.bankName} — ****
-                        {bank.accountNumber?.slice(-4) || "****"}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Revenue source */}
+          <div className="space-y-2">
+            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Revenue source
+            </Label>
+            <Select
+              value={formik.values.referenceType ?? ""}
+              onValueChange={(value) =>
+                formik.setFieldValue("referenceType", value)
+              }
+            >
+              <SelectTrigger className="w-full rounded-md">
+                <SelectValue placeholder="— select source —" />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.isArray(revenueSource) &&
+                  revenueSource.map((source) => (
+                    <SelectItem key={source._id} value={source._id}>
+                      {source.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
+
+          {/* Payment Method — same type/options as PaymentDialog (cash | bank_transfer | cheque) */}
+          <div className="space-y-2">
+            <label htmlFor="payment-method-revenue" className="text-sm font-medium text-slate-900">
+              Payment Method
+            </label>
+            <Select
+              value={formik.values?.paymentMethod || ""}
+              onValueChange={(value) => {
+                formik.setFieldValue("paymentMethod", value);
+                if (value !== "bank_transfer") {
+                  setSelectedBankAccountId("");
+                  formik.setFieldValue("bankAccountId", "");
+                }
+              }}
+            >
+              <SelectTrigger id="payment-method-revenue">
+                <SelectValue placeholder="Select payment method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                <SelectItem value="cheque">Cheque</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Bank account picker — shown when payment method is bank_transfer (same as PaymentDialog) */}
+          {formik.values?.paymentMethod === "bank_transfer" && (
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-slate-900">Deposit To</label>
+              <div className="grid gap-3">
+                {Array.isArray(bankAccounts) &&
+                  bankAccounts.map((bank) => (
+                    <button
+                      key={bank._id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBankAccountId(bank._id);
+                        formik.setFieldValue("bankAccountId", bank._id);
+                      }}
+                      className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
+                        ? "border-slate-900 bg-slate-900/[0.03]"
+                        : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-900">{bank.bankName}</p>
+                          <p className="text-xs text-slate-500">
+                            **** **** {bank.accountNumber?.slice(-4) || "****"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
+                            Balance
+                          </p>
+                          <p className="font-semibold text-slate-900 text-sm">
+                            ₹{bank.balance?.toLocaleString() || "0"}
+                          </p>
+                        </div>
+                        {selectedBankAccountId === bank._id && (
+                          <div className="ml-3 text-slate-900">
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path
+                                fillRule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
 
           {/* Amount + Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

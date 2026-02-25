@@ -21,6 +21,9 @@ import { Label } from "@/components/ui/label";
 import { ChevronUp, ChevronDown, User, AlertTriangle } from "lucide-react";
 import api from "../../../plugins/axios";
 import { toast } from "sonner";
+import { PAYMENT_METHODS } from "../../Tenant/addTenant/constants/tenant.constant.js";
+
+const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
 
 export default function MaintenanceCard({
     maintenanceItem,
@@ -31,6 +34,7 @@ export default function MaintenanceCard({
     formatDate,
     workOrderId,
     onUpdate,
+    bankAccounts = [],
 }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [staffs, setStaffs] = useState([]);
@@ -56,14 +60,23 @@ export default function MaintenanceCard({
     const [formData, setFormData] = useState({
         paymentStatus: maintenanceItem.paymentStatus || "pending",
         paidAmount: maintenanceItem.paidAmount?.toString() || "0",
+        paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
+        bankAccountId: "",
     });
+    const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
     useEffect(() => {
-        setFormData({
+        setFormData((prev) => ({
             paymentStatus: maintenanceItem.paymentStatus || "pending",
             paidAmount: maintenanceItem.paidAmount?.toString() || "0",
-        });
+            paymentMethod: prev.paymentMethod || PAYMENT_METHODS.BANK_TRANSFER,
+            bankAccountId: prev.bankAccountId || "",
+        }));
     }, [maintenanceItem]);
+
+    useEffect(() => {
+        if (isDialogOpen) setSelectedBankAccountId(formData.bankAccountId || "");
+    }, [isDialogOpen, formData.bankAccountId]);
 
     /* ---------------- STATUS CHANGE HANDLER ---------------- */
     const handleStatusSelect = async (newStatus) => {
@@ -88,13 +101,25 @@ export default function MaintenanceCard({
 
     /* ---------------- SUBMIT COMPLETION (shared for normal + overpayment confirm) ---- */
     const submitCompletion = async (allowOverpayment = false) => {
+        const paymentMethod =
+            formData.paymentMethod && VALID_PAYMENT_METHODS.includes(formData.paymentMethod)
+                ? formData.paymentMethod
+                : PAYMENT_METHODS.BANK_TRANSFER;
+        const payload = {
+            status: "COMPLETED",
+            paymentStatus: formData.paymentStatus,
+            paidAmount: Number(formData.paidAmount),
+            paymentMethod,
+            ...(allowOverpayment && { allowOverpayment: true }),
+        };
+        if (
+            paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
+            paymentMethod === PAYMENT_METHODS.CHEQUE
+        ) {
+            if (formData.bankAccountId) payload.bankAccountId = formData.bankAccountId;
+        }
         try {
-            await api.patch(`/api/maintenance/${maintenanceItem._id}/status`, {
-                status: "COMPLETED",
-                paymentStatus: formData.paymentStatus,
-                paidAmount: Number(formData.paidAmount),
-                ...(allowOverpayment && { allowOverpayment: true }),
-            });
+            await api.patch(`/api/maintenance/${maintenanceItem._id}/status`, payload);
             toast.success(
                 allowOverpayment
                     ? "Work order completed (overpayment recorded)"
@@ -132,8 +157,20 @@ export default function MaintenanceCard({
     const updateFormField = (field, value) => {
         // If the user changes the paidAmount, reset any stale overpayment warning
         if (field === "paidAmount") setOverpaymentMeta(null);
+        if (field === "paymentMethod") {
+            if (value !== PAYMENT_METHODS.BANK_TRANSFER && value !== PAYMENT_METHODS.CHEQUE) {
+                setSelectedBankAccountId("");
+                setFormData((prev) => ({ ...prev, [field]: value, bankAccountId: "" }));
+                return;
+            }
+        }
         setFormData((prev) => ({ ...prev, [field]: value }));
     };
+
+    const currentPaymentMethod =
+        formData.paymentMethod && VALID_PAYMENT_METHODS.includes(formData.paymentMethod)
+            ? formData.paymentMethod
+            : PAYMENT_METHODS.BANK_TRANSFER;
 
     /* ---------------- ASSIGN STAFF ---------------- */
     const handleAssignStaff = async (staffId) => {
@@ -234,6 +271,71 @@ export default function MaintenanceCard({
                                 </p>
                             )}
                         </div>
+
+                        {/* Payment Method — same as AddExpenseDialog */}
+                        <div className="space-y-2">
+                            <Label>Payment Method</Label>
+                            <Select
+                                value={currentPaymentMethod}
+                                onValueChange={(v) => updateFormField("paymentMethod", v)}
+                            >
+                                <SelectTrigger className="bg-white border-gray-300">
+                                    <SelectValue placeholder="Select payment method" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={PAYMENT_METHODS.CASH}>Cash</SelectItem>
+                                    <SelectItem value={PAYMENT_METHODS.BANK_TRANSFER}>Bank Transfer</SelectItem>
+                                    <SelectItem value={PAYMENT_METHODS.CHEQUE}>Cheque</SelectItem>
+                                    <SelectItem value={PAYMENT_METHODS.MOBILE_WALLET}>Mobile Wallet</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Bank account — when payment method is bank_transfer or cheque */}
+                        {(currentPaymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
+                            currentPaymentMethod === PAYMENT_METHODS.CHEQUE) && (
+                            <div className="space-y-2">
+                                <Label>Deposit To (Bank Account)</Label>
+                                <div className="grid gap-2">
+                                    {Array.isArray(bankAccounts) &&
+                                        bankAccounts.map((bank) => (
+                                            <button
+                                                key={bank._id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedBankAccountId(bank._id);
+                                                    updateFormField("bankAccountId", bank._id);
+                                                }}
+                                                className={`w-full text-left p-3 border-2 rounded-lg cursor-pointer transition-colors ${
+                                                    selectedBankAccountId === bank._id
+                                                        ? "border-slate-900 bg-slate-900/[0.03]"
+                                                        : "border-slate-200 hover:border-slate-300 bg-white"
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex-1">
+                                                        <p className="font-semibold text-slate-900 text-sm">{bank.bankName}</p>
+                                                        <p className="text-xs text-slate-500">
+                                                            **** **** {bank.accountNumber?.slice(-4) || "****"}
+                                                        </p>
+                                                    </div>
+                                                    {selectedBankAccountId === bank._id && (
+                                                        <div className="text-slate-900 ml-2">
+                                                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path
+                                                                    fillRule="evenodd"
+                                                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                                                    clipRule="evenodd"
+                                                                />
+                                                            </svg>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* ── Overpayment confirmation banner ────────────────────────────
                             Shown after the backend returns 409 isOverpayment:true.

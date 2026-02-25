@@ -20,6 +20,10 @@ import { useFormik } from "formik";
 import api from "../../../plugins/axios";
 import { Loader2 } from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
+import { PAYMENT_METHODS } from "../../Tenant/addTenant/constants/tenant.constant.js";
+
+/** Valid payment method values (must match backend: cash | bank_transfer | cheque | mobile_wallet) */
+const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
 
 function parseNepaliDate(nepaliStr) {
   if (!nepaliStr || typeof nepaliStr !== "string") return null;
@@ -28,27 +32,33 @@ function parseNepaliDate(nepaliStr) {
   return { year: parts[0], month: parts[1], day: parts[2] };
 }
 
-const getInitialValues = () => ({
-  payeeType: "tenant",
-  tenantId: "",
-  externalPayeeName: "",
-  source: "",
-  referenceType: "MANUAL",
-  referenceId: "",
-  amount: "",
-  date: new Date().toISOString().split("T")[0],
-  nepaliDateStr: "",
-  notes: "",
-});
+function getInitialValues() {
+  return {
+    payeeType: "tenant",
+    tenantId: "",
+    externalPayeeName: "",
+    source: "",
+    referenceType: "MANUAL",
+    referenceId: "",
+    amount: "",
+    date: new Date().toISOString().split("T")[0],
+    nepaliDateStr: "",
+    notes: "",
+    paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
+    bankAccountId: "",
+  };
+}
 
 export function AddExpenseDialog({
   open,
   onOpenChange,
   tenants,
   expenseSources,
+  bankAccounts = [],
   onSuccess,
 }) {
   const [submitting, setSubmitting] = React.useState(false);
+  const [selectedBankAccountId, setSelectedBankAccountId] = React.useState("");
 
   const formik = useFormik({
     initialValues: getInitialValues(),
@@ -59,6 +69,11 @@ export function AddExpenseDialog({
         const nepali = parseNepaliDate(values.nepaliDateStr);
         const englishDate = values.date || new Date().toISOString().split("T")[0];
 
+        const rawMethod = values.paymentMethod;
+        const paymentMethod =
+          typeof rawMethod === "string" && VALID_PAYMENT_METHODS.includes(rawMethod)
+            ? rawMethod
+            : PAYMENT_METHODS.BANK_TRANSFER;
         const payload = {
           source: values.source,
           amount: Number(values.amount),
@@ -67,7 +82,14 @@ export function AddExpenseDialog({
           referenceId: values.referenceId || undefined,
           notes: values.notes || undefined,
           payeeType,
+          paymentMethod,
         };
+        if (
+          paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
+          paymentMethod === PAYMENT_METHODS.CHEQUE
+        ) {
+          if (values.bankAccountId) payload.bankAccountId = values.bankAccountId;
+        }
 
         if (nepali) {
           payload.nepaliDate = values.nepaliDateStr;
@@ -101,12 +123,14 @@ export function AddExpenseDialog({
 
   const handleClose = () => {
     formik.resetForm({ values: getInitialValues() });
+    setSelectedBankAccountId("");
     onOpenChange(false);
   };
 
   useEffect(() => {
     if (!open) return;
     formik.resetForm({ values: getInitialValues() });
+    setSelectedBankAccountId("");
   }, [open]);
 
   const payeeType = formik.values.payeeType ?? "tenant";
@@ -140,22 +164,20 @@ export function AddExpenseDialog({
               <button
                 type="button"
                 onClick={() => formik.setFieldValue("payeeType", "tenant")}
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
-                  payeeType === "tenant"
-                    ? "bg-background text-foreground border border-border shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${payeeType === "tenant"
+                  ? "bg-background text-foreground border border-border shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 Tenant
               </button>
               <button
                 type="button"
                 onClick={() => formik.setFieldValue("payeeType", "external")}
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
-                  payeeType === "external"
-                    ? "bg-background text-foreground border border-border shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${payeeType === "external"
+                  ? "bg-background text-foreground border border-border shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 External
               </button>
@@ -279,6 +301,89 @@ export function AddExpenseDialog({
               />
             </div>
           </div>
+          {/* Payment Method — must match backend: cash | bank_transfer | cheque | mobile_wallet */}
+          <div className="space-y-2">
+            <label htmlFor="payment-method" className="text-sm font-medium text-slate-900">
+              Payment Method
+            </label>
+            <Select
+              value={
+                formik.values?.paymentMethod && VALID_PAYMENT_METHODS.includes(formik.values.paymentMethod)
+                  ? formik.values.paymentMethod
+                  : PAYMENT_METHODS.BANK_TRANSFER
+              }
+              onValueChange={(value) => {
+                formik.setFieldValue("paymentMethod", value);
+                if (value !== PAYMENT_METHODS.BANK_TRANSFER && value !== PAYMENT_METHODS.CHEQUE) {
+                  setSelectedBankAccountId("");
+                  formik.setFieldValue("bankAccountId", "");
+                }
+              }}
+            >
+              <SelectTrigger id="payment-method">
+                <SelectValue placeholder="Select payment method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={PAYMENT_METHODS.CASH}>Cash</SelectItem>
+                <SelectItem value={PAYMENT_METHODS.BANK_TRANSFER}>Bank Transfer</SelectItem>
+                <SelectItem value={PAYMENT_METHODS.CHEQUE}>Cheque</SelectItem>
+                <SelectItem value={PAYMENT_METHODS.MOBILE_WALLET}>Mobile Wallet</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Bank account picker — shown when payment method is bank_transfer or cheque */}
+          {(formik.values?.paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
+            formik.values?.paymentMethod === PAYMENT_METHODS.CHEQUE) && (
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-slate-900">Deposit To</label>
+              <div className="grid gap-3">
+                {Array.isArray(bankAccounts) &&
+                  bankAccounts.map((bank) => (
+                    <button
+                      key={bank._id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBankAccountId(bank._id);
+                        formik.setFieldValue("bankAccountId", bank._id);
+                      }}
+                      className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
+                        ? "border-slate-900 bg-slate-900/[0.03]"
+                        : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-900">{bank.bankName}</p>
+                          <p className="text-xs text-slate-500">
+                            **** **** {bank.accountNumber?.slice(-4) || "****"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
+                            Balance
+                          </p>
+                          <p className="font-semibold text-slate-900 text-sm">
+                            ₹{bank.balance?.toLocaleString() || "0"}
+                          </p>
+                        </div>
+                        {selectedBankAccountId === bank._id && (
+                          <div className="ml-3 text-slate-900">
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path
+                                fillRule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="space-y-2">

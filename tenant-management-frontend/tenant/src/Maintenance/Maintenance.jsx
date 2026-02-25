@@ -15,6 +15,7 @@ import DualCalendarTailwind from '@/components/dualDate';
 import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import api from '../../plugins/axios';
 import { useUnits } from '../hooks/use-units';
+import { useBankAccounts } from '../Accounts/hooks/useAccounting';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useFormik } from 'formik';
 import { Spinner } from '@/components/ui/spinner';
@@ -53,6 +54,7 @@ const PRIORITY_FILTERS = ['All', 'Urgent', 'High', 'Medium', 'Low'];
 export default function Maintenance() {
   const [tenant, setTenant] = useState([]);
   const { units = [] } = useUnits();
+  const { bankAccounts = [] } = useBankAccounts();
   const [maintenance, setMaintenance] = useState([]);
   const [expandedCards, setExpandedCards] = useState(new Set());
   const [selectedTenant, setSelectedTenant] = useState(null);
@@ -338,6 +340,7 @@ export default function Maintenance() {
                     formatDate={formatDate}
                     workOrderId={workOrderId}
                     onUpdate={fetchMaintenance}
+                    bankAccounts={bankAccounts}
                   />
                 );
               })}

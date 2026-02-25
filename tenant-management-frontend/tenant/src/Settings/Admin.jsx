@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useFormik } from "formik";
 import api from "../../plugins/axios";
 import { useAuth } from "../context/AuthContext";
@@ -6,14 +6,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import SettingTab from "./components/settingTab";
 import StaffDetail from "./components/staffDetail";
-import SubMetersTab from "../Submeter/components/SubMetersTab";
+
 import useProperty from "@/hooks/use-property";
 import SystemSettingsTab from "./components/SystemSettingTab";
-import {
-  Settings,
-  Users,
-  TrendingUp
-} from "lucide-react";
+import { Settings, Users, TrendingUp } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 export default function Admin() {
@@ -31,6 +27,7 @@ export default function Admin() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState(null);
+  const addBankCloseRef = useRef(null);
 
   const languages = [{ code: "en", name: "English", flag: "🇺🇸" }];
   const propertyId = property?.[0]?._id;
@@ -42,7 +39,8 @@ export default function Admin() {
       ? "subMeters"
       : "settings";
 
-  // ─── API Calls
+  // ─── API calls ────────────────────────────────────────────────────────────
+
   const GetBankAccounts = async () => {
     try {
       const response = await api.get("/api/bank/get-bank-accounts");
@@ -87,28 +85,64 @@ export default function Admin() {
     getStaff();
   }, []);
 
-  // ─── Formik
+  // ─── Bank account formik ──────────────────────────────────────────────────
+  /**
+   * FIXED:
+   *   Old: initialValues had `balance` (rupees float, sent as `balance` field).
+   *        Backend model has no `balance` field — only `balancePaisa`.
+   *        The old float was passed directly and failed the pre-save integer guard.
+   *
+   *   New: `accountCode`    — required, chart-of-accounts string e.g. "1010-NABIL".
+   *                           Used by journal builders to route DR to the correct
+   *                           bank ledger account instead of defaulting to cash.
+   *        `openingBalance` — optional, in rupees.
+   *                           Controller converts to integer paisa via rupeesToPaisa().
+   */
   const bankAccountFormik = useFormik({
-    initialValues: { accountNumber: "", accountName: "", bankName: "", balance: "" },
+    initialValues: {
+      accountNumber: "",
+      accountName: "",
+      bankName: "",
+      accountCode: "",   // FIX: replaces "balance" — required for ledger routing
+      openingBalance: "",   // FIX: replaces "balance" — optional, in rupees
+    },
     onSubmit: async (values, { setSubmitting, resetForm }) => {
+      // Client-side guard — mirrors backend 400 check
+      if (!values.accountCode.trim()) {
+        toast.error(
+          "Account code is required (e.g. '1010-NABIL'). " +
+          "It must match a code in your chart of accounts.",
+        );
+        setSubmitting(false);
+        return;
+      }
+
       try {
         const response = await api.post("/api/bank/create-bank-account", {
-          ...values,
-          balance: parseFloat(values.balance) || 0,
+          accountNumber: values.accountNumber,
+          accountName: values.accountName,
+          bankName: values.bankName,
+          accountCode: values.accountCode.toUpperCase().trim(),   // FIX
+          openingBalance: parseFloat(values.openingBalance) || 0,    // FIX
         });
+
         if (response.data.success) {
           toast.success(response.data.message || "Bank account created successfully");
           resetForm();
           GetBankAccounts();
+          addBankCloseRef.current?.();
         }
       } catch (err) {
         console.error(err);
+        // 409 = duplicate accountCode — surface the backend message directly
         toast.error(err.response?.data?.message || "Failed to create bank account");
       } finally {
         setSubmitting(false);
       }
     },
   });
+
+  // ─── Password change ──────────────────────────────────────────────────────
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -131,6 +165,8 @@ export default function Admin() {
     }
   };
 
+  // ─── Delete helpers ───────────────────────────────────────────────────────
+
   const handleDeleteClick = (accountId) => {
     setAccountToDelete(accountId);
     setDeleteConfirmOpen(true);
@@ -140,9 +176,10 @@ export default function Admin() {
     if (accountToDelete) DeleteBankAccount(accountToDelete);
   };
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
     <div className="p-4 sm:p-6 md:p-8 space-y-6">
-      {/* Header */}
       <div className="space-y-1">
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Settings</h1>
         <p className="text-sm sm:text-base text-slate-500">
@@ -150,26 +187,32 @@ export default function Admin() {
         </p>
       </div>
 
-      {/* Vertical Tabs Layout */}
       <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6">
         <Tabs defaultValue={initialTab} className="flex-1 flex sm:flex-row">
-          {/* Tabs List */}
           <TabsList className="flex sm:flex-col w-full sm:w-52 flex-row justify-start sm:justify-start overflow-x-auto sm:overflow-visible space-x-2 sm:space-x-0 sm:space-y-2">
-            <TabsTrigger className="flex items-center space-x-2 sm:space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded" value="settings">
+            <TabsTrigger
+              className="flex items-center space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded"
+              value="settings"
+            >
               <Settings size={20} />
               <span className="hidden sm:inline">Settings</span>
             </TabsTrigger>
-            <TabsTrigger className="flex items-center space-x-2 sm:space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded" value="staffDetails">
+            <TabsTrigger
+              className="flex items-center space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded"
+              value="staffDetails"
+            >
               <Users size={20} />
               <span className="hidden sm:inline">Staff Details</span>
             </TabsTrigger>
-            <TabsTrigger className="flex items-center space-x-2 sm:space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded" value="rentEscalation">
+            <TabsTrigger
+              className="flex items-center space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded"
+              value="rentEscalation"
+            >
               <TrendingUp size={20} />
-              <span className="hidden sm:inline">Rate & Fees</span>
+              <span className="hidden sm:inline">Rate &amp; Fees</span>
             </TabsTrigger>
           </TabsList>
 
-          {/* Tabs Content */}
           <div className="flex-1 mt-4 sm:mt-0">
             <TabsContent value="settings">
               <div className="overflow-x-auto">
@@ -177,6 +220,7 @@ export default function Admin() {
                   user={user}
                   bankAccounts={bankAccounts}
                   bankAccountFormik={bankAccountFormik}
+                  addBankCloseRef={addBankCloseRef}
                   languages={languages}
                   selectedLanguage={selectedLanguage}
                   setSelectedLanguage={setSelectedLanguage}
@@ -205,11 +249,7 @@ export default function Admin() {
               </div>
             </TabsContent>
 
-            <TabsContent value="subMeters">
-              <div className="overflow-x-auto">
-                <SubMetersTab propertyId={propertyId} />
-              </div>
-            </TabsContent>
+
 
             <TabsContent value="rentEscalation">
               <div className="overflow-x-auto">

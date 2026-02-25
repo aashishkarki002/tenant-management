@@ -45,62 +45,89 @@ function AddTenants() {
   };
 
   return (
-    <div className="flex justify-center items-start min-h-screen bg-gray-50 p-4">
+    <div className="flex justify-center items-start min-h-screen bg-gray-50 px-3 sm:px-4 py-4">
       <div className="w-full max-w-5xl">
-        <div className="flex items-center gap-3 mb-6">
-          <ClipboardListIcon className="w-8 h-8 text-primary" />
-          <h1 className="text-3xl font-bold text-gray-900">Add New Tenant</h1>
+
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <ClipboardListIcon className="w-6 h-6 sm:w-8 sm:h-8 text-primary shrink-0" />
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
+            Add New Tenant
+          </h1>
         </div>
 
         <form onSubmit={formik.handleSubmit}>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value={TAB_KEYS.PERSONAL_INFO}>
+
+            {/* Tabs List → scrollable on mobile */}
+            <TabsList className="flex w-full overflow-x-auto no-scrollbar sm:grid sm:grid-cols-4">
+              <TabsTrigger
+                className="flex-1 min-w-[140px] sm:min-w-0"
+                value={TAB_KEYS.PERSONAL_INFO}
+              >
                 Personal Info
               </TabsTrigger>
-              <TabsTrigger value={TAB_KEYS.LEASE_DETAILS}>
+
+              <TabsTrigger
+                className="flex-1 min-w-[140px] sm:min-w-0"
+                value={TAB_KEYS.LEASE_DETAILS}
+              >
                 Lease Details
               </TabsTrigger>
-              <TabsTrigger value={TAB_KEYS.FINANCIAL}>Financial</TabsTrigger>
-              <TabsTrigger value={TAB_KEYS.DOCUMENTS}>Documents</TabsTrigger>
+
+              <TabsTrigger
+                className="flex-1 min-w-[120px] sm:min-w-0"
+                value={TAB_KEYS.FINANCIAL}
+              >
+                Financial
+              </TabsTrigger>
+
+              <TabsTrigger
+                className="flex-1 min-w-[120px] sm:min-w-0"
+                value={TAB_KEYS.DOCUMENTS}
+              >
+                Documents
+              </TabsTrigger>
             </TabsList>
 
-            <TabsContent value={TAB_KEYS.PERSONAL_INFO} className="mt-4">
-              <PersonalInfoTab
-                formik={formik}
-                property={property}
-                onNext={handleNext}
-              />
-            </TabsContent>
+            {/* Tab Contents */}
+            <div className="mt-4 sm:mt-6">
+              <TabsContent value={TAB_KEYS.PERSONAL_INFO}>
+                <PersonalInfoTab
+                  formik={formik}
+                  property={property}
+                  onNext={handleNext}
+                />
+              </TabsContent>
 
-            <TabsContent value={TAB_KEYS.LEASE_DETAILS} className="mt-4">
-              <LeaseDetailsTab
-                formik={formik}
-                property={property}
-                units={units}
-                onNext={handleNext}
-                onPrevious={handlePrevious}
-              />
-            </TabsContent>
+              <TabsContent value={TAB_KEYS.LEASE_DETAILS}>
+                <LeaseDetailsTab
+                  formik={formik}
+                  property={property}
+                  units={units}
+                  onNext={handleNext}
+                  onPrevious={handlePrevious}
+                />
+              </TabsContent>
 
-            <TabsContent value={TAB_KEYS.FINANCIAL} className="mt-4">
-              <FinancialTab
-                formik={formik}
-                units={units}
-                onNext={handleNext}
-                onPrevious={handlePrevious}
-              />
+              <TabsContent value={TAB_KEYS.FINANCIAL}>
+                <FinancialTab
+                  formik={formik}
+                  units={units}
+                  onNext={handleNext}
+                  onPrevious={handlePrevious}
+                />
+              </TabsContent>
 
-            </TabsContent>
-
-            <TabsContent value={TAB_KEYS.DOCUMENTS} className="mt-4">
-              <DocumentsTab
-                formik={formik}
-                isLoading={isLoading}
-                onPrevious={handlePrevious}
-                onClose={handleClose}
-              />
-            </TabsContent>
+              <TabsContent value={TAB_KEYS.DOCUMENTS}>
+                <DocumentsTab
+                  formik={formik}
+                  isLoading={isLoading}
+                  onPrevious={handlePrevious}
+                  onClose={handleClose}
+                />
+              </TabsContent>
+            </div>
           </Tabs>
         </form>
       </div>

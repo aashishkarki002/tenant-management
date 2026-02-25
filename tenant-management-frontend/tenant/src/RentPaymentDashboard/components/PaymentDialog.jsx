@@ -1,3 +1,23 @@
+/**
+ * PaymentDialog.jsx  (FIXED)
+ *
+ * FIX 1 — proportionalAllocate used gross remaining (gross - paid).
+ *   Tenant only owes effectiveRentPaisa = gross - TDS.
+ *   Using gross remaining produced over-allocations rejected by the backend.
+ *   FIX: remaining = (rentAmountPaisa - tdsAmountPaisa) - paidAmountPaisa
+ *   Mirrors the fix in payment.allocation.helper.js on the backend.
+ *
+ * FIX 2 — units useMemo: rentDue/remaining used gross rentAmountPaisa.
+ *   FIX: rentDue = (ub.rentAmountPaisa - ub.tdsAmountPaisa) / 100
+ *
+ * FIX 3 — bank account picker only called setFieldValue("bankAccountId").
+ *   Added setFieldValue("bankAccountCode", bank.accountCode) so the journal
+ *   builder can route to the correct ledger account (DR Cash vs DR Bank).
+ *
+ * FIX 4 — buildPayload() omitted bankAccountCode.
+ *   Added to the payload so payment.service.js receives it.
+ */
+
 import React from "react";
 import {
   Dialog,
@@ -9,24 +29,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DualCalendarTailwind from "../../components/dualDate";
 import { getPaymentAmounts, normalizeStatus } from "../utils/paymentUtil";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Resolve a unit id to a plain string from ObjectId, populated doc, or string.
- * Mirrors resolveUnitId in rent-payment.helper.js for front-end parity.
- */
 function resolveId(val) {
   if (!val) return null;
   if (val._id) return val._id.toString();
@@ -35,27 +46,41 @@ function resolveId(val) {
 
 /**
  * Proportional allocation — mirrors allocatePaymentProportionally on the backend.
+ *
+ * FIX: remaining = (rentAmountPaisa - tdsAmountPaisa) - paidAmountPaisa
+ * was: remaining = rentAmountPaisa - paidAmountPaisa  (gross — wrong)
+ *
  * Returns [{ unitId: string, amount: number (rupees) }]
  */
 function proportionalAllocate(unitBreakdown, totalRupees) {
-  const totalRemainingPaisa = unitBreakdown.reduce((sum, u) => {
-    return sum + Math.max(0, (u.rentAmountPaisa || 0) - (u.paidAmountPaisa || 0));
+  // FIX: effective remaining per unit
+  const totalEffectiveRemainingPaisa = unitBreakdown.reduce((sum, u) => {
+    const effective = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    return sum + Math.max(0, effective - (u.paidAmountPaisa || 0));
   }, 0);
-  if (totalRemainingPaisa === 0) return [];
+
+  if (totalEffectiveRemainingPaisa === 0) return [];
 
   const totalPaymentPaisa = Math.round(totalRupees * 100);
   let remaining = totalPaymentPaisa;
+  const unpaidUnits = unitBreakdown.filter((u) => {
+    const eff = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    return eff - (u.paidAmountPaisa || 0) > 0;
+  });
   const result = [];
 
-  unitBreakdown.forEach((u, idx) => {
-    const unitRemainingPaisa = (u.rentAmountPaisa || 0) - (u.paidAmountPaisa || 0);
-    if (unitRemainingPaisa <= 0) return;
+  unpaidUnits.forEach((u, idx) => {
+    // FIX: effective remaining
+    const unitEffectivePaisa = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    const unitRemainingPaisa = unitEffectivePaisa - (u.paidAmountPaisa || 0);
 
     let alloc;
-    if (idx === unitBreakdown.length - 1) {
-      alloc = remaining; // last unit absorbs rounding residue
+    if (idx === unpaidUnits.length - 1) {
+      alloc = remaining;
     } else {
-      alloc = Math.round((unitRemainingPaisa / totalRemainingPaisa) * totalPaymentPaisa);
+      alloc = Math.round(
+        (unitRemainingPaisa / totalEffectiveRemainingPaisa) * totalPaymentPaisa,
+      );
       alloc = Math.min(alloc, unitRemainingPaisa);
     }
 
@@ -68,7 +93,7 @@ function proportionalAllocate(unitBreakdown, totalRupees) {
   return result;
 }
 
-// ─── Component ──────────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export const PaymentDialog = ({
   rent,
@@ -85,12 +110,11 @@ export const PaymentDialog = ({
   setSelectedBankAccountId,
   handleAmountChange,
   onClose,
-  relatedRents,
 }) => {
-  const { rentAmount, camAmount, totalDue } = getPaymentAmounts(rent, cams);
+  const { rentAmount, camAmount, totalDue, grossRentPaisa, tdsAmountPaisa } =
+    getPaymentAmounts(rent, cams);
 
-  // ── Find matching CAM record ─────────────────────────────────────────────
-  // Industry standard: match CAM to rent by tenant + billing period
+  // ── Matching CAM ──────────────────────────────────────────────────────────
   const matchingCam = React.useMemo(() => {
     if (!cams?.length) return null;
     return (
@@ -98,66 +122,67 @@ export const PaymentDialog = ({
         (c) =>
           resolveId(c.tenant) === resolveId(rent?.tenant?._id || rent?.tenant) &&
           c.nepaliMonth === rent?.nepaliMonth &&
-          c.nepaliYear === rent?.nepaliYear
-      ) || cams[0] // fallback to first CAM if period-match unavailable
+          c.nepaliYear === rent?.nepaliYear,
+      ) || cams[0]
     );
   }, [cams, rent]);
 
-  // ── Unit breakdown (multi-unit) ──────────────────────────────────────────
+  // ── Unit breakdown (multi-unit) ───────────────────────────────────────────
   /**
-   * Industry standard: derive per-unit amounts from the server's unitBreakdown,
-   * NOT by dividing the total equally. unitBreakdown holds the authoritative
-   * rentAmountPaisa / paidAmountPaisa per unit set at rent creation time.
+   * FIX: rentDue and remaining now use effectiveRentPaisa (gross - TDS) per unit,
+   * not gross rentAmountPaisa.
    */
   const units = React.useMemo(() => {
     const hasBreakdown =
-      rent?.useUnitBreakdown && Array.isArray(rent.unitBreakdown) && rent.unitBreakdown.length > 0;
+      rent?.useUnitBreakdown &&
+      Array.isArray(rent.unitBreakdown) &&
+      rent.unitBreakdown.length > 0;
 
     if (hasBreakdown) {
       return rent.unitBreakdown.map((ub) => {
-        const unit = ub.unit; // populated doc or ObjectId
+        const unit = ub.unit;
         const id = resolveId(unit);
-        const rentDue = (ub.rentAmountPaisa || 0) / 100;
+
+        // FIX: effective rent per unit = gross - TDS
+        const effectivePaisa = (ub.rentAmountPaisa || 0) - (ub.tdsAmountPaisa || 0);
+        const rentDue = effectivePaisa / 100;
         const paidSoFar = (ub.paidAmountPaisa || 0) / 100;
         const remaining = rentDue - paidSoFar;
 
         return {
           id,
           name: unit?.name || id || "Unit",
-          label:
-            unit?.block?.name
-              ? `${unit.block.name} – ${unit.innerBlock?.name || ""}`.trim()
-              : "",
+          label: unit?.block?.name
+            ? `${unit.block.name} – ${unit.innerBlock?.name || ""}`.trim()
+            : "",
           rentDue,
           paidSoFar,
           remaining,
           hasOutstanding: remaining > 0,
-          // keep reference for payload building
           _breakdownRef: ub,
         };
       });
     }
 
-    // Single-unit fallback
-    const rentDue = rentAmount;
+    // Single-unit fallback — use effective rent from getPaymentAmounts()
     const paidSoFar = (rent?.paidAmountPaisa || 0) / 100;
     return [
       {
         id: resolveId(rent?.units?.[0]) || rent?._id || "primary",
         name: rent?.units?.[0]?.name || "Primary Unit",
         label: `${rent?.innerBlock?.name || ""} ${rent?.block?.name || ""}`.trim(),
-        rentDue,
+        rentDue: rentAmount,
         paidSoFar,
-        remaining: rentDue - paidSoFar,
-        hasOutstanding: rentDue - paidSoFar > 0,
+        remaining: rentAmount - paidSoFar,
+        hasOutstanding: rentAmount - paidSoFar > 0,
         _breakdownRef: null,
       },
     ];
   }, [rent, rentAmount]);
 
-  // ── Selected units ───────────────────────────────────────────────────────
+  // ── Selected units ────────────────────────────────────────────────────────
   const [selectedUnitIds, setSelectedUnitIds] = React.useState(
-    units.filter((u) => u.hasOutstanding).map((u) => u.id)
+    units.filter((u) => u.hasOutstanding).map((u) => u.id),
   );
 
   React.useEffect(() => {
@@ -167,55 +192,45 @@ export const PaymentDialog = ({
   const selectedUnits = units.filter((u) => selectedUnitIds.includes(u.id));
   const allSelected = selectedUnitIds.length === units.length;
 
-  // ── Per-unit rent allocation (manual mode) ───────────────────────────────
-  /**
-   * Industry standard: store allocation as rupees keyed by unitId.
-   * On submit, these become unitAllocations[].amount in the payload.
-   */
+  // ── Per-unit rent allocation (manual mode) ────────────────────────────────
   const [unitRentAllocations, setUnitRentAllocations] = React.useState({});
 
-  // Reset per-unit allocations when selected units change
   React.useEffect(() => {
     setUnitRentAllocations((prev) => {
       const next = {};
-      selectedUnits.forEach((u) => {
-        next[u.id] = prev[u.id] ?? u.remaining;
-      });
+      selectedUnits.forEach((u) => { next[u.id] = prev[u.id] ?? u.remaining; });
       return next;
     });
   }, [selectedUnitIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Derived amounts ──────────────────────────────────────────────────────
+  // ── Derived amounts ───────────────────────────────────────────────────────
   const paymentAmount = formik.values?.amount || 0;
   const totalAllocated = rentAllocation + camAllocation;
   const balanceOwed = totalDue - totalAllocated;
   const isOverAllocated = totalAllocated > paymentAmount && paymentAmount > 0;
 
-  // Proportional auto-allocation preview (matches backend default strategy)
   const autoUnitAllocations = React.useMemo(() => {
     if (!rent?.useUnitBreakdown || !rent?.unitBreakdown?.length) return [];
     const selectedBreakdown = rent.unitBreakdown.filter((ub) =>
-      selectedUnitIds.includes(resolveId(ub.unit))
+      selectedUnitIds.includes(resolveId(ub.unit)),
     );
     if (!selectedBreakdown.length || !rentAllocation) return [];
     return proportionalAllocate(selectedBreakdown, rentAllocation);
   }, [rent, selectedUnitIds, rentAllocation]);
 
-  // Manual per-unit total validation
   const manualUnitRentTotal = Object.values(unitRentAllocations).reduce(
-    (s, v) => s + (parseFloat(v) || 0),
-    0
+    (s, v) => s + (parseFloat(v) || 0), 0,
   );
   const unitAllocationMismatch =
     allocationMode === "manual" &&
     rent?.useUnitBreakdown &&
     Math.abs(manualUnitRentTotal - rentAllocation) > 0.01;
 
-  // ── Payload builder ──────────────────────────────────────────────────────
+  // ── Payload builder ───────────────────────────────────────────────────────
   /**
-   * Builds the exact API payload matching the /payments endpoint contract.
-   * Industry standard: construct at submit time, not incrementally,
-   * so the shape is always derived from latest state.
+   * FIX: bankAccountCode now included in the payload.
+   * The backend's buildPaymentReceivedJournal() uses it to DR the correct
+   * bank ledger account (e.g. "1010-NABIL") instead of defaulting to CASH.
    */
   function buildPayload() {
     const isMultiUnit = rent?.useUnitBreakdown && rent?.unitBreakdown?.length > 0;
@@ -231,60 +246,50 @@ export const PaymentDialog = ({
       paymentStatus: "paid",
       note: formik.values?.note || "",
       bankAccountId: formik.values?.bankAccountId || null,
+      bankAccountCode: formik.values?.bankAccountCode || null,  // FIX: added
       transactionRef: formik.values?.transactionRef || null,
       allocations: {},
     };
 
-    // ── Rent allocation ────────────────────────────────────────────────────
     if (rentAllocation > 0) {
-      const rentEntry = {
-        rentId: rent._id,
-        amount: rentAllocation,
-      };
+      const rentEntry = { rentId: rent._id, amount: rentAllocation };
 
       if (isMultiUnit) {
-        // Attach per-unit allocations — use manual or proportional depending on mode
         const unitAllocations =
           allocationMode === "manual"
             ? selectedUnits
-              .map((u) => ({
-                unitId: u.id,
-                amount: parseFloat(unitRentAllocations[u.id]) || 0,
-              }))
+              .map((u) => ({ unitId: u.id, amount: parseFloat(unitRentAllocations[u.id]) || 0 }))
               .filter((a) => a.amount > 0)
-            : autoUnitAllocations.filter((a) =>
-              selectedUnitIds.includes(a.unitId)
-            );
+            : autoUnitAllocations.filter((a) => selectedUnitIds.includes(a.unitId));
 
-        if (unitAllocations.length > 0) {
-          rentEntry.unitAllocations = unitAllocations;
-        }
+        if (unitAllocations.length > 0) rentEntry.unitAllocations = unitAllocations;
       }
 
       payload.allocations.rent = rentEntry;
     }
 
-    // ── CAM allocation ─────────────────────────────────────────────────────
     if (camAllocation > 0 && matchingCam?._id) {
-      payload.allocations.cam = {
-        camId: matchingCam._id,
-        paidAmount: camAllocation,
-      };
+      payload.allocations.cam = { camId: matchingCam._id, paidAmount: camAllocation };
     }
 
     return payload;
   }
 
-  // ── Validation ───────────────────────────────────────────────────────────
+  // ── Validation ────────────────────────────────────────────────────────────
+  const needsBankAccount =
+    formik.values?.paymentMethod === "bank_transfer" ||
+    formik.values?.paymentMethod === "cheque";
+
   const isSubmitDisabled =
     !selectedUnits.length ||
     isOverAllocated ||
     !paymentAmount ||
     !formik.values?.paymentMethod ||
     !formik.values?.paymentDate ||
+    (needsBankAccount && !formik.values?.bankAccountCode) ||  // FIX: require bankAccountCode
     unitAllocationMismatch;
 
-  // ── Summary tone ─────────────────────────────────────────────────────────
+  // ── Summary tone ──────────────────────────────────────────────────────────
   const summaryTone =
     balanceOwed === 0
       ? { container: "border-emerald-200 bg-emerald-50", accent: "text-emerald-700" }
@@ -292,13 +297,10 @@ export const PaymentDialog = ({
         ? { container: "border-amber-200 bg-amber-50", accent: "text-amber-700" }
         : { container: "border-rose-200 bg-rose-50", accent: "text-rose-700" };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Portal container ref — keeps floating pickers inside Radix focus trap
   const portalContainerRef = React.useRef(null);
 
   return (
     <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto bg-slate-50">
-      {/* Mount point for portaled pickers */}
       <div ref={portalContainerRef} />
       <DialogHeader className="pb-4">
         <DialogTitle className="text-2xl font-semibold text-slate-900">
@@ -309,16 +311,21 @@ export const PaymentDialog = ({
         </p>
       </DialogHeader>
 
-      {/* ── High-level due summary ─────────────────────────────────────── */}
+      {/* ── Due summary ──────────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wide">
-              Rent Due
+              Rent Due (net of TDS)
             </p>
             <p className="text-2xl font-semibold text-slate-900">
               ₹{rentAmount.toLocaleString()}
             </p>
+            {tdsAmountPaisa > 0 && (
+              <p className="text-xs text-amber-600 mt-0.5">
+                TDS: ₹{(tdsAmountPaisa / 100).toLocaleString()} withheld
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wide">
@@ -338,7 +345,7 @@ export const PaymentDialog = ({
         </div>
       </div>
 
-      {/* ── 1️⃣ Select Units ──────────────────────────────────────────────── */}
+      {/* ── 1️⃣ Select Units ─────────────────────────────────────────────── */}
       <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -371,32 +378,26 @@ export const PaymentDialog = ({
                   setSelectedUnitIds((prev) =>
                     prev.includes(unit.id)
                       ? prev.filter((id) => id !== unit.id)
-                      : [...prev, unit.id]
+                      : [...prev, unit.id],
                   )
                 }
                 className={`w-full text-left rounded-xl border-2 px-4 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${selected
-                  ? "border-slate-900/80 bg-slate-900/[0.02]"
-                  : "border-slate-200 hover:border-slate-300 bg-white"
+                    ? "border-slate-900/80 bg-slate-900/[0.02]"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
                   }`}
               >
-                {/* Top row: unit info + total due */}
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    {/* Circular selector indicator */}
                     <div
                       className={`flex items-center justify-center w-5 h-5 rounded-full border-2 ${selected
-                        ? "border-slate-900 bg-slate-900"
-                        : "border-slate-300 bg-white"
+                          ? "border-slate-900 bg-slate-900"
+                          : "border-slate-300 bg-white"
                         }`}
                     >
-                      {selected && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-white" />
-                      )}
+                      {selected && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {unit.name}
-                      </p>
+                      <p className="text-sm font-semibold text-slate-900">{unit.name}</p>
                       {unit.label && (
                         <p className="text-xs text-slate-500 mt-0.5">{unit.label}</p>
                       )}
@@ -407,22 +408,19 @@ export const PaymentDialog = ({
                       )}
                     </div>
                   </div>
-
                   <div className="text-right">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Total Due
+                      Remaining
                     </p>
                     <p className="mt-0.5 text-sm font-bold text-slate-900">
                       ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                 </div>
-
-                {/* Bottom row: per-unit amounts */}
-                <div className="mt-3 grid grid-cols-2 gap-4 text-xs flex justify-between">
+                <div className="mt-3 grid grid-cols-2 gap-4 text-xs">
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Rent Due
+                      Rent Due (net)
                     </p>
                     <p className="mt-0.5 font-semibold text-slate-900">
                       ₹{unit.rentDue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -430,7 +428,7 @@ export const PaymentDialog = ({
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Cam Due
+                      Paid So Far
                     </p>
                     <p className="mt-0.5 font-semibold text-slate-900">
                       ₹{unit.paidSoFar.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -447,21 +445,17 @@ export const PaymentDialog = ({
         )}
       </section>
 
-      {/* ── 2️⃣ Allocation Mode ───────────────────────────────────────────── */}
+      {/* ── 2️⃣ Allocation Mode ──────────────────────────────────────────── */}
       <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-5">
         <div>
           <p className="text-sm font-semibold text-slate-900">Allocation Mode</p>
           <p className="text-xs text-slate-500 mt-0.5">
-            Quick Payment auto-distributes proportionally across units. Custom lets you
-            specify exact amounts per unit.
+            Quick Payment auto-distributes proportionally. Custom lets you specify
+            exact amounts per unit.
           </p>
         </div>
 
-        <Tabs
-          value={allocationMode}
-          onValueChange={setAllocationMode}
-          className="space-y-5"
-        >
+        <Tabs value={allocationMode} onValueChange={setAllocationMode} className="space-y-5">
           <TabsList className="grid w-full grid-cols-2 bg-slate-100 p-0.5 rounded-full">
             <TabsTrigger
               value="auto"
@@ -477,7 +471,7 @@ export const PaymentDialog = ({
             </TabsTrigger>
           </TabsList>
 
-          {/* ── 3️⃣ Quick Payment ────────────────────────────────────────── */}
+          {/* Quick Payment */}
           <TabsContent value="auto" className="space-y-4 pt-2">
             <div className="space-y-2">
               <label htmlFor="amount-quick" className="text-sm font-semibold text-slate-900">
@@ -489,9 +483,7 @@ export const PaymentDialog = ({
                 placeholder="Enter payment amount"
                 value={formik.values?.amount || ""}
                 onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
-                onBlur={(e) => {
-                  if (!e.target.value) handleAmountChange(totalDue, rent);
-                }}
+                onBlur={(e) => { if (!e.target.value) handleAmountChange(totalDue, rent); }}
                 className="text-lg"
               />
               <p className="text-xs text-slate-500">
@@ -499,7 +491,6 @@ export const PaymentDialog = ({
               </p>
             </div>
 
-            {/* Proportional preview — matches backend allocatePaymentProportionally */}
             <div className="mt-3 bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
@@ -513,10 +504,7 @@ export const PaymentDialog = ({
                   {autoUnitAllocations.map((alloc) => {
                     const unit = units.find((u) => u.id === alloc.unitId);
                     return (
-                      <div
-                        key={alloc.unitId}
-                        className="flex items-center justify-between text-xs"
-                      >
+                      <div key={alloc.unitId} className="flex items-center justify-between text-xs">
                         <span className="font-medium text-slate-900">
                           {unit?.name || alloc.unitId}
                         </span>
@@ -545,7 +533,7 @@ export const PaymentDialog = ({
             </div>
           </TabsContent>
 
-          {/* ── 4️⃣ Custom Allocation ─────────────────────────────────────── */}
+          {/* Custom Allocation */}
           <TabsContent value="manual" className="space-y-4 pt-2">
             <div className="space-y-2">
               <label htmlFor="amount-manual" className="text-sm font-semibold text-slate-900">
@@ -556,14 +544,11 @@ export const PaymentDialog = ({
                 type="number"
                 placeholder="Enter total payment amount"
                 value={formik.values?.amount || ""}
-                onChange={(e) =>
-                  formik.setFieldValue("amount", parseFloat(e.target.value) || 0)
-                }
+                onChange={(e) => formik.setFieldValue("amount", parseFloat(e.target.value) || 0)}
                 className="text-lg"
               />
             </div>
 
-            {/* Global rent / CAM split */}
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label htmlFor="rent-allocation" className="text-sm font-semibold text-slate-900">
@@ -578,7 +563,6 @@ export const PaymentDialog = ({
                 />
                 <p className="text-xs text-slate-500">Rent due: ₹{rentAmount.toLocaleString()}</p>
               </div>
-
               <div className="space-y-2">
                 <label htmlFor="cam-allocation" className="text-sm font-semibold text-slate-900">
                   Allocate to CAM (Rs)
@@ -594,33 +578,25 @@ export const PaymentDialog = ({
               </div>
             </div>
 
-            {/* Per-unit rent allocation — only shown for multi-unit rents */}
             {rent?.useUnitBreakdown && selectedUnits.length > 0 && (
               <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
                     Per-unit rent allocation
                   </p>
-                  <p
-                    className={`text-xs font-medium ${unitAllocationMismatch ? "text-rose-600" : "text-slate-500"
-                      }`}
-                  >
+                  <p className={`text-xs font-medium ${unitAllocationMismatch ? "text-rose-600" : "text-slate-500"}`}>
                     {unitAllocationMismatch
                       ? `Total ₹${manualUnitRentTotal.toFixed(2)} ≠ rent ₹${rentAllocation.toFixed(2)}`
                       : `Must sum to ₹${rentAllocation.toLocaleString()}`}
                   </p>
                 </div>
-
                 <div className="space-y-3">
                   {selectedUnits.map((unit) => (
                     <div key={unit.id} className="flex items-center gap-3">
                       <div className="flex-1">
                         <p className="text-xs font-medium text-slate-900">{unit.name}</p>
                         <p className="text-[11px] text-slate-500">
-                          Remaining ₹
-                          {unit.remaining.toLocaleString(undefined, {
-                            maximumFractionDigits: 0,
-                          })}
+                          Remaining ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </p>
                       </div>
                       <Input
@@ -639,7 +615,6 @@ export const PaymentDialog = ({
                     </div>
                   ))}
                 </div>
-
                 {unitAllocationMismatch && (
                   <p className="text-xs text-rose-600">
                     Unit allocations must exactly match the rent allocation amount.
@@ -647,28 +622,22 @@ export const PaymentDialog = ({
                 )}
               </div>
             )}
-
-            <div className="mt-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <p className="text-xs text-slate-500">
-                Rent and CAM allocations apply to all selected units in this billing cycle.
-              </p>
-            </div>
           </TabsContent>
         </Tabs>
       </section>
 
-      {/* ── 5️⃣ Payment Details ──────────────────────────────────────────── */}
+      {/* ── 3️⃣ Payment Details ──────────────────────────────────────────── */}
       <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-4">
         <p className="text-sm font-semibold text-slate-900">Payment Details</p>
 
-        {/* Payment Method */}
+        {/* Method */}
         <div className="space-y-2">
           <label htmlFor="payment-method" className="text-sm font-medium text-slate-900">
             Payment Method
           </label>
           <Select
             value={formik.values?.paymentMethod || ""}
-            onValueChange={(value) => formik.setFieldValue("paymentMethod", value)}
+            onValueChange={(v) => formik.setFieldValue("paymentMethod", v)}
           >
             <SelectTrigger id="payment-method">
               <SelectValue placeholder="Select payment method" />
@@ -681,56 +650,70 @@ export const PaymentDialog = ({
           </Select>
         </div>
 
-        {/* Bank account picker */}
-        {formik.values?.paymentMethod === "bank_transfer" && (
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-slate-900">Deposit To</label>
-            <div className="grid gap-3">
-              {bankAccounts.map((bank) => (
-                <button
-                  key={bank._id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedBankAccountId(bank._id);
-                    formik.setFieldValue("bankAccountId", bank._id);
-                  }}
-                  className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
-                    ? "border-slate-900 bg-slate-900/[0.03]"
-                    : "border-slate-200 hover:border-slate-300 bg-white"
-                    }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="font-semibold text-slate-900">{bank.bankName}</p>
-                      <p className="text-xs text-slate-500">
-                        **** **** {bank.accountNumber?.slice(-4) || "****"}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
-                        Balance
-                      </p>
-                      <p className="font-semibold text-slate-900 text-sm">
-                        ₹{bank.balance?.toLocaleString() || "0"}
-                      </p>
-                    </div>
-                    {selectedBankAccountId === bank._id && (
-                      <div className="ml-3 text-slate-900">
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path
-                            fillRule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
+        {/* Bank account picker — shown for bank_transfer AND cheque */}
+        {(formik.values?.paymentMethod === "bank_transfer" ||
+          formik.values?.paymentMethod === "cheque") && (
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-slate-900">
+                Deposit To *
+              </label>
+              <div className="grid gap-3">
+                {bankAccounts.map((bank) => (
+                  <button
+                    key={bank._id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedBankAccountId(bank._id);
+                      formik.setFieldValue("bankAccountId", bank._id);
+                      // FIX: set bankAccountCode so journal builder can route to
+                      // the correct ledger account (e.g. "1010-NABIL")
+                      formik.setFieldValue("bankAccountCode", bank.accountCode || "");
+                    }}
+                    className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
+                        ? "border-slate-900 bg-slate-900/[0.03]"
+                        : "border-slate-200 hover:border-slate-300 bg-white"
+                      }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="font-semibold text-slate-900">{bank.bankName}</p>
+                        <p className="text-xs text-slate-500">
+                          **** **** {bank.accountNumber?.slice(-4) || "****"}
+                        </p>
+                        {bank.accountCode && (
+                          <p className="text-xs text-slate-400 font-mono mt-0.5">
+                            {bank.accountCode}
+                          </p>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </button>
-              ))}
+                      <div className="text-right">
+                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
+                          Balance
+                        </p>
+                        <p className="font-semibold text-slate-900 text-sm">
+                          ₹{bank.balance?.toLocaleString() || "0"}
+                        </p>
+                      </div>
+                      {selectedBankAccountId === bank._id && (
+                        <div className="ml-3 text-slate-900">
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path
+                              fillRule="evenodd"
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {needsBankAccount && !formik.values?.bankAccountCode && (
+                <p className="text-xs text-rose-600">Select a bank account to continue.</p>
+              )}
             </div>
-          </div>
-        )}
+          )}
 
         {/* Payment Date */}
         <div className="space-y-2">
@@ -749,7 +732,7 @@ export const PaymentDialog = ({
           />
         </div>
 
-        {/* Transaction Reference */}
+        {/* Transaction Ref */}
         <div className="space-y-2">
           <label htmlFor="transaction-ref" className="text-sm font-medium text-slate-900">
             Transaction Reference{" "}
@@ -778,10 +761,8 @@ export const PaymentDialog = ({
         </div>
       </section>
 
-      {/* ── 6️⃣ Final Summary ────────────────────────────────────────────── */}
-      <section
-        className={`mt-6 mb-2 rounded-xl border px-5 py-4 ${summaryTone.container}`}
-      >
+      {/* ── 4️⃣ Final Summary ────────────────────────────────────────────── */}
+      <section className={`mt-6 mb-2 rounded-xl border px-5 py-4 ${summaryTone.container}`}>
         <div className="flex flex-wrap gap-4 items-start justify-between">
           <div className="space-y-1">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -803,15 +784,13 @@ export const PaymentDialog = ({
               </p>
             </div>
             <div>
-              <p className="text-[11px] text-slate-500 uppercase tracking-wide">Total Allocated</p>
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide">Allocated</p>
               <p className="mt-1 text-base font-semibold text-slate-900">
                 ₹{totalAllocated.toLocaleString()}
               </p>
             </div>
             <div>
-              <p className="text-[11px] text-slate-500 uppercase tracking-wide">
-                Remaining Balance
-              </p>
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide">Remaining</p>
               <p className={`mt-1 text-base font-semibold ${summaryTone.accent}`}>
                 ₹{balanceOwed.toLocaleString()}
               </p>
@@ -821,19 +800,19 @@ export const PaymentDialog = ({
       </section>
 
       <DialogFooter className="mt-2 border-t border-slate-200 pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        {(!selectedUnits.length || isOverAllocated || unitAllocationMismatch) && (
-          <div className="text-xs text-rose-600">
-            {!selectedUnits.length && <p>Select at least one unit before submitting.</p>}
-            {isOverAllocated && (
-              <p>Allocation total cannot exceed the payment amount.</p>
-            )}
-            {unitAllocationMismatch && (
-              <p>
-                Per-unit rent allocations must sum to ₹{rentAllocation.toFixed(2)}.
-              </p>
-            )}
-          </div>
-        )}
+        {(!selectedUnits.length || isOverAllocated || unitAllocationMismatch ||
+          (needsBankAccount && !formik.values?.bankAccountCode)) && (
+            <div className="text-xs text-rose-600">
+              {!selectedUnits.length && <p>Select at least one unit before submitting.</p>}
+              {isOverAllocated && <p>Allocation total cannot exceed the payment amount.</p>}
+              {unitAllocationMismatch && (
+                <p>Per-unit rent allocations must sum to ₹{rentAllocation.toFixed(2)}.</p>
+              )}
+              {needsBankAccount && !formik.values?.bankAccountCode && (
+                <p>Select a bank account to route the journal entry.</p>
+              )}
+            </div>
+          )}
 
         <div className="flex items-center justify-end gap-2 w-full sm:w-auto">
           <Button type="button" variant="outline" onClick={onClose}>
@@ -844,13 +823,10 @@ export const PaymentDialog = ({
             disabled={isSubmitDisabled}
             onClick={async (e) => {
               e.preventDefault();
-              // Build the complete, correctly-shaped payload and inject into formik
               const payload = buildPayload();
               await formik.setValues({ ...formik.values, ...payload });
               await formik.handleSubmit();
-              if (formik.isValid) {
-                onClose();
-              }
+              if (formik.isValid) onClose();
             }}
           >
             Submit Payment

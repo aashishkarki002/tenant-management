@@ -1,3 +1,4 @@
+import React from "react";
 import {
     Dialog,
     DialogContent,
@@ -8,9 +9,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { useFormik } from "formik";
 import { toast } from "sonner";
 import DragDropFileUpload from "@/components/DragDropFileUpload";
+import { useBankAccounts } from "../../Accounts/hooks/useAccounting";
 import { recordPayment } from "../utils/electricityApi";
 
 /**
@@ -39,9 +48,14 @@ export default function ElectricityPaymentDialog({
     /** Called after a successful payment so the parent can refetch */
     onPaymentRecorded,
 }) {
+    const { bankAccounts = [] } = useBankAccounts();
+    const [selectedBankAccountId, setSelectedBankAccountId] = React.useState("");
+
     const formik = useFormik({
         initialValues: {
             paymentAmount: "",
+            paymentMethod: "bank_transfer",
+            bankAccountId: "",
             receiptFile: null,
         },
         validate: (values) => {
@@ -52,17 +66,27 @@ export default function ElectricityPaymentDialog({
             } else if (amount > remainingAmount) {
                 errors.paymentAmount = `Amount cannot exceed remaining due (${remainingAmountFormatted}).`;
             }
+            const paymentMethod = String(values.paymentMethod || "bank_transfer").toLowerCase();
+            if ((paymentMethod === "bank_transfer" || paymentMethod === "cheque") && !values.bankAccountId) {
+                errors.bankAccountId = "Please select a bank account.";
+            }
             return errors;
         },
         onSubmit: async (values, { setSubmitting, resetForm }) => {
             try {
+                const paymentMethod = String(values.paymentMethod || "bank_transfer").toLowerCase();
+                const payload = {
+                    electricityId: record._id,
+                    amount: parseFloat(values.paymentAmount),
+                    nepaliDate: record.nepaliDate,
+                    paymentDate: new Date().toISOString(),
+                    paymentMethod,
+                };
+                if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
+                    if (values.bankAccountId) payload.bankAccountId = values.bankAccountId;
+                }
                 await recordPayment(
-                    {
-                        electricityId: record._id,
-                        amount: parseFloat(values.paymentAmount),
-                        nepaliDate: record.nepaliDate,
-                        paymentDate: new Date().toISOString(),
-                    },
+                    payload,
                     values.receiptFile ?? undefined
                 );
 
@@ -80,7 +104,10 @@ export default function ElectricityPaymentDialog({
 
     const handleOpenChange = (open) => {
         if (!formik.isSubmitting) {
-            if (!open) formik.resetForm();
+            if (!open) {
+                formik.resetForm();
+                setSelectedBankAccountId("");
+            }
             setPaymentDialogOpen(open);
         }
     };
@@ -145,6 +172,87 @@ export default function ElectricityPaymentDialog({
                             </p>
                         )}
                     </div>
+
+                    {/* Payment Method — same type/options as PaymentDialog (cash | bank_transfer | cheque) */}
+                    <div className="space-y-2">
+                        <label htmlFor="payment-method-electricity" className="text-sm font-medium text-slate-900">
+                            Payment Method
+                        </label>
+                        <Select
+                            value={formik.values?.paymentMethod || ""}
+                            onValueChange={(value) => {
+                                formik.setFieldValue("paymentMethod", value);
+                                if (value !== "bank_transfer") {
+                                    setSelectedBankAccountId("");
+                                    formik.setFieldValue("bankAccountId", "");
+                                }
+                            }}
+                        >
+                            <SelectTrigger id="payment-method-electricity">
+                                <SelectValue placeholder="Select payment method" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="cash">Cash</SelectItem>
+                                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                                <SelectItem value="cheque">Cheque</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Bank account picker — shown when payment method is bank_transfer (same as PaymentDialog) */}
+                    {formik.values?.paymentMethod === "bank_transfer" && (
+                        <div className="space-y-3">
+                            <label className="text-sm font-medium text-slate-900">Deposit To</label>
+                            <div className="grid gap-3">
+                                {Array.isArray(bankAccounts) &&
+                                    bankAccounts.map((bank) => (
+                                        <button
+                                            key={bank._id}
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedBankAccountId(bank._id);
+                                                formik.setFieldValue("bankAccountId", bank._id);
+                                            }}
+                                            className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
+                                                ? "border-slate-900 bg-slate-900/[0.03]"
+                                                : "border-slate-200 hover:border-slate-300 bg-white"
+                                                }`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex-1">
+                                                    <p className="font-semibold text-slate-900">{bank.bankName}</p>
+                                                    <p className="text-xs text-slate-500">
+                                                        **** **** {bank.accountNumber?.slice(-4) || "****"}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
+                                                        Balance
+                                                    </p>
+                                                    <p className="font-semibold text-slate-900 text-sm">
+                                                        ₹{bank.balance?.toLocaleString() || "0"}
+                                                    </p>
+                                                </div>
+                                                {selectedBankAccountId === bank._id && (
+                                                    <div className="ml-3 text-slate-900">
+                                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path
+                                                                fillRule="evenodd"
+                                                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                                                clipRule="evenodd"
+                                                            />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
+                            </div>
+                            {formik.touched.bankAccountId && formik.errors.bankAccountId && (
+                                <p className="text-xs text-red-500">{formik.errors.bankAccountId}</p>
+                            )}
+                        </div>
+                    )}
 
                     {/* Receipt Upload */}
                     <div className="space-y-1">

@@ -1,44 +1,58 @@
-import {
-  calculateFinancialTotals,
-  calculateAverageRates,
-} from "./financialCalculation";
+/**
+ * formDataBuilder.js  (FIXED)
+ *
+ * FIX 1 - securityDepositMode -> securityDepositPaymentMethod
+ *   Backend expects:
+ *     securityDepositPaymentMethod  ("cash"|"bank_transfer"|"cheque")
+ *     securityDepositBankAccountId   (when method is bank_transfer or cheque)
+ *     securityDepositBankAccountCode (when method is bank_transfer or cheque)
+ *
+ * FIX 2 - BANK_GUARANTEE is a document mechanism, not a ledger payment method.
+ *   When sdPaymentMethod === "bank_guarantee":
+ *     - Upload file under "bank_guarantee" field (already done)
+ *     - Do NOT send securityDepositPaymentMethod (no cash/bank journal posted)
+ *   When sdPaymentMethod is cash/bank_transfer/cheque:
+ *     - Send securityDepositPaymentMethod -> backend posts the journal entry
+ *
+ * FIX 3 - weighted rates replace the broken avg-of-rates calculation.
+ */
+
+import { calculateFinancialTotals } from "./financialCalculation";
+import { SECURITY_DEPOSIT_MODES } from "../constants/tenant.constant";
 
 /**
- * Build FormData for tenant submission
+ * Build FormData for tenant creation.
+ * @param {Object} values      Formik values
+ * @param {string} propertyId
+ * @returns {FormData}
  */
 export const buildTenantFormData = (values, propertyId) => {
   const formData = new FormData();
 
-  // Calculate aggregated totals
-  const totals = calculateFinancialTotals(values.unitFinancials);
-  const unitCount = values.unitNumber.length;
-  const { avgPricePerSqft, avgCamPerSqft } = calculateAverageRates(
-    totals,
-    unitCount,
-  );
+  const tdsPercentage = parseFloat(values.tdsPercentage) || 10;
+  const totals = calculateFinancialTotals(values.unitFinancials, tdsPercentage);
 
-  // Add property and basic info
+  // Location
   formData.append("property", propertyId);
   formData.append("block", values.block);
   formData.append("innerBlock", values.innerBlock);
 
+  // Unit lease breakdown (sent as JSON string - FormData can't nest arrays)
   if (values.unitFinancials && Object.keys(values.unitFinancials).length > 0) {
     const unitLeases = values.unitNumber.map((unitId) => {
-      const financial = values.unitFinancials[unitId];
+      const f = values.unitFinancials[unitId] ?? {};
       return {
-        unitId: unitId,
-        leasedSquareFeet: parseFloat(financial.sqft) || 0,
-        pricePerSqft: parseFloat(financial.pricePerSqft) || 0,
-        camRatePerSqft: parseFloat(financial.camPerSqft) || 0,
-        securityDeposit: parseFloat(financial.securityDeposit) || 0,
+        unitId,
+        leasedSquareFeet: parseFloat(f.sqft) || 0,
+        pricePerSqft: parseFloat(f.pricePerSqft) || 0,
+        camRatePerSqft: parseFloat(f.camPerSqft) || 0,
+        securityDeposit: parseFloat(f.securityDeposit) || 0,
       };
     });
-
-    // Send as JSON string (FormData can't handle nested arrays)
     formData.append("unitLeases", JSON.stringify(unitLeases));
   }
 
-  // Add tenant information
+  // Scalar tenant fields
   const tenantFields = [
     "name",
     "phone",
@@ -51,34 +65,63 @@ export const buildTenantFormData = (values, propertyId) => {
     "keyHandoverDate",
     "spaceHandoverDate",
     "spaceReturnedDate",
-    "paymentMethod",
     "tdsPercentage",
     "rentPaymentFrequency",
+    // NOTE: paymentMethod is now ONLY the rent payment method (no bank_guarantee)
+    "paymentMethod",
   ];
-
   tenantFields.forEach((field) => {
-    if (values[field]) {
+    if (values[field] != null && values[field] !== "") {
       formData.append(field, values[field]);
     }
   });
 
-  // Add aggregated financial data for backward compatibility
+  // Aggregated financials (backward-compat fields - backend also reads unitLeases)
   formData.append("leasedSquareFeet", totals.totalSqft.toString());
-  formData.append("pricePerSqft", avgPricePerSqft.toString());
-  formData.append("camRatePerSqft", avgCamPerSqft.toString());
+  formData.append("pricePerSqft", totals.weightedPricePerSqft.toString());
+  formData.append("camRatePerSqft", totals.weightedCamPerSqft.toString());
   formData.append("securityDeposit", totals.totalSecurityDeposit.toString());
 
-  // Backend creates SD record + ledger + liability only when securityDepositMode is set
-  if (totals.totalSecurityDeposit > 0 && values.paymentMethod) {
-    formData.append("securityDepositMode", values.paymentMethod);
-    formData.append("securityDepositAmount", totals.totalSecurityDeposit.toString());
+  // Security deposit payment - only post a journal entry when money actually changes hands.
+  // BANK_GUARANTEE = document-only; backend should NOT post a cash/bank journal for it.
+  const sdMode = values.sdPaymentMethod;
+  if (
+    totals.totalSecurityDeposit > 0 &&
+    sdMode &&
+    sdMode !== SECURITY_DEPOSIT_MODES.BANK_GUARANTEE
+  ) {
+    formData.append("securityDepositPaymentMethod", sdMode); // FIX: was "securityDepositMode"
+    formData.append(
+      "securityDepositAmount",
+      totals.totalSecurityDeposit.toString(),
+    );
+
+    // Bank account fields - required when method is bank_transfer or cheque
+    if (
+      sdMode === SECURITY_DEPOSIT_MODES.BANK_TRANSFER ||
+      sdMode === SECURITY_DEPOSIT_MODES.CHEQUE
+    ) {
+      if (values.sdBankAccountId) {
+        formData.append("securityDepositBankAccountId", values.sdBankAccountId);
+      }
+      if (values.sdBankAccountCode) {
+        formData.append(
+          "securityDepositBankAccountCode",
+          values.sdBankAccountCode,
+        );
+      }
+    }
   }
 
-  // Add payment method specific fields (field name must match backend upload.fields: bank_guarantee)
-  if (values.paymentMethod === "bank_guarantee" && values.bankGuaranteePhoto) {
+  // Bank guarantee photo (document only - not a ledger entry)
+  if (
+    sdMode === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE &&
+    values.bankGuaranteePhoto
+  ) {
     formData.append("bank_guarantee", values.bankGuaranteePhoto);
   }
 
+  // Cheque details for rent payment method
   if (values.paymentMethod === "cheque") {
     if (values.chequeAmount)
       formData.append("chequeAmount", values.chequeAmount);
@@ -86,8 +129,7 @@ export const buildTenantFormData = (values, propertyId) => {
       formData.append("chequeNumber", values.chequeNumber);
   }
 
-  // tenant/src/Tenant/addTenant/utils/formDataBuilder.js
-
+  // Documents - mapped to backend upload.fields() names
   const DOCUMENT_FIELD_MAP = {
     photo: "image",
     tenantPhoto: "image",
@@ -104,11 +146,10 @@ export const buildTenantFormData = (values, propertyId) => {
     Object.entries(values.documents).forEach(([type, files]) => {
       const fieldName = DOCUMENT_FIELD_MAP[type] || "other";
       if (Array.isArray(files)) {
-        files.forEach((file) => {
-          formData.append(fieldName, file);
-        });
+        files.forEach((file) => formData.append(fieldName, file));
       }
     });
   }
+
   return formData;
 };

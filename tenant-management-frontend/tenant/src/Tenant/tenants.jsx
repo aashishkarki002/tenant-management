@@ -20,6 +20,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import TenantCard from "../components/TenantCard";
 import api from "../../plugins/axios";
 import { toast } from "sonner";
+import { getAllBlocks } from "./addTenant/utils/propertyHelper";
 
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
@@ -138,6 +139,11 @@ export default function Tenants() {
      DERIVED DATA
   ============================== */
 
+  const allBlocks = React.useMemo(
+    () => getAllBlocks(properties),
+    [properties]
+  );
+
   const activeTenants = tenants.filter(
     (t) => t.status === "active"
   ).length;
@@ -246,8 +252,51 @@ export default function Tenants() {
                 <ArrowDown className="w-3.5 h-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[90vw] sm:w-56 max-w-xs">
-              {/* Keep your dropdown content here */}
+            <DropdownMenuContent className="w-[90vw] sm:w-56 max-w-xs" align="start">
+              <DropdownMenuItem
+                onClick={() => {
+                  setSelectedBlock(null);
+                  setSelectedInnerBlock(null);
+                }}
+              >
+                Clear filter
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {allBlocks.length === 0 ? (
+                <DropdownMenuItem disabled>No blocks available</DropdownMenuItem>
+              ) : (
+                allBlocks.map((block) => (
+                  <DropdownMenuSub key={block._id}>
+                    <DropdownMenuSubTrigger>{block.name}</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSelectedBlock(block);
+                          setSelectedInnerBlock(null);
+                        }}
+                      >
+                        All {block.name}
+                      </DropdownMenuItem>
+                      {Array.isArray(block.innerBlocks) && block.innerBlocks.length > 0 && (
+                        <>
+                          <DropdownMenuSeparator />
+                          {block.innerBlocks.map((inner) => (
+                            <DropdownMenuItem
+                              key={inner._id}
+                              onClick={() => {
+                                setSelectedBlock(block);
+                                setSelectedInnerBlock(inner);
+                              }}
+                            >
+                              {inner.name}
+                            </DropdownMenuItem>
+                          ))}
+                        </>
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ))
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

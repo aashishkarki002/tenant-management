@@ -15,18 +15,24 @@ function normalizeDashboardStats(raw) {
   const totalOutstanding = rentSummary.totalOutstanding ?? 0;
 
   const maintenanceList = Array.isArray(raw.maintenance) ? raw.maintenance : [];
-  const openMaintenance = maintenanceList.filter((m) => (m.status || "").toUpperCase() === "OPEN");
+  const openMaintenance = maintenanceList.filter(
+    (m) => (m.status || "").toUpperCase() === "OPEN",
+  );
   const overdueRents = Array.isArray(raw.overdueRents) ? raw.overdueRents : [];
   const overdueAmount = overdueRents.reduce(
     (sum, r) => sum + (Number(r.amount) || Number(r.amountPaisa) / 100 || 0),
-    0
+    0,
   );
 
   const firstMaintenance = openMaintenance[0] || maintenanceList[0];
   const formatDate = (d) => {
     if (!d) return "";
     const date = new Date(d);
-    return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    return date.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
   };
 
   const recentActivities = [];
@@ -36,7 +42,11 @@ function normalizeDashboardStats(raw) {
       id: `overdue-${i}`,
       type: "payment",
       mainText: r.tenantName ? `Overdue: ${r.tenantName}` : "Overdue payment",
-      details: r.dueDate ? `Due ${formatDate(r.dueDate)}` : (r.amount ? `₹${Number(r.amount).toLocaleString()}` : ""),
+      details: r.dueDate
+        ? `Due ${formatDate(r.dueDate)}`
+        : r.amount
+          ? `₹${Number(r.amount).toLocaleString()}`
+          : "",
       _sort: date,
     });
   });
@@ -46,7 +56,9 @@ function normalizeDashboardStats(raw) {
       id: m._id || `m-${i}`,
       type: "maintenance",
       mainText: m.title || "Maintenance",
-      details: m.scheduledDate ? formatDate(m.scheduledDate) : (m.description || "").slice(0, 40),
+      details: m.scheduledDate
+        ? formatDate(m.scheduledDate)
+        : (m.description || "").slice(0, 40),
       _sort: date,
     });
   });
@@ -61,10 +73,13 @@ function normalizeDashboardStats(raw) {
     });
   });
   recentActivities.sort((a, b) => (b._sort || 0) - (a._sort || 0));
-  const recentActivitiesSlice = recentActivities.slice(0, 8).map(({ _sort, ...a }) => a);
+  const recentActivitiesSlice = recentActivities
+    .slice(0, 8)
+    .map(({ _sort, ...a }) => a);
 
   return {
     ...raw,
+
     collection: {
       totalCollected,
       target: totalRent,
@@ -73,6 +88,7 @@ function normalizeDashboardStats(raw) {
       cam: raw.collection?.cam ?? {},
       electricity: raw.collection?.electricity ?? {},
     },
+
     occupancy: {
       rate: raw.occupancyRate ?? 0,
       occupancyRate: raw.occupancyRate ?? 0,
@@ -83,6 +99,7 @@ function normalizeDashboardStats(raw) {
       vacant: (raw.totalUnits ?? 0) - (raw.occupiedUnits ?? 0),
       vacantUnits: (raw.totalUnits ?? 0) - (raw.occupiedUnits ?? 0),
     },
+
     attention: {
       urgentCount: overdueRents.length + (openMaintenance.length > 0 ? 1 : 0),
       overdueCount: overdueRents.length,
@@ -93,13 +110,13 @@ function normalizeDashboardStats(raw) {
       maintenanceRequests: maintenanceList.length,
       maintenanceDetail: firstMaintenance?.title ?? "—",
     },
+
     openRequests: openMaintenance.length,
     activeTenants: raw.activeTenants ?? 0,
     recentActivities: recentActivitiesSlice,
     maintenance: maintenanceList,
   };
 }
-
 /**
  * Fetches dashboard stats from GET /api/payment/dashboard-stats.
  *
