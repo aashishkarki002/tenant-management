@@ -1,18 +1,20 @@
 /**
- * Allocate payment proportionally across units based on remaining amounts
+ * payment.allocation.helper.js
  *
+ * All allocation strategies for distributing payments across units.
+ * Industry patterns: proportional (QuickBooks), FIFO (lease accounting), manual.
+ */
+
+import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
+
+/**
+ * Allocate payment proportionally across units based on remaining amounts.
  * Industry Use: QuickBooks, Stripe Invoicing
- * Benefits: Fair distribution, minimizes disputes
- *
- * @param {Array} unitBreakdown - Array of unit breakdown objects
- * @param {number} totalPaymentPaisa - Total payment amount in paisa
- * @returns {Array} Unit allocations [{unitId, amountPaisa}]
  */
 export function allocatePaymentProportionally(
   unitBreakdown,
   totalPaymentPaisa,
 ) {
-  // Calculate total remaining across all units
   const totalRemainingPaisa = unitBreakdown.reduce((sum, unit) => {
     const remaining = (unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
     return sum + Math.max(0, remaining);
@@ -24,30 +26,28 @@ export function allocatePaymentProportionally(
 
   let remainingToAllocate = totalPaymentPaisa;
   const allocations = [];
+  // Only include units with a remaining balance
+  const unpaidUnits = unitBreakdown.filter(
+    (u) => (u.rentAmountPaisa || 0) - (u.paidAmountPaisa || 0) > 0,
+  );
 
-  unitBreakdown.forEach((unit, index) => {
+  unpaidUnits.forEach((unit, index) => {
     const unitRemaining =
       (unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
 
-    if (unitRemaining <= 0) return; // Skip fully paid units
-
-    // Calculate proportional share
     let allocation;
-    if (index === unitBreakdown.length - 1) {
-      // Last unit gets remainder to avoid rounding errors
+    if (index === unpaidUnits.length - 1) {
+      // Last unpaid unit absorbs any rounding dust
       allocation = remainingToAllocate;
     } else {
       allocation = Math.round(
         (unitRemaining / totalRemainingPaisa) * totalPaymentPaisa,
       );
-      allocation = Math.min(allocation, unitRemaining); // Don't overpay
+      allocation = Math.min(allocation, unitRemaining);
     }
 
     if (allocation > 0) {
-      allocations.push({
-        unitId: unit.unit,
-        amountPaisa: allocation,
-      });
+      allocations.push({ unitId: unit.unit, amountPaisa: allocation });
       remainingToAllocate -= allocation;
     }
   });
@@ -56,40 +56,25 @@ export function allocatePaymentProportionally(
 }
 
 /**
- * Allocate payment using FIFO strategy (First In, First Out)
- *
+ * Allocate payment FIFO — oldest units paid first.
  * Industry Use: Property management software, lease accounting
- * Benefits: Pays oldest charges first, common in lease agreements
- *
- * @param {Array} unitBreakdown - Array of unit breakdown objects
- * @param {number} totalPaymentPaisa - Total payment amount in paisa
- * @returns {Array} Unit allocations [{unitId, amountPaisa}]
  */
 export function allocatePaymentFIFO(unitBreakdown, totalPaymentPaisa) {
   let remainingPayment = totalPaymentPaisa;
   const allocations = [];
 
-  // Sort units by creation date or unit order
-  const sortedUnits = [...unitBreakdown].sort((a, b) => {
-    // Assuming older units come first in array
-    return 0; // Keep original order (can add createdAt sort if needed)
-  });
-
-  for (const unit of sortedUnits) {
+  // Original array order is assumed to be insertion order (oldest first).
+  // Add `.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))`
+  // if your schema includes a per-unit createdAt.
+  for (const unit of unitBreakdown) {
     if (remainingPayment <= 0) break;
 
     const unitRemaining =
       (unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
-
     if (unitRemaining <= 0) continue;
 
     const allocateToUnit = Math.min(remainingPayment, unitRemaining);
-
-    allocations.push({
-      unitId: unit.unit,
-      amountPaisa: allocateToUnit,
-    });
-
+    allocations.push({ unitId: unit.unit, amountPaisa: allocateToUnit });
     remainingPayment -= allocateToUnit;
   }
 
@@ -97,27 +82,24 @@ export function allocatePaymentFIFO(unitBreakdown, totalPaymentPaisa) {
 }
 
 /**
- * Allocate payment to specific units manually
+ * Pass through manually-specified allocations, normalising amount → amountPaisa.
+ * Industry Use: All payment systems for special arrangements
  *
- * Industry Use: All payment systems
- * Benefits: User control, special payment arrangements
- *
- * @param {Array} manualAllocations - User-specified allocations
- * @returns {Array} Normalized unit allocations
+ * FIX: was Math.round(amount * 100) — replaced with rupeesToPaisa() for
+ * Banker's Rounding consistency across the codebase.
  */
 export function allocatePaymentManually(manualAllocations) {
   return manualAllocations.map((allocation) => ({
     unitId: allocation.unitId,
     amountPaisa:
-      allocation.amountPaisa || Math.round((allocation.amount || 0) * 100),
+      allocation.amountPaisa !== undefined
+        ? allocation.amountPaisa
+        : rupeesToPaisa(allocation.amount || 0), // FIX: was Math.round(amount * 100)
   }));
 }
 
 /**
- * Calculate unit payment summary
- *
- * @param {Array} unitBreakdown - Unit breakdown array
- * @returns {Object} Summary {totalDue, totalPaid, totalRemaining}
+ * Calculate unit payment summary.
  */
 export function calculateUnitPaymentSummary(unitBreakdown) {
   const summary = unitBreakdown.reduce(
@@ -127,23 +109,15 @@ export function calculateUnitPaymentSummary(unitBreakdown) {
       acc.totalTdsPaisa += unit.tdsAmountPaisa || 0;
       return acc;
     },
-    {
-      totalDuePaisa: 0,
-      totalPaidPaisa: 0,
-      totalTdsPaisa: 0,
-    },
+    { totalDuePaisa: 0, totalPaidPaisa: 0, totalTdsPaisa: 0 },
   );
 
   summary.totalRemainingPaisa = summary.totalDuePaisa - summary.totalPaidPaisa;
-
   return summary;
 }
 
 /**
- * Get allocation strategy based on configuration or defaults
- *
- * @param {string} strategyType - 'proportional', 'fifo', 'manual'
- * @returns {Function} Allocation function
+ * Return the allocation function for a given strategy name.
  */
 export function getAllocationStrategy(strategyType = "proportional") {
   const strategies = {
@@ -151,6 +125,5 @@ export function getAllocationStrategy(strategyType = "proportional") {
     fifo: allocatePaymentFIFO,
     manual: allocatePaymentManually,
   };
-
   return strategies[strategyType] || strategies.proportional;
 }

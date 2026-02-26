@@ -10,6 +10,7 @@ import buildFilter from "../../utils/buildFilter.js";
 import {
   buildRentPaymentPayload,
   buildCamPaymentPayload,
+  buildLateFeePaymentPayload,
   mergePaymentPayloads,
   createPaymentRecord,
   calculateTotalAmountFromAllocations,
@@ -19,10 +20,12 @@ import { ledgerService } from "../ledger/ledger.service.js";
 import {
   buildPaymentReceivedJournal,
   buildCamPaymentReceivedJournal,
+  buildLateFeePaymentJournal,
 } from "../ledger/journal-builders/index.js";
 import {
   recordRentRevenue,
   recordCamRevenue,
+  recordLateFeeRevenue,
 } from "../revenue/revenue.service.js";
 import { emitPaymentNotification } from "../../utils/payment.Notification.js";
 import { handleReceiptSideEffects } from "../../reciepts/reciept.service.js";
@@ -82,13 +85,11 @@ export async function createPayment(paymentData) {
     const {
       allocations,
       allocationStrategy = "proportional",
-      bankAccountCode, // FIX: now accepted and threaded through to journal builders
+      bankAccountCode,
       ...rest
     } = paymentData;
 
-    // ── Step 1: Convert amounts to paisa (never trust client-sent amountPaisa as-is) ──
-    // Ensure we always derive paisa from rupees when amount is provided, so a mistaken
-    // bankAccountCode in amountPaisa never flows through.
+    // ── Step 1: Convert amounts to paisa ──────────────────────────────────────
     if (allocations?.rent) {
       const rentAmountRupees =
         typeof allocations.rent.amount === "number" &&
@@ -130,6 +131,17 @@ export async function createPayment(paymentData) {
         }),
       );
     }
+    // FIX: normalise late fee paisa in Step 1 alongside rent/CAM
+    if (allocations?.lateFee) {
+      if (
+        allocations.lateFee.amount != null &&
+        allocations.lateFee.amountPaisa == null
+      ) {
+        allocations.lateFee.amountPaisa = rupeesToPaisa(
+          allocations.lateFee.amount || 0,
+        );
+      }
+    }
 
     // ── Step 2: Validate allocation structure ─────────────────────────────────
     const validation = validatePaymentAllocations(allocations);
@@ -165,18 +177,31 @@ export async function createPayment(paymentData) {
           const strategyFn = getAllocationStrategy(allocationStrategy);
           unitAllocations = strategyFn(rent.unitBreakdown, rentAmountPaisa);
         }
-        console.log("unitAllocations", unitAllocations);
+
         validatePaymentNotExceeding(rent, rentAmountPaisa, unitAllocations);
-        console.log("validatePaymentNotExceeding", validatePaymentNotExceeding);
 
         unitAllocationsResult = applyPaymentToRentHelper(
           rent,
           rentAmountPaisa,
-          unitAllocations,
           paymentData.paymentDate,
           paymentData.receivedBy,
           allocationStrategy,
         );
+        unitAllocations.forEach(({ unitId, amountPaisa: unitAmt }) => {
+          const ub = rent.unitBreakdown.find((u) =>
+            u.unit._id
+              ? u.unit._id.toString() === unitId.toString()
+              : u.unit.toString() === unitId.toString(),
+          );
+          if (ub) {
+            ub.paidAmountPaisa = (ub.paidAmountPaisa || 0) + unitAmt;
+            ub.status =
+              ub.paidAmountPaisa >=
+              ub.rentAmountPaisa - (ub.tdsAmountPaisa || 0)
+                ? "paid"
+                : "partially_paid";
+          }
+        });
 
         rent.markModified("unitBreakdown");
         allocations.rent.unitAllocations =
@@ -192,6 +217,36 @@ export async function createPayment(paymentData) {
         rent.paidAmountPaisa = (rent.paidAmountPaisa || 0) + rentAmountPaisa;
         rent.lastPaidDate = paymentData.paymentDate;
         rent.lastPaidBy = paymentData.receivedBy;
+      }
+      if (allocations?.lateFee?.rentId) {
+        const lateFeePaisa =
+          allocations.lateFee.amountPaisa != null
+            ? allocations.lateFee.amountPaisa
+            : rupeesToPaisa(allocations.lateFee.amount || 0);
+        if (!rent.lateFeeApplied || !rent.lateFeePaisa) {
+          throw new Error(
+            "Cannot pay late fee: no late fee has been charged on this rent",
+          );
+        }
+
+        if (lateFeePaisa > 0) {
+          const remainingLateFee =
+            (rent.lateFeePaisa || 0) - (rent.latePaidAmountPaisa || 0);
+
+          if (lateFeePaisa > remainingLateFee) {
+            throw new Error(
+              `Late fee payment ${formatMoneySafe(lateFeePaisa)} exceeds remaining late fee ${formatMoneySafe(remainingLateFee)}`,
+            );
+          }
+
+          rent.applyLateFeePayment(
+            lateFeePaisa,
+            paymentData.paymentDate,
+            paymentData.receivedBy,
+          );
+
+          allocations.lateFee.amountPaisa = lateFeePaisa;
+        }
       }
 
       updateRentStatus(rent);
@@ -223,6 +278,8 @@ export async function createPayment(paymentData) {
     }
 
     // ── Step 5: Update bank account balance ───────────────────────────────────
+    // FIX: calculateTotalAmountFromAllocations already sums rent + CAM + lateFee.
+    // The old code added lateFeePaisaForBank on top — causing a double-count.
     const totalAmountPaisa = calculateTotalAmountFromAllocations(allocations);
     console.log("totalAmountPaisa", totalAmountPaisa);
     await applyPaymentToBank({
@@ -233,12 +290,10 @@ export async function createPayment(paymentData) {
     });
 
     // ── Step 6: Create payment record ─────────────────────────────────────────
-    // AFTER — only pass amountPaisa (already validated integer from Step 1), never amount
     const rentPayload = rent
       ? buildRentPaymentPayload({
           tenantId: paymentData.tenantId,
-          amountPaisa: allocations.rent.amountPaisa, // guaranteed integer from Step 1
-          // amount intentionally omitted — prevents fallback path in builder
+          amountPaisa: allocations.rent.amountPaisa,
           paymentDate: paymentData.paymentDate,
           nepaliDate: paymentData.nepaliDate,
           paymentMethod: paymentData.paymentMethod,
@@ -256,8 +311,7 @@ export async function createPayment(paymentData) {
     const camPayload = cam
       ? buildCamPaymentPayload({
           tenantId: paymentData.tenantId,
-          amountPaisa: allocations.cam.paidAmountPaisa, // guaranteed integer from Step 1
-          // amount intentionally omitted — prevents fallback path in builder
+          amountPaisa: allocations.cam.paidAmountPaisa,
           paymentDate: paymentData.paymentDate,
           nepaliDate: paymentData.nepaliDate,
           paymentMethod: paymentData.paymentMethod,
@@ -272,17 +326,38 @@ export async function createPayment(paymentData) {
         })
       : null;
 
-    const payload = mergePaymentPayloads(rentPayload, camPayload);
+    const lateFeePayload =
+      allocations?.lateFee?.amountPaisa > 0
+        ? buildLateFeePaymentPayload({
+            tenantId: paymentData.tenantId,
+            amountPaisa: allocations.lateFee.amountPaisa,
+            paymentDate: paymentData.paymentDate,
+            nepaliDate: paymentData.nepaliDate,
+            paymentMethod: paymentData.paymentMethod,
+            paymentStatus: paymentData.paymentStatus,
+            note: paymentData.note,
+            transactionRef: paymentData.transactionRef,
+            adminId: paymentData.adminId,
+            bankAccountId: paymentData.bankAccountId,
+            receivedBy: paymentData.receivedBy,
+            rentId: rent?._id || null,
+            allocations: { lateFee: allocations.lateFee },
+          })
+        : null;
+
+    const payload = mergePaymentPayloads(
+      rentPayload,
+      camPayload,
+      lateFeePayload,
+    );
     const payment = await createPaymentRecord(payload, session);
 
     // ── Step 7: Ledger entries ────────────────────────────────────────────────
-    // FIX: 3rd argument is bankAccountCode (string), not rentAmountPaisa (number).
-    // The amount is derived from payment.amountPaisa inside the builder.
     if (rent) {
       const rentJournalPayload = buildPaymentReceivedJournal(
         payment,
         rent,
-        bankAccountCode, // FIX: was "allocations.rent.amountPaisa"
+        bankAccountCode,
       );
       await ledgerService.postJournalEntry(rentJournalPayload, session);
     }
@@ -291,9 +366,23 @@ export async function createPayment(paymentData) {
       const camJournalPayload = buildCamPaymentReceivedJournal(
         payment,
         cam,
-        bankAccountCode, // FIX: was "allocations.cam.paidAmountPaisa"
+        bankAccountCode,
       );
       await ledgerService.postJournalEntry(camJournalPayload, session);
+    }
+
+    // FIX: post ledger entry for late fee when present, same pattern as rent/CAM
+    if (lateFeePayload && allocations?.lateFee?.amountPaisa > 0) {
+      // payment.amountPaisa is the merged total — pass a synthetic object
+      // so the builder sees only the late fee slice, not the full payment amount.
+      // rent is used for context (nepaliMonth, nepaliYear, tenant, property)
+      // since late fee is always tied to a rent document.
+      const lateFeeJournalPayload = buildLateFeePaymentJournal(
+        { ...payment.toObject(), amountPaisa: allocations.lateFee.amountPaisa },
+        rent,
+        bankAccountCode,
+      );
+      await ledgerService.postJournalEntry(lateFeeJournalPayload, session);
     }
 
     // ── Step 8: Revenue recording ─────────────────────────────────────────────
@@ -319,12 +408,24 @@ export async function createPayment(paymentData) {
         session,
       });
     }
+    // FIX: record late fee revenue when present, same pattern as rent/CAM
+    if (allocations?.lateFee?.amountPaisa > 0 && rent) {
+      await recordLateFeeRevenue({
+        amountPaisa: allocations.lateFee.amountPaisa,
+        paymentDate: payment.paymentDate,
+        tenantId: paymentData.tenantId,
+        rentId: rent._id, // late fee is always tied to a rent document
+        note: payment.note,
+        adminId: payment.createdBy,
+        session,
+      });
+    }
 
     // ── Step 9: Commit ────────────────────────────────────────────────────────
     await session.commitTransaction();
     session.endSession();
 
-    // ── Step 10: Async side effects (non-blocking, after commit) ─────────────
+    // ── Step 10: Async side effects ───────────────────────────────────────────
     emitPaymentNotification(
       {
         paymentId: payment._id,
@@ -450,6 +551,10 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
     const camAmountPaisa =
       payment.allocations?.cam?.paidAmountPaisa ??
       rupeesToPaisa(payment.allocations?.cam?.paidAmount || 0);
+    // FIX: extract late fee paisa for receipt display
+    const lateFeeAmountPaisa =
+      payment.allocations?.lateFee?.amountPaisa ??
+      rupeesToPaisa(payment.allocations?.lateFee?.amount || 0);
 
     const pdfData = {
       receiptNo: payment._id.toString(),
@@ -464,6 +569,8 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
       receivedBy: rent?.lastPaidBy || "",
       rentAmount: rentAmountPaisa / 100,
       camAmount: camAmountPaisa / 100,
+      // FIX: pass late fee to PDF generator
+      lateFeeAmount: lateFeeAmountPaisa / 100,
       unitBreakdown: null,
     };
 
@@ -514,6 +621,7 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
     Receipt No: ${payment._id.toString()}<br>
     ${rentAmountPaisa > 0 ? `Rent: ${formatMoneySafe(rentAmountPaisa)}<br>` : ""}
     ${camAmountPaisa > 0 ? `CAM: ${formatMoneySafe(camAmountPaisa)}<br>` : ""}
+    ${lateFeeAmountPaisa > 0 ? `Late Fee: ${formatMoneySafe(lateFeeAmountPaisa)}<br>` : ""}
     Total: ${formatMoneySafe(payment.amountPaisa)}<br>
     Date: ${formattedDate}<br>
     Method: ${pdfData.paymentMethod}

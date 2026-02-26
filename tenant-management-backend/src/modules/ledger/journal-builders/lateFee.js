@@ -13,8 +13,15 @@
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
 import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
-import { assertNepaliFields } from "../../../utils/nepaliDateHelper.js";
+import {
+  assertNepaliFields,
+  resolveNepaliPeriod,
+} from "../../../utils/nepaliDateHelper.js";
 import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
+import {
+  assertValidPaymentMethod,
+  getDebitAccountForPayment,
+} from "../../../utils/paymentAccountUtils.js";
 
 /**
  * @param {Object} lateFee
@@ -94,17 +101,8 @@ export function buildLateFeeJournal(lateFee) {
 export function buildLateFeePaymentJournal(payment, lateFee, bankAccountCode) {
   // Delegate to the payment received builder with a different transactionType
   // by importing the helper here to avoid circular dependencies
-  const {
-    getDebitAccountForPayment,
-    assertValidPaymentMethod,
-  } = require("../../../utils/paymentAccountUtils.js");
-  const {
-    assertIntegerPaisa: _assertPaisa,
-  } = require("../../../utils/moneyUtil.js");
-  const { resolveNepaliPeriod } = require("../../../utils/nepaliDateHelper.js");
-
   assertValidPaymentMethod(payment.paymentMethod);
-  _assertPaisa(payment.amountPaisa, "payment.amountPaisa");
+  assertIntegerPaisa(payment.amountPaisa, "payment.amountPaisa");
 
   const transactionDate =
     payment.paymentDate instanceof Date

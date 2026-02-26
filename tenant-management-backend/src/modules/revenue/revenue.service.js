@@ -511,3 +511,44 @@ export async function recordElectricityRevenue({
 
   return revenue;
 }
+async function recordLateFeeRevenue({
+  amountPaisa,
+  paymentDate,
+  tenantId,
+  rentId,
+  note,
+  adminId,
+  session = null,
+}) {
+  try {
+    const lateFeeRevenueSource = await RevenueSource.findOne({
+      code: "LATE_FEE",
+    }).session(session);
+    if (!lateFeeRevenueSource) {
+      throw new Error("Revenue source LATE_FEE not configured");
+    }
+    const revenue = await Revenue.create(
+      [
+        {
+          source: lateFeeRevenueSource._id,
+          amountPaisa: amountPaisa,
+          date: paymentDate,
+          ...getNepaliYearMonthFromDate(paymentDate),
+          payerType: "TENANT",
+          tenant: new mongoose.Types.ObjectId(tenantId),
+          referenceType: "LATE_FEE",
+          referenceId: new mongoose.Types.ObjectId(rentId),
+          status: "RECORDED",
+          notes: note,
+          createdBy: new mongoose.Types.ObjectId(adminId),
+        },
+      ],
+      { session },
+    );
+    return revenue[0];
+  } catch (error) {
+    console.error("Failed to record late fee revenue:", error);
+    throw error;
+  }
+}
+export { recordLateFeeRevenue };

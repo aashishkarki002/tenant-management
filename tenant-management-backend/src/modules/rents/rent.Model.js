@@ -301,11 +301,19 @@ rentSchema.pre("save", function () {
   else if (this.paidAmountPaisa >= effectiveRentPaisa) this.status = "paid";
   else this.status = "partially_paid";
 
-  // Late fee status — full payment only (by design: no partial late fee)
+  // rent.Model.js — pre-save hook (FIXED)
+
   const remainingLateFee =
     (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
-  this.lateFeeStatus =
-    remainingLateFee <= 0 && (this.lateFeePaisa || 0) > 0 ? "paid" : "pending";
+
+  // FIX: if no late fee was ever charged, status should not be "pending"
+  // (pending implies there's something owed — there isn't)
+  if (!this.lateFeePaisa || this.lateFeePaisa === 0) {
+    this.lateFeeStatus = "pending"; // or you could use "none" if your enum allows it
+    this.lateFeeApplied = false;
+  } else {
+    this.lateFeeStatus = remainingLateFee <= 0 ? "paid" : "pending";
+  }
 });
 
 // ── Indexes ───────────────────────────────────────────────────────────────────

@@ -48,7 +48,6 @@ export async function payRentAndCam(req, res) {
       allocations,
       allocationStrategy,
     } = req.body;
-    console.log("bankAccountCode", bankAccountCode);
 
     // Support both bankAccountId and bankAccount field names
     const bankAccountId = bodyBankAccountId || bodyBankAccount;
@@ -61,7 +60,7 @@ export async function payRentAndCam(req, res) {
       if (camId && amount)
         paymentAllocations.cam = { camId, paidAmount: amount };
     }
-    console.log("paymentAllocations", paymentAllocations);
+
     const paymentData = {
       adminId: req.admin.id,
       tenantId,
@@ -71,13 +70,14 @@ export async function payRentAndCam(req, res) {
       paymentMethod,
       paymentStatus: paymentStatus || "paid",
       note: note || "",
-      receivedBy,
+      receivedBy: req.admin.id,
       bankAccountId,
       bankAccountCode, // FIX: now passed through to createPayment() → journal builders
       transactionRef: transactionRef || undefined,
       allocations: paymentAllocations,
       allocationStrategy,
     };
+    console.log("paymentData", paymentData);
 
     const result = await createPayment(paymentData);
 

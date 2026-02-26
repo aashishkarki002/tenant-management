@@ -139,6 +139,44 @@ export function buildCamPaymentPayload({
   if (transactionRef) payload.transactionRef = transactionRef;
   return payload;
 }
+export function buildLateFeePaymentPayload({
+  tenantId,
+  amountPaisa,
+  amount,
+  paymentDate,
+  nepaliDate,
+  paymentMethod,
+  paymentStatus,
+  note,
+  transactionRef,
+  adminId,
+  bankAccountId,
+  receivedBy,
+  rentId,
+  allocations,
+}) {
+  const finalAmountPaisa =
+    amountPaisa !== undefined ? amountPaisa : rupeesToPaisa(amount || 0); // FIX
+  const payload = {
+    tenant: tenantId,
+    amountPaisa: finalAmountPaisa,
+    amount: finalAmountPaisa / 100,
+    paymentDate,
+    nepaliDate,
+    paymentMethod,
+    paymentStatus,
+    note: note || undefined,
+    createdBy: adminId ? new mongoose.Types.ObjectId(adminId) : undefined,
+    rentId: rentId || null,
+    allocations: {
+      lateFee: allocations?.lateFee || null,
+    },
+  };
+  if (bankAccountId) payload.bankAccount = bankAccountId;
+  if (receivedBy) payload.receivedBy = receivedBy;
+  if (transactionRef) payload.transactionRef = transactionRef;
+  return payload;
+}
 
 export function buildExternalPaymentPayload({
   payerName,
@@ -174,46 +212,61 @@ export function buildExternalPaymentPayload({
 // MERGE
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function mergePaymentPayloads(rentPayload, camPayload) {
-  if (rentPayload && camPayload) {
-    const rentAmountPaisa =
-      rentPayload.amountPaisa !== undefined
-        ? rentPayload.amountPaisa
-        : rupeesToPaisa(rentPayload.amount || 0);
-
-    const camAmountPaisa =
-      camPayload.amountPaisa !== undefined
-        ? camPayload.amountPaisa
-        : rupeesToPaisa(camPayload.amount || 0);
-
-    const totalAmountPaisa = rentAmountPaisa + camAmountPaisa;
-
-    return {
-      tenant: rentPayload.tenant || camPayload.tenant,
-      amountPaisa: totalAmountPaisa,
-      amount: totalAmountPaisa / 100,
-      paymentDate: rentPayload.paymentDate || camPayload.paymentDate,
-      nepaliDate: rentPayload.nepaliDate || camPayload.nepaliDate,
-      paymentMethod: rentPayload.paymentMethod || camPayload.paymentMethod,
-      paymentStatus:
-        rentPayload.paymentStatus || camPayload.paymentStatus || "paid",
-      note: rentPayload.note || camPayload.note,
-      transactionRef:
-        rentPayload.transactionRef || camPayload.transactionRef || null,
-      createdBy: rentPayload.createdBy || camPayload.createdBy,
-      rent: rentPayload.rent || null,
-      cam: camPayload.cam || null,
-      allocations: {
-        rent: rentPayload.allocations?.rent || null,
-        cam: camPayload.allocations?.cam || null,
-      },
-      bankAccount: rentPayload.bankAccount || camPayload.bankAccount || null,
-      receivedBy: rentPayload.receivedBy || camPayload.receivedBy || null,
-    };
+export function mergePaymentPayloads(rentPayload, camPayload, lateFeePayload) {
+  if (!rentPayload && !camPayload && !lateFeePayload) {
+    throw new Error(
+      "At least one payload (rent, CAM, or late fee) must be provided",
+    );
   }
-  if (rentPayload) return rentPayload;
-  if (camPayload) return camPayload;
-  throw new Error("At least one payload (rent or CAM) must be provided");
+
+  // Collect all non-null payloads to derive shared fields
+  const allPayloads = [rentPayload, camPayload, lateFeePayload].filter(Boolean);
+  const base = allPayloads[0];
+
+  const rentAmountPaisa = rentPayload
+    ? rentPayload.amountPaisa !== undefined
+      ? rentPayload.amountPaisa
+      : rupeesToPaisa(rentPayload.amount || 0)
+    : 0;
+
+  const camAmountPaisa = camPayload
+    ? camPayload.amountPaisa !== undefined
+      ? camPayload.amountPaisa
+      : rupeesToPaisa(camPayload.amount || 0)
+    : 0;
+
+  const lateFeeAmountPaisa = lateFeePayload
+    ? lateFeePayload.amountPaisa !== undefined
+      ? lateFeePayload.amountPaisa
+      : rupeesToPaisa(lateFeePayload.amount || 0)
+    : 0;
+
+  const totalAmountPaisa =
+    rentAmountPaisa + camAmountPaisa + lateFeeAmountPaisa;
+
+  return {
+    tenant: allPayloads.reduce((v, p) => v || p.tenant, null),
+    amountPaisa: totalAmountPaisa,
+    amount: totalAmountPaisa / 100,
+    paymentDate: allPayloads.reduce((v, p) => v || p.paymentDate, null),
+    nepaliDate: allPayloads.reduce((v, p) => v || p.nepaliDate, null),
+    paymentMethod: allPayloads.reduce((v, p) => v || p.paymentMethod, null),
+    paymentStatus:
+      allPayloads.reduce((v, p) => v || p.paymentStatus, null) || "paid",
+    note: allPayloads.reduce((v, p) => v || p.note, null),
+    transactionRef:
+      allPayloads.reduce((v, p) => v || p.transactionRef, null) || null,
+    createdBy: allPayloads.reduce((v, p) => v || p.createdBy, null),
+    rent: rentPayload?.rent || null,
+    cam: camPayload?.cam || null,
+    allocations: {
+      rent: rentPayload?.allocations?.rent || null,
+      cam: camPayload?.allocations?.cam || null,
+      lateFee: lateFeePayload?.allocations?.lateFee || null,
+    },
+    bankAccount: allPayloads.reduce((v, p) => v || p.bankAccount, null) || null,
+    receivedBy: allPayloads.reduce((v, p) => v || p.receivedBy, null) || null,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -245,8 +298,12 @@ export function calculateTotalAmountFromAllocations(allocations) {
     allocations?.cam?.paidAmountPaisa !== undefined
       ? allocations.cam.paidAmountPaisa
       : rupeesToPaisa(allocations?.cam?.paidAmount || 0);
+  const lateFeePaisa =
+    allocations?.lateFee?.amountPaisa !== undefined
+      ? allocations.lateFee.amountPaisa
+      : rupeesToPaisa(allocations?.lateFee?.amount || 0);
 
-  return rentPaisa + camPaisa;
+  return rentPaisa + camPaisa + lateFeePaisa;
 }
 
 /** Structural validation of allocations (shape, IDs, amounts). */

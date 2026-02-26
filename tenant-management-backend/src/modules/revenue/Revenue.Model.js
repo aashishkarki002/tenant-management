@@ -78,16 +78,29 @@ const revenueSchema = new mongoose.Schema(
 
     referenceType: {
       type: String,
-      enum: ["RENT", "PARKING", "AD", "CAM", "ELECTRICITY", "MANUAL"],
+      enum: [
+        "RENT",
+        "PARKING",
+        "AD",
+        "CAM",
+        "ELECTRICITY",
+        "MANUAL",
+        "LATE_FEE",
+      ],
       default: "MANUAL",
     },
 
     referenceId: {
       type: mongoose.Schema.Types.ObjectId,
       required: function () {
-        return ["RENT", "PARKING", "AD", "CAM", "ELECTRICITY"].includes(
-          this.referenceType,
-        );
+        return [
+          "RENT",
+          "PARKING",
+          "AD",
+          "CAM",
+          "ELECTRICITY",
+          "LATE_FEE",
+        ].includes(this.referenceType);
       },
     },
 

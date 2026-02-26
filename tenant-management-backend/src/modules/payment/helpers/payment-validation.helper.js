@@ -6,25 +6,16 @@
  */
 
 import mongoose from "mongoose";
-import { formatMoneySafe } from "../../../utils/moneyUtil.js";
+import { formatMoneySafe, rupeesToPaisa } from "../../../utils/moneyUtil.js";
 
 /**
  * Validate unit allocations match rent structure
- *
- * Industry Standard: Input validation at boundaries
- * Prevents invalid state from entering the system
- *
- * @param {Array} unitBreakdown - Rent's unit breakdown
- * @param {Array} unitAllocations - Proposed allocations
- * @param {number} totalPaymentPaisa - Total payment amount
- * @throws {Error} If validation fails
  */
 export function validateUnitAllocations(
   unitBreakdown,
   unitAllocations,
   totalPaymentPaisa,
 ) {
-  // Validate total matches
   const allocatedTotal = unitAllocations.reduce(
     (sum, a) => sum + a.amountPaisa,
     0,
@@ -36,31 +27,25 @@ export function validateUnitAllocations(
     );
   }
 
-  // Validate each unit exists and doesn't exceed remaining
   unitAllocations.forEach(({ unitId, amountPaisa }) => {
     const unitIdStr = unitId.toString();
     const unit = unitBreakdown.find((u) => {
       const uUnit = u.unit;
       if (!uUnit) return false;
-
-      // Support both populated (document) and unpopulated (ObjectId) refs
       const actualId = uUnit._id ? uUnit._id.toString() : uUnit.toString();
       return actualId === unitIdStr;
     });
 
-    if (!unit) {
-      throw new Error(`Unit ${unitId} not found in rent breakdown`);
-    }
+    if (!unit) throw new Error(`Unit ${unitId} not found in rent breakdown`);
 
+    // rentAmountPaisa on unitBreakdown is already net of TDS — do NOT subtract
+    // tdsAmountPaisa again here or it double-counts the deduction.
     const remaining = (unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
-    console.log("remaining", remaining);
     if (amountPaisa > remaining) {
       throw new Error(
         `Payment ${formatMoneySafe(amountPaisa)} exceeds remaining ${formatMoneySafe(remaining)} for unit ${unitId}`,
       );
     }
-
-    // Ensure amount is positive
     if (amountPaisa <= 0) {
       throw new Error(
         `Unit allocation amount must be positive, got ${amountPaisa}`,
@@ -70,12 +55,18 @@ export function validateUnitAllocations(
 }
 
 /**
- * Validate payment allocations structure (rent + CAM)
+ * Validate payment allocations structure (rent + CAM + optional late fee).
  *
- * @param {Object} allocations - Payment allocations object
- * @returns {Object} {isValid: boolean, error?: string}
+ * FIX: late fee validation added.
+ * FIX: a late-fee-only payload is rejected (late fee requires a rent anchor).
+ * Late fee is always subordinate to a rent allocation — it cannot stand alone.
+ *
+ * @param {Object} allocations
+ * @returns {{ isValid: boolean, error?: string }}
  */
 export function validatePaymentAllocations(allocations) {
+  // At least rent or CAM must be present — late fee alone is not valid
+  // because it must be anchored to a rent document
   if (!allocations || (!allocations.rent && !allocations.cam)) {
     return {
       isValid: false,
@@ -83,7 +74,7 @@ export function validatePaymentAllocations(allocations) {
     };
   }
 
-  // Validate rent allocation if present
+  // ── Rent allocation ──────────────────────────────────────────────────────
   if (allocations.rent) {
     if (!allocations.rent.rentId) {
       return {
@@ -91,7 +82,6 @@ export function validatePaymentAllocations(allocations) {
         error: "Rent ID is required when rent allocation is provided",
       };
     }
-
     if (!mongoose.Types.ObjectId.isValid(allocations.rent.rentId)) {
       return { isValid: false, error: "Invalid rent ID format" };
     }
@@ -100,23 +90,18 @@ export function validatePaymentAllocations(allocations) {
       allocations.rent.amountPaisa !== undefined
         ? allocations.rent.amountPaisa
         : allocations.rent.amount
-          ? Math.round(allocations.rent.amount * 100)
+          ? rupeesToPaisa(allocations.rent.amount) // FIX: was Math.round(amount * 100)
           : 0;
 
     if (!rentAmountPaisa || rentAmountPaisa <= 0) {
       return { isValid: false, error: "Rent amount must be greater than 0" };
     }
 
-    // Validate unit allocations if provided
-    if (
-      allocations.rent.unitAllocations &&
-      allocations.rent.unitAllocations.length > 0
-    ) {
+    if (allocations.rent.unitAllocations?.length > 0) {
       const unitTotal = allocations.rent.unitAllocations.reduce(
         (sum, ua) => sum + (ua.amountPaisa || 0),
         0,
       );
-
       if (unitTotal !== rentAmountPaisa) {
         return {
           isValid: false,
@@ -126,7 +111,7 @@ export function validatePaymentAllocations(allocations) {
     }
   }
 
-  // Validate CAM allocation if present
+  // ── CAM allocation ───────────────────────────────────────────────────────
   if (allocations.cam) {
     if (!allocations.cam.camId) {
       return {
@@ -134,7 +119,6 @@ export function validatePaymentAllocations(allocations) {
         error: "CAM ID is required when CAM allocation is provided",
       };
     }
-
     if (!mongoose.Types.ObjectId.isValid(allocations.cam.camId)) {
       return { isValid: false, error: "Invalid CAM ID format" };
     }
@@ -143,11 +127,60 @@ export function validatePaymentAllocations(allocations) {
       allocations.cam.paidAmountPaisa !== undefined
         ? allocations.cam.paidAmountPaisa
         : allocations.cam.paidAmount
-          ? Math.round(allocations.cam.paidAmount * 100)
+          ? rupeesToPaisa(allocations.cam.paidAmount) // FIX: was Math.round(amount * 100)
           : 0;
 
     if (!camAmountPaisa || camAmountPaisa <= 0) {
       return { isValid: false, error: "CAM paidAmount must be greater than 0" };
+    }
+  }
+
+  // ── Late fee allocation (optional, must be anchored to rent) ────────────
+  // FIX: late fee validation was entirely absent
+  if (allocations.lateFee) {
+    if (!allocations.lateFee.rentId) {
+      return {
+        isValid: false,
+        error:
+          "Rent ID is required in lateFee allocation (late fee must be anchored to a rent)",
+      };
+    }
+    if (!mongoose.Types.ObjectId.isValid(allocations.lateFee.rentId)) {
+      return {
+        isValid: false,
+        error: "Invalid rent ID format in lateFee allocation",
+      };
+    }
+    if (!allocations.rent) {
+      return {
+        isValid: false,
+        error:
+          "Late fee allocation requires a rent allocation in the same payment",
+      };
+    }
+    if (
+      allocations.lateFee.rentId.toString() !==
+      allocations.rent.rentId.toString()
+    ) {
+      return {
+        isValid: false,
+        error: "lateFee.rentId must match rent.rentId",
+      };
+    }
+
+    const lateFeePaisa =
+      allocations.lateFee.amountPaisa !== undefined
+        ? allocations.lateFee.amountPaisa
+        : allocations.lateFee.amount
+          ? rupeesToPaisa(allocations.lateFee.amount)
+          : 0;
+
+    if (lateFeePaisa <= 0) {
+      return {
+        isValid: false,
+        error:
+          "Late fee amount must be greater than 0 when lateFee allocation is provided",
+      };
     }
   }
 
@@ -156,11 +189,6 @@ export function validatePaymentAllocations(allocations) {
 
 /**
  * Validate payment doesn't exceed rent balance
- *
- * @param {Object} rent - Rent document
- * @param {number} paymentPaisa - Payment amount
- * @param {Array} unitAllocations - Optional unit allocations
- * @throws {Error} If overpayment detected
  */
 export function validatePaymentNotExceeding(
   rent,
@@ -168,7 +196,6 @@ export function validatePaymentNotExceeding(
   unitAllocations = null,
 ) {
   if (rent.useUnitBreakdown && rent.unitBreakdown?.length > 0) {
-    // Multi-unit: validate per unit
     if (unitAllocations && unitAllocations.length > 0) {
       validateUnitAllocations(
         rent.unitBreakdown,
@@ -176,13 +203,13 @@ export function validatePaymentNotExceeding(
         paymentPaisa,
       );
     } else {
-      // No manual allocation - just check total remaining
       const totalRemaining = rent.unitBreakdown.reduce((sum, unit) => {
         return (
-          sum + ((unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0))
+          sum +
+          ((unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0)) +
+          (unit.lateFeePaisa || 0)
         );
       }, 0);
-
       if (paymentPaisa > totalRemaining) {
         throw new Error(
           `Payment ${formatMoneySafe(paymentPaisa)} exceeds remaining balance ${formatMoneySafe(totalRemaining)}`,
@@ -190,8 +217,10 @@ export function validatePaymentNotExceeding(
       }
     }
   } else {
-    // Single-unit: simple check
-    const remaining = (rent.rentAmountPaisa || 0) - (rent.paidAmountPaisa || 0);
+    const remaining =
+      (rent.rentAmountPaisa || 0) -
+      (rent.paidAmountPaisa || 0) +
+      (rent.lateFeePaisa || 0);
     if (paymentPaisa > remaining) {
       throw new Error(
         `Payment ${formatMoneySafe(paymentPaisa)} exceeds remaining balance ${formatMoneySafe(remaining)}`,
@@ -202,13 +231,6 @@ export function validatePaymentNotExceeding(
 
 /**
  * Validate CAM payment doesn't exceed remaining balance
- *
- * CAM payments are added to paidAmountPaisa. This ensures the
- * payment would not cause paidAmountPaisa > amountPaisa.
- *
- * @param {Object} cam - CAM document with amountPaisa, paidAmountPaisa
- * @param {number} paymentPaisa - Payment amount in paisa to apply
- * @throws {Error} If payment would exceed CAM amount
  */
 export function validateCamPaymentNotExceeding(cam, paymentPaisa) {
   const amountPaisa = cam.amountPaisa ?? 0;
@@ -224,10 +246,6 @@ export function validateCamPaymentNotExceeding(cam, paymentPaisa) {
 
 /**
  * Validate all paisa values are integers
- *
- * @param {Object} data - Data object with paisa fields
- * @param {Array} fields - Field names to validate
- * @throws {Error} If non-integer found
  */
 export function validatePaisaIntegrity(data, fields) {
   fields.forEach((field) => {
