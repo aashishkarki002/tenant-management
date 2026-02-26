@@ -11,6 +11,7 @@ import { RevenueSource } from "../revenue/RevenueSource.Model.js";
 import { Maintenance } from "../maintenance/Maintenance.Model.js";
 import { Payment } from "../payment/payment.model.js";
 import { Transaction } from "../ledger/transactions/Transaction.Model.js";
+import { Generator } from "../maintenance/generators/Generator.Model.js";
 
 /**
  * Fetches dashboard stats (Nepali-date-based). Use this when you need the data
@@ -348,33 +349,62 @@ export async function getDashboardStatsData() {
   const nepali30DaysLater = addNepaliDays(nepaliToday, 30);
   const leaseEndLimitDate = nepali30DaysLater.getDateObject();
 
-  const contractsEndingSoon = await Tenant.aggregate([
-    {
-      $match: {
-        isDeleted: false,
-        status: "active",
-        leaseEndDate: {
-          $gte: nepaliTodayDate,
-          $lte: leaseEndLimitDate,
-        },
-      },
-    },
-    { $sort: { leaseEndDate: 1 } },
-    { $limit: 3 },
-    { $project: { name: 1, leaseEndDate: 1 } },
-    {
-      $addFields: {
-        daysUntilEnd: {
-          $ceil: {
-            $divide: [
-              { $subtract: ["$leaseEndDate", nepaliTodayDate] },
-              1000 * 60 * 60 * 24,
-            ],
+  const [contractsEndingSoon, upcomingMaintenance, generatorsDueService] =
+    await Promise.all([
+      Tenant.aggregate([
+        {
+          $match: {
+            isDeleted: false,
+            status: "active",
+            leaseEndDate: {
+              $gte: nepaliTodayDate,
+              $lte: leaseEndLimitDate,
+            },
           },
         },
-      },
-    },
-  ]);
+        { $sort: { leaseEndDate: 1 } },
+        { $limit: 3 },
+        { $project: { name: 1, leaseEndDate: 1 } },
+        {
+          $addFields: {
+            daysUntilEnd: {
+              $ceil: {
+                $divide: [
+                  { $subtract: ["$leaseEndDate", nepaliTodayDate] },
+                  1000 * 60 * 60 * 24,
+                ],
+              },
+            },
+          },
+        },
+      ]),
+
+      // Upcoming open/in-progress maintenance tasks scheduled within the next 30 days
+      Maintenance.find({
+        status: { $in: ["OPEN", "IN_PROGRESS"] },
+        scheduledDate: { $gte: nepaliTodayDate, $lte: leaseEndLimitDate },
+      })
+        .sort({ scheduledDate: 1 })
+        .limit(5)
+        .populate("property", "name")
+        .populate("unit", "name")
+        .populate("assignedTo", "name")
+        .lean(),
+
+      // Generators whose nextServiceDate is within the next 30 days or already overdue, or low fuel
+      Generator.find({
+        isActive: true,
+        status: { $ne: "DECOMMISSIONED" },
+        $or: [
+          { nextServiceDate: { $exists: true, $lte: leaseEndLimitDate } },
+          { currentFuelPercent: { $lte: 20 } },
+        ],
+      })
+        .sort({ nextServiceDate: 1 })
+        .limit(5)
+        .populate("property", "name")
+        .lean(),
+    ]);
 
   /* ===============================
      6️⃣ RECENT ACTIVITY FEED
@@ -476,6 +506,8 @@ export async function getDashboardStatsData() {
       // Maintenance
       maintenance: maintenanceList, // top 3 for sidebar list
       maintenanceOpen, // total count for the badge/counter widget
+      upcomingMaintenance, // open/in-progress tasks due within 30 days
+      generatorsDueService, // generators needing service or low on fuel
 
       // Contracts
       contractsEndingSoon,
