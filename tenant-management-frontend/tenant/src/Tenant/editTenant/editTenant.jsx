@@ -51,6 +51,7 @@ import TenantBasicInfo from "./components/TenantBasicInfo";
 import TenantLeaseInfo from "./components/TenantLeaseInfo";
 import TenantFinancials from "./components/TenantFinancials";
 import TenantDocuments from "./components/TenantDocument";
+import Breadcrumb from "./components/Breadcrumb";
 
 // Import custom hooks
 import { useTenantEdit } from "./hooks/useTenantEdit";
@@ -226,6 +227,7 @@ function EditTenant() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
+      <Breadcrumb tenantName={tenant?.name} />
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">

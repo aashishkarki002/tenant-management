@@ -369,9 +369,9 @@ export default function ChequeDraft() {
         <div style={{ minHeight: '100vh', background: '#f0f4f8', fontFamily: '"Segoe UI", system-ui, sans-serif' }}>
 
             {/* Header */}
-            <div style={{ background: 'rgb(255, 255, 255)', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ background: 'rgb(255, 255, 255)', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'justify-end' }}>
 
-                <div style={{ display: 'flex', gap: '10px', marginRight: '30px' }}>
+                <div style={{ display: 'flex flex-col sm:flex-row right-0', gap: '10px', marginRight: '30px' }}>
                     <button onClick={handlePrint} style={{ padding: '8px 18px', borderRadius: '6px', border: '1.5px solid rgba(255,255,255,0.5)', background: 'transparent', color: '#000', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
                         <PrinterIcon className="w-4 h-4" /> Print
                     </button>

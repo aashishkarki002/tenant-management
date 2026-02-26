@@ -8,7 +8,7 @@ import AddStaffDialog from './AddStaffDialog'
 import api from '../../../plugins/axios'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { toast } from 'sonner'
-
+import { Phone } from 'lucide-react'
 function StaffDetail({ staff }) {
     const [open, setOpen] = useState(false)
 
@@ -46,19 +46,22 @@ function StaffDetail({ staff }) {
                     </p>
                 </div>
                 <Separator />
-                <div>
-                    <div className="flex items-center gap-2">
-                        <Input type="text" placeholder="Search staff" className="" />
-                        <Button
-                            onClick={() => setOpen(true)}
-                            className=" text-white cursor-pointer w-1/5"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Add Staff Member
-                        </Button>
-                    </div>
-                    <AddStaffDialog open={open} onOpenChange={setOpen} />
-                </div></div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <Input
+                        type="text"
+                        placeholder="Search staff"
+                        className="w-full"
+                    />
+
+                    <Button
+                        onClick={() => setOpen(true)}
+                        className="text-white w-full sm:w-auto"
+                    >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Staff Member
+                    </Button>
+                </div>
+            </div>
 
             <div className="mt-4 space-y-3">
                 {!staff || staff.length === 0 ? (
@@ -74,26 +77,30 @@ function StaffDetail({ staff }) {
                     staff.map((member) => (
                         <Card
                             key={member._id}
-                            className="px-6 py-4 border-border rounded-2xl shadow-sm"
+                            className="px-4 sm:px-6 py-4 border-border rounded-2xl shadow-sm"
                         >
-                            <div className="flex items-center justify-between gap-6">
-                                {/* Left: Avatar + name/role */}
-                                <div className="flex items-center gap-4 min-w-[200px]">
-                                    <Avatar className="w-10 h-10 bg-accent/20 text-accent font-semibold">
-                                        <AvatarFallback>{getInitials(member?.name)}</AvatarFallback>
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+
+                                {/* Left: Avatar + Name */}
+                                <div className="flex items-center gap-4">
+                                    <Avatar className="w-10 h-10 bg-accent/20 text-black font-semibold">
+                                        <AvatarFallback className="text-black">
+                                            {getInitials(member?.name)}
+                                        </AvatarFallback>
                                     </Avatar>
+
                                     <div>
                                         <p className="font-semibold text-slate-900">
                                             {member?.name}
                                         </p>
                                         <p className="text-sm text-slate-500">
-                                            {member?.role || 'staff'}
+                                            {member?.role || "staff"}
                                         </p>
                                     </div>
                                 </div>
 
-                                {/* Middle: Email / Phone columns */}
-                                <div className="flex-1 flex justify-center gap-16">
+                                {/* Middle: Email / Phone */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-16 flex-1">
                                     <div>
                                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
                                             Email
@@ -102,23 +109,39 @@ function StaffDetail({ staff }) {
                                             {member?.email}
                                         </p>
                                     </div>
+
                                     <div>
                                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
                                             Phone
                                         </p>
-                                        <p className="text-sm text-slate-900">
-                                            {member?.phone}
-                                        </p>
+
+                                        <div className="flex items-center gap-3">
+                                            <p className="text-sm text-slate-900">
+                                                {member?.phone}
+                                            </p>
+
+                                            {member?.phone && (
+                                                <a href={`tel:${member.phone}`} className="w-full sm:w-auto">
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        className="gap-2 w-full sm:w-auto"
+                                                    >
+                                                        <Phone className="w-4 h-4" />
+                                                        Call
+                                                    </Button>
+                                                </a>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* Right: Actions */}
-                                <div className="flex items-center gap-2">
-
+                                <div className="flex items-center justify-start lg:justify-end">
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        className="border-border hover:bg-destructive/10 hover:text-destructive gap-1"
+                                        className="border-border hover:bg-destructive/10 hover:text-destructive gap-1 w-full sm:w-auto"
                                         onClick={() => handleDelete(member._id)}
                                     >
                                         <Trash2 className="w-4 h-4" />

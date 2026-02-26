@@ -2,7 +2,15 @@ import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CheckCircle, Clock, User, Circle, TrendingUp, TrendingDown, CalendarClock } from 'lucide-react';
 import { Link } from 'react-router-dom';
-
+import {
+  Breadcrumb,
+  BreadcrumbEllipsis,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
 const ICON_MAP = {
   payment: CheckCircle,
   rent: CheckCircle,
@@ -134,6 +142,29 @@ export default function RecentActivities({ stats, loading, error }) {
 
   return (
     <Card className="rounded-xl shadow-md w-full bg-white border border-gray-100">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="#">Home</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="#">Components</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base font-semibold text-gray-900">
           Activity
@@ -169,7 +200,7 @@ export default function RecentActivities({ stats, loading, error }) {
             </button>
           </div>
           <Link
-            to="/transactions"
+            to="/dashboard/transactions"
             className="text-xs font-semibold text-orange-700 hover:text-orange-800 hover:underline uppercase tracking-wide"
           >
             View All

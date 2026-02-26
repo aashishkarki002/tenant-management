@@ -1,31 +1,28 @@
 /**
- * usePaymentForm.js  (FIXED)
+ * usePaymentForm.js
  *
- * FIX 1 — bankAccountCode missing from everything.
- *   Added to: initialValues, submitted payload, handleOpenDialog reset.
- *   bankAccountCode is the chart-of-accounts string (e.g. "1010-NABIL")
- *   set by PaymentDialog when the user picks a bank account.
- *   The backend's journal builder uses it to route DR to the correct
- *   bank ledger account instead of a generic CASH account.
+ * Manages formik state + allocation state for the rent payment dialog.
  *
- * FIX 2 — handleOpenDialog seeded amounts from gross rentAmountPaisa.
- *   Now seeds from getPaymentAmounts() which returns effectiveRentPaisa.
- *
- * FIX 3 — handleAmountChange used raw rentAmount / camAmount without TDS.
- *   getPaymentAmounts() now returns effective amounts so this is fixed
- *   by the util change — no logic change here needed.
+ * Late fee support (new):
+ *   - lateFeeAllocation: separate allocation bucket for the penalty charge
+ *   - allocation strategy: rent first → CAM → late fee (senior obligations first)
+ *   - payload: allocations.lateFee = { rentId, amount } sent to backend
+ *     which routes it to LATE_FEE_PAYMENT_RECEIVED journal separately
+ *   - full-payment-only rule enforced: late fee accepts all-or-nothing
+ *     (mirrors backend allocatePayment() constraint)
  */
 
 import { useState } from "react";
 import { useFormik } from "formik";
 import { toast } from "sonner";
 import api from "../../../plugins/axios";
-import { getPaymentAmounts, findMatchingCam } from "../utils/paymentUtil";
+import { getPaymentAmounts } from "../utils/paymentUtil";
 
 export const usePaymentForm = ({ rents, cams, onSuccess }) => {
   const [allocationMode, setAllocationMode] = useState("auto");
   const [rentAllocation, setRentAllocation] = useState(0);
   const [camAllocation, setCamAllocation] = useState(0);
+  const [lateFeeAllocation, setLateFeeAllocation] = useState(0);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
   const formik = useFormik({
@@ -38,7 +35,7 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
       paymentMethod: "",
       paymentStatus: "paid",
       bankAccountId: "",
-      bankAccountCode: "", // FIX: added — chart-of-accounts code for the selected bank
+      bankAccountCode: "",
       transactionRef: "",
       note: "",
       allocations: {},
@@ -55,17 +52,20 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
           paymentStatus: values.paymentStatus || "paid",
           note: values.note || "",
           bankAccountId: values.bankAccountId || null,
-          bankAccountCode: values.bankAccountCode || null, // FIX: now sent to backend
+          bankAccountCode: values.bankAccountCode || null,
           transactionRef: values.transactionRef || null,
           allocations: values.allocations,
         };
 
-        if (!payload.allocations?.rent && !payload.allocations?.cam) {
+        if (
+          !payload.allocations?.rent &&
+          !payload.allocations?.cam &&
+          !payload.allocations?.lateFee
+        ) {
           toast.error("No allocations found. Please try again.");
           return;
         }
 
-        // Guard: bank_transfer / cheque require bankAccountCode for ledger routing
         if (
           (payload.paymentMethod === "bank_transfer" ||
             payload.paymentMethod === "cheque") &&
@@ -101,53 +101,77 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
     formik.resetForm();
     setRentAllocation(0);
     setCamAllocation(0);
+    setLateFeeAllocation(0);
     setSelectedBankAccountId("");
     setAllocationMode("auto");
   };
 
   /**
    * Seeds formik + allocation state when a payment dialog opens.
-   * FIX: uses getPaymentAmounts() which now returns effective (gross - TDS) rent.
+   * Default: fill rent + CAM + late fee in full (total outstanding).
    */
   const handleOpenDialog = (rent) => {
-    const { rentAmount, camAmount } = getPaymentAmounts(rent, cams);
+    const { rentAmount, camAmount, lateFeeAmount } = getPaymentAmounts(
+      rent,
+      cams,
+    );
+    const total = rentAmount + camAmount + lateFeeAmount;
 
     formik.setValues({
       ...formik.initialValues,
       rentId: rent._id.toString(),
       tenantId: rent.tenant?._id?.toString() || rent.tenant?.toString() || "",
-      amount: rentAmount + camAmount,
+      amount: total,
       paymentMethod: formik.values.paymentMethod || "",
-      bankAccountCode: "", // reset on each dialog open
+      bankAccountCode: "",
     });
 
     setAllocationMode("auto");
     setRentAllocation(rentAmount);
     setCamAllocation(camAmount);
+    setLateFeeAllocation(lateFeeAmount);
     setSelectedBankAccountId("");
   };
 
   /**
-   * Amount input change — auto-allocates rent first (FIFO: oldest obligation first),
-   * then CAM with whatever remains.
-   * Uses effective amounts from getPaymentAmounts() after the util fix.
+   * Amount input change — auto-allocates using priority order:
+   *   1. Rent principal (senior)
+   *   2. CAM
+   *   3. Late fee (full-or-nothing: either all or zero — never partial)
+   *
+   * The full-or-nothing rule on late fee matches the backend constraint in
+   * allocatePayment(): partial late fee payments are rejected.
    */
   const handleAmountChange = (amount, rent) => {
     formik.setFieldValue("amount", amount);
 
     if (allocationMode === "auto" && rent) {
-      const { rentAmount, camAmount } = getPaymentAmounts(rent, cams);
-      const totalDue = rentAmount + camAmount;
+      const { rentAmount, camAmount, lateFeeAmount } = getPaymentAmounts(
+        rent,
+        cams,
+      );
+      const rentAndCam = rentAmount + camAmount;
+      const totalDue = rentAndCam + lateFeeAmount;
 
       if (amount >= totalDue) {
+        // Pays everything including late fee
         setRentAllocation(rentAmount);
         setCamAllocation(camAmount);
+        setLateFeeAllocation(lateFeeAmount);
+      } else if (amount >= rentAndCam) {
+        // Covers rent + CAM but not enough for full late fee → late fee = 0
+        // (backend enforces full-or-nothing on late fee; don't send partial)
+        setRentAllocation(rentAmount);
+        setCamAllocation(camAmount);
+        setLateFeeAllocation(0);
       } else if (amount >= rentAmount) {
         setRentAllocation(rentAmount);
         setCamAllocation(amount - rentAmount);
+        setLateFeeAllocation(0);
       } else {
         setRentAllocation(amount);
         setCamAllocation(0);
+        setLateFeeAllocation(0);
       }
     }
   };
@@ -160,6 +184,8 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
     setRentAllocation,
     camAllocation,
     setCamAllocation,
+    lateFeeAllocation,
+    setLateFeeAllocation,
     selectedBankAccountId,
     setSelectedBankAccountId,
     handleOpenDialog,

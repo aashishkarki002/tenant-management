@@ -33,6 +33,16 @@ import {
 import { cn } from "@/lib/utils";
 import api from "../../../plugins/axios";
 import { toast } from "sonner";
+import {
+    Breadcrumb,
+    BreadcrumbEllipsis,
+    BreadcrumbItem,
+    BreadcrumbLink,
+    BreadcrumbList,
+    BreadcrumbPage,
+    BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+import { Link } from "react-router-dom";
 
 const STATUS_STYLES = {
     accepted: "bg-emerald-50 text-emerald-600 border-emerald-200",
@@ -108,8 +118,26 @@ export default function Transaction() {
     }, [transactions, search, statusFilter, typeFilter, dateStart, dateEnd]);
 
     return (
-        <div className="min-h-screen  text-gray-900">
-            <div className="max-w-6xl mx-auto px-6 py-10">
+        <div className="min-h-screen  text-gray-900"><Breadcrumb>
+            <BreadcrumbList>
+                <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                        <Link to="/">Home</Link>
+                    </BreadcrumbLink>
+                </BreadcrumbItem>
+
+                <BreadcrumbItem>
+
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                        <Link to="/dashboard/transactions">Transactions</Link>
+                    </BreadcrumbLink>
+                </BreadcrumbItem>
+            </BreadcrumbList>
+        </Breadcrumb>
+            <div className="w-full h-full">
 
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">

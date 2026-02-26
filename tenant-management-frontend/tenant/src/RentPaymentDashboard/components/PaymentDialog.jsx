@@ -1,21 +1,16 @@
 /**
- * PaymentDialog.jsx  (FIXED)
+ * PaymentDialog.jsx
  *
- * FIX 1 — proportionalAllocate used gross remaining (gross - paid).
- *   Tenant only owes effectiveRentPaisa = gross - TDS.
- *   Using gross remaining produced over-allocations rejected by the backend.
- *   FIX: remaining = (rentAmountPaisa - tdsAmountPaisa) - paidAmountPaisa
- *   Mirrors the fix in payment.allocation.helper.js on the backend.
+ * Updated to support late fee allocation as a separate revenue bucket.
  *
- * FIX 2 — units useMemo: rentDue/remaining used gross rentAmountPaisa.
- *   FIX: rentDue = (ub.rentAmountPaisa - ub.tdsAmountPaisa) / 100
- *
- * FIX 3 — bank account picker only called setFieldValue("bankAccountId").
- *   Added setFieldValue("bankAccountCode", bank.accountCode) so the journal
- *   builder can route to the correct ledger account (DR Cash vs DR Bank).
- *
- * FIX 4 — buildPayload() omitted bankAccountCode.
- *   Added to the payload so payment.service.js receives it.
+ * Late fee changes:
+ *   - Due summary shows Rent / CAM / Late Fee as three distinct line items
+ *   - Auto mode: amount fills rent → CAM → late fee (full-or-nothing on late fee)
+ *   - Manual mode: third input for late fee allocation; full-or-nothing enforced in UI
+ *   - buildPayload() emits allocations.lateFee = { rentId, amount } when > 0
+ *   - Backend routes lateFee allocation to LATE_FEE_PAYMENT_RECEIVED journal
+ *     and writes to latePaidAmountPaisa, NOT paidAmountPaisa
+ *   - Validation: partial late fee payment blocked (must be 0 or full remaining)
  */
 
 import React from "react";
@@ -29,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
@@ -46,16 +42,13 @@ function resolveId(val) {
 
 /**
  * Proportional allocation — mirrors allocatePaymentProportionally on the backend.
+ * Allocates against rent principal only (not CAM or late fee).
  *
  * FIX: remaining = (rentAmountPaisa - tdsAmountPaisa) - paidAmountPaisa
- * was: remaining = rentAmountPaisa - paidAmountPaisa  (gross — wrong)
- *
- * Returns [{ unitId: string, amount: number (rupees) }]
  */
 function proportionalAllocate(unitBreakdown, totalRupees) {
-  // FIX: effective remaining per unit
   const totalEffectiveRemainingPaisa = unitBreakdown.reduce((sum, u) => {
-    const effective = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    const effective = (u.rentAmountPaisa || 0)
     return sum + Math.max(0, effective - (u.paidAmountPaisa || 0));
   }, 0);
 
@@ -64,14 +57,13 @@ function proportionalAllocate(unitBreakdown, totalRupees) {
   const totalPaymentPaisa = Math.round(totalRupees * 100);
   let remaining = totalPaymentPaisa;
   const unpaidUnits = unitBreakdown.filter((u) => {
-    const eff = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    const eff = (u.rentAmountPaisa || 0)
     return eff - (u.paidAmountPaisa || 0) > 0;
   });
   const result = [];
 
   unpaidUnits.forEach((u, idx) => {
-    // FIX: effective remaining
-    const unitEffectivePaisa = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    const unitEffectivePaisa = (u.rentAmountPaisa || 0)
     const unitRemainingPaisa = unitEffectivePaisa - (u.paidAmountPaisa || 0);
 
     let alloc;
@@ -106,13 +98,17 @@ export const PaymentDialog = ({
   setRentAllocation,
   camAllocation,
   setCamAllocation,
+  lateFeeAllocation,
+  setLateFeeAllocation,
   selectedBankAccountId,
   setSelectedBankAccountId,
   handleAmountChange,
   onClose,
 }) => {
-  const { rentAmount, camAmount, totalDue, grossRentPaisa, tdsAmountPaisa } =
-    getPaymentAmounts(rent, cams);
+  const {
+    rentAmount, camAmount, lateFeeAmount, totalDue,
+    tdsAmountPaisa, hasLateFee, remainingLateFeePaisa,
+  } = getPaymentAmounts(rent, cams);
 
   // ── Matching CAM ──────────────────────────────────────────────────────────
   const matchingCam = React.useMemo(() => {
@@ -127,11 +123,7 @@ export const PaymentDialog = ({
     );
   }, [cams, rent]);
 
-  // ── Unit breakdown (multi-unit) ───────────────────────────────────────────
-  /**
-   * FIX: rentDue and remaining now use effectiveRentPaisa (gross - TDS) per unit,
-   * not gross rentAmountPaisa.
-   */
+
   const units = React.useMemo(() => {
     const hasBreakdown =
       rent?.useUnitBreakdown &&
@@ -143,8 +135,7 @@ export const PaymentDialog = ({
         const unit = ub.unit;
         const id = resolveId(unit);
 
-        // FIX: effective rent per unit = gross - TDS
-        const effectivePaisa = (ub.rentAmountPaisa || 0) - (ub.tdsAmountPaisa || 0);
+        const effectivePaisa = ub.rentAmountPaisa || 0;
         const rentDue = effectivePaisa / 100;
         const paidSoFar = (ub.paidAmountPaisa || 0) / 100;
         const remaining = rentDue - paidSoFar;
@@ -205,9 +196,16 @@ export const PaymentDialog = ({
 
   // ── Derived amounts ───────────────────────────────────────────────────────
   const paymentAmount = formik.values?.amount || 0;
-  const totalAllocated = rentAllocation + camAllocation;
+  const totalAllocated = rentAllocation + camAllocation + (lateFeeAllocation || 0);
   const balanceOwed = totalDue - totalAllocated;
   const isOverAllocated = totalAllocated > paymentAmount && paymentAmount > 0;
+
+  // Partial late fee guard: if lateFeeAllocation is set it must equal the full
+  // remaining late fee (backend enforces this — show error in UI preemptively)
+  const lateFeeRemaining = remainingLateFeePaisa / 100;
+  const isPartialLateFee =
+    (lateFeeAllocation || 0) > 0 &&
+    (lateFeeAllocation || 0) < lateFeeRemaining - 0.01;
 
   const autoUnitAllocations = React.useMemo(() => {
     if (!rent?.useUnitBreakdown || !rent?.unitBreakdown?.length) return [];
@@ -227,11 +225,6 @@ export const PaymentDialog = ({
     Math.abs(manualUnitRentTotal - rentAllocation) > 0.01;
 
   // ── Payload builder ───────────────────────────────────────────────────────
-  /**
-   * FIX: bankAccountCode now included in the payload.
-   * The backend's buildPaymentReceivedJournal() uses it to DR the correct
-   * bank ledger account (e.g. "1010-NABIL") instead of defaulting to CASH.
-   */
   function buildPayload() {
     const isMultiUnit = rent?.useUnitBreakdown && rent?.unitBreakdown?.length > 0;
 
@@ -246,11 +239,12 @@ export const PaymentDialog = ({
       paymentStatus: "paid",
       note: formik.values?.note || "",
       bankAccountId: formik.values?.bankAccountId || null,
-      bankAccountCode: formik.values?.bankAccountCode || null,  // FIX: added
+      bankAccountCode: formik.values?.bankAccountCode || null,
       transactionRef: formik.values?.transactionRef || null,
       allocations: {},
     };
 
+    // Rent allocation
     if (rentAllocation > 0) {
       const rentEntry = { rentId: rent._id, amount: rentAllocation };
 
@@ -268,8 +262,18 @@ export const PaymentDialog = ({
       payload.allocations.rent = rentEntry;
     }
 
+    // CAM allocation
     if (camAllocation > 0 && matchingCam?._id) {
       payload.allocations.cam = { camId: matchingCam._id, paidAmount: camAllocation };
+    }
+
+    // Late fee allocation — separate revenue bucket (LATE_FEE_PAYMENT_RECEIVED journal)
+    // Backend: writes to latePaidAmountPaisa, NOT paidAmountPaisa
+    if ((lateFeeAllocation || 0) > 0) {
+      payload.allocations.lateFee = {
+        rentId: rent._id,
+        amount: lateFeeAllocation,
+      };
     }
 
     return payload;
@@ -283,10 +287,11 @@ export const PaymentDialog = ({
   const isSubmitDisabled =
     !selectedUnits.length ||
     isOverAllocated ||
+    isPartialLateFee ||
     !paymentAmount ||
     !formik.values?.paymentMethod ||
     !formik.values?.paymentDate ||
-    (needsBankAccount && !formik.values?.bankAccountCode) ||  // FIX: require bankAccountCode
+    (needsBankAccount && !formik.values?.bankAccountCode) ||
     unitAllocationMismatch;
 
   // ── Summary tone ──────────────────────────────────────────────────────────
@@ -313,7 +318,8 @@ export const PaymentDialog = ({
 
       {/* ── Due summary ──────────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
+        <div className={`grid gap-4 ${hasLateFee ? "grid-cols-3" : "grid-cols-2"}`}>
+          {/* Rent */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wide">
               Rent Due (net of TDS)
@@ -327,6 +333,8 @@ export const PaymentDialog = ({
               </p>
             )}
           </div>
+
+          {/* CAM */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wide">
               CAM Due
@@ -335,8 +343,28 @@ export const PaymentDialog = ({
               ₹{camAmount.toLocaleString()}
             </p>
           </div>
+
+          {/* Late fee — only shown when charged */}
+          {hasLateFee && (
+            <div>
+              <p className="text-xs font-semibold text-rose-500 uppercase mb-2 tracking-wide flex items-center gap-1.5">
+                Late Fee
+                <Badge className="text-[10px] px-1.5 py-0 bg-rose-100 text-rose-700 border border-rose-200">
+                  Penalty
+                </Badge>
+              </p>
+              <p className="text-2xl font-semibold text-rose-700">
+                ₹{lateFeeAmount.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Separate revenue · full payment required
+              </p>
+            </div>
+          )}
         </div>
+
         <Separator />
+
         <div className="flex justify-between items-center">
           <p className="text-sm font-medium text-slate-900">Total Due</p>
           <p className="text-3xl font-semibold text-slate-900">
@@ -382,16 +410,16 @@ export const PaymentDialog = ({
                   )
                 }
                 className={`w-full text-left rounded-xl border-2 px-4 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${selected
-                    ? "border-slate-900/80 bg-slate-900/[0.02]"
-                    : "border-slate-200 hover:border-slate-300 bg-white"
+                  ? "border-slate-900/80 bg-slate-900/[0.02]"
+                  : "border-slate-200 hover:border-slate-300 bg-white"
                   }`}
               >
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div
                       className={`flex items-center justify-center w-5 h-5 rounded-full border-2 ${selected
-                          ? "border-slate-900 bg-slate-900"
-                          : "border-slate-300 bg-white"
+                        ? "border-slate-900 bg-slate-900"
+                        : "border-slate-300 bg-white"
                         }`}
                     >
                       {selected && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
@@ -473,6 +501,7 @@ export const PaymentDialog = ({
 
           {/* Quick Payment */}
           <TabsContent value="auto" className="space-y-4 pt-2">
+            {/* Amount input */}
             <div className="space-y-2">
               <label htmlFor="amount-quick" className="text-sm font-semibold text-slate-900">
                 Amount to Pay (Rs)
@@ -480,61 +509,103 @@ export const PaymentDialog = ({
               <Input
                 id="amount-quick"
                 type="number"
-                placeholder="Enter payment amount"
+                placeholder={`Full due: ₹${totalDue.toLocaleString()}`}
                 value={formik.values?.amount || ""}
                 onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
                 onBlur={(e) => { if (!e.target.value) handleAmountChange(totalDue, rent); }}
                 className="text-lg"
               />
-              <p className="text-xs text-slate-500">
-                If left blank, full due amount (₹{totalDue.toLocaleString()}) will be used.
-              </p>
             </div>
 
-            <div className="mt-3 bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
-                  Proportional allocation preview
+            {/* Auto-computed allocation breakdown — always visible once amount > 0 */}
+            <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+              <div className="px-4 py-2.5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">Rent</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Due: ₹{rentAmount.toLocaleString()}
+                  </p>
+                </div>
+                <p className={`text-sm font-bold ${rentAllocation > 0 ? "text-slate-900" : "text-slate-300"}`}>
+                  ₹{rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </p>
-                <p className="text-xs text-slate-500">Weighted by remaining balance</p>
               </div>
 
-              {autoUnitAllocations.length > 0 ? (
-                <div className="space-y-2">
-                  {autoUnitAllocations.map((alloc) => {
-                    const unit = units.find((u) => u.id === alloc.unitId);
-                    return (
-                      <div key={alloc.unitId} className="flex items-center justify-between text-xs">
-                        <span className="font-medium text-slate-900">
-                          {unit?.name || alloc.unitId}
-                        </span>
-                        <span className="font-semibold text-slate-900">
-                          ₹{alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {camAllocation > 0 && matchingCam && (
-                    <div className="flex items-center justify-between text-xs border-t border-slate-200 pt-2 mt-1">
-                      <span className="font-medium text-slate-500">CAM</span>
-                      <span className="font-semibold text-slate-700">
-                        ₹{camAllocation.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  )}
+              {camAmount > 0 && (
+                <div className="px-4 py-2.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-700">CAM</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Due: ₹{camAmount.toLocaleString()}
+                    </p>
+                  </div>
+                  <p className={`text-sm font-bold ${camAllocation > 0 ? "text-slate-900" : "text-slate-300"}`}>
+                    ₹{camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
                 </div>
-              ) : (
-                <p className="text-xs text-slate-500">
-                  {selectedUnits.length === 0
-                    ? "Select at least one unit to see allocation."
-                    : "Enter an amount above to preview allocation."}
-                </p>
               )}
+
+              {hasLateFee && (
+                <div className="px-4 py-2.5 flex items-center justify-between bg-rose-50/60">
+                  <div>
+                    <p className="text-xs font-semibold text-rose-700 flex items-center gap-1.5">
+                      Late Fee
+                      <span className="text-[9px] font-medium bg-rose-100 text-rose-600 border border-rose-200 rounded-full px-1.5 py-px">
+                        Separate revenue
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Due: ₹{lateFeeAmount.toLocaleString()} · full payment only
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-sm font-bold ${(lateFeeAllocation || 0) > 0 ? "text-rose-700" : "text-slate-300"}`}>
+                      ₹{(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
+                    {(lateFeeAllocation || 0) === 0 && paymentAmount > 0 && (
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Add ₹{(lateFeeAmount).toLocaleString()} to cover
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Per-unit breakdown when multi-unit */}
+              {autoUnitAllocations.length > 0 && (
+                <div className="px-4 py-3 bg-slate-50/60">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                    Unit breakdown
+                  </p>
+                  <div className="space-y-1.5">
+                    {autoUnitAllocations.map((alloc) => {
+                      const unit = units.find((u) => u.id === alloc.unitId);
+                      return (
+                        <div key={alloc.unitId} className="flex items-center justify-between text-xs">
+                          <span className="text-slate-600">{unit?.name || alloc.unitId}</span>
+                          <span className="font-semibold text-slate-800">
+                            ₹{alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Total line */}
+              <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50">
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Total Allocated</p>
+                <p className="text-sm font-bold text-slate-900">
+                  ₹{totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+              </div>
             </div>
           </TabsContent>
 
           {/* Custom Allocation */}
           <TabsContent value="manual" className="space-y-4 pt-2">
+            {/* Total amount */}
             <div className="space-y-2">
               <label htmlFor="amount-manual" className="text-sm font-semibold text-slate-900">
                 Total Amount to Pay (Rs)
@@ -549,35 +620,109 @@ export const PaymentDialog = ({
               />
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label htmlFor="rent-allocation" className="text-sm font-semibold text-slate-900">
-                  Allocate to Rent (Rs)
-                </label>
-                <Input
-                  id="rent-allocation"
-                  type="number"
-                  placeholder="Rent amount"
-                  value={rentAllocation}
-                  onChange={(e) => setRentAllocation(parseFloat(e.target.value) || 0)}
-                />
-                <p className="text-xs text-slate-500">Rent due: ₹{rentAmount.toLocaleString()}</p>
+            {/* Allocation inputs — each pre-filled with their due amount */}
+            <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+
+              {/* Rent */}
+              <div className="px-4 py-3 flex items-center gap-4">
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-slate-700">Rent</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Total due: ₹{rentAmount.toLocaleString()}
+                  </p>
+                </div>
+                <div className="w-36">
+                  <Input
+                    id="rent-allocation"
+                    type="number"
+                    placeholder="0"
+                    value={rentAllocation || ""}
+                    onChange={(e) => setRentAllocation(parseFloat(e.target.value) || 0)}
+                    className="text-right text-sm"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <label htmlFor="cam-allocation" className="text-sm font-semibold text-slate-900">
-                  Allocate to CAM (Rs)
-                </label>
-                <Input
-                  id="cam-allocation"
-                  type="number"
-                  placeholder="CAM amount"
-                  value={camAllocation}
-                  onChange={(e) => setCamAllocation(parseFloat(e.target.value) || 0)}
-                />
-                <p className="text-xs text-slate-500">CAM due: ₹{camAmount.toLocaleString()}</p>
+
+              {/* CAM */}
+              <div className="px-4 py-3 flex items-center gap-4">
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-slate-700">CAM</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Total due: ₹{camAmount.toLocaleString()}
+                  </p>
+                </div>
+                <div className="w-36">
+                  <Input
+                    id="cam-allocation"
+                    type="number"
+                    placeholder="0"
+                    value={camAllocation || ""}
+                    onChange={(e) => setCamAllocation(parseFloat(e.target.value) || 0)}
+                    className="text-right text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Late Fee — only rendered when a fee has been charged */}
+              {hasLateFee && (
+                <div className="px-4 py-3 flex items-center gap-4 bg-rose-50/40">
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-rose-700 flex items-center gap-1.5">
+                      Late Fee
+                      <span className="text-[9px] font-medium bg-rose-100 text-rose-600 border border-rose-200 rounded-full px-1.5 py-px">
+                        All or nothing
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Total due: ₹{lateFeeAmount.toLocaleString()} · must pay full amount or leave 0
+                    </p>
+                    {isPartialLateFee && (
+                      <p className="text-[11px] text-rose-600 mt-0.5 font-medium">
+                        Enter ₹{lateFeeAmount.toLocaleString()} or 0
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5 items-end">
+                    <div className="w-36">
+                      <Input
+                        id="late-fee-allocation"
+                        type="number"
+                        placeholder="0"
+                        value={lateFeeAllocation || ""}
+                        onChange={(e) => setLateFeeAllocation(parseFloat(e.target.value) || 0)}
+                        className={`text-right text-sm ${isPartialLateFee ? "border-rose-400 focus-visible:ring-rose-400" : ""}`}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLateFeeAllocation(lateFeeAmount)}
+                      className="text-[11px] text-rose-600 underline underline-offset-2 hover:text-rose-800"
+                    >
+                      Fill ₹{lateFeeAmount.toLocaleString()}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Running total */}
+              <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50">
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Total Allocated</p>
+                  {totalAllocated !== (formik.values?.amount || 0) && (formik.values?.amount || 0) > 0 && (
+                    <p className={`text-[11px] mt-0.5 ${isOverAllocated ? "text-rose-600" : "text-amber-600"}`}>
+                      {isOverAllocated
+                        ? `₹${(totalAllocated - (formik.values?.amount || 0)).toLocaleString()} over`
+                        : `₹${((formik.values?.amount || 0) - totalAllocated).toLocaleString()} unallocated`}
+                    </p>
+                  )}
+                </div>
+                <p className={`text-sm font-bold ${isOverAllocated ? "text-rose-700" : "text-slate-900"}`}>
+                  ₹{totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
               </div>
             </div>
 
+            {/* Per-unit rent allocation (multi-unit only) */}
             {rent?.useUnitBreakdown && selectedUnits.length > 0 && (
               <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -586,7 +731,7 @@ export const PaymentDialog = ({
                   </p>
                   <p className={`text-xs font-medium ${unitAllocationMismatch ? "text-rose-600" : "text-slate-500"}`}>
                     {unitAllocationMismatch
-                      ? `Total ₹${manualUnitRentTotal.toFixed(2)} ≠ rent ₹${rentAllocation.toFixed(2)}`
+                      ? `Total ₹${manualUnitRentTotal.toFixed(0)} ≠ rent ₹${rentAllocation.toFixed(0)}`
                       : `Must sum to ₹${rentAllocation.toLocaleString()}`}
                   </p>
                 </div>
@@ -601,7 +746,7 @@ export const PaymentDialog = ({
                       </div>
                       <Input
                         type="number"
-                        className="w-36 text-sm"
+                        className="w-36 text-sm text-right"
                         value={unitRentAllocations[unit.id] ?? ""}
                         placeholder="0"
                         max={unit.remaining}
@@ -670,8 +815,8 @@ export const PaymentDialog = ({
                       formik.setFieldValue("bankAccountCode", bank.accountCode || "");
                     }}
                     className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
-                        ? "border-slate-900 bg-slate-900/[0.03]"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
+                      ? "border-slate-900 bg-slate-900/[0.03]"
+                      : "border-slate-200 hover:border-slate-300 bg-white"
                       }`}
                   >
                     <div className="flex items-center justify-between">
@@ -763,11 +908,36 @@ export const PaymentDialog = ({
 
       {/* ── 4️⃣ Final Summary ────────────────────────────────────────────── */}
       <section className={`mt-6 mb-2 rounded-xl border px-5 py-4 ${summaryTone.container}`}>
-        <div className="flex flex-wrap gap-4 items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Final Summary
-            </p>
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            Final Summary
+          </p>
+
+          {/* Allocation breakdown */}
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="bg-white/60 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Rent</p>
+              <p className="mt-0.5 font-semibold text-slate-900">
+                ₹{rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+            <div className="bg-white/60 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide">CAM</p>
+              <p className="mt-0.5 font-semibold text-slate-900">
+                ₹{camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+            <div className={`rounded-lg px-3 py-2 ${(lateFeeAllocation || 0) > 0 ? "bg-rose-50/80" : "bg-white/60"}`}>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Late Fee</p>
+              <p className={`mt-0.5 font-semibold ${(lateFeeAllocation || 0) > 0 ? "text-rose-700" : "text-slate-400"}`}>
+                ₹{(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-wrap gap-4 items-center justify-between">
             <p className={`text-xs font-medium ${summaryTone.accent}`}>
               {balanceOwed < 0
                 ? "Allocation exceeds total due. Reduce the amount or allocations."
@@ -775,36 +945,39 @@ export const PaymentDialog = ({
                   ? "Fully allocated. This payment clears the selected dues."
                   : "Partially allocated. Remaining balance will stay outstanding."}
             </p>
-          </div>
-          <div className="grid grid-cols-3 gap-4 text-right min-w-[260px]">
-            <div>
-              <p className="text-[11px] text-slate-500 uppercase tracking-wide">Total Due</p>
-              <p className="mt-1 text-base font-semibold text-slate-900">
-                ₹{totalDue.toLocaleString()}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] text-slate-500 uppercase tracking-wide">Allocated</p>
-              <p className="mt-1 text-base font-semibold text-slate-900">
-                ₹{totalAllocated.toLocaleString()}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] text-slate-500 uppercase tracking-wide">Remaining</p>
-              <p className={`mt-1 text-base font-semibold ${summaryTone.accent}`}>
-                ₹{balanceOwed.toLocaleString()}
-              </p>
+            <div className="grid grid-cols-3 gap-4 text-right min-w-[260px]">
+              <div>
+                <p className="text-[11px] text-slate-500 uppercase tracking-wide">Total Due</p>
+                <p className="mt-1 text-base font-semibold text-slate-900">
+                  ₹{totalDue.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500 uppercase tracking-wide">Allocated</p>
+                <p className="mt-1 text-base font-semibold text-slate-900">
+                  ₹{totalAllocated.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500 uppercase tracking-wide">Remaining</p>
+                <p className={`mt-1 text-base font-semibold ${summaryTone.accent}`}>
+                  ₹{balanceOwed.toLocaleString()}
+                </p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <DialogFooter className="mt-2 border-t border-slate-200 pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        {(!selectedUnits.length || isOverAllocated || unitAllocationMismatch ||
+        {(!selectedUnits.length || isOverAllocated || isPartialLateFee || unitAllocationMismatch ||
           (needsBankAccount && !formik.values?.bankAccountCode)) && (
             <div className="text-xs text-rose-600">
               {!selectedUnits.length && <p>Select at least one unit before submitting.</p>}
               {isOverAllocated && <p>Allocation total cannot exceed the payment amount.</p>}
+              {isPartialLateFee && (
+                <p>Late fee must be paid in full (₹{lateFeeAmount.toLocaleString()}) or not at all.</p>
+              )}
               {unitAllocationMismatch && (
                 <p>Per-unit rent allocations must sum to ₹{rentAllocation.toFixed(2)}.</p>
               )}

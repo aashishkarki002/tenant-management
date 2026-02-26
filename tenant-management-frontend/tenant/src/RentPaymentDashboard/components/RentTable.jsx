@@ -26,6 +26,8 @@ export const RentTable = ({
   setRentAllocation,
   camAllocation,
   setCamAllocation,
+  lateFeeAllocation,
+  setLateFeeAllocation,
   selectedBankAccountId,
   setSelectedBankAccountId,
   handleOpenDialog,
@@ -43,13 +45,14 @@ export const RentTable = ({
   return (
     <>
       <div className="overflow-x-auto -mx-4 sm:mx-0 rounded-md border">
-        <Table className="min-w-[800px]">
+        <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow>
               <TableHead className="whitespace-nowrap">Tenant / Unit</TableHead>
               <TableHead className="whitespace-nowrap">Frequency</TableHead>
               <TableHead className="whitespace-nowrap">Rent Amount</TableHead>
               <TableHead className="whitespace-nowrap">CAM Amount</TableHead>
+              <TableHead className="whitespace-nowrap">Late Fee</TableHead>
               <TableHead className="whitespace-nowrap">Total Amount</TableHead>
               <TableHead className="whitespace-nowrap">Due Date</TableHead>
               <TableHead className="whitespace-nowrap">Status</TableHead>
@@ -60,7 +63,7 @@ export const RentTable = ({
             {rents.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="py-16 text-center text-muted-foreground"
                 >
                   <div className="flex flex-col items-center gap-2">
@@ -114,6 +117,8 @@ export const RentTable = ({
             setRentAllocation={setRentAllocation}
             camAllocation={camAllocation}
             setCamAllocation={setCamAllocation}
+            lateFeeAllocation={lateFeeAllocation}
+            setLateFeeAllocation={setLateFeeAllocation}
             selectedBankAccountId={selectedBankAccountId}
             setSelectedBankAccountId={setSelectedBankAccountId}
             handleAmountChange={handleAmountChange}

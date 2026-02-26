@@ -26,6 +26,7 @@ import { MaintenanceTab } from "./MaintenanceTab";
 import { PaymentHistoryTab } from "./PaymentHistoryTab";
 import { ElectricityTab } from "./ElectricityTab";
 import { EscalationTab } from "./EscalationTab";
+import Breadcrumb from "./Breadcrumb";
 
 const DEFAULT_TABS = [
   {
@@ -177,6 +178,7 @@ function ViewDetail({ tabs: tabsProp }) {
 
   return (
     <div className="px-2 sm:px-4 md:px-6">
+      <Breadcrumb tenantName={tenant?.name} />
       <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
         <CardHeader className="space-y-4 p-4 sm:p-6">
           {/* Header Row */}

@@ -6,43 +6,69 @@
  */
 export const findMatchingCam = (cams, rent) => {
   if (!cams || !rent || !rent.tenant) return null;
-  
+
   return cams.find(
     (cam) =>
       cam.tenant?._id === rent.tenant?._id &&
       cam.nepaliMonth === rent.nepaliMonth &&
-      cam.nepaliYear === rent.nepaliYear
+      cam.nepaliYear === rent.nepaliYear,
   );
 };
 
 /**
- * Calculates payment amounts (rent, CAM, total) for a given rent
- * Handles both paisa and rupee formats for backward compatibility
- * @param {Object} rent - Rent object (may have rentAmountPaisa or rentAmount)
- * @param {Array} cams - Array of CAM objects (may have amountPaisa or amount)
- * @returns {Object} Object with rentAmount, camAmount, and totalDue (in rupees for display)
+ * Calculates payment amounts (rent, CAM, late fee, total) for a given rent.
+ * Handles both paisa and rupee formats for backward compatibility.
+ *
+ * Late fee fields (added with late fee module):
+ *   rent.lateFeePaisa        — total late fee charged by the cron
+ *   rent.latePaidAmountPaisa — portion of late fee already received
+ *   → remainingLateFeePaisa  = lateFeePaisa - latePaidAmountPaisa
+ *
+ * @param {Object} rent - Rent object
+ * @param {Array}  cams - Array of CAM objects
+ * @returns {Object} Amounts in rupees for display + paisa values for calculations
  */
 export const getPaymentAmounts = (rent, cams) => {
   const matchingCam = findMatchingCam(cams, rent);
-  
-  // ✅ Read from paisa fields if available, otherwise use rupee fields
-  // Convert paisa to rupees for display (divide by 100)
-  const rentAmountPaisa = rent.rentAmountPaisa || (rent.rentAmount ? rent.rentAmount * 100 : 0);
+
+  const tdsAmountPaisa = rent.tdsAmountPaisa || 0;
+  const rentAmountPaisa = rent.rentAmountPaisa || 0;
   const rentAmount = rentAmountPaisa / 100;
-  
-  const camAmountPaisa = matchingCam?.amountPaisa || 
+
+  // ── CAM ───────────────────────────────────────────────────────────────────
+  const camAmountPaisa =
+    matchingCam?.amountPaisa ||
     (matchingCam?.amount ? matchingCam.amount * 100 : 0) ||
-    (rent.tenant?.camChargesPaisa || (rent.tenant?.camCharges ? rent.tenant.camCharges * 100 : 0));
+    rent.tenant?.camChargesPaisa ||
+    (rent.tenant?.camCharges ? rent.tenant.camCharges * 100 : 0) ||
+    0;
   const camAmount = camAmountPaisa / 100;
-  
-  return { 
-    rentAmount, 
-    camAmount, 
-    totalDue: rentAmount + camAmount,
-    // Also return paisa values for calculations
+  const lateFeePaisa = rent.lateFeePaisa || 0;
+  const latePaidAmountPaisa = rent.latePaidAmountPaisa || 0;
+  const remainingLateFeePaisa = Math.max(0, lateFeePaisa - latePaidAmountPaisa);
+  const lateFeeAmount = remainingLateFeePaisa / 100; // rupees
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  const totalDuePaisa =
+    rentAmountPaisa + camAmountPaisa + remainingLateFeePaisa;
+  const totalDue = totalDuePaisa / 100;
+
+  return {
+    // Rupees (for display)
+    rentAmount,
+    camAmount,
+    lateFeeAmount,
+    totalDue,
+    // Paisa (for allocation calculations)
+    tdsAmountPaisa,
     rentAmountPaisa,
     camAmountPaisa,
-    totalDuePaisa: rentAmountPaisa + camAmountPaisa,
+    lateFeePaisa,
+    latePaidAmountPaisa,
+    remainingLateFeePaisa,
+    totalDuePaisa,
+    // Convenience flags
+    hasLateFee: lateFeePaisa > 0,
   };
 };
 
@@ -99,4 +125,3 @@ export const formatPaymentStatus = (status) => {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 };
-

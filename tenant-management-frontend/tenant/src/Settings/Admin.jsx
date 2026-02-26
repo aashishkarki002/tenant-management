@@ -188,7 +188,7 @@ export default function Admin() {
       </div>
 
       <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6">
-        <Tabs defaultValue={initialTab} className="flex-1 flex sm:flex-row">
+        <Tabs defaultValue={initialTab} className="flex-1 flex-col sm:flex-row gap-2">
           <TabsList className="flex sm:flex-col w-full sm:w-52 flex-row justify-start sm:justify-start overflow-x-auto sm:overflow-visible space-x-2 sm:space-x-0 sm:space-y-2">
             <TabsTrigger
               className="flex items-center space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded"

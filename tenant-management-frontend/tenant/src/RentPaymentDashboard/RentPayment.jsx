@@ -186,6 +186,8 @@ const RentPayment = () => {
                 setRentAllocation={paymentForm.setRentAllocation}
                 camAllocation={paymentForm.camAllocation}
                 setCamAllocation={paymentForm.setCamAllocation}
+                lateFeeAllocation={paymentForm.lateFeeAllocation}
+                setLateFeeAllocation={paymentForm.setLateFeeAllocation}
                 selectedBankAccountId={paymentForm.selectedBankAccountId}
                 setSelectedBankAccountId={paymentForm.setSelectedBankAccountId}
                 handleOpenDialog={paymentForm.handleOpenDialog}

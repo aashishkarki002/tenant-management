@@ -539,7 +539,7 @@ export default function AccountingPage() {
                 background: `${C.bg}EC`, backdropFilter: "blur(14px)",
                 borderBottom: `1px solid ${C.border}`,
             }}>
-                <div style={{ maxWidth: 1440, margin: "0 auto", padding: "0 28px", height: 58, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                <div style={{ width: "100%", padding: "0 28px", height: 58, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
                     {/* Left */}
                     <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
 
@@ -620,7 +620,7 @@ export default function AccountingPage() {
             </nav>
 
             {/* ── PAGE BODY ─────────────────────────────────────────────────────── */}
-            <div style={{ maxWidth: 1440, margin: "0 auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ width: "100%", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
 
                 {/* ── HERO ROW: editorial big numbers ───────────────────────────────── */}
                 <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr", gap: 16 }}>

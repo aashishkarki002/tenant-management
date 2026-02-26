@@ -27,10 +27,9 @@ export const PaymentTableRow = ({ payment }) => {
       <TableCell className="whitespace-nowrap">{formatPaymentMethod(payment.paymentMethod)}</TableCell>
       <TableCell className="whitespace-nowrap">
         <Badge
-          className={`capitalize border ${
-            statusStyles[normalizeStatus(payment.paymentStatus)] ||
+          className={`capitalize border ${statusStyles[normalizeStatus(payment.paymentStatus)] ||
             "bg-gray-100 text-gray-700 border-gray-300"
-          }`}
+            }`}
         >
           {formatPaymentStatus(payment.paymentStatus)}
         </Badge>

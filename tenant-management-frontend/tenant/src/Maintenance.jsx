@@ -1,528 +1,672 @@
-import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Plus, Search, User, ArrowRight, X, Circle, ChevronDown, ChevronUp } from 'lucide-react';
-import { Calendar } from 'lucide-react';
-import { List } from 'lucide-react';
-import { Filter } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useUnits } from './hooks/use-units';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import DualCalendarTailwind from '@/components/dualDate'
-import api from '../plugins/axios';
-import { useFormik } from 'formik';
-import { Spinner } from '@/components/ui/spinner';
-import { toast } from 'sonner';
-import useProperty from './hooks/use-property';
-import MaintenanceCard from './Maintenance/components/MaintenanceCard';
-import maintenanceSchema from './Validation/maintenanceValidation';
-export default function Maintenance() {
-  const [priority, setPriority] = useState("medium");
-  const [tenant, setTenant] = useState([]);
-  const { units } = useUnits();
-  const [maintenance, setMaintenance] = useState([]);
-  const [expandedCards, setExpandedCards] = useState(new Set());
-  const [selectedTenant, setSelectedTenant] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ChevronUp, ChevronDown, User, AlertTriangle } from "lucide-react";
+import api from "../../../plugins/axios";
+import { toast } from "sonner";
+import { PAYMENT_METHODS } from "../../Tenant/addTenant/constants/tenant.constant.js";
 
+const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
+
+export default function MaintenanceCard({
+  maintenanceItem,
+  isExpanded,
+  toggleExpand,
+  getPriorityStyle,
+  formatStatus,
+  formatDate,
+  workOrderId,
+  onUpdate,
+  bankAccounts = [],
+}) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [staffs, setStaffs] = useState([]);
-  useEffect(() => {
-    const getTenants = async () => {
-      const response = await api.get("/api/tenant/get-tenants");
-      setTenant(response.data.tenants);
+  const [assigning, setAssigning] = useState(false);
 
-      // Extract units from tenants (occupied units)
-      const occupiedUnits = [];
-      response.data.tenants.forEach(tenant => {
-        if (tenant.units && Array.isArray(tenant.units)) {
-          tenant.units.forEach(unit => {
-            if (unit && !occupiedUnits.find(u => u._id === unit._id)) {
-              occupiedUnits.push(unit);
-            }
-          });
-        }
-      });
-
-      // Get unoccupied units
-
-    };
-    getTenants();
-  }, []);
+  // Overpayment confirmation state — set after backend returns 409
+  const [overpaymentMeta, setOverpaymentMeta] = useState(null);
 
   useEffect(() => {
-    const getMaintenance = async () => {
-      const response = await api.get("/api/maintenance/all");
-      setMaintenance(response.data.maintenance);
-
-      // Extract unique staffs from maintenance data (assignedTo field)
-      const uniqueStaffs = [];
-      const staffMap = new Map();
-
-      response.data.maintenance.forEach(item => {
-        if (item.assignedTo && item.assignedTo._id) {
-          if (!staffMap.has(item.assignedTo._id)) {
-            staffMap.set(item.assignedTo._id, item.assignedTo);
-            uniqueStaffs.push(item.assignedTo);
-          }
-        }
-      });
-
-      setStaffs(uniqueStaffs);
-    };
-    getMaintenance();
-  }, []);
-
-
-
-  const formik = useFormik({
-    initialValues: {
-      title: "",
-      category: "",
-      priority: "",
-      status: "",
-      unit: "",
-      tenant: "",
-      assignTo: "",
-      estimatedCost: "",
-      description: "",
-      scheduledDate: "",
-    },
-    validationSchema: maintenanceSchema,
-    onSubmit: async (values) => {
+    const fetchStaffs = async () => {
       try {
-        // Map form values to backend model format
-        // Capitalize category to match backend enum
-        setIsLoading(true);
-        const categoryMap = {
-          repair: "Repair",
-          maintenance: "Maintenance",
-          inspection: "Inspection",
-          other: "Other"
-        };
-        const mappedType = values.category ? categoryMap[values.category.toLowerCase()] || "Maintenance" : "Maintenance";
-
-        const maintenanceData = {
-          title: values.title,
-          description: values.description,
-          type: mappedType,
-          priority: values.priority || "Medium",
-          status: values.status || "OPEN",
-          unit: values.unit, // Now it's the unit ID
-          tenant: values.tenant || undefined,
-          assignedTo: values.assignTo || undefined, // Map assignTo to assignedTo
-          amount: values.estimatedCost ? parseFloat(values.estimatedCost) : 0, // Map estimatedCost to amount
-          scheduledDate: values.scheduledDate ? new Date(values.scheduledDate) : new Date(),
-        };
-
-        const response = await api.post("/api/maintenance/create", maintenanceData);
-        if (response.data.success) {
-          toast.success("Maintenance task created successfully");
-          formik.resetForm();
-          setSelectedTenant(null);
-          // Refresh maintenance list
-          const getMaintenance = async () => {
-            const response = await api.get("/api/maintenance/all");
-            setMaintenance(response.data.maintenance);
-          };
-          getMaintenance();
-        } else {
-          toast.error(response.data.message || "Failed to create maintenance task");
-        }
-      } catch (error) {
-        console.error("Error creating maintenance:", error);
-        toast.error(error.response?.data?.message || "Failed to create maintenance task");
+        const res = await api.get("/api/staff/get-staffs");
+        const data = res.data?.data;
+        const list = Array.isArray(data) ? data : data?.data ?? [];
+        setStaffs(list);
+      } catch {
+        setStaffs([]);
       }
-      formik.resetForm();
-      setIsLoading(false);
-    },
+    };
+    fetchStaffs();
+  }, []);
+
+  const [formData, setFormData] = useState({
+    paymentStatus: maintenanceItem.paymentStatus || "pending",
+    paidAmount: maintenanceItem.paidAmount?.toString() || "0",
+    paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
+    bankAccountId: "",
   });
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
-  // Find tenant when unit is selected
   useEffect(() => {
-    if (formik.values.unit) {
-      // formik.values.unit now contains the unit ID
-      const unitId = formik.values.unit;
+    setFormData((prev) => ({
+      paymentStatus: maintenanceItem.paymentStatus || "pending",
+      paidAmount: maintenanceItem.paidAmount?.toString() || "0",
+      paymentMethod: prev.paymentMethod || PAYMENT_METHODS.BANK_TRANSFER,
+      bankAccountId: prev.bankAccountId || "",
+    }));
+  }, [maintenanceItem]);
 
-      // Find the tenant that has this unit in their units array
-      const foundTenant = tenant.find(t => {
-        if (t.units && Array.isArray(t.units)) {
-          return t.units.some(u => {
-            // Handle both populated and non-populated unit references
-            const tenantUnitId = typeof u === 'object' ? u._id : u;
-            return tenantUnitId?.toString() === unitId?.toString();
-          });
-        }
-        return false;
-      });
+  useEffect(() => {
+    if (isDialogOpen) setSelectedBankAccountId(formData.bankAccountId || "");
+  }, [isDialogOpen, formData.bankAccountId]);
 
-      if (foundTenant) {
-        setSelectedTenant(foundTenant);
-        formik.setFieldValue("tenant", foundTenant._id);
-      } else {
-        setSelectedTenant(null);
-        formik.setFieldValue("tenant", "");
-      }
-    } else {
-      setSelectedTenant(null);
-      formik.setFieldValue("tenant", "");
+  /* ── Derived overpayment values (real-time, before submit) ── */
+  const estimatedAmount = maintenanceItem.amount || 0;
+  const paidAmountNum = Number(formData.paidAmount) || 0;
+  const exceedsByRupees =
+    estimatedAmount > 0 && paidAmountNum > estimatedAmount
+      ? +(paidAmountNum - estimatedAmount).toFixed(2)
+      : 0;
+  const isOverpayingInForm = exceedsByRupees > 0;
+
+  // True when the user has seen the live warning AND clicked "Confirm Overpayment"
+  // locally (before the backend also validates it).
+  const [localOverpaymentConfirmed, setLocalOverpaymentConfirmed] = useState(false);
+
+  /* ---------------- STATUS CHANGE HANDLER ---------------- */
+  const handleStatusSelect = async (newStatus) => {
+    if (newStatus === maintenanceItem.status) return;
+
+    if (newStatus === "COMPLETED") {
+      setOverpaymentMeta(null);
+      setLocalOverpaymentConfirmed(false);
+      setIsDialogOpen(true);
+      return;
     }
-  }, [formik.values.unit, unit, tenant]);
+
+    try {
+      await api.patch(`/api/maintenance/${maintenanceItem._id}/status`, {
+        status: newStatus,
+      });
+      toast.success("Status updated");
+      onUpdate?.();
+    } catch {
+      toast.error("Failed to update status");
+    }
+  };
+
+  /* ---------------- SUBMIT COMPLETION ---- */
+  const submitCompletion = async (allowOverpayment = false) => {
+    const paymentMethod =
+      formData.paymentMethod && VALID_PAYMENT_METHODS.includes(formData.paymentMethod)
+        ? formData.paymentMethod
+        : PAYMENT_METHODS.BANK_TRANSFER;
+    const payload = {
+      status: "COMPLETED",
+      paymentStatus: formData.paymentStatus,
+      paidAmount: Number(formData.paidAmount),
+      paymentMethod,
+      ...(allowOverpayment && { allowOverpayment: true }),
+    };
+    if (
+      paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
+      paymentMethod === PAYMENT_METHODS.CHEQUE
+    ) {
+      if (formData.bankAccountId) payload.bankAccountId = formData.bankAccountId;
+    }
+    try {
+      await api.patch(`/api/maintenance/${maintenanceItem._id}/status`, payload);
+      toast.success(
+        allowOverpayment
+          ? "Work order completed (overpayment recorded)"
+          : "Work order completed",
+      );
+      setIsDialogOpen(false);
+      setOverpaymentMeta(null);
+      setLocalOverpaymentConfirmed(false);
+      onUpdate?.();
+    } catch (err) {
+      const data = err?.response?.data;
+
+      // Backend 409 overpayment guard (double-check layer)
+      if (err?.response?.status === 409 && data?.isOverpayment) {
+        setOverpaymentMeta({
+          message: data.message,
+          diffRupees: data.overpaymentDiffRupees,
+        });
+        return;
+      }
+
+      toast.error(data?.message || "Failed to complete work order");
+    }
+  };
+
+  // Primary "Complete" button — if the user is overpaying and hasn't
+  // confirmed yet, block submission and scroll them to the warning.
+  const handleCompleteSubmit = () => {
+    if (isOverpayingInForm && !localOverpaymentConfirmed) {
+      // The inline warning is already visible; do nothing so the user
+      // reads it and clicks "Confirm Overpayment" first.
+      return;
+    }
+    submitCompletion(localOverpaymentConfirmed);
+  };
+
+  // Called from the inline warning's confirm button
+  const handleLocalOverpaymentConfirm = () => {
+    setLocalOverpaymentConfirmed(true);
+  };
+
+  // Called from the backend-returned overpayment banner
+  const handleOverpaymentConfirm = () => submitCompletion(true);
+
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
+    setOverpaymentMeta(null);
+    setLocalOverpaymentConfirmed(false);
+  };
+
+  const updateFormField = (field, value) => {
+    if (field === "paidAmount") {
+      setOverpaymentMeta(null);
+      setLocalOverpaymentConfirmed(false); // reset confirmation when amount changes
+    }
+    if (field === "paymentMethod") {
+      if (value !== PAYMENT_METHODS.BANK_TRANSFER && value !== PAYMENT_METHODS.CHEQUE) {
+        setSelectedBankAccountId("");
+        setFormData((prev) => ({ ...prev, [field]: value, bankAccountId: "" }));
+        return;
+      }
+    }
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const currentPaymentMethod =
+    formData.paymentMethod && VALID_PAYMENT_METHODS.includes(formData.paymentMethod)
+      ? formData.paymentMethod
+      : PAYMENT_METHODS.BANK_TRANSFER;
+
+  /* ---------------- ASSIGN STAFF ---------------- */
+  const handleAssignStaff = async (staffId) => {
+    const value = staffId === "__unassigned__" ? null : staffId;
+    setAssigning(true);
+    try {
+      await api.patch(`/api/maintenance/${maintenanceItem._id}/assign`, {
+        assignedTo: value,
+      });
+      toast.success(value ? "Staff assigned" : "Assignment cleared");
+      onUpdate?.();
+    } catch {
+      toast.error("Failed to update assignment");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const assignedStaffId =
+    maintenanceItem.assignedTo?._id ?? maintenanceItem.assignedTo ?? "";
+
+  const assignedStaffName = assignedStaffId
+    ? staffs.find((s) => s._id === assignedStaffId)?.name ?? "Assigned"
+    : null;
+
+  /* ── Status badge colour ── */
+  const statusColour = {
+    OPEN: "bg-slate-100 text-slate-700",
+    IN_PROGRESS: "bg-blue-100 text-blue-700",
+    COMPLETED: "bg-emerald-100 text-emerald-700",
+    CANCELLED: "bg-gray-100 text-gray-500",
+  }[maintenanceItem.status] ?? "bg-slate-100 text-slate-700";
+
+  /* ── Payment badge colour ── */
+  const paymentBadgeColour = {
+    pending: "bg-yellow-50 text-yellow-700",
+    partially_paid: "bg-orange-50 text-orange-700",
+    paid: "bg-emerald-50 text-emerald-700",
+    overpaid: "bg-amber-100 text-amber-800",
+  }[maintenanceItem.paymentStatus] ?? "bg-gray-100 text-gray-500";
+
+  /* ── Complete button label / disabled state ── */
+  const completeButtonBlocked = isOverpayingInForm && !localOverpaymentConfirmed;
+
+  /* ---------------- UI ---------------- */
   return (
     <>
-      <div className='flex justify-between'>
-        <div>
-          <h1 className='text-2xl font-bold'>Maintenance</h1>
-          <p className='text-gray-500 text-sm'>Schedule repairs and manage tasks</p></div>
-        <div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className='bg-blue-600 text-blue-50 mr-2 w-45 mt-2 p-2 rounded-md hover:bg-blue-800 '><Plus className="w-5 h-5 text-blue-50 " />Schedule Repair</Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl bg-white text-black max-h-[90vh] overflow-y-auto ml-8">
-              <DialogHeader className="relative">
-                <DialogClose asChild>
-                  <Button variant="ghost" className="absolute right-0 top-0 h-6 w-6 p-0 text-black hover:bg-gray-100">
+      {/* COMPLETION DIALOG */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="bg-white text-black sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">
+              Complete Work Order
+            </DialogTitle>
+            <p className="text-sm text-gray-500">
+              Confirm payment details before marking this task as completed.
+            </p>
+          </DialogHeader>
 
-                  </Button>
-                </DialogClose>
-                <DialogTitle className="text-2xl font-bold text-black">Add Maintenance Task</DialogTitle>
-                <DialogDescription className="text-gray-600 text-sm">
-                  Log new repair or upkeep request
-                </DialogDescription>
-              </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Payment Status */}
+            <div className="space-y-2">
+              <Label>Payment Status</Label>
+              <Select
+                value={formData.paymentStatus}
+                onValueChange={(v) => updateFormField("paymentStatus", v)}
+              >
+                <SelectTrigger className="bg-white border-gray-300">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="partially_paid">Partially Paid</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-              <form onSubmit={formik.handleSubmit}>
-                <div className="space-y-6 mt-4 ml-5 mr-5">
-                  {/* General Information Section */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
+            {/* Paid Amount — with estimated reference */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Paid Amount (₹)</Label>
+                {estimatedAmount > 0 && (
+                  <span className="text-xs text-gray-400">
+                    Estimated:{" "}
+                    <span className="font-medium text-gray-600">
+                      ₹{estimatedAmount.toLocaleString("en-IN")}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.paidAmount}
+                disabled={formData.paymentStatus === "pending"}
+                onChange={(e) => updateFormField("paidAmount", e.target.value)}
+                className={
+                  isOverpayingInForm
+                    ? "border-amber-400 focus-visible:ring-amber-400"
+                    : ""
+                }
+              />
 
-                      <h3 className="text-lg font-semibold text-black">General Information</h3>
+              {/* ── Real-time overpayment breakdown ───────────────────────── */}
+              {isOverpayingInForm && estimatedAmount > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+                  {/* Breakdown table */}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between text-gray-600">
+                      <span>Estimated amount</span>
+                      <span className="font-medium">
+                        ₹{estimatedAmount.toLocaleString("en-IN")}
+                      </span>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="task-title" className="text-black">Task Title</Label>
-                      <Input
-
-                        placeholder="e.g., AC Repair or Leaking Faucet"
-                        name="title"
-                        id="title"
-                        onChange={formik.handleChange}
-                        value={formik.values.title}
-                        className="bg-white text-black border-gray-300"
-                      />
+                    <div className="flex justify-between text-gray-600">
+                      <span>Amount being paid</span>
+                      <span className="font-medium">
+                        ₹{paidAmountNum.toLocaleString("en-IN")}
+                      </span>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="task-description" className="text-black">Task Description</Label>
-                      <Input
-                        name="description"
-                        placeholder="Enter Description"
-                        onChange={formik.handleChange}
-                        value={formik.values.description}
-                        className="bg-white text-black border-gray-300"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="category" className="text-black">Category</Label>
-                      <Select onValueChange={(value) => formik.setFieldValue("category", value)} value={formik.values.category}>
-                        <SelectTrigger className="bg-white text-black border-gray-300">
-                          <SelectValue placeholder="Select Category" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white text-black">
-                          <SelectItem value="repair">Repair</SelectItem>
-                          <SelectItem value="maintenance">Maintenance</SelectItem>
-                          <SelectItem value="inspection">Inspection</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-black">Priority Level</Label>
-                      <div className="flex gap-2" >
-                        <Button
-                          name="priority"
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            setPriority("Low");
-                            formik.setFieldValue("priority", "Low");
-                          }}
-                          disabled={formik.values.priority === "Low"}
-                          className={`flex-1 bg-white text-gray-600 border-gray-300 hover:bg-gray-50 rounded-3xl p-2 text-sm 
-                          ${formik.values.priority === "Low" ? "bg-gray-600 text-white border-gray-600 hover:bg-gray-700" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
-                        >
-                          <Circle className="w-2 h-2 mr-2 text-gray-500 fill-gray-500" />
-                          LOW
-                        </Button>
-                        <Button
-                          name="priority"
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            setPriority("Medium");
-                            formik.setFieldValue("priority", "Medium");
-                          }}
-                          disabled={formik.values.priority === "Medium"}
-                          className={`flex-1 bg-white text-gray-600 border-gray-300 hover:bg-gray-50 rounded-3xl p-2 text-sm 
-                          ${formik.values.priority === "Medium" ? "bg-gray-600 text-white border-gray-600 hover:bg-gray-700" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
-                        >
-                          <Circle className="w-2 h-2 mr-2 text-green-600 fill-green-600" />
-                          MEDIUM
-                        </Button>
-                        <Button
-                          name="priority"
-                          onClick={() => {
-                            setPriority("High");
-                            formik.setFieldValue("priority", "High");
-                          }}
-                          type="button"
-                          variant="outline"
-                          disabled={formik.values.priority === "High"}
-                          className={`flex-1 bg-white text-gray-600 border-gray-300 hover:bg-gray-50 rounded-3xl p-2 text-sm 
-                          ${formik.values.priority === "High" ? "bg-gray-600 text-white border-gray-600 hover:bg-gray-700" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
-                        >
-                          <Circle className="w-2 h-2 mr-2 text-orange-500 fill-orange-500" />
-                          HIGH
-                        </Button>
-                        <Button
-                          name="priority"
-                          onClick={() => {
-                            setPriority("Urgent");
-                            formik.setFieldValue("priority", "Urgent");
-                          }}
-                          type="button"
-                          variant="outline"
-                          disabled={formik.values.priority === "Urgent"}
-                          className={`flex-1 bg-white text-gray-600 border-gray-300 hover:bg-gray-50 rounded-3xl p-2 text-sm 
-                          ${formik.values.priority === "Urgent" ? "bg-gray-600 text-white border-gray-600 hover:bg-gray-700" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
-                        >
-                          <Circle className="w-2 h-2 mr-2 text-red-500 fill-red-500" />
-                          URGENT
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="space-y-2 "><Label>Status</Label>
-                      <Select name="status" onValueChange={(value) => formik.setFieldValue("status", value)} value={formik.values.status} className="bg-white text-black border-gray-300 pl-2">
-                        <SelectTrigger className="bg-white text-black border-gray-300">
-                          <SelectValue placeholder="Select Status" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white text-black">
-                          <SelectItem value="OPEN">Open</SelectItem>
-                          <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                          <SelectItem value="COMPLETED">Completed</SelectItem>
-                          <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="flex justify-between border-t border-amber-200 pt-1.5 font-semibold text-amber-800">
+                      <span className="flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        Exceeds estimate by
+                      </span>
+                      <span>₹{exceedsByRupees.toLocaleString("en-IN")}</span>
                     </div>
                   </div>
 
-                  {/* Property & Tenant Section */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-lg font-semibold text-black">Property & Tenant</h3>
-                    </div>
-
-
-
-                    <div className="space-y-2">
-                      <Label htmlFor="unit-number" className="text-black">Unit Number</Label>
-                      <Select name="unit" value={formik.values.unit} onValueChange={(value) => formik.setFieldValue("unit", value)} >
-                        <SelectTrigger className="bg-white text-black border-gray-300">
-                          <SelectValue placeholder="Select Unit" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white text-black">
-                          {units.map((unitItem) => (
-                            <SelectItem key={unitItem._id} value={unitItem._id}>
-                              {unitItem.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Display Tenant Information */}
-                    {selectedTenant && (
-                      <div className="space-y-2 p-4 bg-gray-50 rounded-md border border-gray-200">
-                        <Label className="text-black font-semibold">Tenant Details</Label>
-                        <div className="space-y-2">
-                          <div>
-                            <p className="text-xs text-gray-500">Name</p>
-                            <p className="text-sm text-gray-900 font-medium">{selectedTenant.name || 'N/A'}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Email</p>
-                            <p className="text-sm text-gray-900">{selectedTenant.email || 'N/A'}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Phone</p>
-                            <p className="text-sm text-gray-900">{selectedTenant.phone || 'N/A'}</p>
-                          </div>
-                          {selectedTenant.address && (
-                            <div>
-                              <p className="text-xs text-gray-500">Address</p>
-                              <p className="text-sm text-gray-900">{selectedTenant.address}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {/* Staff Assignment Section */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-lg font-semibold text-black">Assign To</h3>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="assign-to" className="text-black">Assign To Staff</Label>
-                      <Select
-                        name="assignTo"
-                        value={formik.values.assignTo || undefined}
-                        onValueChange={(value) => formik.setFieldValue("assignTo", value)}
-                        disabled={staffs.length === 0}
+                  {/* Confirm / edit actions */}
+                  {!localOverpaymentConfirmed ? (
+                    <>
+                      <p className="text-xs text-amber-700">
+                        The paid amount exceeds the estimated cost. Please confirm
+                        to proceed — this will be recorded as an{" "}
+                        <strong>overpaid</strong> expense in accounting.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                        onClick={handleLocalOverpaymentConfirm}
                       >
-                        <SelectTrigger className="bg-white text-black border-gray-300">
-                          <SelectValue placeholder={staffs.length === 0 ? "No staff available" : "Select Staff"} />
-                        </SelectTrigger>
-                        {staffs.length > 0 && (
-                          <SelectContent className="bg-white text-black">
-                            {staffs.map((staff) => (
-                              <SelectItem key={staff._id} value={staff._id}>
-                                {staff.name || staff.email || 'Unnamed Staff'}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        )}
-                      </Select>
+                        Confirm Overpayment & Proceed
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                      <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Overpayment confirmed — you can now complete the order.
                     </div>
+                  )}
+                </div>
+              )}
+            </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="estimated-cost" className="text-black">Estimated Cost</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black">₹</span>
-                        <Input
-                          onChange={formik.handleChange}
-                          value={formik.values.estimatedCost}
-                          name="estimatedCost"
-                          id="estimated-cost"
-                          type="number"
-                          defaultValue="0.00"
-                          className="bg-white text-black border-gray-300 pl-8"
-                        />
-                      </div>
+            {/* Payment Method */}
+            <div className="space-y-2">
+              <Label>Payment Method</Label>
+              <Select
+                value={currentPaymentMethod}
+                onValueChange={(v) => updateFormField("paymentMethod", v)}
+              >
+                <SelectTrigger className="bg-white border-gray-300">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PAYMENT_METHODS.CASH}>Cash</SelectItem>
+                  <SelectItem value={PAYMENT_METHODS.BANK_TRANSFER}>Bank Transfer</SelectItem>
+                  <SelectItem value={PAYMENT_METHODS.CHEQUE}>Cheque</SelectItem>
+                  <SelectItem value={PAYMENT_METHODS.MOBILE_WALLET}>Mobile Wallet</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                    </div>
-
-                  </div>
-
-                  {/* Timing & Documentation Section */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-
-                      <h3 className="text-lg font-semibold text-black">Timing & Documentation</h3>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-black">Scheduled Date (English/Nepali)</Label>
-                      <DualCalendarTailwind
-                        value={formik.values.scheduledDate || ""}
-                        onChange={(englishDate) => {
-                          formik.setFieldValue("scheduledDate", englishDate);
-                        }}
-                      />
-                    </div>
+            {/* Bank account */}
+            {(currentPaymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
+              currentPaymentMethod === PAYMENT_METHODS.CHEQUE) && (
+                <div className="space-y-2">
+                  <Label>Deposit To (Bank Account)</Label>
+                  <div className="grid gap-2">
+                    {Array.isArray(bankAccounts) &&
+                      bankAccounts.map((bank) => (
+                        <button
+                          key={bank._id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedBankAccountId(bank._id);
+                            updateFormField("bankAccountId", bank._id);
+                          }}
+                          className={`w-full text-left p-3 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
+                            ? "border-slate-900 bg-slate-900/[0.03]"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                            }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="font-semibold text-slate-900 text-sm">{bank.bankName}</p>
+                              <p className="text-xs text-slate-500">
+                                **** **** {bank.accountNumber?.slice(-4) || "****"}
+                              </p>
+                            </div>
+                            {selectedBankAccountId === bank._id && (
+                              <div className="text-slate-900 ml-2">
+                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
                   </div>
                 </div>
+              )}
 
-                <DialogFooter className="mt-6 sm:justify-end">
-                  <div className="flex gap-2">
-                    <DialogClose asChild>
-                      <Button disabled={isLoading} type="button" variant="secondary" className="bg-gray-200 text-black hover:bg-gray-300">
-                        Cancel
-                      </Button>
-                    </DialogClose>
-                    {isLoading ? (
-                      <Spinner className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Button disabled={isLoading} type="submit" variant="secondary" className="bg-blue-600 text-white hover:bg-blue-700">
-                          Save
-                        </Button>
-                      </>
-
-                    )}
+            {/* ── Backend-returned overpayment banner (fallback / double-check) ──
+                            Only shown if the backend catches something the frontend missed.
+                        ── */}
+            {overpaymentMeta && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">
+                      Overpayment detected (server)
+                    </p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      {overpaymentMeta.message}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Excess:{" "}
+                      <span className="font-semibold">
+                        ₹{overpaymentMeta.diffRupees}
+                      </span>
+                      . This will be recorded as an <strong>overpaid</strong>{" "}
+                      expense in accounting.
+                    </p>
                   </div>
-                </DialogFooter>
-              </form>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => setOverpaymentMeta(null)}
+                  >
+                    Edit Amount
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                    onClick={handleOverpaymentConfirm}
+                  >
+                    Confirm Overpayment
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
 
-            </DialogContent>
+          {/* Footer — hidden while backend overpayment banner is showing */}
+          {!overpaymentMeta && (
+            <DialogFooter>
+              <Button variant="outline" onClick={handleDialogClose}>
+                Cancel
+              </Button>
+              <Button
+                className={
+                  completeButtonBlocked
+                    ? "bg-amber-400 cursor-not-allowed text-white opacity-70"
+                    : "bg-green-600 hover:bg-green-700 text-white"
+                }
+                onClick={handleCompleteSubmit}
+                title={
+                  completeButtonBlocked
+                    ? "Confirm the overpayment above before completing"
+                    : undefined
+                }
+              >
+                {completeButtonBlocked ? "Confirm Overpayment First ↑" : "Complete"}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
 
-          </Dialog>
+      {/* MAIN CARD */}
+      <Card className="w-full rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
+        <CardContent className="p-4">
+          {/* ── Top row ── */}
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-semibold text-gray-900 truncate">
+                  {maintenanceItem.title}
+                </h3>
+                {maintenanceItem.priority && (
+                  <Badge
+                    className={`${getPriorityStyle(maintenanceItem.priority)} shrink-0 rounded-full px-2 py-0.5 text-xs font-medium uppercase`}
+                  >
+                    {maintenanceItem.priority}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs text-gray-400">{workOrderId}</p>
+            </div>
 
-        </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Select
+                value={maintenanceItem.status}
+                onValueChange={handleStatusSelect}
+              >
+                <SelectTrigger
+                  className={`h-8 w-auto gap-1 rounded-full border-0 px-3 text-xs font-medium ${statusColour}`}
+                >
+                  <SelectValue>
+                    {formatStatus(maintenanceItem.status)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OPEN">Open</SelectItem>
+                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                  <SelectItem value="COMPLETED">Completed</SelectItem>
+                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
 
-      </div>
-      <div className='flex mt-10 border rounded-b-sm p-2'>
-        <Button className='bg-gray-50 text-black mr-2 w-20 hover:bg-gray-200'><List className="w-5 h-5 text-gray-500 mr-2" />List</Button>
-        <p className='text-gray-500 text-sm flex p-2'><Calendar className="w-5 h-4 text-gray-500 mr-2" />Calender</p>
-        <p className='text-gray-500 text-sm flex p-2 ml-180'><Filter className="w-5 h-4 text-gray-500 mr-2" />Filter</p>
-      </div>
-      <div >
-        {maintenance.map((maintenanceItem) => {
-          const isExpanded = expandedCards.has(maintenanceItem._id);
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-gray-400 hover:text-gray-700"
+                onClick={toggleExpand}
+              >
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
 
-          // Generate work order ID from maintenance._id
-          const workOrderId = `#WO-${String(maintenanceItem._id || '').slice(-4).toUpperCase()}`;
+          {/* ── Collapsed preview ── */}
+          {!isExpanded && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+              {maintenanceItem.scheduledDate && (
+                <span>{formatDate(maintenanceItem.scheduledDate)}</span>
+              )}
+              {assignedStaffName ? (
+                <span className="flex items-center gap-1">
+                  <User className="h-3 w-3" />
+                  {assignedStaffName}
+                </span>
+              ) : (
+                <span className="italic text-gray-400">Unassigned</span>
+              )}
+              {maintenanceItem.paymentStatus === "overpaid" && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                  Overpaid
+                </span>
+              )}
+            </div>
+          )}
 
-          // Get priority styling - match image with red for urgent
-          const getPriorityStyle = (priority) => {
-            const priorityUpper = priority?.toUpperCase() || '';
-            if (priorityUpper === 'HIGH' || priorityUpper === 'URGENT') {
-              return 'bg-red-600 text-red-100';
-            } else if (priorityUpper === 'MEDIUM') {
-              return 'bg-orange-500 text-orange-100';
-            } else {
-              return 'bg-gray-500 text-gray-100';
-            }
-          };
+          {/* ── EXPANDED DETAILS ── */}
+          {isExpanded && (
+            <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Info
+                  label="Scheduled"
+                  value={formatDate(maintenanceItem.scheduledDate)}
+                />
+                <Info label="Type" value={maintenanceItem.type} />
+                <Info
+                  label="Estimated"
+                  value={`₹${maintenanceItem.amount || 0}`}
+                />
+                <Info
+                  label="Paid"
+                  value={`₹${maintenanceItem.paidAmount || 0}`}
+                  highlight={
+                    maintenanceItem.paymentStatus === "overpaid"
+                      ? "amber"
+                      : null
+                  }
+                />
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">
+                    Payment
+                  </p>
+                  <span
+                    className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${paymentBadgeColour}`}
+                  >
+                    {maintenanceItem.paymentStatus?.replace(/_/g, " ") ?? "N/A"}
+                  </span>
+                </div>
+              </div>
 
-          // Format status for display
-          const formatStatus = (status) => {
-            if (!status) return 'Open';
-            return status.split('_').map(word =>
-              word.charAt(0) + word.slice(1).toLowerCase()
-            ).join(' ');
-          };
+              {maintenanceItem.description && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                    Description
+                  </p>
+                  <p className="text-sm text-gray-700 leading-relaxed">
+                    {maintenanceItem.description}
+                  </p>
+                </div>
+              )}
 
-          // Format date
-          const formatDate = (date) => {
-            if (!date) return 'N/A';
-            try {
-              return new Date(date).toLocaleDateString();
-            } catch {
-              return date;
-            }
-          };
-
-          const toggleExpand = () => {
-            const newExpanded = new Set(expandedCards);
-            if (isExpanded) {
-              newExpanded.delete(maintenanceItem._id);
-            } else {
-              newExpanded.add(maintenanceItem._id);
-            }
-            setExpandedCards(newExpanded);
-          };
-
-          return (
-            <MaintenanceCard key={maintenanceItem._id} maintenanceItem={maintenanceItem} />
-          );
-        })}
-      </div>
-
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide shrink-0">
+                  Assign to
+                </p>
+                <Select
+                  value={assignedStaffId || "__unassigned__"}
+                  onValueChange={handleAssignStaff}
+                  disabled={assigning}
+                >
+                  <SelectTrigger className="h-8 w-full sm:w-52 bg-white border-gray-300 text-sm">
+                    <SelectValue placeholder="Assign staff">
+                      {assignedStaffId
+                        ? staffs.find((s) => s._id === assignedStaffId)
+                          ?.name ?? "Assigned"
+                        : "Unassigned"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__unassigned__">Unassigned</SelectItem>
+                    {staffs.map((staff) => (
+                      <SelectItem key={staff._id} value={staff._id}>
+                        {staff.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </>
+  );
+}
+
+function Info({ label, value, highlight }) {
+  const valueClass =
+    highlight === "amber"
+      ? "text-amber-700 font-semibold"
+      : "text-gray-800";
+  return (
+    <div>
+      <p className="text-xs text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className={`mt-0.5 text-sm font-medium capitalize ${valueClass}`}>
+        {value || "N/A"}
+      </p>
+    </div>
   );
 }

@@ -199,7 +199,7 @@ export default function App() {
         }
       />
       <Route
-        path="/transactions"
+        path="/dashboard/transactions"
         element={
           <ProtectedRoutes>
             <Transaction />
