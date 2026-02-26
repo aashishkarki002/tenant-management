@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, ChevronDown, ChevronUp, Zap, Calendar, List } from 'lucide-react';
 import MaintenanceCard from './components/MaintenanceCard';
-import GeneratorPanel from './components/GeneratorPanel';
 import MaintenanceCalendar from './components/MaintenanceCalendar';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -22,6 +21,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import { Empty, EmptyTitle } from '@/components/ui/empty';
 import { cn } from '@/lib/utils';
+import GeneratorPanel from '../Generators/Generator';
+
 
 /* ── Style helpers ────────────────────────────────────────────────────────── */
 export const getPriorityStyle = (priority) => {
@@ -360,11 +361,10 @@ export default function Maintenance() {
         <TabsContent value="calendar">
           <MaintenanceCalendar maintenance={maintenance} />
         </TabsContent>
-
-        {/* ════════════════ GENERATOR TAB ════════════════ */}
         <TabsContent value="generator">
           <GeneratorPanel />
         </TabsContent>
+
       </Tabs>
     </div>
   );

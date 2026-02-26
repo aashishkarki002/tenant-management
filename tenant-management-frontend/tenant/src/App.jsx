@@ -24,7 +24,8 @@ import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail/ViewDetail";
 import BroadCast from "./BroadCast";
 import Submeter from "./submeter/Submeter";
-import HashLoader from "react-spinners/HashLoader";
+import Generator from "./Generators/Generator";
+
 
 function TenantDetailRedirect() {
   const { id } = useParams();
@@ -203,6 +204,14 @@ export default function App() {
         element={
           <ProtectedRoutes>
             <Transaction />
+          </ProtectedRoutes>
+        }
+      />
+      <Route
+        path="/maintenance/generator"
+        element={
+          <ProtectedRoutes>
+            <Generator />
           </ProtectedRoutes>
         }
       />

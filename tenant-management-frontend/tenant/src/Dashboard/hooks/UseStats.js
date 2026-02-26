@@ -115,6 +115,12 @@ function normalizeDashboardStats(raw) {
     activeTenants: raw.activeTenants ?? 0,
     recentActivities: recentActivitiesSlice,
     maintenance: maintenanceList,
+    upcomingMaintenance: Array.isArray(raw.upcomingMaintenance)
+      ? raw.upcomingMaintenance
+      : [],
+    generatorsDueService: Array.isArray(raw.generatorsDueService)
+      ? raw.generatorsDueService
+      : [],
   };
 }
 /**
