@@ -14,7 +14,7 @@ import Admin from "../auth/admin.Model.js";
  * @param {string}   options.type       - Notification type (must match model enum)
  * @param {string}   options.title      - Short title shown in notification
  * @param {string}   options.message    - Full message body
- * @param {Object}  [options.data]      - Extra payload (e.g. { generatorId })
+ * @param {Object}  [options.data]      - Extra payload (e.g. { paymentId, maintenanceId })
  * @param {string[]} [options.adminIds] - Target specific admins. Omit to broadcast to ALL active admins.
  */
 export async function createAndEmitNotification({
@@ -54,10 +54,21 @@ export async function createAndEmitNotification({
   await Promise.allSettled(
     saved.map(async (notification) => {
       const adminId = notification.admin.toString();
+
       // Socket: instant if the admin's browser tab is open
       emitNotification(adminId, notification);
-      // Web Push: native OS notification even if tab is closed
-      await sendPushToAdmin(adminId, { title, body: message, data });
+
+      // Web Push: native OS notification even when tab is closed or PWA is in background.
+      // Pass notificationId so the SW can deep-link and the app can mark it read on open.
+      await sendPushToAdmin(adminId, {
+        title,
+        body: message,
+        data: {
+          ...data,
+          notificationId: notification._id.toString(),
+          type,
+        },
+      });
     }),
   );
 
