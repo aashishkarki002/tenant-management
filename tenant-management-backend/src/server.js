@@ -1,6 +1,7 @@
 import app from "./app.js";
 import http from "http";
 import { initializeSocket } from "./config/socket.js";
+import { initializeWebPush } from "./config/webpush.js";
 
 // dotenv is loaded in app.js (no top-level await here — required for cPanel/LiteSpeed)
 
@@ -12,7 +13,7 @@ console.log("SMTP_HOST loaded:", !!process.env.SMTP_HOST);
 
 const server = http.createServer(app);
 initializeSocket(server);
-
+initializeWebPush();
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Socket.io is running on port ${PORT}`);

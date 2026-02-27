@@ -39,7 +39,12 @@ export async function sendPushToAdmin(adminId, { title, body, data = {} }) {
       } catch (err) {
         // 410 Gone / 404 = subscription expired, clean it up
         if (err.statusCode === 410 || err.statusCode === 404) {
-          await PushSubscription.deleteOne({ _id: sub._id });
+          await PushSubscription.deleteOne({ _id: sub._id }).catch((dbErr) =>
+            console.error(
+              "[webpush] failed to remove expired subscription:",
+              dbErr.message,
+            ),
+          );
           console.log(
             `[webpush] removed expired subscription for admin ${adminId}`,
           );

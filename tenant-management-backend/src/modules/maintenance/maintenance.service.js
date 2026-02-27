@@ -6,7 +6,7 @@ import { ACCOUNTING_CONFIG } from "../../config/accounting.config.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
 import { sendMaintenanceAssignmentEmail } from "../../config/nodemailer.js";
-
+import { createAndEmitNotification } from "../notifications/notification.service.js";
 // ─── Helper ──────────────────────────────────────────────────────────────────
 function _notifyAssignedStaff(maintenance) {
   const staff = maintenance.assignedTo;
@@ -25,6 +25,29 @@ function _notifyAssignedStaff(maintenance) {
     maintenanceId: maintenance._id.toString(),
   });
   // Intentionally NOT awaited — email is a fire-and-forget side-effect
+
+  createAndEmitNotification({
+    type: "MAINTENANCE_ASSIGNED", // add this to the notification model enum
+    title: "Maintenance Task Assigned",
+    message: `You have been assigned to "${maintenance.title}" scheduled on ${new Date(maintenance.scheduledDate).toLocaleDateString()}${maintenance.property?.name ? ` at ${maintenance.property.name}` : ""}.`,
+    data: {
+      maintenanceId: maintenance._id,
+      title: maintenance.title,
+      priority: maintenance.priority,
+      scheduledDate: maintenance.scheduledDate,
+      propertyName: maintenance.property?.name,
+      unitName: maintenance.unit?.name,
+    },
+    adminIds: [staff._id.toString()], // ← staff only, not all admins
+  }).catch((err) =>
+    console.error("[maintenance] failed to emit assignment notification:", err),
+  );
+}
+function _notifyAllAdmins({ type, title, message, data }) {
+  // Omitting adminIds → createAndEmitNotification targets ALL active admins
+  createAndEmitNotification({ type, title, message, data }).catch((err) =>
+    console.error(`[maintenance] failed to emit ${type} notification:`, err),
+  );
 }
 
 // ─── Service functions ────────────────────────────────────────────────────────
@@ -67,6 +90,16 @@ export async function createMaintenance(maintenanceData) {
 
       _notifyAssignedStaff(populated);
     }
+    _notifyAllAdmins({
+      type: "MAINTENANCE_CREATED",
+      title: "New Maintenance Task",
+      message: `A new maintenance task "${maintenance.title}" (${maintenance.priority} priority) has been created, scheduled for ${new Date(maintenance.scheduledDate).toLocaleDateString()}.`,
+      data: {
+        maintenanceId: maintenance._id,
+        title: maintenance.title,
+        priority: maintenance.priority,
+      },
+    });
 
     return {
       success: true,
@@ -364,7 +397,27 @@ export async function updateMaintenanceStatus(
       }
     }
   }
+  if (status === "COMPLETED") {
+    _notifyAllAdmins({
+      type: "MAINTENANCE_COMPLETED",
+      title: "Maintenance Task Completed",
+      message: `Maintenance task "${updatedTask.title}" has been marked as completed.`,
+      data: {
+        maintenanceId: updatedTask._id,
+        title: updatedTask.title,
+        paidAmountPaisa: updatedTask.paidAmountPaisa,
+      },
+    });
+  }
 
+  if (status === "CANCELLED") {
+    _notifyAllAdmins({
+      type: "MAINTENANCE_CANCELLED",
+      title: "Maintenance Task Cancelled",
+      message: `Maintenance task "${updatedTask.title}" has been cancelled.`,
+      data: { maintenanceId: updatedTask._id, title: updatedTask.title },
+    });
+  }
   return {
     success: true,
     message: "Maintenance status updated successfully",
@@ -397,6 +450,16 @@ export async function updateMaintenanceAssignedTo(id, assignedTo) {
 
   if (assignedTo) {
     _notifyAssignedStaff(updated);
+    _notifyAllAdmins({
+      type: "MAINTENANCE_ASSIGNED",
+      title: "Maintenance Task Reassigned",
+      message: `"${updated.title}" has been assigned to ${updated.assignedTo?.name || "a staff member"}.`,
+      data: {
+        maintenanceId: updated._id,
+        title: updated.title,
+        assignedTo: updated.assignedTo?.name,
+      },
+    });
   }
 
   return {

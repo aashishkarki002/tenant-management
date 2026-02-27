@@ -16,6 +16,10 @@ const notificationSchema = new mongoose.Schema(
         "RENT_REMINDER",
         "PAYMENT_NOTIFICATION",
         "LATE_FEE_NOTIFICATION",
+        "MAINTENANCE_CREATED",
+        "MAINTENANCE_ASSIGNED",
+        "MAINTENANCE_COMPLETED",
+        "MAINTENANCE_CANCELLED",
       ],
     },
     title: {
