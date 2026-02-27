@@ -14,30 +14,70 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("push", (event) => {
   if (!event.data) return;
 
-  const { title, body, data } = event.data.json();
+  let payload = {};
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { title: "New Notification", body: event.data.text(), data: {} };
+  }
+
+  const { title, body, data = {} } = payload;
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: "/logo.png", // put your app logo at /public/logo.png
-      badge: "/badge.png", // small monochrome icon (Android status bar)
-      data: data || {},
+      icon: "/logo.png",
+      badge: "/badge.png",
+      // tag deduplicates: same paymentId = replace old notification, don't stack
+      tag:
+        data.notificationId ||
+        data.maintenanceId ||
+        data.paymentId ||
+        "default",
+      renotify: true,
+      data,
       vibrate: [200, 100, 200],
-      requireInteraction: false, // flip to true for critical alerts that shouldn't auto-dismiss
+      requireInteraction: false,
     }),
   );
 });
 
+// ── Build deep-link URL from notification type/data ───────────────────────────
+function resolveUrl(data = {}) {
+  if (data.maintenanceId) return `/maintenance/${data.maintenanceId}`;
+  if (data.paymentId) return `/payments/${data.paymentId}`;
+  // Default: open the notifications page so the user can see what came in
+  return "/notifications";
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+
+  const data = event.notification.data || {};
+  const targetUrl = resolveUrl(data);
+
   event.waitUntil(
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList) => {
+        // Reuse an existing open tab if possible
         for (const client of clientList) {
-          if ("focus" in client) return client.focus();
+          if (
+            client.url.startsWith(self.location.origin) &&
+            "focus" in client
+          ) {
+            client.focus();
+            // Tell the app to navigate and mark the notification read
+            client.postMessage({
+              type: "NOTIFICATION_CLICK",
+              url: targetUrl,
+              notificationId: data.notificationId,
+            });
+            return;
+          }
         }
-        if (clients.openWindow) return clients.openWindow("/");
+        // No open tab — open a new one
+        if (clients.openWindow) return clients.openWindow(targetUrl);
       }),
   );
 });
