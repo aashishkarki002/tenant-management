@@ -7,8 +7,9 @@ import {
   SidebarRail,
 } from "../ui/sidebar";
 import AppSidebar from "../app-sidebar";
-import Header, { PushNotificationBanner } from "../header/Header";
-import { useAuth } from "../context/AuthContext";
+import PushNotificationBanner from "../PushNotificationBanner";
+import Header from "../header";
+import { useAuth } from "../../context/AuthContext";
 
 export default function AppLayout({ children }) {
   const { pathname } = useLocation();
