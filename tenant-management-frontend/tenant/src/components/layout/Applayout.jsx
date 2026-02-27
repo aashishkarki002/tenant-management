@@ -1,3 +1,4 @@
+// src/components/layout/AppLayout.jsx
 import { useLocation } from "react-router-dom";
 import {
   SidebarProvider,
@@ -7,29 +8,36 @@ import {
 } from "../ui/sidebar";
 import AppSidebar from "../app-sidebar";
 import Header from "../header";
-import PushNotificationBanner from "../PushNotificationBanner";
+import { PushNotificationBanner } from "../header";
+import { useAuth } from "../../context/AuthContext";
 
 export default function AppLayout({ children }) {
   const { pathname } = useLocation();
+  const { user } = useAuth();
 
-  // Hide the full header bar only on the tenants page
   const hideHeader = pathname === "/tenants";
 
   return (
     <SidebarProvider>
       <AppSidebar />
-
       <SidebarRail />
-      <SidebarInset className="relative">
+
+      <SidebarInset className="relative flex flex-col min-h-screen">
         {!hideHeader && (
-          <header className="flex items-center border-b sm:px-4">
-            <SidebarTrigger />
-            <Header />
-            <PushNotificationBanner />
-          </header>
+          <>
+            {/* ── Top bar: sidebar trigger + search + bell ─────────────────── */}
+            <header className="flex items-center border-b sm:px-4 shrink-0">
+              <SidebarTrigger />
+              <Header />
+            </header>
+
+            {/* ── Push banner: full-width strip BELOW the header bar ───────── */}
+            {/* Rendered outside the header flex row so it never competes with  */}
+            {/* the bell icon for space. Only visible when action is needed.     */}
+            <PushNotificationBanner user={user} />
+          </>
         )}
 
-        {/* On tenants page: sidebar trigger floats over content, no space taken */}
         {hideHeader && (
           <div className="absolute top-3 left-3 z-40">
             <SidebarTrigger />
