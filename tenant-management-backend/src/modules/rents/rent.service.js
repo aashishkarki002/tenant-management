@@ -1,17 +1,18 @@
 /**
- * rent.service.js  (FIXED)
+ * rent.service.js
  *
  * Changes in this revision:
  *
- * 1. Removed inline calculateRentTotals — imports canonical helper instead.
+ * 1. getRentsService — tenant populate now selects all fields the frontend
+ *    payment utilities rely on: name, email, camChargesPaisa, camCharges,
+ *    rentPaymentFrequency. Without these the allocation dialog shows $0 CAM
+ *    and frequency shows "N/A".
  *
- * 2. handleMonthlyRents — each rent journal now posts in its own session.
- *    The idempotency guard in postJournalEntry (C-1) means re-runs safely
- *    skip already-journaled rents.
+ * 2. buildRentsFilter — fully supports nepaliMonth, nepaliYear, propertyId,
+ *    status, tenantId, startDate/endDate. No changes to logic, only docs added.
  *
- * 3. updatePendingRentRecords status filter:
- *    OLD: status: { $in: ["pending", "partial"] }   ← "partial" doesn't exist
- *    FIX: status: { $in: ["pending", "partially_paid"] }
+ * 3. All other service functions (updateRentService, createNewRent,
+ *    handleMonthlyRents, sendEmailToTenants) are unchanged.
  */
 
 import mongoose from "mongoose";
@@ -32,7 +33,6 @@ import {
   paisaToRupees,
   formatMoney,
 } from "../../utils/moneyUtil.js";
-// FIX: use canonical helper — removed inline duplicate
 import { calculateRentTotals } from "./helpers/rentTotal.helper.js";
 
 dotenv.config();
@@ -41,32 +41,51 @@ dotenv.config();
 // QUERY BUILDER
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Build a Mongoose filter object from the supported query parameters.
+ *
+ * Supported filters:
+ *   tenantId    — ObjectId string
+ *   propertyId  — ObjectId string  (covered by index: nepaliYear+nepaliMonth+status+property)
+ *   status      — "pending"|"paid"|"partially_paid"|"overdue"|"cancelled"
+ *   nepaliMonth — 1–12
+ *   nepaliYear  — e.g. 2081
+ *   startDate   — ISO string, matched against englishDueDate
+ *   endDate     — ISO string, matched against englishDueDate
+ */
 function buildRentsFilter(filters = {}) {
   const query = {};
+
   if (filters.tenantId && mongoose.Types.ObjectId.isValid(filters.tenantId))
     query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
+
   if (filters.propertyId && mongoose.Types.ObjectId.isValid(filters.propertyId))
     query.property = new mongoose.Types.ObjectId(filters.propertyId);
+
   if (
     ["pending", "paid", "partially_paid", "overdue", "cancelled"].includes(
       filters.status,
     )
   )
     query.status = filters.status;
+
   if (filters.nepaliMonth != null) {
     const m = Number(filters.nepaliMonth);
     if (m >= 1 && m <= 12) query.nepaliMonth = m;
   }
+
   if (filters.nepaliYear != null) {
     const y = Number(filters.nepaliYear);
     if (!Number.isNaN(y)) query.nepaliYear = y;
   }
+
   if (filters.startDate || filters.endDate) {
     query.englishDueDate = {};
     if (filters.startDate)
       query.englishDueDate.$gte = new Date(filters.startDate);
     if (filters.endDate) query.englishDueDate.$lte = new Date(filters.endDate);
   }
+
   return query;
 }
 
@@ -74,6 +93,20 @@ function buildRentsFilter(filters = {}) {
 // READ SERVICES
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Fetch rents matching the given filters, with full population.
+ *
+ * IMPORTANT — tenant select list:
+ *   The frontend payment utilities (paymentUtil.js → getPaymentAmounts,
+ *   findMatchingCam, etc.) read these tenant sub-fields at runtime:
+ *     • name                 — displayed in table rows
+ *     • email                — used by reminder emails
+ *     • camChargesPaisa      — fallback CAM amount when no CAM record exists
+ *     • camCharges           — legacy rupee fallback for the same
+ *     • rentPaymentFrequency — drives the Monthly / Quarterly tab split
+ *
+ *   Omitting any of these causes the dialog to show $0 CAM or "N/A" frequency.
+ */
 export async function getRentsService(filters = {}) {
   try {
     const rents = await Rent.find(buildRentsFilter(filters))
@@ -81,7 +114,8 @@ export async function getRentsService(filters = {}) {
       .populate({
         path: "tenant",
         match: { isDeleted: false },
-        select: "name email",
+        // FIX: include all fields the frontend payment utilities need
+        select: "name email camChargesPaisa camCharges rentPaymentFrequency",
       })
       .populate({ path: "innerBlock", select: "name" })
       .populate({ path: "block", select: "name" })
@@ -89,7 +123,7 @@ export async function getRentsService(filters = {}) {
       .populate({ path: "units", select: "name" });
 
     const result = rents
-      .filter((r) => r.tenant)
+      .filter((r) => r.tenant) // exclude rents whose tenant is soft-deleted
       .map((rent) => {
         const rentObj = rent.toObject({ virtuals: false, getters: false });
         const t = calculateRentTotals(rent);
@@ -298,7 +332,7 @@ export async function createNewRent(rentData, session = null) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CRON: handleMonthlyRents  (FIXED — journals posted per-session)
+// CRON: handleMonthlyRents
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function handleMonthlyRents(adminId) {
@@ -359,7 +393,6 @@ export async function handleMonthlyRents(adminId) {
         nepaliMonth: npMonth,
         nepaliYear: npYear,
         nepaliDate,
-        // FIX (carried from prior revision): use tdsPaisa directly, NOT * sqft
         rentAmountPaisa:
           tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0),
         tdsAmountPaisa: tenant.tdsPaisa || rupeesToPaisa(tenant.tds || 0),
@@ -384,11 +417,10 @@ export async function handleMonthlyRents(adminId) {
       };
     }
 
-    // Step 4: Bulk insert (fast)
+    // Step 4: Bulk insert
     const insertedRents = await Rent.insertMany(rentsToInsert);
 
     // Step 5: Post one journal per rent — each in its own session.
-    //   Idempotency guard in postJournalEntry means safe to re-run on cron failure.
     const journalLog = { success: 0, failed: 0, errors: [] };
 
     for (const rent of insertedRents) {
@@ -407,7 +439,6 @@ export async function handleMonthlyRents(adminId) {
           `[handleMonthlyRents] journal failed for ${rent._id}:`,
           err.message,
         );
-        // Do NOT re-throw — one failure should not abort remaining rents
       } finally {
         session.endSession();
       }
@@ -431,7 +462,7 @@ export async function handleMonthlyRents(adminId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CRON: sendEmailToTenants  (unchanged — bugs fixed in prior revision)
+// CRON: sendEmailToTenants
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function sendEmailToTenants() {

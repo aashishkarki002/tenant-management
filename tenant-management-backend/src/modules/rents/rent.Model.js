@@ -3,23 +3,21 @@
  *
  * Changes in this revision:
  *
- * NEW FIELD — latePaidAmountPaisa:
- *   Tracks how much of the late fee the tenant has actually paid.
- *   Late fee is a separate receivable from rent — it must never be mixed
- *   into paidAmountPaisa (which is strictly for the rent principal).
+ * NEW INDEX — { nepaliYear, nepaliMonth, status, property }:
+ *   Every filtered call to GET /api/rent/get-rents uses some combination of
+ *   these four fields. Without a covering compound index MongoDB performs a
+ *   full collection scan on large datasets. The index is ordered so that:
+ *     1. nepaliYear + nepaliMonth together select a narrow time slice first
+ *        (highest cardinality pair for a monthly-billing system).
+ *     2. status further trims the slice (e.g. overdue-only view).
+ *     3. property is appended last for the property-dropdown filter; queries
+ *        that omit it still benefit from the first three fields.
  *
- * PRE-SAVE:
- *   lateFeeStatus is now derived from (lateFeePaisa - latePaidAmountPaisa):
- *     0 paid   → "pending"
- *     fully paid → "paid"
- *   Partial late fee payment is NOT supported by design — payment service
- *   enforces full-or-nothing on the late fee portion.
+ *   The pre-existing { tenant, nepaliMonth, nepaliYear } unique index is
+ *   retained — it guards idempotency in handleMonthlyRents.
  *
- * VIRTUAL — remainingLateFeePaisa:
- *   lateFeePaisa - latePaidAmountPaisa  (how much penalty is still owed)
- *
- * VIRTUAL — totalDuePaisa:
- *   remainingRentPaisa + remainingLateFeePaisa  (the "Pay Now" number)
+ * All schema fields, virtuals, pre-save hook, and instance methods are
+ * unchanged from the previous revision.
  */
 
 import mongoose from "mongoose";
@@ -98,8 +96,6 @@ const rentSchema = new mongoose.Schema(
         message: "lateFeePaisa must be an integer",
       },
     },
-
-    // NEW: how much of the late fee has been received
     latePaidAmountPaisa: {
       type: Number,
       default: 0,
@@ -146,9 +142,6 @@ const rentSchema = new mongoose.Schema(
 
     lastPaidDate: { type: Date, default: null },
     englishDueDate: { type: Date, required: true },
-
-    // Nepali due date — last day of the billing Nepali month.
-    // This is the canonical anchor for overdue calculations (not englishDueDate).
     nepaliDueDate: { type: Date, required: true },
 
     emailReminderSent: { type: Boolean, default: false },
@@ -214,7 +207,6 @@ rentSchema.virtual("effectiveRent").get(function () {
   return paisaToRupees(this.effectiveRentPaisa);
 });
 
-// Remaining rent principal still owed
 rentSchema.virtual("remainingAmountPaisa").get(function () {
   return (
     this.rentAmountPaisa - (this.tdsAmountPaisa || 0) - this.paidAmountPaisa
@@ -224,7 +216,6 @@ rentSchema.virtual("remainingAmount").get(function () {
   return paisaToRupees(this.remainingAmountPaisa);
 });
 
-// Remaining late fee still owed (separate from rent)
 rentSchema.virtual("remainingLateFeePaisa").get(function () {
   return (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
 });
@@ -232,7 +223,6 @@ rentSchema.virtual("remainingLateFee").get(function () {
   return paisaToRupees(this.remainingLateFeePaisa);
 });
 
-// Total amount the tenant needs to pay to be fully clear
 rentSchema.virtual("totalDuePaisa").get(function () {
   return (
     Math.max(0, this.remainingAmountPaisa) +
@@ -272,7 +262,7 @@ rentSchema.pre("save", function () {
     }
   }
 
-  // Sync root fields from unit breakdown (single source of truth)
+  // Sync root fields from unit breakdown
   if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
     this.rentAmountPaisa = this.unitBreakdown.reduce(
       (s, u) => s + (u.rentAmountPaisa || 0),
@@ -295,21 +285,18 @@ rentSchema.pre("save", function () {
     });
   }
 
-  // Rent status — compare against effectiveRentPaisa (gross − TDS), not gross
+  // Rent status
   const effectiveRentPaisa = this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
   if (this.paidAmountPaisa === 0) this.status = "pending";
   else if (this.paidAmountPaisa >= effectiveRentPaisa) this.status = "paid";
   else this.status = "partially_paid";
 
-  // rent.Model.js — pre-save hook (FIXED)
-
+  // Late fee status
   const remainingLateFee =
     (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
 
-  // FIX: if no late fee was ever charged, status should not be "pending"
-  // (pending implies there's something owed — there isn't)
   if (!this.lateFeePaisa || this.lateFeePaisa === 0) {
-    this.lateFeeStatus = "pending"; // or you could use "none" if your enum allows it
+    this.lateFeeStatus = "pending";
     this.lateFeeApplied = false;
   } else {
     this.lateFeeStatus = remainingLateFee <= 0 ? "paid" : "pending";
@@ -317,16 +304,36 @@ rentSchema.pre("save", function () {
 });
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
+
+// Idempotency guard for monthly rent creation
 rentSchema.index(
   { tenant: 1, nepaliMonth: 1, nepaliYear: 1 },
   { unique: true },
 );
+
+/**
+ * NEW — compound index for filtered GET /api/rent/get-rents queries.
+ *
+ * Field order rationale:
+ *   nepaliYear + nepaliMonth  → narrow to a single billing period first
+ *                               (highest combined selectivity in normal use)
+ *   status                    → further trims the slice for status filter
+ *   property                  → appended for property-dropdown filter;
+ *                               prefix queries (year+month or year+month+status)
+ *                               still benefit from the index
+ *
+ * This replaces what would otherwise be a full collection scan for every
+ * page load of the Rent tab.
+ */
+rentSchema.index({ nepaliYear: 1, nepaliMonth: 1, status: 1, property: 1 });
+
+// Supporting indexes (retained from previous revision)
 rentSchema.index({ nepaliDueDate: 1 });
 rentSchema.index({ tenant: 1, status: 1 });
 rentSchema.index({ englishYear: 1, englishMonth: 1 });
 rentSchema.index({ "unitBreakdown.unit": 1 });
 rentSchema.index({ useUnitBreakdown: 1 });
-rentSchema.index({ status: 1, lateFeeApplied: 1 }); // for lateFee.cron queries
+rentSchema.index({ status: 1, lateFeeApplied: 1 }); // lateFee.cron queries
 
 // ── Instance methods ──────────────────────────────────────────────────────────
 
@@ -351,7 +358,6 @@ rentSchema.methods.applyPayment = function (
   // Status sync happens in pre-save hook
 };
 
-// Apply a late fee payment — separate from rent principal
 rentSchema.methods.applyLateFeePayment = function (
   amountPaisa,
   paymentDate,

@@ -247,12 +247,20 @@ export async function updateTenant(tenantId, body, files) {
       "address",
       "status",
       "notes",
+      // AD dates
       "leaseStartDate",
       "leaseEndDate",
       "dateOfAgreementSigned",
       "keyHandoverDate",
       "spaceHandoverDate",
       "spaceReturnedDate",
+      // BS (Nepali) date strings — paired with their AD counterparts above
+      "leaseStartDateNepali",
+      "leaseEndDateNepali",
+      "dateOfAgreementSignedNepali",
+      "keyHandoverDateNepali",
+      "spaceHandoverDateNepali",
+      "spaceReturnedDateNepali",
       "tdsPercentage",
       "rentPaymentFrequency",
     ];

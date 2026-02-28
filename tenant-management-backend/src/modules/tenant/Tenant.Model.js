@@ -44,11 +44,22 @@ const tenantSchema = new mongoose.Schema(
     camRatePerSqft: { type: Number, required: true },
 
     dateOfAgreementSigned: { type: Date, required: true },
+    dateOfAgreementSignedNepali: { type: String, default: null }, // "YYYY-MM-DD" BS
+
     leaseStartDate: { type: Date, required: true },
+    leaseStartDateNepali: { type: String, default: null }, // "YYYY-MM-DD" BS
+
     leaseEndDate: { type: Date, required: true },
+    leaseEndDateNepali: { type: String, default: null }, // "YYYY-MM-DD" BS
+
     keyHandoverDate: { type: Date, required: true },
+    keyHandoverDateNepali: { type: String, default: null }, // "YYYY-MM-DD" BS
+
     spaceHandoverDate: { type: Date, default: null },
+    spaceHandoverDateNepali: { type: String, default: null }, // "YYYY-MM-DD" BS
+
     spaceReturnedDate: { type: Date, default: null },
+    spaceReturnedDateNepali: { type: String, default: null }, // "YYYY-MM-DD" BS
 
     // =========================
     // FINANCIALS (STORED IN PAISA)

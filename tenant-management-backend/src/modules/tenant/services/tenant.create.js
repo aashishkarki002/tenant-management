@@ -350,11 +350,6 @@ export async function createTenantTransaction(body, files, adminId, session) {
     { session },
   );
 
-  console.log("\n✅ Tenant Created:");
-  console.log(`├─ Tenant ID: ${tenant[0]._id}`);
-  console.log(`├─ totalRentPaisa: ${tenant[0].totalRentPaisa} (stored in DB)`);
-  console.log(`└─ This is MONTHLY rent in paisa\n`);
-
   // ============================================
   // 7. OCCUPY UNITS (unchanged)
   // ============================================
@@ -379,27 +374,11 @@ export async function createTenantTransaction(body, files, adminId, session) {
 
   await Promise.all(units.map((u) => u.save({ session })));
 
-  // ============================================
-  // 8. ✅ CALCULATE RENT CHARGE IN PAISA
-  // ============================================
-  console.log("\n" + "=".repeat(60));
-  console.log("💰 CALCULATING RENT CHARGE");
-  console.log("=".repeat(60));
-
   const rentFrequencyCalc = calculateRentByFrequencyInPaisa(
     totals.rentMonthlyPaisa, // ← Pass paisa, not rupees!
     body.rentPaymentFrequency,
     frequencyMonths,
   );
-
-  console.log("\n📋 Rent Charge Result:");
-  console.log(`├─ chargeAmountPaisa: ${rentFrequencyCalc.chargeAmountPaisa}`);
-  console.log(
-    `├─ Display: ${formatMoney(rentFrequencyCalc.chargeAmountPaisa)}`,
-  );
-  console.log(`├─ Period Months: ${rentFrequencyCalc.periodMonths}`);
-  console.log(`└─ Frequency: ${body.rentPaymentFrequency}`);
-  console.log("=".repeat(60) + "\n");
 
   // ============================================
   // 9. ✅ CREATE RENT RECORD WITH PAISA

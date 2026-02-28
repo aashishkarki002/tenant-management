@@ -6,6 +6,10 @@ import { sendEmail } from "../../config/nodemailer.js";
 import { generateAccessToken, generateRefreshToken } from "../../utils/jwt.js";
 import dotenv from "dotenv";
 import generateEmailVerificationToken from "../../utils/token.js";
+import cloudinary from "../../config/cloudinary.js";
+import { uploadProfilePicture } from "../../config/uploadProfilePicture.js";
+import { uploadSingleFile } from "../tenant/uploads/upload.service.js";
+
 dotenv.config();
 
 // Helper: hash a token the same way auth.services.js does, for comparison.
@@ -297,6 +301,7 @@ export const loginUser = async (req, res) => {
         role: result.admin.role,
         phone: result.admin.phone,
         address: result.admin.address,
+        profilePicture: result.admin.profilePicture || null,
       },
     });
   } catch (error) {
@@ -490,6 +495,7 @@ export const getMe = async (req, res) => {
         phone: admin.phone,
         address: admin.address || "",
         company: admin.company || "",
+        profilePicture: admin.profilePicture || null,
         isEmailVerified: admin.isEmailVerified,
       },
     });
@@ -519,5 +525,113 @@ export const updateAdmin = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: "Update admin failed" });
+  }
+};
+export const updateProfilePicture = async (req, res) => {
+  try {
+    const adminId = req.admin?.id;
+    if (!adminId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No image file provided" });
+    }
+    console.log(req.file);
+    const admin = await Admin.findById(adminId);
+    if (!admin) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Admin not found" });
+    }
+
+    // Delete old Cloudinary image if it exists
+    if (admin.profilePicture) {
+      try {
+        // Extract public_id from URL: ".../profile_pictures/someId.jpg" → "profile_pictures/someId"
+        const urlParts = admin.profilePicture.split("/");
+        const fileWithExt = urlParts[urlParts.length - 1];
+        const publicId = `profile_pictures/${fileWithExt.split(".")[0]}`;
+        await cloudinary.uploader.destroy(publicId);
+      } catch (deleteErr) {
+        // Non-fatal — old image might already be gone
+        console.warn(
+          "Could not delete old profile picture:",
+          deleteErr.message,
+        );
+      }
+    }
+
+    // Same flow and options as tenant doc uploads (upload.service.js) — avoid gravity: "face" to prevent timeout
+    const uploadResult = await uploadSingleFile(req.file, {
+      folder: "profile_pictures",
+      imageTransform: [{ width: 400, height: 400, crop: "limit" }],
+    });
+
+    admin.profilePicture = uploadResult.url;
+    await admin.save({ validateBeforeSave: false });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture updated successfully",
+      profilePicture: uploadResult.url,
+    });
+  } catch (error) {
+    const msg = error?.message || String(error);
+    console.error("Update profile picture error:", msg, error);
+    return res.status(500).json({
+      success: false,
+      message: msg || "Failed to update profile picture",
+    });
+  }
+};
+
+/**
+ * PATCH /api/auth/remove-profile-picture
+ * Protected: yes
+ *
+ * Removes the current profile picture from Cloudinary and clears the field.
+ */
+export const removeProfilePicture = async (req, res) => {
+  try {
+    const adminId = req.admin?.id;
+    if (!adminId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const admin = await Admin.findById(adminId);
+    if (!admin) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Admin not found" });
+    }
+
+    if (!admin.profilePicture) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No profile picture to remove" });
+    }
+
+    // Delete from Cloudinary
+    const urlParts = admin.profilePicture.split("/");
+    const fileWithExt = urlParts[urlParts.length - 1];
+    const publicId = `profile_pictures/${fileWithExt.split(".")[0]}`;
+    await cloudinary.uploader.destroy(publicId);
+
+    admin.profilePicture = null;
+    await admin.save({ validateBeforeSave: false });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture removed successfully",
+      profilePicture: null,
+    });
+  } catch (error) {
+    console.error("Remove profile picture error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to remove profile picture" });
   }
 };

@@ -163,11 +163,6 @@ app.use((err, req, res, next) => {
 });
 
 /* -------------------- DB CONNECT -------------------- */
-connectDB()
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => {
-    console.error("❌ MongoDB error:", err.message);
-    process.exit(1);
-  });
+// Connection is awaited in server.js before listen() to avoid "buffering timed out"
 
 export default app;
