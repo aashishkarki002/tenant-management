@@ -1,4 +1,22 @@
-import { PAYMENT_METHODS } from "../constants/tenant.constant";
+/**
+ * tenantValidation.js
+ *
+ * FIX — validatePaymentMethod was checking:
+ *   values.paymentMethod === PAYMENT_METHODS.BANK_GUARANTEE
+ *
+ * That is always false because BANK_GUARANTEE is only valid for the SECURITY
+ * DEPOSIT payment (sdPaymentMethod), not the rent payment method.
+ * This caused the bank-guarantee photo upload to never be validated.
+ *
+ * Corrected:
+ *   - Rent payment method (paymentMethod): cash | bank_transfer | cheque | mobile_wallet
+ *   - SD payment method  (sdPaymentMethod): cash | bank_transfer | cheque | bank_guarantee
+ */
+
+import {
+  PAYMENT_METHODS,
+  SECURITY_DEPOSIT_MODES,
+} from "../constants/tenant.constant";
 
 export const validateLeaseDetails = (values) => {
   const errors = [];
@@ -15,17 +33,32 @@ export const validateLeaseDetails = (values) => {
 export const validatePaymentMethod = (values) => {
   const errors = [];
 
-  if (
-    values.paymentMethod === PAYMENT_METHODS.BANK_GUARANTEE &&
-    !values.bankGuaranteePhoto
-  ) {
-    errors.push("Please upload bank guarantee photo");
+  // ── Rent payment method ────────────────────────────────────────────────────
+  // BANK_GUARANTEE is never valid here — it only applies to security deposits.
+  if (values.paymentMethod === "bank_guarantee") {
+    errors.push(
+      "Bank guarantee is not a valid rent payment method. Use it only for the security deposit.",
+    );
   }
 
   if (values.paymentMethod === PAYMENT_METHODS.CHEQUE) {
     if (!values.chequeAmount || !values.chequeNumber) {
-      errors.push("Please provide cheque amount and cheque number");
+      errors.push(
+        "Please provide cheque amount and cheque number for rent payment",
+      );
     }
+  }
+
+  // ── Security deposit payment method ───────────────────────────────────────
+  // FIX: was using values.paymentMethod === PAYMENT_METHODS.BANK_GUARANTEE
+  //      which is always false because BANK_GUARANTEE is only for sdPaymentMethod.
+  if (
+    values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE &&
+    !values.bankGuaranteePhoto
+  ) {
+    errors.push(
+      "Please upload the bank guarantee document for the security deposit",
+    );
   }
 
   return errors;
@@ -43,8 +76,9 @@ export const validateUnits = (values) => {
     return errors;
   }
 
+  // SD via bank guarantee = document only, no cash amount required
   const isBankGuarantee =
-    values.paymentMethod === PAYMENT_METHODS.BANK_GUARANTEE;
+    values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE;
 
   const missingFinancials = values.unitNumber.filter((unitId) => {
     const unitFinancial = values.unitFinancials?.[unitId];
@@ -70,7 +104,12 @@ export const validateTenantForm = (values) => {
     ...validatePaymentMethod(values),
     ...validateUnits(values),
   ];
+
   if (values.unitNumber?.length > 0) {
+    // SD via bank guarantee = no cash security deposit amount required per unit
+    const isBankGuarantee =
+      values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE;
+
     values.unitNumber.forEach((unitId, index) => {
       const financial = values.unitFinancials?.[unitId];
 
@@ -91,8 +130,8 @@ export const validateTenantForm = (values) => {
         errors.push(`Invalid CAM rate for unit ${index + 1}`);
       }
 
-      // Security deposit validation (if not bank guarantee)
-      if (values.paymentMethod !== "bank_guarantee") {
+      // Security deposit validation — skipped when deposit is covered by bank guarantee
+      if (!isBankGuarantee) {
         if (
           !financial.securityDeposit ||
           parseFloat(financial.securityDeposit) < 0
@@ -102,5 +141,6 @@ export const validateTenantForm = (values) => {
       }
     });
   }
+
   return errors;
 };

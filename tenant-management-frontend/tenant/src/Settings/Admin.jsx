@@ -86,28 +86,15 @@ export default function Admin() {
   }, []);
 
   // ─── Bank account formik ──────────────────────────────────────────────────
-  /**
-   * FIXED:
-   *   Old: initialValues had `balance` (rupees float, sent as `balance` field).
-   *        Backend model has no `balance` field — only `balancePaisa`.
-   *        The old float was passed directly and failed the pre-save integer guard.
-   *
-   *   New: `accountCode`    — required, chart-of-accounts string e.g. "1010-NABIL".
-   *                           Used by journal builders to route DR to the correct
-   *                           bank ledger account instead of defaulting to cash.
-   *        `openingBalance` — optional, in rupees.
-   *                           Controller converts to integer paisa via rupeesToPaisa().
-   */
   const bankAccountFormik = useFormik({
     initialValues: {
       accountNumber: "",
       accountName: "",
       bankName: "",
-      accountCode: "",   // FIX: replaces "balance" — required for ledger routing
-      openingBalance: "",   // FIX: replaces "balance" — optional, in rupees
+      accountCode: "",
+      openingBalance: "",
     },
     onSubmit: async (values, { setSubmitting, resetForm }) => {
-      // Client-side guard — mirrors backend 400 check
       if (!values.accountCode.trim()) {
         toast.error(
           "Account code is required (e.g. '1010-NABIL'). " +
@@ -122,8 +109,8 @@ export default function Admin() {
           accountNumber: values.accountNumber,
           accountName: values.accountName,
           bankName: values.bankName,
-          accountCode: values.accountCode.toUpperCase().trim(),   // FIX
-          openingBalance: parseFloat(values.openingBalance) || 0,    // FIX
+          accountCode: values.accountCode.toUpperCase().trim(),
+          openingBalance: parseFloat(values.openingBalance) || 0,
         });
 
         if (response.data.success) {
@@ -134,7 +121,6 @@ export default function Admin() {
         }
       } catch (err) {
         console.error(err);
-        // 409 = duplicate accountCode — surface the backend message directly
         toast.error(err.response?.data?.message || "Failed to create bank account");
       } finally {
         setSubmitting(false);
@@ -180,6 +166,7 @@ export default function Admin() {
 
   return (
     <div className="p-4 sm:p-6 md:p-8 space-y-6">
+      {/* Page header */}
       <div className="space-y-1">
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Settings</h1>
         <p className="text-sm sm:text-base text-slate-500">
@@ -187,78 +174,125 @@ export default function Admin() {
         </p>
       </div>
 
-      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6">
-        <Tabs defaultValue={initialTab} className="flex-1 flex-col sm:flex-row gap-2">
-          <TabsList className="flex sm:flex-col w-full sm:w-52 flex-row justify-start sm:justify-start overflow-x-auto sm:overflow-visible space-x-2 sm:space-x-0 sm:space-y-2">
-            <TabsTrigger
-              className="flex items-center space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded"
-              value="settings"
-            >
-              <Settings size={20} />
-              <span className="hidden sm:inline">Settings</span>
-            </TabsTrigger>
-            <TabsTrigger
-              className="flex items-center space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded"
-              value="staffDetails"
-            >
-              <Users size={20} />
-              <span className="hidden sm:inline">Staff Details</span>
-            </TabsTrigger>
-            <TabsTrigger
-              className="flex items-center space-x-2 sm:justify-start p-2 hover:bg-slate-100 rounded"
-              value="rentEscalation"
-            >
-              <TrendingUp size={20} />
-              <span className="hidden sm:inline">Rate &amp; Fees</span>
-            </TabsTrigger>
-          </TabsList>
+      {/* 
+        FIX: Tabs layout
+        - On mobile: tabs nav scrolls horizontally as a single row
+        - On desktop: tabs nav is a fixed-width left sidebar (flex-col), 
+          content fills remaining space
+        - Outer wrapper uses flex-col on mobile, flex-row on sm+
+      */}
+      <Tabs defaultValue={initialTab} className="w-full">
+        {/* Tab nav bar */}
+        <TabsList
+          className="
+            flex flex-row
+            w-full
+            overflow-x-auto
+            whitespace-nowrap
+            mb-6
+            bg-slate-100
+            rounded-lg
+            p-1
+            gap-1
+          "
+        >
+          <TabsTrigger
+            value="settings"
+            className="
+              flex items-center gap-2
+              px-4 py-2
+              rounded-md
+              text-sm font-medium
+              text-slate-600
+              data-[state=active]:bg-white
+              data-[state=active]:text-slate-900
+              data-[state=active]:shadow-sm
+              hover:text-slate-900
+              transition-all
+              shrink-0
+            "
+          >
+            <Settings size={16} />
+            <span>Settings</span>
+          </TabsTrigger>
 
-          <div className="flex-1 mt-4 sm:mt-0">
-            <TabsContent value="settings">
-              <div className="overflow-x-auto">
-                <SettingTab
-                  user={user}
-                  bankAccounts={bankAccounts}
-                  bankAccountFormik={bankAccountFormik}
-                  addBankCloseRef={addBankCloseRef}
-                  languages={languages}
-                  selectedLanguage={selectedLanguage}
-                  setSelectedLanguage={setSelectedLanguage}
-                  currentPassword={currentPassword}
-                  setCurrentPassword={setCurrentPassword}
-                  newPassword={newPassword}
-                  setNewPassword={setNewPassword}
-                  confirmPassword={confirmPassword}
-                  setConfirmPassword={setConfirmPassword}
-                  passwordError={passwordError}
-                  passwordSuccess={passwordSuccess}
-                  handlePasswordChange={handlePasswordChange}
-                  deleteConfirmOpen={deleteConfirmOpen}
-                  setDeleteConfirmOpen={setDeleteConfirmOpen}
-                  setAccountToDelete={setAccountToDelete}
-                  confirmDelete={confirmDelete}
-                  handleDeleteClick={handleDeleteClick}
-                  GetBankAccounts={GetBankAccounts}
-                />
-              </div>
-            </TabsContent>
+          <TabsTrigger
+            value="staffDetails"
+            className="
+              flex items-center gap-2
+              px-4 py-2
+              rounded-md
+              text-sm font-medium
+              text-slate-600
+              data-[state=active]:bg-white
+              data-[state=active]:text-slate-900
+              data-[state=active]:shadow-sm
+              hover:text-slate-900
+              transition-all
+              shrink-0
+            "
+          >
+            <Users size={16} />
+            <span>Staff Details</span>
+          </TabsTrigger>
 
-            <TabsContent value="staffDetails">
-              <div className="overflow-x-auto">
-                <StaffDetail staff={staff} />
-              </div>
-            </TabsContent>
+          <TabsTrigger
+            value="rentEscalation"
+            className="
+              flex items-center gap-2
+              px-4 py-2
+              rounded-md
+              text-sm font-medium
+              text-slate-600
+              data-[state=active]:bg-white
+              data-[state=active]:text-slate-900
+              data-[state=active]:shadow-sm
+              hover:text-slate-900
+              transition-all
+              shrink-0
+            "
+          >
+            <TrendingUp size={16} />
+            <span>Rate &amp; Fees</span>
+          </TabsTrigger>
+        </TabsList>
 
+        {/* Tab content panels */}
+        <TabsContent value="settings">
+          <SettingTab
+            user={user}
+            bankAccounts={bankAccounts}
+            bankAccountFormik={bankAccountFormik}
+            addBankCloseRef={addBankCloseRef}
+            languages={languages}
+            selectedLanguage={selectedLanguage}
+            setSelectedLanguage={setSelectedLanguage}
+            currentPassword={currentPassword}
+            setCurrentPassword={setCurrentPassword}
+            newPassword={newPassword}
+            setNewPassword={setNewPassword}
+            confirmPassword={confirmPassword}
+            setConfirmPassword={setConfirmPassword}
+            passwordError={passwordError}
+            passwordSuccess={passwordSuccess}
+            handlePasswordChange={handlePasswordChange}
+            deleteConfirmOpen={deleteConfirmOpen}
+            setDeleteConfirmOpen={setDeleteConfirmOpen}
+            setAccountToDelete={setAccountToDelete}
+            confirmDelete={confirmDelete}
+            handleDeleteClick={handleDeleteClick}
+            GetBankAccounts={GetBankAccounts}
+          />
+        </TabsContent>
 
+        <TabsContent value="staffDetails">
+          <StaffDetail staff={staff} />
+        </TabsContent>
 
-            <TabsContent value="rentEscalation">
-              <div className="overflow-x-auto">
-                <SystemSettingsTab propertyId={propertyId} />
-              </div>
-            </TabsContent>
-          </div>
-        </Tabs>
-      </div>
+        <TabsContent value="rentEscalation">
+          <SystemSettingsTab propertyId={propertyId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

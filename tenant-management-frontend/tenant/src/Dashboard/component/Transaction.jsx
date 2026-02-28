@@ -118,29 +118,28 @@ export default function Transaction() {
     }, [transactions, search, statusFilter, typeFilter, dateStart, dateEnd]);
 
     return (
-        <div className="min-h-screen  text-gray-900"><Breadcrumb>
-            <BreadcrumbList>
-                <BreadcrumbItem>
-                    <BreadcrumbLink asChild>
-                        <Link to="/">Home</Link>
-                    </BreadcrumbLink>
-                </BreadcrumbItem>
+        <div className="min-h-screen w-full text-gray-900">
+            <Breadcrumb>
+                <BreadcrumbList>
+                    <BreadcrumbItem>
+                        <BreadcrumbLink asChild>
+                            <Link to="/">Home</Link>
+                        </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                        <BreadcrumbLink asChild>
+                            <Link to="/dashboard/transactions">Transactions</Link>
+                        </BreadcrumbLink>
+                    </BreadcrumbItem>
+                </BreadcrumbList>
+            </Breadcrumb>
 
-                <BreadcrumbItem>
-
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                    <BreadcrumbLink asChild>
-                        <Link to="/dashboard/transactions">Transactions</Link>
-                    </BreadcrumbLink>
-                </BreadcrumbItem>
-            </BreadcrumbList>
-        </Breadcrumb>
+            {/* Remove max-width and paddings to occupy full page */}
             <div className="w-full h-full">
 
                 {/* Header */}
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center justify-between mb-4 p-4 border-b border-gray-200">
                     <div>
                         <h1 className="text-2xl font-semibold tracking-tight">
                             Transactions
@@ -160,13 +159,11 @@ export default function Transaction() {
                             <RefreshCw className="w-4 h-4 mr-2" />
                             Refresh
                         </Button>
-
-
                     </div>
                 </div>
 
                 {/* Filters */}
-                <div className="flex flex-wrap items-center gap-3 mb-6">
+                <div className="flex flex-wrap items-center gap-3 mb-4 p-4">
                     <div className="relative w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <Input
@@ -202,9 +199,9 @@ export default function Transaction() {
                             <SelectItem value="voided">Voided</SelectItem>
                         </SelectContent>
                     </Select>
+
                     <div className="flex items-center gap-2">
                         <label className="text-sm text-gray-500">Start Date</label>
-
                         <DualCalendarTailwind value={dateStart} onChange={setDateStart} />
                         <label className="text-sm text-gray-500">End Date</label>
                         <DualCalendarTailwind value={dateEnd} onChange={setDateEnd} />
@@ -212,25 +209,15 @@ export default function Transaction() {
                 </div>
 
                 {/* Table */}
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                    <Table>
+                <div className="w-full h-full overflow-auto">
+                    <Table className="w-full">
                         <TableHeader className="bg-gray-50">
                             <TableRow>
-                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">
-                                    Transaction
-                                </TableHead>
-                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">
-                                    Date
-                                </TableHead>
-                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">
-                                    Amount
-                                </TableHead>
-                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">
-                                    Account
-                                </TableHead>
-                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">
-                                    Status
-                                </TableHead>
+                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">Transaction</TableHead>
+                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">Date</TableHead>
+                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">Amount</TableHead>
+                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">Account</TableHead>
+                                <TableHead className="text-xs uppercase tracking-wide text-gray-500">Status</TableHead>
                                 <TableHead />
                             </TableRow>
                         </TableHeader>
@@ -250,42 +237,21 @@ export default function Transaction() {
                                 </TableRow>
                             ) : (
                                 filtered.map((row) => (
-                                    <TableRow
-                                        key={row.id}
-                                        className="hover:bg-gray-50 transition-colors"
-                                    >
+                                    <TableRow key={row.id} className="hover:bg-gray-50 transition-colors">
                                         <TableCell>
                                             <div>
                                                 <p className="font-medium text-sm">{row.name}</p>
-                                                <p className="text-xs text-gray-500">
-                                                    {row.description}
-                                                </p>
+                                                <p className="text-xs text-gray-500">{row.description}</p>
                                             </div>
                                         </TableCell>
-
-                                        <TableCell className="text-sm text-gray-600">
-                                            {formatDate(row.date)}
-                                        </TableCell>
-
-                                        <TableCell className="font-semibold text-sm tabular-nums">
-                                            {formatAmount(row.amount)}
-                                        </TableCell>
-
-                                        <TableCell className="text-sm text-gray-600">
-                                            {row.account}
-                                        </TableCell>
-
+                                        <TableCell className="text-sm text-gray-600">{formatDate(row.date)}</TableCell>
+                                        <TableCell className="font-semibold text-sm tabular-nums">{formatAmount(row.amount)}</TableCell>
+                                        <TableCell className="text-sm text-gray-600">{row.account}</TableCell>
                                         <TableCell>
-                                            <span
-                                                className={cn(
-                                                    "inline-flex items-center px-2.5 py-1 rounded-md border text-xs font-medium",
-                                                    STATUS_STYLES[row.status]
-                                                )}
-                                            >
+                                            <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-xs font-medium", STATUS_STYLES[row.status])}>
                                                 {row.status}
                                             </span>
                                         </TableCell>
-
                                         <TableCell>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -295,13 +261,10 @@ export default function Transaction() {
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem>
-                                                        <FileText className="w-4 h-4 mr-2" />
-                                                        View
+                                                        <FileText className="w-4 h-4 mr-2" /> View
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem>Edit</DropdownMenuItem>
-                                                    <DropdownMenuItem className="text-red-600">
-                                                        Delete
-                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>
@@ -311,7 +274,6 @@ export default function Transaction() {
                         </TableBody>
                     </Table>
                 </div>
-
             </div>
         </div>
     );

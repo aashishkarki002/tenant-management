@@ -1,5 +1,5 @@
 /**
- * formDataBuilder.js  (FIXED)
+ * formDataBuilder.js
  *
  * FIX 1 - securityDepositMode -> securityDepositPaymentMethod
  *   Backend expects:
@@ -15,6 +15,19 @@
  *     - Send securityDepositPaymentMethod -> backend posts the journal entry
  *
  * FIX 3 - weighted rates replace the broken avg-of-rates calculation.
+ *
+ * FIX 4 - Nepali (BS) date fields are now included in FormData.
+ *   The backend needs these to correctly compute:
+ *     - Rent escalation schedules (nextEscalationNepaliDate)
+ *     - Quarterly rent windows (nepaliYear, nepaliMonth, quarter)
+ *     - Any other BS-calendar-aware calculations
+ *   Without them, the backend was silently re-deriving Nepali dates from the
+ *   AD date via its own converter — which can be off by a day at BS month
+ *   boundaries and ignores any manual BS-calendar corrections made in the UI.
+ *
+ *   Naming convention used by the backend:
+ *     leaseStartDateNepali, leaseEndDateNepali, dateOfAgreementSignedNepali,
+ *     keyHandoverDateNepali, spaceHandoverDateNepali, spaceReturnedDateNepali
  */
 
 import { calculateFinancialTotals } from "./financialCalculation";
@@ -52,7 +65,7 @@ export const buildTenantFormData = (values, propertyId) => {
     formData.append("unitLeases", JSON.stringify(unitLeases));
   }
 
-  // Scalar tenant fields
+  // Scalar tenant fields — AD (English) dates
   const tenantFields = [
     "name",
     "phone",
@@ -67,10 +80,27 @@ export const buildTenantFormData = (values, propertyId) => {
     "spaceReturnedDate",
     "tdsPercentage",
     "rentPaymentFrequency",
-    // NOTE: paymentMethod is now ONLY the rent payment method (no bank_guarantee)
+    // NOTE: paymentMethod is ONLY the rent payment method (no bank_guarantee)
     "paymentMethod",
   ];
   tenantFields.forEach((field) => {
+    if (values[field] != null && values[field] !== "") {
+      formData.append(field, values[field]);
+    }
+  });
+
+  // FIX 4 — Nepali (BS) date counterparts.
+  // These are paired with their AD equivalents above so the backend never has
+  // to re-derive them and can trust the user's explicit BS calendar selection.
+  const nepaliDateFields = [
+    "leaseStartDateNepali",
+    "leaseEndDateNepali",
+    "dateOfAgreementSignedNepali",
+    "keyHandoverDateNepali",
+    "spaceHandoverDateNepali",
+    "spaceReturnedDateNepali",
+  ];
+  nepaliDateFields.forEach((field) => {
     if (values[field] != null && values[field] !== "") {
       formData.append(field, values[field]);
     }
@@ -82,21 +112,22 @@ export const buildTenantFormData = (values, propertyId) => {
   formData.append("camRatePerSqft", totals.weightedCamPerSqft.toString());
   formData.append("securityDeposit", totals.totalSecurityDeposit.toString());
 
-  // Security deposit payment - only post a journal entry when money actually changes hands.
-  // BANK_GUARANTEE = document-only; backend should NOT post a cash/bank journal for it.
+  // Security deposit payment — only post a journal entry when money actually
+  // changes hands. BANK_GUARANTEE is document-only; the backend must NOT post
+  // a cash/bank journal entry for it.
   const sdMode = values.sdPaymentMethod;
   if (
     totals.totalSecurityDeposit > 0 &&
     sdMode &&
     sdMode !== SECURITY_DEPOSIT_MODES.BANK_GUARANTEE
   ) {
-    formData.append("securityDepositPaymentMethod", sdMode); // FIX: was "securityDepositMode"
+    formData.append("securityDepositPaymentMethod", sdMode);
     formData.append(
       "securityDepositAmount",
       totals.totalSecurityDeposit.toString(),
     );
 
-    // Bank account fields - required when method is bank_transfer or cheque
+    // Bank account fields — required when method is bank_transfer or cheque
     if (
       sdMode === SECURITY_DEPOSIT_MODES.BANK_TRANSFER ||
       sdMode === SECURITY_DEPOSIT_MODES.CHEQUE
@@ -113,7 +144,7 @@ export const buildTenantFormData = (values, propertyId) => {
     }
   }
 
-  // Bank guarantee photo (document only - not a ledger entry)
+  // Bank guarantee photo (document only — no ledger entry)
   if (
     sdMode === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE &&
     values.bankGuaranteePhoto
@@ -129,7 +160,7 @@ export const buildTenantFormData = (values, propertyId) => {
       formData.append("chequeNumber", values.chequeNumber);
   }
 
-  // Documents - mapped to backend upload.fields() names
+  // Documents — mapped to backend upload.fields() names
   const DOCUMENT_FIELD_MAP = {
     photo: "image",
     tenantPhoto: "image",

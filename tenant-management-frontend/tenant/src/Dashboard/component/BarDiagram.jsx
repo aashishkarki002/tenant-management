@@ -9,23 +9,23 @@ import {
     ResponsiveContainer,
     Cell,
 } from 'recharts';
-import { useNepaliDate } from '../../../plugins/useNepaliDate';
+import { NEPALI_MONTH_NAMES, getCurrentNepaliMonth } from '../../../utils/nepaliDate';
 
-const MUTED_FILL = '#cbd5e1';          // slate-300 — softer muted bars
-const HIGHLIGHT_FILL = '#9a3412';       // orange-800
+// ─── Constants ───────────────────────────────────────────────────────────────
 
-// All 12 Nepali month short names
-const NEPALI_MONTH_NAMES = [
-    'Bai', 'Jes', 'Ash', 'Shr', 'Bha', 'Asw',
-    'Kar', 'Man', 'Pou', 'Mag', 'Fal', 'Cha',
-];
+const MUTED_FILL = '#cbd5e1';   // slate-300
+const HIGHLIGHT_FILL = '#9a3412';   // orange-800
+
+/** Short labels derived from the shared constant — single source of truth */
+const MONTH_SHORT_NAMES = NEPALI_MONTH_NAMES.map((n) => n.slice(0, 3));
+
+// ─── Data normalisation ───────────────────────────────────────────────────────
 
 /**
- * Fills in missing months so the chart always shows all 12 months.
- * Months without data get revenue = 0 (renders as an empty-looking bar with a min height indicator).
+ * Always returns exactly 12 entries, one per Nepali month.
+ * Items missing from the source array get revenue = 0.
  */
 function buildFullYearData(items, currentMonth, highlightCurrent) {
-    // Build a lookup from month number → revenue
     const lookup = new Map();
     if (Array.isArray(items)) {
         items.forEach((item) => {
@@ -35,7 +35,7 @@ function buildFullYearData(items, currentMonth, highlightCurrent) {
         });
     }
 
-    return NEPALI_MONTH_NAMES.map((name, i) => {
+    return MONTH_SHORT_NAMES.map((name, i) => {
         const monthNum = i + 1;
         const revenue = lookup.get(monthNum) ?? 0;
         return {
@@ -48,35 +48,33 @@ function buildFullYearData(items, currentMonth, highlightCurrent) {
     });
 }
 
-/**
- * Normalizes a free-form items array (no month numbers) —
- * used when the API returns items with just name/label/value.
- */
+/** Fallback for APIs that return items without a numeric month field. */
 function normalizeGenericData(items, currentMonth, highlightCurrent) {
     if (!Array.isArray(items) || items.length === 0) return [];
-    return items.map((item) => ({
-        name: item.name ?? item.label ?? '',
-        month: item.month ?? null,
-        revenue: Number(item.revenue ?? item.value ?? item.total ?? 0) || 0,
-        isEmpty: (Number(item.revenue ?? item.value ?? item.total ?? 0) || 0) === 0,
-        isHighlighted: highlightCurrent
-            ? item.month === currentMonth
-            : Boolean(item.isHighlighted),
-    }));
+    return items.map((item) => {
+        const revenue = Number(item.revenue ?? item.value ?? item.total ?? 0) || 0;
+        return {
+            name: item.name ?? item.label ?? '',
+            month: item.month ?? null,
+            revenue,
+            isEmpty: revenue === 0,
+            isHighlighted: highlightCurrent
+                ? item.month === currentMonth
+                : Boolean(item.isHighlighted),
+        };
+    });
 }
 
 function normalizeChartData(items, currentMonth, highlightCurrent = false) {
     if (!Array.isArray(items) || items.length === 0) return [];
-
-    // If any item has a `month` number field, build the full 12-month scaffold
     const hasMonthNumbers = items.some((it) => it.month != null);
-    if (hasMonthNumbers) {
-        return buildFullYearData(items, currentMonth, highlightCurrent);
-    }
-    return normalizeGenericData(items, currentMonth, highlightCurrent);
+    return hasMonthNumbers
+        ? buildFullYearData(items, currentMonth, highlightCurrent)
+        : normalizeGenericData(items, currentMonth, highlightCurrent);
 }
 
-/* ── Skeleton ─────────────────────────────────────────────────────────────── */
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
 function ChartSkeleton() {
     return (
         <div className="h-full w-full flex items-end gap-1 px-2">
@@ -91,7 +89,6 @@ function ChartSkeleton() {
     );
 }
 
-/* ── Custom Tooltip ───────────────────────────────────────────────────────── */
 function CustomTooltip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     const { revenue, isEmpty } = payload[0]?.payload ?? {};
@@ -102,17 +99,63 @@ function CustomTooltip({ active, payload, label }) {
                 <p className="text-gray-400 italic">No data recorded</p>
             ) : (
                 <p className="text-orange-800 font-medium">
-                    ₹{Number(revenue).toLocaleString()}
+                    रू {Number(revenue).toLocaleString('en-IN')}
                 </p>
             )}
         </div>
     );
 }
 
-/* ── Main Component ───────────────────────────────────────────────────────── */
+function XAxisTick({ x, y, payload, monthlyData }) {
+    const point = monthlyData.find((d) => d.name === payload.value);
+    const isHighlighted = point?.isHighlighted ?? false;
+    const isEmpty = point?.isEmpty ?? false;
+
+    return (
+        <g transform={`translate(${x},${y})`}>
+            <text
+                x={0} y={0} dy={14}
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight={isHighlighted ? 600 : 400}
+                fill={
+                    isHighlighted ? HIGHLIGHT_FILL
+                        : isEmpty ? '#cbd5e1'
+                            : '#64748b'
+                }
+            >
+                {payload.value}
+            </text>
+        </g>
+    );
+}
+
+function EmptyState() {
+    return (
+        <div className="h-full w-full flex flex-col items-center justify-center gap-3 border border-dashed rounded-lg text-center px-4">
+            <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center">
+                <svg className="w-5 h-5 text-orange-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                        strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                </svg>
+            </div>
+            <div>
+                <p className="text-sm font-medium text-gray-600">No revenue data yet</p>
+                <p className="text-xs text-gray-400 mt-0.5">Record payments to see your monthly trend</p>
+            </div>
+        </div>
+    );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function BarDiagram({ stats, loading, error }) {
     const [period, setPeriod] = useState('thisYear');
-    const { month: currentNepaliMonth } = useNepaliDate();
+
+    // Single source of truth — no more useNepaliDate hook that didn't exist
+    const currentNepaliMonth = getCurrentNepaliMonth();
 
     const rawData = period === 'thisYear'
         ? (stats?.revenueThisYear ?? stats?.revenueTrend ?? stats?.monthlyRevenue ?? stats?.revenueByMonth)
@@ -121,10 +164,7 @@ export default function BarDiagram({ stats, loading, error }) {
     const highlightCurrent = period === 'thisYear';
     const monthlyData = normalizeChartData(rawData, currentNepaliMonth, highlightCurrent);
 
-    // Check if ALL bars are zero — true empty state (no array at all)
     const hasNoData = !rawData || (Array.isArray(rawData) && rawData.length === 0);
-
-    // Stats for the subtitle: sum of collected months
     const totalRevenue = monthlyData.reduce((s, d) => s + d.revenue, 0);
     const filledMonths = monthlyData.filter((d) => !d.isEmpty).length;
 
@@ -138,30 +178,25 @@ export default function BarDiagram({ stats, loading, error }) {
                             ? 'Loading…'
                             : hasNoData
                                 ? 'No revenue data recorded yet'
-                                : `₹${totalRevenue.toLocaleString()} across ${filledMonths} month${filledMonths !== 1 ? 's' : ''}`}
+                                : `रू ${totalRevenue.toLocaleString('en-IN')} across ${filledMonths} month${filledMonths !== 1 ? 's' : ''}`}
                     </p>
                 </div>
+
+                {/* Period toggle */}
                 <div className="flex rounded-md border border-input overflow-hidden shrink-0 self-start sm:self-auto">
-                    <button
-                        type="button"
-                        onClick={() => setPeriod('thisYear')}
-                        className={`px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${period === 'thisYear'
+                    {['thisYear', 'lastYear'].map((p) => (
+                        <button
+                            key={p}
+                            type="button"
+                            onClick={() => setPeriod(p)}
+                            className={`px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${period === p
                                 ? 'bg-primary text-primary-foreground'
                                 : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                            }`}
-                    >
-                        This Year
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setPeriod('lastYear')}
-                        className={`px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${period === 'lastYear'
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                            }`}
-                    >
-                        Last Year
-                    </button>
+                                }`}
+                        >
+                            {p === 'thisYear' ? 'This Year' : 'Last Year'}
+                        </button>
+                    ))}
                 </div>
             </CardHeader>
 
@@ -190,20 +225,8 @@ export default function BarDiagram({ stats, loading, error }) {
                     {loading ? (
                         <ChartSkeleton />
                     ) : hasNoData ? (
-                        /* True empty state — no data at all */
-                        <div className="h-full w-full flex flex-col items-center justify-center gap-3 border border-dashed rounded-lg text-center px-4">
-                            <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center">
-                                <svg className="w-5 h-5 text-orange-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                </svg>
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-gray-600">No revenue data yet</p>
-                                <p className="text-xs text-gray-400 mt-0.5">Record payments to see your monthly trend</p>
-                            </div>
-                        </div>
+                        <EmptyState />
                     ) : (
-                        /* Chart with all 12 months — empty months show as zero-height with a dotted indicator */
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart
                                 data={monthlyData}
@@ -214,33 +237,9 @@ export default function BarDiagram({ stats, loading, error }) {
                                     dataKey="name"
                                     axisLine={false}
                                     tickLine={false}
-                                    tick={(props) => {
-                                        const { x, y, payload } = props;
-                                        const point = monthlyData.find((d) => d.name === payload.value);
-                                        const isHighlighted = point?.isHighlighted ?? false;
-                                        const isEmpty = point?.isEmpty ?? false;
-                                        return (
-                                            <g transform={`translate(${x},${y})`}>
-                                                <text
-                                                    x={0}
-                                                    y={0}
-                                                    dy={14}
-                                                    textAnchor="middle"
-                                                    fill={
-                                                        isHighlighted
-                                                            ? HIGHLIGHT_FILL
-                                                            : isEmpty
-                                                                ? '#cbd5e1'
-                                                                : '#64748b'
-                                                    }
-                                                    fontSize={10}
-                                                    fontWeight={isHighlighted ? 600 : 400}
-                                                >
-                                                    {payload.value}
-                                                </text>
-                                            </g>
-                                        );
-                                    }}
+                                    tick={(props) => (
+                                        <XAxisTick {...props} monthlyData={monthlyData} />
+                                    )}
                                     interval={0}
                                 />
                                 <YAxis hide />
@@ -252,17 +251,14 @@ export default function BarDiagram({ stats, loading, error }) {
                                     dataKey="revenue"
                                     radius={[4, 4, 0, 0]}
                                     maxBarSize={40}
-                                    /* minPointSize ensures empty months are always visible as a thin bar */
                                     minPointSize={3}
                                 >
                                     {monthlyData.map((entry, index) => (
                                         <Cell
                                             key={index}
                                             fill={
-                                                entry.isEmpty
-                                                    ? '#f1f5f9'          // near-white for zero months
-                                                    : entry.isHighlighted
-                                                        ? HIGHLIGHT_FILL
+                                                entry.isEmpty ? '#f1f5f9'
+                                                    : entry.isHighlighted ? HIGHLIGHT_FILL
                                                         : MUTED_FILL
                                             }
                                             stroke={entry.isEmpty ? '#e2e8f0' : 'none'}

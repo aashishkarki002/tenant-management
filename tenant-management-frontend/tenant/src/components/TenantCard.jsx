@@ -9,11 +9,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Phone, Mail, Calendar, MoreHorizontal } from "lucide-react";
-import { Button } from "@/components/ui/button";
+
 import { useNavigate } from "react-router-dom";
 import api from "../../plugins/axios";
 import { toast } from "sonner";
-import NepaliDate from "nepali-datetime";
+
 
 // Generate a deterministic pastel avatar background from name
 function getAvatarColor(name = "") {
@@ -47,23 +47,7 @@ function Avatar({ name }) {
 export default function TenantCard({ tenant, HandleDeleteTenant }) {
   const navigate = useNavigate();
 
-  // Convert lease end date to Nepali
-  let leaseEndDisplay = "N/A";
-  if (tenant?.leaseEndDate) {
-    try {
-      const dateStr = tenant.leaseEndDate.includes("T")
-        ? tenant.leaseEndDate.split("T")[0]
-        : tenant.leaseEndDate;
-      // Also try English format for display
-      const parts = dateStr.split("-");
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      if (parts.length === 3) {
-        leaseEndDisplay = `Ends ${months[parseInt(parts[1]) - 1]} ${parseInt(parts[2])}, ${parts[0]}`;
-      }
-    } catch {
-      leaseEndDisplay = "Invalid date";
-    }
-  }
+
 
   const isActive = tenant?.status === "active" || !tenant?.status;
 
@@ -162,8 +146,8 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
           </div>
           <span
             className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isActive
-                ? "bg-green-50 text-green-600"
-                : "bg-gray-100 text-gray-500"
+              ? "bg-green-50 text-green-600"
+              : "bg-gray-100 text-gray-500"
               }`}
           >
             {isActive ? "Active" : "Inactive"}
@@ -173,7 +157,7 @@ export default function TenantCard({ tenant, HandleDeleteTenant }) {
         {/* Lease end date */}
         <div className="flex items-center gap-1.5 mb-3">
           <Calendar className="w-3.5 h-3.5 text-gray-400" />
-          <span className="text-xs text-gray-400">{leaseEndDisplay}</span>
+          <span className="text-xs text-gray-400">{tenant?.leaseEndDateNepali}</span>
         </div>
 
         {/* Billing tag */}

@@ -29,6 +29,22 @@ import {
 import { RENT_PAYMENT_FREQUENCY } from "../constants/tenant.constant";
 import { useVacantUnits } from "../../../hooks/use-units";
 
+/**
+ * Helper: wires a DualCalendarTailwind to TWO formik fields at once.
+ *
+ * DualCalendarTailwind calls:  onChange(englishDate, nepaliDate)
+ *   - englishDate: "YYYY-MM-DD" (AD)
+ *   - nepaliDate:  "YYYY-MM-DD" (BS)
+ *
+ * BUG FIXED: the old code only captured the first argument (englishDate)
+ * and silently discarded the Nepali date. The backend uses Nepali dates for
+ * escalation schedules, rent quarters, and all BS-calendar logic.
+ */
+const makeDateHandler = (formik, adField, bsField) => (englishDate, nepaliDate) => {
+    formik.setFieldValue(adField, englishDate ?? "");
+    formik.setFieldValue(bsField, nepaliDate ?? "");
+};
+
 export const LeaseDetailsTab = ({
     formik,
     property,
@@ -143,22 +159,42 @@ export const LeaseDetailsTab = ({
                     </div>
                 </div>
 
+                {/* BUG FIX: dateOfAgreementSigned was in the model (required) and in
+                    formDataBuilder, but had no UI field — users could never fill it in. */}
+                <div className="space-y-2">
+                    <Label>Date of Agreement Signed *</Label>
+                    <DualCalendarTailwind
+                        value={formik.values.dateOfAgreementSigned}
+                        onChange={makeDateHandler(
+                            formik,
+                            "dateOfAgreementSigned",
+                            "dateOfAgreementSignedNepali"
+                        )}
+                    />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label>Lease Start Date *</Label>
                         <DualCalendarTailwind
-                            onChange={(englishDate) =>
-                                formik.setFieldValue("leaseStartDate", englishDate)
-                            }
+                            value={formik.values.leaseStartDate}
+                            onChange={makeDateHandler(
+                                formik,
+                                "leaseStartDate",
+                                "leaseStartDateNepali"
+                            )}
                         />
                     </div>
 
                     <div className="space-y-2">
                         <Label>Lease End Date *</Label>
                         <DualCalendarTailwind
-                            onChange={(englishDate) =>
-                                formik.setFieldValue("leaseEndDate", englishDate)
-                            }
+                            value={formik.values.leaseEndDate}
+                            onChange={makeDateHandler(
+                                formik,
+                                "leaseEndDate",
+                                "leaseEndDateNepali"
+                            )}
                         />
                     </div>
                 </div>
@@ -167,18 +203,24 @@ export const LeaseDetailsTab = ({
                     <div className="space-y-2">
                         <Label>Key Handover Date</Label>
                         <DualCalendarTailwind
-                            onChange={(englishDate) =>
-                                formik.setFieldValue("keyHandoverDate", englishDate)
-                            }
+                            value={formik.values.keyHandoverDate}
+                            onChange={makeDateHandler(
+                                formik,
+                                "keyHandoverDate",
+                                "keyHandoverDateNepali"
+                            )}
                         />
                     </div>
 
                     <div className="space-y-2">
                         <Label>Space Handover Date</Label>
                         <DualCalendarTailwind
-                            onChange={(englishDate) =>
-                                formik.setFieldValue("spaceHandoverDate", englishDate)
-                            }
+                            value={formik.values.spaceHandoverDate}
+                            onChange={makeDateHandler(
+                                formik,
+                                "spaceHandoverDate",
+                                "spaceHandoverDateNepali"
+                            )}
                         />
                     </div>
                 </div>
@@ -186,9 +228,12 @@ export const LeaseDetailsTab = ({
                 <div className="space-y-2">
                     <Label>Space Returned Date</Label>
                     <DualCalendarTailwind
-                        onChange={(englishDate) =>
-                            formik.setFieldValue("spaceReturnedDate", englishDate)
-                        }
+                        value={formik.values.spaceReturnedDate}
+                        onChange={makeDateHandler(
+                            formik,
+                            "spaceReturnedDate",
+                            "spaceReturnedDateNepali"
+                        )}
                     />
                 </div>
 

@@ -246,8 +246,8 @@ function ViewDetail({ tabs: tabsProp }) {
 
             <div className="text-muted-foreground">
               <span className="font-medium text-foreground">Since:</span>{" "}
-              {tenant?.leaseStartDate
-                ? new Date(tenant.leaseStartDate).toDateString()
+              {tenant?.leaseStartDateNepali
+                ? tenant?.leaseStartDateNepali
                 : "—"}
             </div>
           </CardDescription>

@@ -1,5 +1,5 @@
 /**
- * useTenantForm.js  (FIXED)
+ * useTenantForm.js
  *
  * FIX 1 - Added sdPaymentMethod, sdBankAccountId, sdBankAccountCode.
  *   sdPaymentMethod is separate from paymentMethod (rent) because:
@@ -7,6 +7,15 @@
  *     - BANK_GUARANTEE is only valid for the security deposit, never for rent
  *
  * FIX 2 - tdsPercentage default is "10" to match the backend default.
+ *
+ * FIX 3 - Added Nepali (BS) date fields for every date field.
+ *   The backend needs these to correctly compute escalation schedules,
+ *   rent quarters, and all Nepali-calendar-aware logic. Without them,
+ *   the backend was silently falling back to AD-derived Nepali dates
+ *   which can be off by a day at month boundaries due to BS/AD misalignment.
+ *
+ *   Naming convention:  <fieldName>Nepali  (e.g. leaseStartDateNepali)
+ *   Format:             "YYYY-MM-DD" (BS)
  */
 
 import { useState } from "react";
@@ -30,13 +39,22 @@ const INITIAL_VALUES = {
   innerBlock: "",
   unitNumber: [],
 
-  // Lease
+  // Lease — AD (English) dates
   leaseStartDate: "",
   leaseEndDate: "",
   dateOfAgreementSigned: "",
   keyHandoverDate: "",
   spaceHandoverDate: "",
   spaceReturnedDate: "",
+
+  // Lease — BS (Nepali) counterparts  ← NEW
+  leaseStartDateNepali: "",
+  leaseEndDateNepali: "",
+  dateOfAgreementSignedNepali: "",
+  keyHandoverDateNepali: "",
+  spaceHandoverDateNepali: "",
+  spaceReturnedDateNepali: "",
+
   rentPaymentFrequency: "",
 
   // Documents
@@ -48,7 +66,7 @@ const INITIAL_VALUES = {
   tdsPercentage: "10", // matches backend default
 
   // Rent payment method: cash | bank_transfer | cheque | mobile_wallet
-  // BANK_GUARANTEE is NOT valid here
+  // BANK_GUARANTEE is NOT valid here — it only applies to the security deposit
   paymentMethod: "",
   chequeAmount: "",
   chequeNumber: "",
