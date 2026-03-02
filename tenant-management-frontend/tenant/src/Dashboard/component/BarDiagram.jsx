@@ -1,56 +1,50 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    Tooltip,
-    ResponsiveContainer,
-    Cell,
+    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import { NEPALI_MONTH_NAMES, getCurrentNepaliMonth } from '../../../utils/nepaliDate';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const MUTED_FILL = '#cbd5e1';   // slate-300
-const HIGHLIGHT_FILL = '#9a3412';   // orange-800
+const MUTED_FILL = '#cbd5e1'; // slate-300
+const HIGHLIGHT_FILL = '#9a3412'; // orange-800
 
-/** Short labels derived from the shared constant — single source of truth */
 const MONTH_SHORT_NAMES = NEPALI_MONTH_NAMES.map((n) => n.slice(0, 3));
 
 // ─── Data normalisation ───────────────────────────────────────────────────────
 
 /**
- * Always returns exactly 12 entries, one per Nepali month.
- * Items missing from the source array get revenue = 0.
+ * The hook guarantees revenueThisYear / revenueLastYear as 12-entry arrays:
+ *   [{ month: 1-12, name: string, total: number }]
+ *
+ * We map them to the chart shape here. Any item with total === 0 is "empty"
+ * (no data recorded) and rendered as a dashed bar.
  */
-function buildFullYearData(items, currentMonth, highlightCurrent) {
-    const lookup = new Map();
-    if (Array.isArray(items)) {
-        items.forEach((item) => {
-            if (item.month != null) {
-                lookup.set(item.month, Number(item.revenue ?? item.value ?? item.total ?? 0) || 0);
-            }
+function buildChartData(items, currentMonth, highlightCurrent) {
+    if (!Array.isArray(items) || items.length === 0) return [];
+
+    // If items already have a month field, map directly (guaranteed shape from hook)
+    const hasMonthField = items.some((it) => it.month != null);
+
+    if (hasMonthField) {
+        // Build a lookup so we can zero-fill any gaps the hook may have left
+        const lookup = new Map(items.map((it) => [it.month, it]));
+        return MONTH_SHORT_NAMES.map((shortName, i) => {
+            const monthNum = i + 1;
+            const item = lookup.get(monthNum);
+            const revenue = Number(item?.total ?? item?.revenue ?? 0) || 0;
+            return {
+                name: shortName,
+                month: monthNum,
+                revenue,
+                isEmpty: revenue === 0,
+                isHighlighted: highlightCurrent && monthNum === currentMonth,
+            };
         });
     }
 
-    return MONTH_SHORT_NAMES.map((name, i) => {
-        const monthNum = i + 1;
-        const revenue = lookup.get(monthNum) ?? 0;
-        return {
-            name,
-            month: monthNum,
-            revenue,
-            isEmpty: revenue === 0,
-            isHighlighted: highlightCurrent ? monthNum === currentMonth : false,
-        };
-    });
-}
-
-/** Fallback for APIs that return items without a numeric month field. */
-function normalizeGenericData(items, currentMonth, highlightCurrent) {
-    if (!Array.isArray(items) || items.length === 0) return [];
+    // Generic fallback for any shape that doesn't include month numbers
     return items.map((item) => {
         const revenue = Number(item.revenue ?? item.value ?? item.total ?? 0) || 0;
         return {
@@ -63,14 +57,6 @@ function normalizeGenericData(items, currentMonth, highlightCurrent) {
                 : Boolean(item.isHighlighted),
         };
     });
-}
-
-function normalizeChartData(items, currentMonth, highlightCurrent = false) {
-    if (!Array.isArray(items) || items.length === 0) return [];
-    const hasMonthNumbers = items.some((it) => it.month != null);
-    return hasMonthNumbers
-        ? buildFullYearData(items, currentMonth, highlightCurrent)
-        : normalizeGenericData(items, currentMonth, highlightCurrent);
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -110,7 +96,6 @@ function XAxisTick({ x, y, payload, monthlyData }) {
     const point = monthlyData.find((d) => d.name === payload.value);
     const isHighlighted = point?.isHighlighted ?? false;
     const isEmpty = point?.isEmpty ?? false;
-
     return (
         <g transform={`translate(${x},${y})`}>
             <text
@@ -118,11 +103,7 @@ function XAxisTick({ x, y, payload, monthlyData }) {
                 textAnchor="middle"
                 fontSize={10}
                 fontWeight={isHighlighted ? 600 : 400}
-                fill={
-                    isHighlighted ? HIGHLIGHT_FILL
-                        : isEmpty ? '#cbd5e1'
-                            : '#64748b'
-                }
+                fill={isHighlighted ? HIGHLIGHT_FILL : isEmpty ? '#cbd5e1' : '#64748b'}
             >
                 {payload.value}
             </text>
@@ -154,17 +135,18 @@ function EmptyState() {
 export default function BarDiagram({ stats, loading, error }) {
     const [period, setPeriod] = useState('thisYear');
 
-    // Single source of truth — no more useNepaliDate hook that didn't exist
     const currentNepaliMonth = getCurrentNepaliMonth();
 
+    // Hook guarantees revenueThisYear / revenueLastYear; no multi-level fallback needed.
+    // revenueByMonth is kept as a last-resort for legacy API shape compatibility.
     const rawData = period === 'thisYear'
-        ? (stats?.revenueThisYear ?? stats?.revenueTrend ?? stats?.monthlyRevenue ?? stats?.revenueByMonth)
-        : (stats?.revenueLastYear ?? stats?.revenueTrend ?? stats?.monthlyRevenue ?? stats?.revenueByMonth);
+        ? (stats?.revenueThisYear ?? stats?.revenueByMonth ?? [])
+        : (stats?.revenueLastYear ?? stats?.revenueByMonth ?? []);
 
     const highlightCurrent = period === 'thisYear';
-    const monthlyData = normalizeChartData(rawData, currentNepaliMonth, highlightCurrent);
+    const monthlyData = buildChartData(rawData, currentNepaliMonth, highlightCurrent);
 
-    const hasNoData = !rawData || (Array.isArray(rawData) && rawData.length === 0);
+    const hasNoData = monthlyData.length === 0 || monthlyData.every((d) => d.isEmpty);
     const totalRevenue = monthlyData.reduce((s, d) => s + d.revenue, 0);
     const filledMonths = monthlyData.filter((d) => !d.isEmpty).length;
 
@@ -182,7 +164,6 @@ export default function BarDiagram({ stats, loading, error }) {
                     </p>
                 </div>
 
-                {/* Period toggle */}
                 <div className="flex rounded-md border border-input overflow-hidden shrink-0 self-start sm:self-auto">
                     {['thisYear', 'lastYear'].map((p) => (
                         <button
@@ -190,8 +171,8 @@ export default function BarDiagram({ stats, loading, error }) {
                             type="button"
                             onClick={() => setPeriod(p)}
                             className={`px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${period === p
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                                 }`}
                         >
                             {p === 'thisYear' ? 'This Year' : 'Last Year'}
@@ -203,7 +184,6 @@ export default function BarDiagram({ stats, loading, error }) {
             <CardContent>
                 {error && <p className="text-sm text-destructive mb-2">{error}</p>}
 
-                {/* Legend */}
                 {!loading && !hasNoData && (
                     <div className="flex items-center gap-4 mb-3 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1.5">
@@ -237,22 +217,12 @@ export default function BarDiagram({ stats, loading, error }) {
                                     dataKey="name"
                                     axisLine={false}
                                     tickLine={false}
-                                    tick={(props) => (
-                                        <XAxisTick {...props} monthlyData={monthlyData} />
-                                    )}
+                                    tick={(props) => <XAxisTick {...props} monthlyData={monthlyData} />}
                                     interval={0}
                                 />
                                 <YAxis hide />
-                                <Tooltip
-                                    content={<CustomTooltip />}
-                                    cursor={{ fill: '#f1f5f9', radius: 4 }}
-                                />
-                                <Bar
-                                    dataKey="revenue"
-                                    radius={[4, 4, 0, 0]}
-                                    maxBarSize={40}
-                                    minPointSize={3}
-                                >
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9', radius: 4 }} />
+                                <Bar dataKey="revenue" radius={[4, 4, 0, 0]} maxBarSize={40} minPointSize={3}>
                                     {monthlyData.map((entry, index) => (
                                         <Cell
                                             key={index}

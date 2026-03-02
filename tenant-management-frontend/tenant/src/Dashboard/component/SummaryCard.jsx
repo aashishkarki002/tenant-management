@@ -27,11 +27,9 @@ function pct(collected, target) {
 function Skeleton({ className = '' }) {
   return <div className={`animate-pulse rounded bg-white/20 ${className}`} />;
 }
-
 function SkeletonLight({ className = '' }) {
   return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
 }
-
 function SkeletonDanger({ className = '' }) {
   return <div className={`animate-pulse rounded bg-red-200 ${className}`} />;
 }
@@ -39,70 +37,61 @@ function SkeletonDanger({ className = '' }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SummaryCard({ stats, loading, error, onRetry }) {
-  const [collectionView, setCollectionView] = useState('month'); // 'month' | 'year'
+  const [collectionView, setCollectionView] = useState('month');
 
-  // ── Collection ──────────────────────────────────────────────────────────────
+  // ── Revenue / Collection ─────────────────────────────────────────────────
+  // Primary source: rentSummary from backend (all-time totals)
   const rentSummary = stats?.rentSummary ?? {};
   const totalCollected = rentSummary.totalCollected ?? null;
   const target = rentSummary.totalRent ?? null;
   const outstanding = rentSummary.totalOutstanding ?? null;
-  const collectionPct = pct(totalCollected, target);
 
-  const revenueBreakdown = stats?.revenueBreakdown ?? [];
-  const revenueBreakdownThisMonth = stats?.revenueBreakdownThisMonth ?? revenueBreakdown; // fallback to all-time if not available
-  const totalRevenue = stats?.totalRevenue ?? revenueBreakdown.reduce((s, r) => s + r.amount, 0);
-  // Derive totalCollected from this-month breakdown sum when available
-  const thisMonthTotal = revenueBreakdownThisMonth.reduce((s, r) => s + r.amount, 0);
+  // This-month breakdown from revenueBreakdownThisMonth; fall back to all-time
+  const revenueBreakdownThisMonth = stats?.revenueBreakdownThisMonth ?? stats?.revenueBreakdown ?? [];
+  const thisMonthTotal = revenueBreakdownThisMonth.reduce((s, r) => s + (r.amount ?? 0), 0);
+  // Display amount for "Month" view: prefer scoped month total, fall back to all-time collected
   const displayCollected = thisMonthTotal > 0 ? thisMonthTotal : totalCollected;
 
-  // ── YTD scorecard derived from revenueThisYear ────────────────────────────
-  const revenueThisYear = Array.isArray(stats?.revenueThisYear) ? stats.revenueThisYear : [];
+  // ── YTD scorecard (revenueThisYear is guaranteed 12-entry array from hook) ─
+  const revenueThisYear = stats?.revenueThisYear ?? [];
   const currentNpMonth = stats?.npMonth ?? null;
 
-  // Only count months up to and including the current month (past + current)
   const elapsedMonths = revenueThisYear.filter(m => currentNpMonth == null || m.month <= currentNpMonth);
   const ytdCollected = elapsedMonths.reduce((s, m) => s + (m.total ?? 0), 0);
-
-  // Months that had any revenue recorded = "hit" months
   const hitMonths = elapsedMonths.filter(m => (m.total ?? 0) > 0).length;
   const missedMonths = elapsedMonths.length - hitMonths;
   const avgMonthly = elapsedMonths.length > 0 ? ytdCollected / elapsedMonths.length : 0;
-
-  // YTD target = per-month target × elapsed months
-  const monthlyTarget = target != null && elapsedMonths.length > 0 ? target : null;
-  const ytdTarget = monthlyTarget != null ? monthlyTarget * elapsedMonths.length : null;
+  // Prorated YTD target = single-month target × elapsed months
+  const ytdTarget = target != null && elapsedMonths.length > 0 ? target * elapsedMonths.length : null;
   const ytdPct = pct(ytdCollected, ytdTarget);
 
-  // ── Occupancy ───────────────────────────────────────────────────────────────
-  const occupancyRate = stats?.occupancyRate ?? 0;
-  const occupied = stats?.occupiedUnits ?? 0;
-  const totalUnits = stats?.totalUnits ?? 0;
-  const vacant = Math.max(0, totalUnits - occupied);
+  // ── Occupancy — use normalized shape from hook ────────────────────────────
+  const occupancy = stats?.occupancy ?? {};
+  const occupancyRate = occupancy.occupancyRate ?? occupancy.rate ?? 0;
+  const occupied = occupancy.occupiedUnits ?? occupancy.occupied ?? 0;
+  const totalUnits = occupancy.totalUnits ?? occupancy.total ?? 0;
+  const vacant = occupancy.vacantUnits ?? occupancy.vacant ?? Math.max(0, totalUnits - occupied);
 
-  // ── Attention ───────────────────────────────────────────────────────────────
-  const overdueRents = stats?.overdueRents ?? [];
-  const overdueCount = overdueRents.length;
-  const overdueAmount = overdueRents.reduce(
-    (sum, r) => sum + (r.remainingPaisa ?? (r.remaining ?? 0) * 100), 0
-  ) / 100;
-  const maintenanceCount = stats?.maintenanceOpen ?? 0;
-  const maintenanceDetail = stats?.maintenance?.[0]?.title ?? (maintenanceCount > 0 ? `${maintenanceCount} open request${maintenanceCount !== 1 ? 's' : ''}` : 'No open requests');
+  const attention = stats?.attention ?? {};
+  const overdueCount = attention.overdueCount ?? 0;
+  const overdueAmount = attention.overdueAmount ?? 0;
+  const maintenanceCount = attention.maintenanceCount ?? stats?.maintenanceOpen ?? 0;
+  const maintenanceDetail = attention.maintenanceDetail
+    ?? (maintenanceCount > 0 ? `${maintenanceCount} open request${maintenanceCount !== 1 ? 's' : ''}` : 'No open requests');
 
-  // ── Contracts ending soon ───────────────────────────────────────────────────
+  // ── Contracts ending soon ─────────────────────────────────────────────────
   const contractsEndingSoon = stats?.contractsEndingSoon ?? [];
 
   const urgentCount = overdueCount + maintenanceCount;
   const isCritical = urgentCount > 0;
 
-  // ── Error state ─────────────────────────────────────────────────────────────
+  // ── Error state ───────────────────────────────────────────────────────────
   if (error) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 p-4">
         <Card className="md:col-span-3 p-6 border-destructive/50 bg-destructive/5">
           <p className="text-sm text-destructive mb-2">{error}</p>
-          {onRetry && (
-            <Button variant="outline" size="sm" onClick={onRetry}>Retry</Button>
-          )}
+          {onRetry && <Button variant="outline" size="sm" onClick={onRetry}>Retry</Button>}
         </Card>
       </div>
     );
@@ -111,45 +100,36 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-4 px-4 pb-2">
 
-      {/* ── Collection Card with Month/Year Toggle ────────────────────── */}
+      {/* ── Collection Card ───────────────────────────────────────────────── */}
       <Card className="rounded-xl shadow-md w-full bg-orange-800 text-white border-none sm:col-span-2 md:col-span-1">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-xs font-semibold tracking-widest uppercase opacity-80">
             Revenue
           </CardTitle>
           <div className="flex items-center gap-2">
-            {/* Toggle pill */}
             <div className="flex rounded-md overflow-hidden border border-orange-600 text-[11px] font-semibold shrink-0">
-              <button
-                type="button"
-                onClick={() => setCollectionView('month')}
-                className={`px-2.5 py-1 transition-colors ${collectionView === 'month'
-                  ? 'bg-white text-orange-800'
-                  : 'bg-transparent text-orange-200 hover:bg-orange-700'
-                  }`}
-              >
-                Month
-              </button>
-              <button
-                type="button"
-                onClick={() => setCollectionView('year')}
-                className={`px-2.5 py-1 transition-colors ${collectionView === 'year'
-                  ? 'bg-white text-orange-800'
-                  : 'bg-transparent text-orange-200 hover:bg-orange-700'
-                  }`}
-              >
-                Year
-              </button>
+              {['month', 'year'].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setCollectionView(v)}
+                  className={`px-2.5 py-1 transition-colors capitalize ${collectionView === v
+                    ? 'bg-white text-orange-800'
+                    : 'bg-transparent text-orange-200 hover:bg-orange-700'
+                    }`}
+                >
+                  {v === 'month' ? 'Month' : 'Year'}
+                </button>
+              ))}
             </div>
             <div className="rounded-md bg-orange-700/80 p-1.5">
-              {collectionView === 'year' ? (
-                <TrendingUp className="w-4 h-4 text-white" />
-              ) : (
-                <Wallet className="w-4 h-4 text-white" />
-              )}
+              {collectionView === 'year'
+                ? <TrendingUp className="w-4 h-4 text-white" />
+                : <Wallet className="w-4 h-4 text-white" />}
             </div>
           </div>
         </CardHeader>
+
         <CardContent className="space-y-4">
           {loading ? (
             <>
@@ -165,7 +145,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
             <>
               <p className="text-xs text-orange-300 -mb-1">This month's collection</p>
 
-              {/* Revenue line items — scoped to current month */}
+              {/* Revenue line items scoped to current Nepali month */}
               <ul className="space-y-2.5">
                 {revenueBreakdownThisMonth.length > 0 ? revenueBreakdownThisMonth.map((item) => (
                   <li key={item.code} className="flex items-center justify-between gap-2">
@@ -190,7 +170,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 )}
               </ul>
 
-              {/* Divider + Total */}
+              {/* Total + progress */}
               <div className="border-t border-orange-600 pt-2.5 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold uppercase tracking-widest text-orange-300">Total Collected</span>
@@ -232,7 +212,6 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 {`₹${Number(ytdCollected).toLocaleString()}`}
               </p>
 
-              {/* YTD progress vs prorated target */}
               {ytdTarget != null && (
                 <div className="space-y-1">
                   <Progress
@@ -245,7 +224,6 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 </div>
               )}
 
-              {/* Key metrics grid */}
               <div className="grid grid-cols-3 gap-2 border-t border-orange-700 pt-3">
                 <div className="flex flex-col gap-0.5">
                   <p className="text-lg font-bold tabular-nums">{formatAmount(avgMonthly)}</p>
@@ -263,18 +241,16 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 </div>
               </div>
 
-              {/* Per-month collected rows — only elapsed months */}
               <ul className="space-y-1.5 border-t border-orange-700 pt-3 max-h-[120px] overflow-y-auto">
                 {elapsedMonths.map((m) => {
                   const hasData = (m.total ?? 0) > 0;
-                  const isCurrentMonth = m.month === currentNpMonth;
+                  const isCurrent = m.month === currentNpMonth;
                   return (
                     <li key={m.month} className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1.5 min-w-0">
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isCurrentMonth ? 'bg-white' : hasData ? 'bg-green-400' : 'bg-orange-600'
-                          }`} />
-                        <span className={`text-xs truncate ${isCurrentMonth ? 'text-white font-semibold' : 'text-orange-200'}`}>
-                          {m.name}{isCurrentMonth ? ' (now)' : ''}
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isCurrent ? 'bg-white' : hasData ? 'bg-green-400' : 'bg-orange-600'}`} />
+                        <span className={`text-xs truncate ${isCurrent ? 'text-white font-semibold' : 'text-orange-200'}`}>
+                          {m.name}{isCurrent ? ' (now)' : ''}
                         </span>
                       </span>
                       <span className={`text-xs font-medium tabular-nums shrink-0 ${hasData ? 'text-white' : 'text-orange-600'}`}>
@@ -289,7 +265,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
         </CardContent>
       </Card>
 
-      {/* ── Occupancy Rate ────────────────────────────────────────────── */}
+      {/* ── Occupancy Rate ────────────────────────────────────────────────── */}
       <Card className="rounded-xl shadow-md w-full bg-white text-gray-900 border border-gray-100">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-xs font-semibold tracking-widest uppercase text-gray-500">
@@ -320,22 +296,19 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 className="h-2 w-full bg-gray-100 *:data-[slot=progress-indicator]:bg-orange-800"
               />
               <div className="flex items-center justify-between pt-1">
-                <Badge className={`text-xs border ${occupancyRate >= 80
-                  ? 'text-green-700 bg-green-50 border-green-300'
-                  : occupancyRate >= 50
-                    ? 'text-yellow-700 bg-yellow-50 border-yellow-300'
+                <Badge className={`text-xs border ${occupancyRate >= 80 ? 'text-green-700 bg-green-50 border-green-300'
+                  : occupancyRate >= 50 ? 'text-yellow-700 bg-yellow-50 border-yellow-300'
                     : 'text-red-700 bg-red-50 border-red-300'
                   }`}>
                   {occupancyRate >= 80 ? 'Stable' : occupancyRate >= 50 ? 'Moderate' : 'Low'}
                 </Badge>
-                <Link to="/units">
+                <Link to="/dashboard/units">
                   <Button className="text-xs font-medium text-orange-800 hover:underline bg-white border border-gray-200 hover:bg-orange-50 cursor-pointer h-8 px-3">
                     View All Units
                   </Button>
                 </Link>
               </div>
 
-              {/* Contracts ending soon — contextual nudge in occupancy card */}
               {contractsEndingSoon.length > 0 && (
                 <div className="border-t border-gray-100 pt-3 mt-1">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
@@ -345,11 +318,9 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                     {contractsEndingSoon.slice(0, 2).map((c, i) => (
                       <li key={c._id ?? i} className="flex items-center justify-between">
                         <span className="text-xs text-gray-700 truncate">{c.name}</span>
-                        <span className={`text-xs font-semibold shrink-0 ml-2 px-1.5 py-0.5 rounded-full ${c.daysUntilEnd <= 7
-                            ? 'bg-red-50 text-red-600'
-                            : c.daysUntilEnd <= 14
-                              ? 'bg-amber-50 text-amber-600'
-                              : 'bg-gray-50 text-gray-500'
+                        <span className={`text-xs font-semibold shrink-0 ml-2 px-1.5 py-0.5 rounded-full ${c.daysUntilEnd <= 7 ? 'bg-red-50 text-red-600'
+                          : c.daysUntilEnd <= 14 ? 'bg-amber-50 text-amber-600'
+                            : 'bg-gray-50 text-gray-500'
                           }`}>
                           {c.daysUntilEnd}d
                         </span>
@@ -363,7 +334,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
         </CardContent>
       </Card>
 
-      {/* ── Attention Needed ──────────────────────────────────────────── */}
+      {/* ── Attention Needed ──────────────────────────────────────────────── */}
       <Card className={`rounded-xl shadow-md w-full border transition-all duration-300 ${isCritical
         ? 'border-red-300 bg-gradient-to-br from-red-50 to-orange-50 ring-2 ring-red-200 ring-offset-1'
         : 'bg-white border-gray-100'
@@ -371,12 +342,9 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div className="flex items-center gap-2">
             {isCritical && (
-              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" style={{
-                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-              }} />
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
             )}
-            <CardTitle className={`text-xs font-semibold tracking-widest uppercase ${isCritical ? 'text-red-700' : 'text-gray-500'
-              }`}>
+            <CardTitle className={`text-xs font-semibold tracking-widest uppercase ${isCritical ? 'text-red-700' : 'text-gray-500'}`}>
               Attention Needed
             </CardTitle>
           </div>
@@ -395,17 +363,16 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
             </div>
           ) : (
             <>
-              {/* Overdue Payments Row */}
+              {/* Overdue Payments */}
               <Link
-                to="/rent-payment"
+                to="/dashboard/transactions"
                 className={`flex items-center justify-between rounded-lg p-3 transition-all group ${overdueCount > 0
                   ? 'bg-red-500 text-white hover:bg-red-600 shadow-sm shadow-red-200'
                   : 'border border-gray-100 bg-white text-gray-700 hover:bg-gray-50'
                   }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`rounded-full p-1.5 shrink-0 ${overdueCount > 0 ? 'bg-red-400/50' : 'bg-gray-100'
-                    }`}>
+                  <div className={`rounded-full p-1.5 shrink-0 ${overdueCount > 0 ? 'bg-red-400/50' : 'bg-gray-100'}`}>
                     <AlertCircle className={`w-4 h-4 ${overdueCount > 0 ? 'text-white' : 'text-gray-400'}`} />
                   </div>
                   <div className="text-left">
@@ -422,7 +389,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 <ChevronRight className={`w-4 h-4 shrink-0 ${overdueCount > 0 ? 'text-red-200' : 'text-gray-400'} group-hover:translate-x-0.5 transition-transform`} />
               </Link>
 
-              {/* Maintenance Requests Row */}
+              {/* Maintenance Requests */}
               <Link
                 to="/maintenance"
                 className={`flex items-center justify-between rounded-lg p-3 transition-all group ${maintenanceCount > 0
@@ -431,8 +398,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                   }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`rounded-full p-1.5 shrink-0 ${maintenanceCount > 0 ? 'bg-orange-700/50' : 'bg-gray-100'
-                    }`}>
+                  <div className={`rounded-full p-1.5 shrink-0 ${maintenanceCount > 0 ? 'bg-orange-700/50' : 'bg-gray-100'}`}>
                     <Wrench className={`w-4 h-4 ${maintenanceCount > 0 ? 'text-white' : 'text-gray-400'}`} />
                   </div>
                   <div className="text-left">
@@ -449,8 +415,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
 
               <Link
                 to="/maintenance"
-                className={`inline-flex items-center text-xs font-semibold hover:underline pt-1 ${isCritical ? 'text-red-700' : 'text-orange-800'
-                  }`}
+                className={`inline-flex items-center text-xs font-semibold hover:underline pt-1 ${isCritical ? 'text-red-700' : 'text-orange-800'}`}
               >
                 Go to Action Center
                 <ChevronRight className="w-3.5 h-3.5 ml-0.5" />

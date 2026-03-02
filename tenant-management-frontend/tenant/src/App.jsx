@@ -24,6 +24,7 @@ import BroadCast from "./BroadCast";
 import Submeter from "./submeter/Submeter";
 import Generator from "./Generators/Generator";
 import { setupSwMessageListener } from "./hooks/usePushNotification";
+import Units from "./units/units";
 import api from "../plugins/axios";
 
 function TenantDetailRedirect() {
@@ -148,6 +149,10 @@ export default function App() {
       <Route
         path="/maintenance/generator"
         element={<ProtectedRoutes><Generator /></ProtectedRoutes>}
+      />
+      <Route
+        path="/dashboard/units"
+        element={<ProtectedRoutes><Units /></ProtectedRoutes>}
       />
     </Routes>
   );

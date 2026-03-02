@@ -82,6 +82,9 @@ function daysLabel(d) {
 // ─── Data normalisers ─────────────────────────────────────────────────────────
 
 function normalizeActivities(stats) {
+  // Backend produces stats.recentActivity (TX_TYPE_MAP in dashboard.service.js).
+  // Each item: { id, type, mainText, sub, amount, time }
+  // We check all known key names for resilience.
   const raw = stats?.recentActivity ?? stats?.recentActivities ?? stats?.activities;
   if (!Array.isArray(raw) || raw.length === 0) return [];
   return raw.map((item, i) => {
@@ -102,12 +105,20 @@ function normalizeUpcomingRents(stats) {
     tenantName: r.tenant?.name ?? r.tenantName ?? '—',
     propertyName: r.property?.name ?? r.propertyName ?? '',
     dueDate: r.nepaliDueDate ? formatNepaliDate(r.nepaliDueDate) : '',
+    // FIX: backend returns remainingPaisa (unpaid balance), not rentAmountPaisa
     amount: r.remainingPaisa != null ? r.remainingPaisa / 100 : (r.remaining ?? r.rentAmount ?? null),
   }));
 }
 
 function normalizeUpcomingMaintenance(stats) {
-  return (stats?.upcomingMaintenance ?? []).map((m, i) => ({
+  // Primary source: upcomingMaintenance (OPEN/IN_PROGRESS tasks due this Nepali month).
+  // Fallback: top-3 open maintenance list (always present on the dashboard response).
+  // This means the tab is never empty just because scheduledDate was outside the UTC window.
+  const primary = stats?.upcomingMaintenance;
+  const fallback = stats?.maintenance ?? [];
+  const source = Array.isArray(primary) && primary.length > 0 ? primary : fallback;
+
+  return source.map((m, i) => ({
     id: m._id ?? i,
     title: m.title ?? 'Maintenance',
     priority: m.priority,
@@ -306,8 +317,8 @@ function SubTab({ active, onClick, children }) {
       type="button"
       onClick={onClick}
       className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${active
-          ? 'bg-orange-800 text-white'
-          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+        ? 'bg-orange-800 text-white'
+        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
         }`}
     >
       {children}
@@ -318,10 +329,8 @@ function SubTab({ active, onClick, children }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function RecentActivities({ stats, loading, error }) {
-  // top-level tabs
-  const [tab, setTab] = useState('activity'); // 'activity' | 'upcoming'
-  // sub-tabs inside 'upcoming'
-  const [upcomingTab, setUpcomingTab] = useState('rents'); // 'rents' | 'maintenance' | 'generators'
+  const [tab, setTab] = useState('activity');
+  const [upcomingTab, setUpcomingTab] = useState('rents');
 
   const activities = normalizeActivities(stats);
   const upcomingRents = normalizeUpcomingRents(stats);
@@ -336,7 +345,6 @@ export default function RecentActivities({ stats, loading, error }) {
         <CardTitle className="text-base font-semibold text-gray-900">Activity</CardTitle>
 
         <div className="flex items-center gap-3">
-          {/* Top-level tab toggle */}
           <div className="flex rounded-md border border-gray-200 overflow-hidden text-[11px] font-semibold">
             <button
               type="button"
@@ -421,7 +429,6 @@ export default function RecentActivities({ stats, loading, error }) {
         {/* ── Upcoming Tab ─────────────────────────────────────────── */}
         {tab === 'upcoming' && (
           <>
-            {/* Sub-tab pills */}
             <div className="flex items-center gap-2 mb-4">
               <SubTab active={upcomingTab === 'rents'} onClick={() => setUpcomingTab('rents')}>
                 Rents{upcomingRents.length > 0 ? ` (${upcomingRents.length})` : ''}
@@ -434,7 +441,6 @@ export default function RecentActivities({ stats, loading, error }) {
               </SubTab>
             </div>
 
-            {/* Rents */}
             {upcomingTab === 'rents' && (
               loading ? <CardSkeleton /> :
                 upcomingRents.length === 0 ? (
@@ -446,11 +452,10 @@ export default function RecentActivities({ stats, loading, error }) {
                 )
             )}
 
-            {/* Maintenance */}
             {upcomingTab === 'maintenance' && (
               loading ? <CardSkeleton /> :
                 upcomingMaintenance.length === 0 ? (
-                  <Empty icon={Wrench} message="No upcoming maintenance tasks" />
+                  <Empty icon={Wrench} message="No open maintenance tasks" />
                 ) : (
                   <div className="space-y-2">
                     {upcomingMaintenance.map((task) => <MaintenanceRow key={task.id} task={task} />)}
@@ -458,7 +463,6 @@ export default function RecentActivities({ stats, loading, error }) {
                 )
             )}
 
-            {/* Generators */}
             {upcomingTab === 'generators' && (
               loading ? <CardSkeleton /> :
                 generators.length === 0 ? (

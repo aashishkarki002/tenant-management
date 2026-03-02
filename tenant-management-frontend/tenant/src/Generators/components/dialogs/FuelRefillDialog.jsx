@@ -3,10 +3,29 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select, SelectTrigger, SelectValue,
+    SelectContent, SelectItem,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import api from "../../../../plugins/axios";
 import DualCalendarTailwind from "../../../components/dualDate";
 import { fmt } from "../../constants/constant";
+import { PAYMENT_METHODS } from "../../../Tenant/addTenant/constants/tenant.constant.js";
+
+/** Payment options for generator: cash, bank_transfer, cheque (same as expense recording) */
+const PAYMENT_OPTIONS = [
+    { value: PAYMENT_METHODS.CASH, label: "Cash" },
+    { value: PAYMENT_METHODS.BANK_TRANSFER, label: "Bank Transfer" },
+    { value: PAYMENT_METHODS.CHEQUE, label: "Cheque" },
+];
+
+function parseNepaliDateStr(nepaliStr) {
+    if (!nepaliStr || typeof nepaliStr !== "string") return null;
+    const parts = nepaliStr.trim().split("-").map(Number);
+    if (parts.length < 3) return null;
+    return { year: parts[0], month: parts[1], day: parts[2] };
+}
 
 const EMPTY = {
     liters: "",
@@ -16,10 +35,11 @@ const EMPTY = {
     invoiceRef: "",
     notes: "",
     // ── Accounting fields (required by backend when cost > 0) ──
+    englishDate: "",
     nepaliDate: "",
     nepaliMonth: "",
     nepaliYear: "",
-    paymentMethod: "bank_transfer",
+    paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
     bankAccountId: "",
 };
 
@@ -42,6 +62,9 @@ export function FuelRefillDialog({ gen, open, onClose, onDone, bankAccounts = []
     const handleClose = () => { reset(); onClose(); };
 
     const hasCost = !!form.cost && Number(form.cost) > 0;
+    const needsBank =
+        form.paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
+        form.paymentMethod === PAYMENT_METHODS.CHEQUE;
 
     const validate = () => {
         if (!form.liters || Number(form.liters) <= 0) {
@@ -51,6 +74,9 @@ export function FuelRefillDialog({ gen, open, onClose, onDone, bankAccounts = []
             if (!form.nepaliDate) { toast.error("Nepali date is required when cost is provided"); return false; }
             if (!form.nepaliMonth) { toast.error("Nepali month is required when cost is provided"); return false; }
             if (!form.nepaliYear) { toast.error("Nepali year is required when cost is provided"); return false; }
+            if (needsBank && !form.bankAccountId) {
+                toast.error("Please select a bank account for this payment method"); return false;
+            }
         }
         return true;
     };
@@ -166,12 +192,73 @@ export function FuelRefillDialog({ gen, open, onClose, onDone, bankAccounts = []
                         />
                     </div>
 
-                    {/* ── Accounting fields — shown always but required only when hasCost ── */}
-                    <DualCalendarTailwind
-                        value={form.nepaliDate}
-                        onChange={date => patch({ nepaliDate: date })}
-                        required={hasCost}
-                    />
+                    {/* ── Accounting: Nepali date + payment method + bank (same as expense) ── */}
+                    {hasCost && (
+                        <>
+                            <div className="pt-2 border-t border-dashed border-gray-200">
+                                <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold mb-2">
+                                    Accounting <span className="text-red-400">*</span>
+                                </p>
+                                <div className="space-y-2 mb-3">
+                                    <Label>Date (Nepali)</Label>
+                                    <DualCalendarTailwind
+                                        value={form.englishDate}
+                                        onChange={(englishDate, nepaliDateStr) => {
+                                            const parsed = parseNepaliDateStr(nepaliDateStr);
+                                            patch({
+                                                englishDate: englishDate || "",
+                                                nepaliDate: nepaliDateStr || "",
+                                                nepaliMonth: parsed ? parsed.month : "",
+                                                nepaliYear: parsed ? parsed.year : "",
+                                            });
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="space-y-2 mb-3">
+                                    <Label>Payment Method</Label>
+                                    <Select
+                                        value={form.paymentMethod || PAYMENT_METHODS.BANK_TRANSFER}
+                                        onValueChange={v => patch({ paymentMethod: v, bankAccountId: "" })}
+                                    >
+                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {PAYMENT_OPTIONS.map(m => (
+                                                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {needsBank && (
+                                    <div className="space-y-2">
+                                        <Label>Bank Account</Label>
+                                        {bankAccounts.length === 0 ? (
+                                            <p className="text-xs text-amber-600 mt-1 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                                No bank accounts. Add one in Settings or use Cash.
+                                            </p>
+                                        ) : (
+                                            <Select
+                                                value={form.bankAccountId || ""}
+                                                onValueChange={v => patch({ bankAccountId: v })}
+                                            >
+                                                <SelectTrigger className="mt-1">
+                                                    <SelectValue placeholder="Select bank account" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {bankAccounts.map(b => (
+                                                        <SelectItem key={b._id} value={b._id}>
+                                                            {b.bankName ?? b.name} {b.accountNumber ? `****${String(b.accountNumber).slice(-4)}` : ""}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 <DialogFooter>

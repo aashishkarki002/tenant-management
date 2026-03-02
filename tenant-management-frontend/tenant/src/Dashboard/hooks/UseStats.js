@@ -3,14 +3,19 @@ import api from "../../../plugins/axios";
 
 /**
  * Normalizes the dashboard-stats API response into the shape expected by dashboard components.
- * API shape: totalTenants, activeTenants, totalUnits, occupiedUnits, occupancyRate,
- * rentSummary: { totalCollected, totalRent, totalOutstanding }, totalRevenue,
- * overdueRents[], upcomingRents[], maintenance[], contractsEndingSoon[]
+ *
+ * KEY RULE: The backend already produces a well-shaped `recentActivity` array via the
+ * Transaction ledger (TX_TYPE_MAP). We pass it through directly instead of building a
+ * synthetic list from overdueRents / maintenance — those are different data concerns
+ * surfaced in their own sections (UpcomingRents, MaintenanceCard, etc.).
+ *
+ * Industry pattern: "normalize at the boundary, don't re-derive what the server already computed."
  */
 function normalizeDashboardStats(raw) {
   if (!raw) return null;
+
   const rentSummary = raw.rentSummary ?? {};
-  const totalCollected = rentSummary.totalCollected ?? raw.totalRevenue ?? 0;
+  const totalCollected = rentSummary.totalCollected ?? 0;
   const totalRent = rentSummary.totalRent ?? 0;
   const totalOutstanding = rentSummary.totalOutstanding ?? 0;
 
@@ -18,68 +23,38 @@ function normalizeDashboardStats(raw) {
   const openMaintenance = maintenanceList.filter(
     (m) => (m.status || "").toUpperCase() === "OPEN",
   );
+
   const overdueRents = Array.isArray(raw.overdueRents) ? raw.overdueRents : [];
-  const overdueAmount = overdueRents.reduce(
-    (sum, r) => sum + (Number(r.amount) || Number(r.amountPaisa) / 100 || 0),
-    0,
-  );
+
+  // FIX: Backend returns remainingPaisa (unpaid balance), not amount/amountPaisa
+  // (which is the total charge). Always sum the *remaining* balance for the
+  // outstanding-amount widget.
+  const overdueAmount = overdueRents.reduce((sum, r) => {
+    if (r.remainingPaisa != null) return sum + r.remainingPaisa / 100;
+    if (r.remaining != null) return sum + Number(r.remaining);
+    return sum;
+  }, 0);
 
   const firstMaintenance = openMaintenance[0] || maintenanceList[0];
-  const formatDate = (d) => {
-    if (!d) return "";
-    const date = new Date(d);
-    return date.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  };
 
-  const recentActivities = [];
-  overdueRents.slice(0, 3).forEach((r, i) => {
-    const date = r.dueDate ? new Date(r.dueDate).getTime() : 0;
-    recentActivities.push({
-      id: `overdue-${i}`,
-      type: "payment",
-      mainText: r.tenantName ? `Overdue: ${r.tenantName}` : "Overdue payment",
-      details: r.dueDate
-        ? `Due ${formatDate(r.dueDate)}`
-        : r.amount
-          ? `₹${Number(r.amount).toLocaleString()}`
-          : "",
-      _sort: date,
-    });
-  });
-  maintenanceList.slice(0, 5).forEach((m, i) => {
-    const date = m.createdAt ? new Date(m.createdAt).getTime() : 0;
-    recentActivities.push({
-      id: m._id || `m-${i}`,
-      type: "maintenance",
-      mainText: m.title || "Maintenance",
-      details: m.scheduledDate
-        ? formatDate(m.scheduledDate)
-        : (m.description || "").slice(0, 40),
-      _sort: date,
-    });
-  });
-  (raw.upcomingRents || []).slice(0, 2).forEach((r, i) => {
-    const date = r.dueDate ? new Date(r.dueDate).getTime() : 0;
-    recentActivities.push({
-      id: `upcoming-${i}`,
-      type: "rent",
-      mainText: r.tenantName ? `Upcoming: ${r.tenantName}` : "Upcoming rent",
-      details: r.dueDate ? `Due ${formatDate(r.dueDate)}` : "",
-      _sort: date,
-    });
-  });
-  recentActivities.sort((a, b) => (b._sort || 0) - (a._sort || 0));
-  const recentActivitiesSlice = recentActivities
-    .slice(0, 8)
-    .map(({ _sort, ...a }) => a);
+  // ── Recent activity ───────────────────────────────────────────────────────
+  // Use the backend-produced recentActivity array (shaped by TX_TYPE_MAP in
+  // dashboard.service.js). Each item already has: { id, type, mainText, sub,
+  // amount, time }. RecentActivities.jsx reads stats.recentActivity directly
+  // via the `normalizeActivities` helper which checks this key first.
+  //
+  // We keep the legacy `recentActivities` key populated for any other
+  // consumers that may still reference it, but we no longer synthesise it
+  // from overdueRents — that was mixing two separate concerns.
+  const recentActivity = Array.isArray(raw.recentActivity)
+    ? raw.recentActivity
+    : [];
 
   return {
+    // ── Spread all raw fields first so nothing is lost ──────────────────
     ...raw,
 
+    // ── Re-shaped nested objects used by SummaryCard / CollectionCard ───
     collection: {
       totalCollected,
       target: totalRent,
@@ -111,9 +86,15 @@ function normalizeDashboardStats(raw) {
       maintenanceDetail: firstMaintenance?.title ?? "—",
     },
 
+    // ── Flat aliases kept for legacy component consumers ─────────────────
     openRequests: openMaintenance.length,
     activeTenants: raw.activeTenants ?? 0,
-    recentActivities: recentActivitiesSlice,
+
+    // ── Activity feed — backend-produced, passed through unchanged ───────
+    recentActivity,
+    recentActivities: recentActivity, // legacy alias
+
+    // ── Lists — passed through with safe fallbacks ────────────────────────
     maintenance: maintenanceList,
     upcomingMaintenance: Array.isArray(raw.upcomingMaintenance)
       ? raw.upcomingMaintenance
@@ -121,8 +102,14 @@ function normalizeDashboardStats(raw) {
     generatorsDueService: Array.isArray(raw.generatorsDueService)
       ? raw.generatorsDueService
       : [],
+    upcomingRents: Array.isArray(raw.upcomingRents) ? raw.upcomingRents : [],
+    overdueRents,
+    contractsEndingSoon: Array.isArray(raw.contractsEndingSoon)
+      ? raw.contractsEndingSoon
+      : [],
   };
 }
+
 /**
  * Fetches dashboard stats from GET /api/payment/dashboard-stats.
  *

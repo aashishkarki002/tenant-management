@@ -1,9 +1,3 @@
-/**
- * GeneratorSummary
- *
- * Props:
- *   generators  {Array}  — full list of generator documents
- */
 export function GeneratorSummary({ generators }) {
     const total = generators.length;
     const faultCount = generators.filter(g => g.status === "FAULT").length;
@@ -21,10 +15,10 @@ export function GeneratorSummary({ generators }) {
     ];
 
     return (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             {tiles.map(({ label, value, color, bg }) => (
-                <div key={label} className={`${bg} border rounded-xl px-4 py-3 flex flex-col`}>
-                    <span className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">{label}</span>
+                <div key={label} className={`${bg} border rounded-xl px-3 sm:px-4 py-3 flex flex-col`}>
+                    <span className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold leading-tight">{label}</span>
                     <span className={`text-2xl font-bold mt-1 ${color}`}>{value}</span>
                 </div>
             ))}

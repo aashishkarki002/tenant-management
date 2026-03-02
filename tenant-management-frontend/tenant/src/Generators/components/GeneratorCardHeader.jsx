@@ -5,69 +5,94 @@ import { Pill } from "../shared/Pill";
 import { StatusDot } from "../shared/StatusDot";
 import { GEN_STATUS_STYLE } from "../constants/constant";
 
-/**
- * GeneratorCardHeader
- *
- * Props:
- *   gen            {object}
- *   onCheckClick   {()=>void}
- *   onRefillClick  {()=>void}
- *   onServiceClick {()=>void}
- *   expandToggle   {ReactNode}  — the chevron button rendered by the card
- */
+
+
 export function GeneratorCardHeader({ gen, onCheckClick, onRefillClick, onServiceClick, expandToggle }) {
     const statusStyle = GEN_STATUS_STYLE[gen.status] || GEN_STATUS_STYLE.IDLE;
     const fuelPct = gen.currentFuelPercent ?? 0;
 
+    const metaChips = [
+        gen.model,
+        gen.capacityKva ? `${gen.capacityKva} kVA` : null,
+        gen.fuelType,
+        gen.tankCapacityLiters ? `Tank ${gen.tankCapacityLiters}L` : null,
+        gen.serialNumber ? `S/N ${gen.serialNumber}` : null,
+        gen.property?.name,
+    ].filter(Boolean);
+
     return (
-        <div className="flex items-center gap-3 px-4 py-3 sm:px-5 sm:py-4 flex-wrap sm:flex-nowrap">
-            {/* Icon */}
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${statusStyle.pill}`}>
-                <Zap className="w-4 h-4" />
-            </div>
+        <div className="px-3 py-3 sm:px-5 sm:py-4">
 
-            {/* Name + meta */}
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-sm text-gray-900 truncate">{gen.name}</h3>
-                    <Pill className={statusStyle.pill}>
-                        <StatusDot status={gen.status} />
-                        {gen.status?.replace(/_/g, " ")}
-                    </Pill>
+            {/* Top row: always visible */}
+            <div className="flex items-center gap-2.5 sm:gap-3">
+
+                {/* Status icon */}
+                <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${statusStyle.pill}`}>
+                    <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-gray-400">
-                    {gen.model && <span>{gen.model}</span>}
-                    {gen.capacityKva && <span>{gen.capacityKva} kVA</span>}
-                    {gen.fuelType && <span>{gen.fuelType}</span>}
-                    {gen.tankCapacityLiters && <span>Tank {gen.tankCapacityLiters}L</span>}
-                    {gen.serialNumber && <span>S/N {gen.serialNumber}</span>}
-                    {gen.property?.name && <span>{gen.property.name}</span>}
+
+                {/* Name + pill + (desktop) meta */}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="font-bold text-sm text-gray-900 truncate leading-tight">{gen.name}</h3>
+                        <Pill className={statusStyle.pill}>
+                            <StatusDot status={gen.status} />
+                            {gen.status?.replace(/_/g, " ")}
+                        </Pill>
+                    </div>
+                    {/* Meta: desktop only */}
+                    {metaChips.length > 0 && (
+                        <div className="hidden sm:flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-gray-400">
+                            {metaChips.map((chip, i) => <span key={i}>{chip}</span>)}
+                        </div>
+                    )}
+                </div>
+
+                {/* Desktop: gauge + 3 action buttons column */}
+                <div className="hidden sm:flex items-center gap-3">
+                    <FuelGauge pct={fuelPct} size={76} />
+                    <div className="flex flex-col gap-1.5">
+                        {[
+                            { label: "Check", icon: <BarChart3 className="w-3.5 h-3.5" />, onClick: onCheckClick, cls: "border-blue-200 text-blue-600 hover:bg-blue-50 active:bg-blue-100" },
+                            { label: "Refill", icon: <Fuel className="w-3.5 h-3.5" />, onClick: onRefillClick, cls: "border-orange-200 text-orange-600 hover:bg-orange-50 active:bg-orange-100" },
+                            { label: "Service", icon: <Wrench className="w-3.5 h-3.5" />, onClick: onServiceClick, cls: "border-purple-200 text-purple-600 hover:bg-purple-50 active:bg-purple-100" },
+                        ].map(({ label, icon, onClick, cls }) => (
+                            <button key={label} onClick={onClick}
+                                className={`flex items-center gap-1.5 text-xs h-7 px-2.5 rounded-md border transition-colors font-medium ${cls}`}>
+                                {icon} {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Expand chevron */}
+                {expandToggle}
+            </div>
+
+            {/* Mobile: meta chips */}
+            {metaChips.length > 0 && (
+                <div className="flex sm:hidden flex-wrap gap-x-2.5 gap-y-0.5 mt-1.5 pl-[42px] text-[11px] text-gray-400">
+                    {metaChips.map((chip, i) => <span key={i}>{chip}</span>)}
+                </div>
+            )}
+
+            {/* Mobile: gauge + 3 action buttons row */}
+            <div className="flex sm:hidden items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                <FuelGauge pct={fuelPct} size={70} />
+                <div className="flex gap-2 flex-1">
+                    {[
+                        { label: "Check", icon: <BarChart3 className="w-4 h-4" />, onClick: onCheckClick, cls: "border-blue-200 text-blue-600 hover:bg-blue-50 active:bg-blue-100" },
+                        { label: "Refill", icon: <Fuel className="w-4 h-4" />, onClick: onRefillClick, cls: "border-orange-200 text-orange-600 hover:bg-orange-50 active:bg-orange-100" },
+                        { label: "Service", icon: <Wrench className="w-4 h-4" />, onClick: onServiceClick, cls: "border-purple-200 text-purple-600 hover:bg-purple-50 active:bg-purple-100" },
+                    ].map(({ label, icon, onClick, cls }) => (
+                        <button key={label} onClick={onClick}
+                            className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border transition-colors ${cls}`}>
+                            {icon}
+                            <span className="text-[10px] font-semibold leading-none">{label}</span>
+                        </button>
+                    ))}
                 </div>
             </div>
-
-            {/* Gauge */}
-            <FuelGauge pct={fuelPct} size={80} />
-
-            {/* Action buttons */}
-            <div className="flex sm:flex-col gap-1.5 shrink-0">
-                <Button size="sm" variant="outline" onClick={onCheckClick}
-                    className="text-xs h-7 gap-1 border-blue-200 text-blue-600 hover:bg-blue-50 px-2">
-                    <BarChart3 className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Check</span>
-                </Button>
-                <Button size="sm" variant="outline" onClick={onRefillClick}
-                    className="text-xs h-7 gap-1 border-orange-200 text-orange-600 hover:bg-orange-50 px-2">
-                    <Fuel className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Refill</span>
-                </Button>
-                <Button size="sm" variant="outline" onClick={onServiceClick}
-                    className="text-xs h-7 gap-1 border-purple-200 text-purple-600 hover:bg-purple-50 px-2">
-                    <Wrench className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Service</span>
-                </Button>
-            </div>
-
-            {expandToggle}
         </div>
     );
 }
