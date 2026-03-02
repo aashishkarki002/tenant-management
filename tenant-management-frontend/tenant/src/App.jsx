@@ -51,10 +51,11 @@ export default function App() {
         await api.patch(
           `/api/notification/mark-notification-as-read/${notificationId}`
         );
-        // Tell Header to flip the local isRead flag → badge count drops now
+        // Tells Header to flip isRead → unreadCount drops → useAppBadge updates badge
         window.dispatchEvent(
           new CustomEvent("notification:read", { detail: notificationId })
         );
+        // ✅ Removed: navigator.setAppBadge — handled automatically by useAppBadge in Header
       } catch (err) {
         console.error("[push] Failed to mark notification as read:", err.message);
       }
