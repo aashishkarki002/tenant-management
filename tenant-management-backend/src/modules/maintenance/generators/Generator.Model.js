@@ -91,7 +91,7 @@ const generatorSchema = new mongoose.Schema(
     },
 
     // Live snapshot — updated on each daily check
-    currentFuelPercent: { type: Number, default: 100, min: 0, max: 100 },
+    currentFuelPercent: { type: Number, default: 0, min: 0, max: 100 }, // ← changed from 100 to 0
     lastCheckedAt: { type: Date },
 
     // Alert thresholds

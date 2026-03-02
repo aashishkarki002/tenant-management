@@ -12,9 +12,25 @@ import {
   assertValidPaymentMethod,
 } from "../../utils/paymentAccountUtils.js";
 
-export async function createExpense(expenseData) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+/**
+ * Create an expense, post a journal transaction, and write ledger entries —
+ * all within a single atomic operation.
+ *
+ * @param {Object}                        expenseData
+ * @param {mongoose.ClientSession|null}   [externalSession]
+ *   Pass an already-open session when the caller owns the transaction
+ *   (e.g. generator service wants both the generator save and the expense
+ *   in the same atomic unit).  When null (default) this function manages
+ *   its own session.
+ */
+export async function createExpense(expenseData, externalSession = null) {
+  // If the caller already has an open session/transaction, join it;
+  // otherwise start our own.
+  const ownsSession = externalSession == null;
+  const session = externalSession ?? (await mongoose.startSession());
+
+  if (ownsSession) session.startTransaction();
+
   try {
     const {
       source,
@@ -56,7 +72,7 @@ export async function createExpense(expenseData) {
       bankAccountCode = bank.accountCode;
     }
 
-    // ✅ Convert to paisa if needed
+    // Convert to paisa if needed
     const finalAmountPaisa =
       amountPaisa !== undefined
         ? amountPaisa
@@ -68,32 +84,33 @@ export async function createExpense(expenseData) {
     if (!expenseSource) {
       throw new Error("Expense source not found");
     }
+
     const existingAdmin = await Admin.findById(createdBy).session(session);
     if (!existingAdmin) {
       throw new Error("Admin not found");
     }
 
-    // Determine which ledger expense account code to use.
-    // Chart of accounts uses numeric codes (1000, 5200, etc.); ExpenseSource codes
-    // (VENDOR, MAINTENANCE, etc.) are categories and must be mapped to real account codes.
+    // Resolve ledger account code
     // Priority:
-    // 1. Explicit expenseCode from the caller
-    // 2. Special mapping for known ExpenseSource codes (e.g. MAINTENANCE → 5000)
-    // 3. Fallback to generic expense account (5200) for all other sources
+    //   1. Explicit expenseCode from the caller
+    //   2. MAINTENANCE source → ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE
+    //   3. Default generic expense account (5200)
     const DEFAULT_EXPENSE_ACCOUNT_CODE = "5200";
     let expenseCodeToUse = expenseCode;
     if (!expenseCodeToUse && expenseSource?.code) {
-      if (expenseSource.code === ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_SOURCE_CODE) {
+      if (
+        expenseSource.code === ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_SOURCE_CODE
+      ) {
         expenseCodeToUse = ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE;
       } else {
-        // VENDOR, SALARY, UTILITY, etc. are not ledger account codes; use default expense account
         expenseCodeToUse = DEFAULT_EXPENSE_ACCOUNT_CODE;
       }
     }
     if (!expenseCodeToUse) {
       expenseCodeToUse = DEFAULT_EXPENSE_ACCOUNT_CODE;
     }
-    // Create expense first so we have an _id for the transaction referenceId
+
+    // Create the expense document
     const [expense] = await Expense.create(
       [
         {
@@ -115,25 +132,38 @@ export async function createExpense(expenseData) {
       ],
       { session },
     );
-    // Record expense in ledger (journal needs paymentMethod and optional bankAccountCode)
+
+    // Build and post the journal entry
     const expenseForJournal = {
       ...expense.toObject(),
       paymentMethod,
     };
-    const expensePayload = buildExpenseJournal(expenseForJournal, bankAccountCode);
+    const expensePayload = buildExpenseJournal(
+      expenseForJournal,
+      bankAccountCode,
+    );
     await ledgerService.postJournalEntry(expensePayload, session);
-    await session.commitTransaction();
-    session.endSession();
+
+    if (ownsSession) {
+      await session.commitTransaction();
+      session.endSession();
+    }
+
     return {
       success: true,
       message: "Expense created successfully",
       data: expense,
     };
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    if (ownsSession) {
+      await session.abortTransaction();
+      session.endSession();
+    }
+    // Re-throw when we don't own the session so the outer transaction
+    // can decide whether to abort.
+    if (!ownsSession) throw error;
 
-    // Handle Mongoose validation errors
+    // Handle Mongoose validation errors gracefully when we own the session
     if (error.name === "ValidationError") {
       const validationErrors = Object.values(error.errors)
         .map((err) => err.message)
@@ -153,7 +183,7 @@ export async function createExpense(expenseData) {
   }
 }
 
-async function getAllExpenses() {
+export async function getAllExpenses() {
   try {
     const expenses = await Expense.find()
       .populate("source")
@@ -169,7 +199,7 @@ async function getAllExpenses() {
   }
 }
 
-async function getExpenseSources() {
+export async function getExpenseSources() {
   try {
     const expenseSource = await ExpenseSource.find({ isActive: true });
     return {
@@ -182,5 +212,3 @@ async function getExpenseSources() {
     throw error;
   }
 }
-
-export { getAllExpenses, getExpenseSources };

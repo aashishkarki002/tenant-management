@@ -8,16 +8,16 @@ export default async function getProperty(req, res) {
           from: "blocks",
           localField: "_id",
           foreignField: "property",
-          as: "blocks"
-        }
+          as: "blocks",
+        },
       },
       {
         $lookup: {
           from: "innerblocks",
           localField: "blocks._id",
           foreignField: "block",
-          as: "innerBlocks"
-        }
+          as: "innerBlocks",
+        },
       },
       {
         $addFields: {
@@ -33,29 +33,29 @@ export default async function getProperty(req, res) {
                       $filter: {
                         input: "$innerBlocks",
                         as: "ib",
-                        cond: { $eq: ["$$ib.block", "$$block._id"] }
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
+                        cond: { $eq: ["$$ib.block", "$$block._id"] },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
       },
-      { $project: { innerBlocks: 0 } }
+      { $project: { innerBlocks: 0 } },
     ]);
 
     res.status(200).json({
       success: true,
       message: "Property fetched successfully",
-      property: data
+      property: data,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: "Property fetching failed",
-      error
+      error,
     });
   }
 }

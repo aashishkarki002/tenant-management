@@ -3,6 +3,7 @@ import http from "http";
 import { connectDB } from "./config/db.js";
 import { initializeSocket } from "./config/socket.js";
 import { initializeWebPush } from "./config/webpush.js";
+import { scheduleGeneratorCheckCron } from "./cron/service/generator.cron.js";
 
 const PORT = process.env.PORT || 3000;
 console.log("NODE_ENV:", process.env.NODE_ENV);
@@ -17,6 +18,7 @@ initializeWebPush();
 // Wait for MongoDB before accepting requests (avoids "admins.find() buffering timed out")
 connectDB()
   .then(() => {
+    scheduleGeneratorCheckCron();
     server.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
       console.log(`Socket.io is running on port ${PORT}`);

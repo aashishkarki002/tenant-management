@@ -277,10 +277,22 @@ export async function getDashboardStatsData() {
      4️⃣ MAINTENANCE — count + top 3
   =============================== */
 
-  const [maintenanceList, maintenanceOpen] = await Promise.all([
-    Maintenance.find({ status: "OPEN" }).limit(3).lean(),
-    Maintenance.countDocuments({ status: "OPEN" }),
-  ]);
+  const nextMonth = npMonth === 12 ? 1 : npMonth + 1;
+  const nextMonthYear = npMonth === 12 ? npYear + 1 : npYear;
+
+  const upcomingMaintenance = await Maintenance.find({
+    status: { $in: ["OPEN", "IN_PROGRESS"] },
+    $or: [
+      { scheduledNepaliYear: npYear, scheduledNepaliMonth: npMonth },
+      { scheduledNepaliYear: nextMonthYear, scheduledNepaliMonth: nextMonth },
+    ],
+  })
+    .sort({ scheduledDate: 1 })
+    .limit(5)
+    .populate("property", "name")
+    .populate("unit", "name")
+    .populate("assignedTo", "name")
+    .lean();
 
   /* ===============================
      4️⃣ UPCOMING RENTS (next 7 Nepali days)
@@ -349,62 +361,61 @@ export async function getDashboardStatsData() {
   const nepali30DaysLater = addNepaliDays(nepaliToday, 30);
   const leaseEndLimitDate = nepali30DaysLater.getDateObject();
 
-  const [contractsEndingSoon, upcomingMaintenance, generatorsDueService] =
-    await Promise.all([
-      Tenant.aggregate([
-        {
-          $match: {
-            isDeleted: false,
-            status: "active",
-            leaseEndDate: {
-              $gte: nepaliTodayDate,
-              $lte: leaseEndLimitDate,
+  const [contractsEndingSoon, generatorsDueService] = await Promise.all([
+    Tenant.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          status: "active",
+          leaseEndDate: {
+            $gte: nepaliTodayDate,
+            $lte: leaseEndLimitDate,
+          },
+        },
+      },
+      { $sort: { leaseEndDate: 1 } },
+      { $limit: 3 },
+      { $project: { name: 1, leaseEndDate: 1 } },
+      {
+        $addFields: {
+          daysUntilEnd: {
+            $ceil: {
+              $divide: [
+                { $subtract: ["$leaseEndDate", nepaliTodayDate] },
+                1000 * 60 * 60 * 24,
+              ],
             },
           },
         },
-        { $sort: { leaseEndDate: 1 } },
-        { $limit: 3 },
-        { $project: { name: 1, leaseEndDate: 1 } },
-        {
-          $addFields: {
-            daysUntilEnd: {
-              $ceil: {
-                $divide: [
-                  { $subtract: ["$leaseEndDate", nepaliTodayDate] },
-                  1000 * 60 * 60 * 24,
-                ],
-              },
-            },
-          },
-        },
-      ]),
+      },
+    ]),
 
-      // Upcoming open/in-progress maintenance tasks scheduled within the next 30 days
-      Maintenance.find({
-        status: { $in: ["OPEN", "IN_PROGRESS"] },
-        scheduledDate: { $gte: nepaliTodayDate, $lte: leaseEndLimitDate },
-      })
-        .sort({ scheduledDate: 1 })
-        .limit(5)
-        .populate("property", "name")
-        .populate("unit", "name")
-        .populate("assignedTo", "name")
-        .lean(),
+    // Upcoming open/in-progress maintenance tasks scheduled within the next 30 days
+    Maintenance.find({
+      status: { $in: ["OPEN", "IN_PROGRESS"] },
+      scheduledDate: { $gte: nepaliTodayDate, $lte: leaseEndLimitDate },
+    })
+      .sort({ scheduledDate: 1 })
+      .limit(5)
+      .populate("property", "name")
+      .populate("unit", "name")
+      .populate("assignedTo", "name")
+      .lean(),
 
-      // Generators whose nextServiceDate is within the next 30 days or already overdue, or low fuel
-      Generator.find({
-        isActive: true,
-        status: { $ne: "DECOMMISSIONED" },
-        $or: [
-          { nextServiceDate: { $exists: true, $lte: leaseEndLimitDate } },
-          { currentFuelPercent: { $lte: 20 } },
-        ],
-      })
-        .sort({ nextServiceDate: 1 })
-        .limit(5)
-        .populate("property", "name")
-        .lean(),
-    ]);
+    // Generators whose nextServiceDate is within the next 30 days or already overdue, or low fuel
+    Generator.find({
+      isActive: true,
+      status: { $ne: "DECOMMISSIONED" },
+      $or: [
+        { nextServiceDate: { $exists: true, $lte: leaseEndLimitDate } },
+        { currentFuelPercent: { $lte: 20 } },
+      ],
+    })
+      .sort({ nextServiceDate: 1 })
+      .limit(5)
+      .populate("property", "name")
+      .lean(),
+  ]);
 
   /* ===============================
      6️⃣ RECENT ACTIVITY FEED
@@ -504,8 +515,6 @@ export async function getDashboardStatsData() {
       upcomingRents,
 
       // Maintenance
-      maintenance: maintenanceList, // top 3 for sidebar list
-      maintenanceOpen, // total count for the badge/counter widget
       upcomingMaintenance, // open/in-progress tasks due within 30 days
       generatorsDueService, // generators needing service or low on fuel
 
