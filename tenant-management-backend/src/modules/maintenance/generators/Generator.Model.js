@@ -84,6 +84,16 @@ const generatorSchema = new mongoose.Schema(
     block: { type: mongoose.Schema.Types.ObjectId, ref: "Block" },
     location: { type: String, trim: true },
 
+    // Linked SubMeter — auto-created on generator creation.
+    // Grid electricity consumed by the generator's control panel / battery
+    // charger is recorded as Electricity readings against this SubMeter
+    // (meterType: "sub_meter"), billed to the property, never to a tenant.
+    subMeter: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SubMeter",
+      default: null,
+    },
+
     status: {
       type: String,
       enum: ["RUNNING", "IDLE", "MAINTENANCE", "FAULT", "DECOMMISSIONED"],

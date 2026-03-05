@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { Generator } from "./Generator.Model.js";
 import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
 import { createExpense } from "../../expenses/expense.service.js";
-
+import { SubMeter } from "../../electricity/SubMeter.Model.js";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -40,10 +40,52 @@ async function _resolveExpenseSourceId(code, session = null) {
 // ─── Generator CRUD ───────────────────────────────────────────────────────────
 
 export async function createGenerator(data, adminId) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const generator = await Generator.create({ ...data, createdBy: adminId });
-    return { success: true, message: "Generator created", data: generator };
+    // ── 1. Create the generator ───────────────────────────────────────────────
+    const [generator] = await Generator.create(
+      [{ ...data, createdBy: adminId }],
+      { session },
+    );
+
+    // ── 2. Auto-provision a SubMeter so grid consumption can be metered ───────
+    // The SubMeter acts as the cost centre for electricity readings
+    // (meterType: "sub_meter") billed to the property — never to a tenant.
+    const [subMeter] = await SubMeter.create(
+      [
+        {
+          name: `Generator – ${generator.name}`,
+          meterType: "sub_meter",
+          property: generator.property ?? null,
+          block: generator.block ?? null,
+          description: `Auto-created for generator: ${generator.name}${generator.model ? ` (${generator.model})` : ""}`,
+          meterSerialNumber: generator.serialNumber ?? "",
+          installedOn: new Date(),
+          createdBy: adminId,
+        },
+      ],
+      { session },
+    );
+
+    // ── 3. Link SubMeter back to the generator ────────────────────────────────
+    generator.subMeter = subMeter._id;
+    await generator.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return {
+      success: true,
+      message: "Generator created and sub-meter provisioned",
+      data: generator,
+      subMeter,
+    };
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
     if (error.name === "ValidationError") {
       throw new Error(
         Object.values(error.errors)
@@ -60,6 +102,7 @@ export async function getAllGenerators() {
     .populate("property", "name")
     .populate("block", "name")
     .populate("createdBy", "name email")
+    .populate("subMeter", "name meterType isActive lastReading")
     .sort({ createdAt: -1 });
   return { success: true, message: "Generators fetched", data: generators };
 }
@@ -69,6 +112,10 @@ export async function getGeneratorById(id) {
     .populate("property", "name")
     .populate("block", "name")
     .populate("createdBy", "name email")
+    .populate(
+      "subMeter",
+      "name meterType isActive lastReading meterSerialNumber",
+    )
     .populate("fuelRefills.recordedBy", "name")
     .populate("dailyChecks.checkedBy", "name")
     .populate("serviceLogs.recordedBy", "name");
@@ -85,7 +132,21 @@ export async function recordDailyCheck(generatorId, checkData, adminId) {
   if (!generator)
     return { success: false, message: "Generator not found", data: null };
 
-  const { fuelPercent, runningHours, status, notes } = checkData;
+  const {
+    fuelPercent,
+    runningHours,
+    status,
+    notes,
+    // Optional electricity metering fields —
+    // provide these when the generator's control panel has a grid meter.
+    gridCurrentReading, // kWh reading on the physical sub-meter
+    nepaliDate,
+    nepaliMonth,
+    nepaliYear,
+    englishMonth,
+    englishYear,
+    readingDate,
+  } = checkData;
 
   // Auto-derive check status if not explicitly provided
   const resolvedStatus =
@@ -117,7 +178,75 @@ export async function recordDailyCheck(generatorId, checkData, adminId) {
   }
 
   await generator.save();
-  return { success: true, message: "Daily check recorded", data: generator };
+
+  // ── Optional: record grid electricity reading for this generator ─────────
+  // Industry pattern: daily check is the natural moment to also log the
+  // kWh meter reading on the generator's control panel. This keeps fuel
+  // and electricity data in sync with the same timestamp.
+  let electricityReading = null;
+  if (gridCurrentReading !== undefined && generator.subMeter) {
+    if (!nepaliDate || !nepaliMonth || !nepaliYear) {
+      throw new Error(
+        "nepaliDate, nepaliMonth, and nepaliYear are required when gridCurrentReading is provided",
+      );
+    }
+
+    // Lazy-import to avoid circular deps
+    const { electricityService } =
+      await import("../electricity/electricity.service.js");
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const readingResult = await electricityService.createElectricityReading(
+        {
+          meterType: "sub_meter",
+          subMeterId: generator.subMeter.toString(),
+          propertyId: generator.property?.toString(),
+          currentReading: parseFloat(gridCurrentReading),
+          nepaliMonth: Number(nepaliMonth),
+          nepaliYear: Number(nepaliYear),
+          nepaliDate,
+          englishMonth: englishMonth ? Number(englishMonth) : undefined,
+          englishYear: englishYear ? Number(englishYear) : undefined,
+          readingDate: readingDate ? new Date(readingDate) : new Date(),
+          notes: notes ?? `Daily check — generator ${generator.name}`,
+          createdBy: adminId,
+        },
+        session,
+      );
+
+      if (readingResult?.data?.totalAmount > 0) {
+        await electricityService.recordElectricityCharge(
+          readingResult.data._id,
+          session,
+        );
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+      electricityReading = readingResult?.data ?? null;
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      // Non-fatal: daily check is already saved. Surface the error in the response.
+      return {
+        success: true,
+        message: "Daily check recorded but electricity reading failed",
+        data: generator,
+        electricityError: err.message,
+      };
+    }
+  }
+
+  return {
+    success: true,
+    message: electricityReading
+      ? "Daily check and electricity reading recorded"
+      : "Daily check recorded",
+    data: generator,
+    electricityReading,
+  };
 }
 
 // ─── Fuel Refill ──────────────────────────────────────────────────────────────
@@ -392,6 +521,42 @@ export async function updateGeneratorStatus(generatorId, status) {
   if (!generator)
     return { success: false, message: "Generator not found", data: null };
   return { success: true, message: "Status updated", data: generator };
+}
+
+// ─── Generator Electricity Readings ──────────────────────────────────────────
+
+/**
+ * Returns all Electricity readings linked to this generator's SubMeter.
+ * Useful for cost dashboards — "how much grid power did generator X consume?"
+ */
+export async function getGeneratorElectricity(generatorId, filters = {}) {
+  const generator = await Generator.findById(generatorId).lean();
+  if (!generator)
+    return { success: false, message: "Generator not found", data: null };
+
+  if (!generator.subMeter)
+    return {
+      success: false,
+      message:
+        "This generator has no linked sub-meter. Re-create it to auto-provision one.",
+      data: null,
+    };
+
+  const { electricityService } =
+    await import("../electricity/electricity.service.js");
+
+  const result = await electricityService.getElectricityReadings({
+    subMeterId: generator.subMeter.toString(),
+    nepaliYear: filters.nepaliYear ? Number(filters.nepaliYear) : undefined,
+    nepaliMonth: filters.nepaliMonth ? Number(filters.nepaliMonth) : undefined,
+  });
+
+  return {
+    success: true,
+    message: "Generator electricity readings fetched",
+    generator: { _id: generator._id, name: generator.name },
+    data: result.data,
+  };
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

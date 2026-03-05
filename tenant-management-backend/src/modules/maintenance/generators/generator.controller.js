@@ -6,6 +6,7 @@ import {
   recordFuelRefill,
   recordServiceLog,
   updateGeneratorStatus,
+  getGeneratorElectricity,
 } from "./generator.service.js";
 
 export async function createGeneratorController(req, res) {
@@ -92,6 +93,20 @@ export async function updateGeneratorStatusController(req, res) {
       });
     }
     const result = await updateGeneratorStatus(req.params.id, status);
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * GET /api/generators/:id/electricity
+ * Returns all grid electricity readings for this generator's sub-meter.
+ * Query: nepaliYear?, nepaliMonth?
+ */
+export async function getGeneratorElectricityController(req, res) {
+  try {
+    const result = await getGeneratorElectricity(req.params.id, req.query);
     return res.status(result.success ? 200 : 404).json(result);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
