@@ -2,14 +2,25 @@ import { useState, useEffect, useCallback } from "react";
 import api from "../../../plugins/axios";
 
 /**
- * Normalizes the dashboard-stats API response into the shape expected by dashboard components.
+ * normalizeDashboardStats
  *
- * KEY RULE: The backend already produces a well-shaped `recentActivity` array via the
- * Transaction ledger (TX_TYPE_MAP). We pass it through directly instead of building a
- * synthetic list from overdueRents / maintenance — those are different data concerns
- * surfaced in their own sections (UpcomingRents, MaintenanceCard, etc.).
+ * BUILDINGS normalization:
+ * Backend returns raw.buildings — an array of per-Block KPI objects where
+ * each Block corresponds to what the UI calls a "Building"
+ * (e.g. "Narendra Sadhan", "Birendra Sadhan").
  *
- * Industry pattern: "normalize at the boundary, don't re-derive what the server already computed."
+ * Rates are computed server-side; we only apply safe fallbacks here in case
+ * of partial data. Never re-derive what the server already computed.
+ *
+ * Normalized shape per building:
+ *   {
+ *     _id: string,
+ *     name: string,                           ← Block.name e.g. "Narendra Sadhan"
+ *     occupancy:  { occupied, total, rate },  ← from Unit.block aggregation
+ *     collection: { collected, target, rate },← from Rent.block this npMonth
+ *     revenue: number,                        ← = collection.collected (rent paid)
+ *     overdueAmount: number,                  ← overdue rent balance for this block
+ *   }
  */
 function normalizeDashboardStats(raw) {
   if (!raw) return null;
@@ -26,9 +37,6 @@ function normalizeDashboardStats(raw) {
 
   const overdueRents = Array.isArray(raw.overdueRents) ? raw.overdueRents : [];
 
-  // FIX: Backend returns remainingPaisa (unpaid balance), not amount/amountPaisa
-  // (which is the total charge). Always sum the *remaining* balance for the
-  // outstanding-amount widget.
   const overdueAmount = overdueRents.reduce((sum, r) => {
     if (r.remainingPaisa != null) return sum + r.remainingPaisa / 100;
     if (r.remaining != null) return sum + Number(r.remaining);
@@ -37,24 +45,55 @@ function normalizeDashboardStats(raw) {
 
   const firstMaintenance = openMaintenance[0] || maintenanceList[0];
 
-  // ── Recent activity ───────────────────────────────────────────────────────
-  // Use the backend-produced recentActivity array (shaped by TX_TYPE_MAP in
-  // dashboard.service.js). Each item already has: { id, type, mainText, sub,
-  // amount, time }. RecentActivities.jsx reads stats.recentActivity directly
-  // via the `normalizeActivities` helper which checks this key first.
-  //
-  // We keep the legacy `recentActivities` key populated for any other
-  // consumers that may still reference it, but we no longer synthesise it
-  // from overdueRents — that was mixing two separate concerns.
   const recentActivity = Array.isArray(raw.recentActivity)
     ? raw.recentActivity
     : [];
 
+  // ── Buildings normalization ───────────────────────────────────────────────
+  // Each entry is one Block document ("Building" in UI).
+  // We normalize defensively but trust server-computed rates.
+  const buildings = Array.isArray(raw.buildings)
+    ? raw.buildings.map((b) => {
+        const occTotal = b.occupancy?.total ?? 0;
+        const occOccupied = b.occupancy?.occupied ?? 0;
+        const collTarget = b.collection?.target ?? 0;
+        const collCollected = b.collection?.collected ?? 0;
+
+        return {
+          _id: b._id ?? null,
+          name: b.name ?? "Unknown Block",
+
+          occupancy: {
+            occupied: occOccupied,
+            total: occTotal,
+            // Prefer server-computed rate; fall back to client derivation
+            rate:
+              b.occupancy?.rate ??
+              (occTotal > 0 ? Math.round((occOccupied / occTotal) * 100) : 0),
+          },
+
+          collection: {
+            collected: collCollected,
+            target: collTarget,
+            rate:
+              b.collection?.rate ??
+              (collTarget > 0
+                ? Math.min(100, Math.round((collCollected / collTarget) * 100))
+                : 0),
+          },
+
+          // Revenue this month = collected rent for this block this period
+          revenue: b.revenue ?? collCollected,
+
+          overdueAmount: b.overdueAmount ?? 0,
+        };
+      })
+    : [];
+
   return {
-    // ── Spread all raw fields first so nothing is lost ──────────────────
+    // Spread all raw fields first so nothing is lost
     ...raw,
 
-    // ── Re-shaped nested objects used by SummaryCard / CollectionCard ───
     collection: {
       totalCollected,
       target: totalRent,
@@ -86,15 +125,12 @@ function normalizeDashboardStats(raw) {
       maintenanceDetail: firstMaintenance?.title ?? "—",
     },
 
-    // ── Flat aliases kept for legacy component consumers ─────────────────
     openRequests: openMaintenance.length,
     activeTenants: raw.activeTenants ?? 0,
 
-    // ── Activity feed — backend-produced, passed through unchanged ───────
     recentActivity,
     recentActivities: recentActivity, // legacy alias
 
-    // ── Lists — passed through with safe fallbacks ────────────────────────
     maintenance: maintenanceList,
     upcomingMaintenance: Array.isArray(raw.upcomingMaintenance)
       ? raw.upcomingMaintenance
@@ -107,18 +143,18 @@ function normalizeDashboardStats(raw) {
     contractsEndingSoon: Array.isArray(raw.contractsEndingSoon)
       ? raw.contractsEndingSoon
       : [],
+
+    // Per-Block building performance array — empty for single-block setups.
+    // BuildingPerformanceGrid returns null when buildings.length === 0.
+    buildings,
   };
 }
 
 /**
- * Fetches dashboard stats from GET /api/payment/dashboard-stats.
+ * useStats — fetches and normalizes dashboard stats from
+ * GET /api/payment/dashboard-stats.
  *
- * @returns {{
- *   stats: object | null,
- *   loading: boolean,
- *   error: string | null,
- *   refetch: () => Promise<void>
- * }}
+ * @returns {{ stats, loading, error, refetch }}
  */
 export function useStats() {
   const [stats, setStats] = useState(null);

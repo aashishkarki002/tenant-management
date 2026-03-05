@@ -1,8 +1,6 @@
+// src/pages/rent/RentPayment.jsx
 import React, { useState, useMemo, useCallback } from "react";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRentData } from "./hooks/useRentData";
 import { usePaymentForm } from "./hooks/usePaymentForm";
@@ -14,48 +12,43 @@ import { getPaymentAmounts } from "./utils/paymentUtil";
 import { RentFilter } from "./components/RentFilter";
 import { AdminRentActions } from "./components/AdminRentAction";
 import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDate";
+import { useHeaderSlot } from "../context/HeaderSlotContext";
+
+// ── Header slot: page title only — no CTAs on this page ──────────────────────
+// Declared at module level → stable reference → useLayoutEffect fires once.
+const RentPaymentHeaderSlot = (
+  <div className="flex flex-col justify-center min-w-0">
+    <h1 className="text-sm font-semibold text-slate-900 leading-tight truncate">
+      Rent Management
+    </h1>
+    <p className="text-xs text-slate-400 truncate">
+      Track and record rent collection across all tenants
+    </p>
+  </div>
+);
 
 const RentPayment = () => {
+  useHeaderSlot(RentPaymentHeaderSlot);
+
   const {
-    rents,
-    payments,
-    bankAccounts,
-    cams,
-    properties,
-    loading,
-    paymentsLoading,
-    filterRentMonth,
-    filterRentYear,
-    filterStatus,
-    filterPropertyId,
-    setFilterRentMonth,
-    setFilterRentYear,
-    setFilterStatus,
-    setFilterPropertyId,
-    defaultRentMonth,
-    defaultRentYear,
-    filterStartDate,
-    filterEndDate,
-    filterPaymentMethod,
-    setFilterStartDate,
-    setFilterEndDate,
-    setFilterPaymentMethod,
-    getRents,
-    getPayments,
-    fetchRentSummary,
-    getCams,
+    rents, payments, bankAccounts, cams, properties,
+    loading, paymentsLoading,
+    filterRentMonth, filterRentYear, filterStatus, filterPropertyId,
+    setFilterRentMonth, setFilterRentYear, setFilterStatus, setFilterPropertyId,
+    defaultRentMonth, defaultRentYear,
+    filterStartDate, filterEndDate, filterPaymentMethod,
+    setFilterStartDate, setFilterEndDate, setFilterPaymentMethod,
+    getRents, getPayments, fetchRentSummary, getCams,
   } = useRentData();
 
   const [datePickerResetKey, setDatePickerResetKey] = useState(0);
   const [frequencyView, setFrequencyView] = useState("monthly");
 
-  // Client-side frequency split — no extra API call needed
   const frequencyFilteredRents = useMemo(
     () => rents.filter((r) => (r.rentFrequency || "monthly") === frequencyView),
     [rents, frequencyView],
   );
 
-  // Derive summary totals from visible rent list → always in sync with table
   const { frequencyTotalDue, frequencyTotalCollected } = useMemo(() => {
     return frequencyFilteredRents.reduce(
       (acc, rent) => {
@@ -65,10 +58,9 @@ const RentPayment = () => {
         if (status === "paid") {
           collected = totalDue;
         } else if (status === "partially_paid" || status === "partial") {
-          collected =
-            rent.paidAmountPaisa != null
-              ? rent.paidAmountPaisa / 100
-              : (rent.paidAmount ?? 0);
+          collected = rent.paidAmountPaisa != null
+            ? rent.paidAmountPaisa / 100
+            : (rent.paidAmount ?? 0);
         }
         return {
           frequencyTotalDue: acc.frequencyTotalDue + totalDue,
@@ -83,16 +75,9 @@ const RentPayment = () => {
     await Promise.all([getRents(), getPayments(), fetchRentSummary(), getCams()]);
   }, [getRents, getPayments, fetchRentSummary, getCams]);
 
-  const paymentForm = usePaymentForm({
-    rents,
-    cams,
-    onSuccess: handlePaymentSuccess,
-  });
+  const paymentForm = usePaymentForm({ rents, cams, onSuccess: handlePaymentSuccess });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    paymentForm.formik.handleSubmit();
-  };
+  const handleSubmit = (e) => { e.preventDefault(); paymentForm.formik.handleSubmit(); };
 
   const handleClearPaymentFilters = () => {
     setFilterStartDate("");
@@ -108,11 +93,7 @@ const RentPayment = () => {
     setFilterPropertyId("");
   };
 
-  // Month name for display in summary card
-  const currentMonthName =
-    filterRentMonth != null
-      ? NEPALI_MONTH_NAMES[filterRentMonth - 1]
-      : "";
+  const currentMonthName = filterRentMonth != null ? NEPALI_MONTH_NAMES[filterRentMonth - 1] : "";
 
   if (loading) {
     return (
@@ -131,19 +112,9 @@ const RentPayment = () => {
     <form onSubmit={handleSubmit}>
       <Card className="overflow-hidden border-slate-200">
         <Tabs defaultValue="rent">
-          {/* ── Layer 1: Page header + primary navigation ─────────────────── */}
-          <div className="px-4 sm:px-6 pt-5 pb-0 border-b border-slate-100">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                  Rent Management
-                </h1>
-                <p className="text-sm text-slate-500 mt-0.5">
-                  Track and record rent collection across all tenants
-                </p>
-              </div>
-            </div>
-            <TabsList className="grid grid-cols-2 w-full max-w-xs h-9 bg-slate-100 p-0.5 rounded-lg mb-0 -mb-px">
+          {/* ── Tab navigation only — title lives in the header slot ─────── */}
+          <div className="px-4 sm:px-6 pt-4 pb-0 border-b border-slate-100">
+            <TabsList className="grid grid-cols-2 w-full max-w-xs h-9 bg-slate-100 p-0.5 rounded-lg -mb-px">
               <TabsTrigger
                 value="rent"
                 className="rounded-md text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
@@ -159,12 +130,9 @@ const RentPayment = () => {
             </TabsList>
           </div>
 
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {/* RENT TAB                                                       */}
-          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* ══ RENT TAB ═════════════════════════════════════════════════════ */}
           <TabsContent value="rent" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
 
-            {/* ── Layer 2: Filters (period scope) ─────────────────────────── */}
             <div className="px-4 sm:px-6 pt-4 pb-3 border-b border-slate-100 bg-slate-50/50">
               <RentFilter
                 month={filterRentMonth}
@@ -182,7 +150,6 @@ const RentPayment = () => {
               />
             </div>
 
-            {/* ── Layer 3: Collection summary KPIs ────────────────────────── */}
             <RentSummaryCard
               totalCollected={frequencyTotalCollected}
               totalDue={frequencyTotalDue}
@@ -191,13 +158,9 @@ const RentPayment = () => {
               currentYear={filterRentYear}
             />
 
-            {/* ── Layer 4 + 5: View toggle + Admin actions ─────────────────── */}
             <div className="px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100">
-              {/* Frequency toggle — compact segmented control */}
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  View
-                </span>
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">View</span>
                 <div className="inline-flex rounded-md border border-slate-200 bg-white p-0.5 gap-0.5">
                   {["monthly", "quarterly"].map((freq) => (
                     <button
@@ -213,19 +176,15 @@ const RentPayment = () => {
                     </button>
                   ))}
                 </div>
-                {/* Record count chip */}
                 {frequencyFilteredRents.length > 0 && (
                   <span className="text-xs text-slate-400 tabular-nums">
                     {frequencyFilteredRents.length} record{frequencyFilteredRents.length !== 1 ? "s" : ""}
                   </span>
                 )}
               </div>
-
-              {/* Admin ops — right-aligned, visually secondary */}
               <AdminRentActions onProcessSuccess={getRents} />
             </div>
 
-            {/* ── Layer 6: Rent table ──────────────────────────────────────── */}
             <CardContent className="px-4 sm:px-6 pt-4">
               <RentTable
                 rents={frequencyFilteredRents}
@@ -248,14 +207,10 @@ const RentPayment = () => {
             </CardContent>
           </TabsContent>
 
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {/* PAYMENTS TAB                                                   */}
-          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* ══ PAYMENTS TAB ══════════════════════════════════════════════════ */}
           <TabsContent value="payments" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
             <div className="px-4 sm:px-6 pt-5 pb-2">
-              <h2 className="text-base font-semibold text-slate-900">
-                Payment History
-              </h2>
+              <h2 className="text-base font-semibold text-slate-900">Payment History</h2>
               <p className="text-sm text-slate-500 mt-0.5">
                 All recorded payments across tenants and billing periods
               </p>

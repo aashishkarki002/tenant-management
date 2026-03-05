@@ -18,34 +18,59 @@ function LoadingFallback() {
 }
 
 export default function ProtectedRoutes({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  usePushNotifications(user);
 
-    const { user, loading } = useAuth();
-    const location = useLocation();
-    usePushNotifications(user);
-    if (loading) return <LoadingFallback />;
+  if (loading) return <LoadingFallback />;
 
-    // Auth is cookie-based (httpOnly). There is no localStorage token.
-    // The only source of truth is the `user` object from AuthContext,
-    // which is populated by /api/auth/get-me on mount (using the cookie automatically).
-    if (!user) {
-        // Preserve the attempted URL so we can redirect back after login
-        console.warn("[ProtectedRoutes] Redirecting to login — user is null. Path:", location.pathname);
-        return <Navigate to="/login" state={{ from: location }} replace />;
-    }
+  if (!user) {
+    console.warn("[ProtectedRoutes] Redirecting to login — user is null. Path:", location.pathname);
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
 
-    return children;
+  return children;
 }
 
 export function GuestRoute({ children }) {
-    const { user, loading } = useAuth();
+  const { user, loading } = useAuth();
 
-    if (loading) return <LoadingFallback />;
+  if (loading) return <LoadingFallback />;
 
-    // If user is already authenticated (cookie valid, get-me succeeded),
-    // send them to dashboard — they don't need to see login/signup.
-    if (user) {
-        return <Navigate to="/" replace />;
-    }
+  if (user) {
+    return <Navigate to="/" replace />;
+  }
 
-    return children;
+  return children;
+}
+
+/**
+ * RoleRoute — restricts a route to specific roles.
+ *
+ * Industry standard: Frontend guards are UX-only.
+ * The backend `authorize` middleware is the real security boundary.
+ *
+ * Usage:
+ *   <RoleRoute allowedRoles={["admin", "super_admin"]}>
+ *     <AccountingPage />
+ *   </RoleRoute>
+ *
+ * Staff hitting an admin-only route gets redirected to "/" (their dashboard).
+ */
+export function RoleRoute({ children, allowedRoles = [] }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return <LoadingFallback />;
+
+  // Not logged in — let ProtectedRoutes handle the /login redirect
+  if (!user) return <Navigate to="/login" replace />;
+
+  if (!allowedRoles.includes(user.role)) {
+    console.warn(
+      `[RoleRoute] Access denied — role "${user.role}" not in [${allowedRoles}]. Redirecting to /.`
+    );
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
 }

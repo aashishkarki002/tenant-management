@@ -21,7 +21,7 @@ import {
   formatConsumption,
   getTrendPercent,
 } from "./utils/electricityCalculations";
-import { DEFAULT_RATE_PER_UNIT } from "./utils/electricityConstants";
+import { PAGE_SIZE } from "./utils/electricityConstants";
 import { getMonthOptions } from "../../plugins/useNepaliDate";
 import { getCurrentNepaliMonthYear } from "@/constants/nepaliMonths";
 
@@ -262,11 +262,11 @@ export default function ElectricityPage() {
       await Promise.all(
         validRows.map((row) =>
           createReading({
+            meterType: "unit", // inline rows are always unit readings
             tenantId: unitIdToTenantId[row.unitId],
             unitId: row.unitId,
             currentReading: parseFloat(row.currentUnit),
             previousReading: parseFloat(row.previousUnit || 0),
-            ratePerUnit: DEFAULT_RATE_PER_UNIT,
             nepaliMonth: filterValues.month,
             nepaliYear: filterValues.year,
             nepaliDate: `${filterValues.year}-${filterValues.month}`,

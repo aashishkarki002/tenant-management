@@ -45,7 +45,8 @@ export async function getSubMeters(params = {}) {
  * @returns {Promise<SubMeter>}
  */
 export async function createSubMeter(body) {
-  const response = await api.post("/api/electricity/sub-meters", body);
+  // Route: POST /api/electricity/sub-meters/create (see electricity.route.js)
+  const response = await api.post("/api/electricity/sub-meters/create", body);
   const result = response.data;
   if (!result?.success) {
     throw new Error(result?.message || "Failed to create sub-meter");
@@ -62,7 +63,11 @@ export async function createSubMeter(body) {
  * @returns {Promise<SubMeter>}
  */
 export async function updateSubMeter(id, body) {
-  const response = await api.patch(`/api/electricity/sub-meters/${id}`, body);
+  // Route: PUT /api/electricity/sub-meters/update/:subMeterId (see electricity.route.js)
+  const response = await api.put(
+    `/api/electricity/sub-meters/update/${id}`,
+    body,
+  );
   const result = response.data;
   if (!result?.success) {
     throw new Error(result?.message || "Failed to update sub-meter");

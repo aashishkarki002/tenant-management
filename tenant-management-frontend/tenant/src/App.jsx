@@ -6,6 +6,7 @@ import Transaction from "./Dashboard/component/Transaction";
 import AppLayout from "./components/layout/Applayout";
 import Tenants from "./Tenant/tenants";
 import Dashboard from "./Dashboard/Dashboard";
+import StaffDashboard from "./Dashboard/StaffDashboard";
 import Account from "./Accounts/Account";
 import ElectricityPage from "./electricity/ElectricityPage";
 import Revenue from "./Revenue";
@@ -16,7 +17,7 @@ import AddTenants from "./Tenant/addTenant/addTenants";
 import VerifyEmail from "./verify_email";
 import EditTenant from "./Tenant/editTenant/editTenant";
 import Admin from "./Settings/Admin";
-import ProtectedRoutes, { GuestRoute } from "./protectedRoutes";
+import ProtectedRoutes, { GuestRoute, RoleRoute } from "./protectedRoutes";
 import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail/ViewDetail";
@@ -26,10 +27,26 @@ import Generator from "./Generators/Generator";
 import { setupSwMessageListener } from "./hooks/usePushNotification";
 import Units from "./units/units";
 import api from "../plugins/axios";
+import { useAuth } from "./context/AuthContext";
+
+// Roles that can access admin-level features
+const ADMIN_ROLES = ["admin", "super_admin"];
+// All authenticated roles
+const ALL_ROLES = ["admin", "super_admin", "staff"];
 
 function TenantDetailRedirect() {
   const { id } = useParams();
   return <Navigate to={`/tenant/viewDetail/${id}`} replace />;
+}
+
+/**
+ * Role-aware dashboard — renders different home screen per role.
+ * This is the standard pattern: one "/" route, role decides the view.
+ */
+function RoleDashboard() {
+  const { user } = useAuth();
+  if (user?.role === "staff") return <StaffDashboard />;
+  return <Dashboard />;
 }
 
 export default function App() {
@@ -38,24 +55,15 @@ export default function App() {
   const path = location.pathname.toLowerCase();
   const hideSidebar = path.startsWith("/login") || path.startsWith("/signup");
 
-  // ── Wire SW → app communication ─────────────────────────────────────────────
-  // When the user taps a push notification while the app tab is already open,
-  // the service worker sends a NOTIFICATION_CLICK message. This listener:
-  //   1. Navigates to the deep-link URL (e.g. /maintenance/:id)
-  //   2. Marks the notification read in the DB
-  //   3. Dispatches "notification:read" so Header's badge updates immediately
-  //      without waiting for the next panel open + refetch cycle
   useEffect(() => {
     return setupSwMessageListener(navigate, async (notificationId) => {
       try {
         await api.patch(
           `/api/notification/mark-notification-as-read/${notificationId}`
         );
-        // Tells Header to flip isRead → unreadCount drops → useAppBadge updates badge
         window.dispatchEvent(
           new CustomEvent("notification:read", { detail: notificationId })
         );
-        // ✅ Removed: navigator.setAppBadge — handled automatically by useAppBadge in Header
       } catch (err) {
         console.error("[push] Failed to mark notification as read:", err.message);
       }
@@ -64,96 +72,80 @@ export default function App() {
 
   const routedContent = (
     <Routes>
+      {/* ── Public (guest-only) routes ── */}
       <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
       <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
 
-      <Route
-        path="/tenant/tenants"
-        element={<ProtectedRoutes><Tenants /></ProtectedRoutes>}
+      {/* ── Shared routes: all authenticated roles ── */}
+      <Route path="/"
+        element={<ProtectedRoutes><RoleDashboard /></ProtectedRoutes>}
       />
-      <Route
-        path="/tenants"
-        element={<ProtectedRoutes><Tenants /></ProtectedRoutes>}
-      />
-      <Route
-        path="/tenants/:id"
-        element={<ProtectedRoutes><TenantDetailRedirect /></ProtectedRoutes>}
-      />
-      <Route
-        path="/"
-        element={<ProtectedRoutes><Dashboard /></ProtectedRoutes>}
-      />
-      <Route
-        path="/electricity"
-        element={<ProtectedRoutes><ElectricityPage /></ProtectedRoutes>}
-      />
-      <Route
-        path="/rent-payment"
-        element={<ProtectedRoutes><RentPayment /></ProtectedRoutes>}
-      />
-      <Route
-        path="/accounting"
-        element={<ProtectedRoutes><Account /></ProtectedRoutes>}
-      />
-      <Route
-        path="/revenue"
-        element={<ProtectedRoutes><Revenue /></ProtectedRoutes>}
-      />
-      <Route
-        path="/rent-payment/payments/:id"
-        element={<ProtectedRoutes><Payments /></ProtectedRoutes>}
-      />
-      <Route
-        path="/maintenance"
-        element={<ProtectedRoutes><Maintenance /></ProtectedRoutes>}
-      />
-      <Route
-        path="/cheque-drafts"
-        element={<ProtectedRoutes><Cheque_drafts /></ProtectedRoutes>}
-      />
-      <Route
-        path="/tenant/addTenants"
-        element={<ProtectedRoutes><AddTenants /></ProtectedRoutes>}
-      />
-      <Route
-        path="/verify-email"
-        element={<ProtectedRoutes><VerifyEmail /></ProtectedRoutes>}
-      />
-      <Route
-        path="/tenant/editTenant/:id"
-        element={<ProtectedRoutes><EditTenant /></ProtectedRoutes>}
-      />
-      <Route
-        path="/admin"
+      <Route path="/admin"
         element={<ProtectedRoutes><Admin /></ProtectedRoutes>}
       />
-      <Route
-        path="/submeter"
-        element={<ProtectedRoutes><Submeter /></ProtectedRoutes>}
+      <Route path="/maintenance"
+        element={<ProtectedRoutes><Maintenance /></ProtectedRoutes>}
       />
-      <Route
-        path="/test"
-        element={<ProtectedRoutes><Test /></ProtectedRoutes>}
-      />
-      <Route
-        path="/tenant/viewDetail/:id"
-        element={<ProtectedRoutes><ViewDetail /></ProtectedRoutes>}
-      />
-      <Route
-        path="/tenant/send-message"
-        element={<ProtectedRoutes><BroadCast /></ProtectedRoutes>}
-      />
-      <Route
-        path="/dashboard/transactions"
-        element={<ProtectedRoutes><Transaction /></ProtectedRoutes>}
-      />
-      <Route
-        path="/maintenance/generator"
+      <Route path="/maintenance/generator"
         element={<ProtectedRoutes><Generator /></ProtectedRoutes>}
       />
-      <Route
-        path="/dashboard/units"
-        element={<ProtectedRoutes><Units /></ProtectedRoutes>}
+      <Route path="/electricity"
+        element={<ProtectedRoutes><ElectricityPage /></ProtectedRoutes>}
+      />
+
+      {/* Tenants — staff gets read-only view (enforcement is on individual actions/buttons) */}
+      <Route path="/tenant/tenants"
+        element={<ProtectedRoutes><Tenants /></ProtectedRoutes>}
+      />
+      <Route path="/tenants"
+        element={<ProtectedRoutes><Tenants /></ProtectedRoutes>}
+      />
+      <Route path="/tenants/:id"
+        element={<ProtectedRoutes><TenantDetailRedirect /></ProtectedRoutes>}
+      />
+      <Route path="/tenant/viewDetail/:id"
+        element={<ProtectedRoutes><ViewDetail /></ProtectedRoutes>}
+      />
+      <Route path="/verify-email"
+        element={<ProtectedRoutes><VerifyEmail /></ProtectedRoutes>}
+      />
+
+      {/* ── Admin-only routes — staff gets redirected to "/" ── */}
+      <Route path="/accounting"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Account /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/revenue"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Revenue /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/rent-payment"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><RentPayment /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/rent-payment/payments/:id"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Payments /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/cheque-drafts"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Cheque_drafts /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/tenant/addTenants"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><AddTenants /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/tenant/editTenant/:id"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><EditTenant /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/tenant/send-message"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><BroadCast /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/submeter"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Submeter /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/dashboard/transactions"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Transaction /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/dashboard/units"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Units /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/test"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Test /></RoleRoute></ProtectedRoutes>}
       />
     </Routes>
   );

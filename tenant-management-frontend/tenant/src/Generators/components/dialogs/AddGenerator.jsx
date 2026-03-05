@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import api from "../../../../plugins/axios";
+import useProperty from "@/hooks/use-property";
 
 const EMPTY = {
     name: "", model: "", serialNumber: "",
@@ -31,12 +32,21 @@ const FUEL_TYPES = ["Diesel", "Petrol", "Gas", "Dual Fuel"];
 export function AddGeneratorDialog({ open, onClose, onDone }) {
     const [form, setForm] = useState(EMPTY);
     const [busy, setBusy] = useState(false);
+    const { property } = useProperty();
 
     const patch = (p) => setForm((f) => ({ ...f, ...p }));
     const reset = () => setForm(EMPTY);
     const handleClose = () => { reset(); onClose(); };
 
     const submit = async () => {
+        const propertyId =
+            Array.isArray(property) && property.length > 0 ? property[0]._id : null;
+
+        if (!propertyId) {
+            toast.error("No property found. Please create a property first.");
+            return;
+        }
+
         if (!form.name || !form.tankCapacityLiters) {
             return toast.error("Name and tank capacity are required");
         }
@@ -44,6 +54,8 @@ export function AddGeneratorDialog({ open, onClose, onDone }) {
         try {
             await api.post("/api/maintenance/generator/create", {
                 ...form,
+                // Link generator to the first available property, like electricity uses propertyId
+                property: propertyId,
                 capacityKva: form.capacityKva ? Number(form.capacityKva) : undefined,
                 tankCapacityLiters: Number(form.tankCapacityLiters),
                 lowFuelThresholdPercent: Number(form.lowFuelThresholdPercent),

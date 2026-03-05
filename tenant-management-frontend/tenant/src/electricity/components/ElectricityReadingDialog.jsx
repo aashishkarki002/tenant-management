@@ -313,11 +313,6 @@ export default function ElectricityReadingDialog({
         setSaving(true);
         try {
             if (selectedMeterType === "unit") {
-                /**
-                 * Unit reading — must resolve tenantId from the selected unit.
-                 * The unit object from useUnits carries the active tenant reference.
-                 * If no tenant is found the backend will reject with a clear message.
-                 */
                 const selectedUnit = (units ?? []).find((u) => u._id === data.selected);
                 const tenantId =
                     selectedUnit?.currentLease?.tenant ??
@@ -332,6 +327,8 @@ export default function ElectricityReadingDialog({
                     unitId: data.selected,
                     propertyId,
                     currentReading,
+                    // Send previousReading so backend can validate it hasn't regressed
+                    ...(previousReading != null && { previousReading }),
                     nepaliMonth,
                     nepaliYear,
                     nepaliDate: readingDateNepali,
@@ -342,14 +339,15 @@ export default function ElectricityReadingDialog({
             } else {
                 /**
                  * Sub-meter reading (common_area | parking | sub_meter).
-                 * billTo "property" — no tenant involved.
-                 * The controller resolves the rate from ElectricityRate config.
+                 * Rate is resolved server-side from ElectricityRate config —
+                 * never sent from the client (prevents rate tampering).
                  */
                 await createReading({
                     meterType: selectedMeterType,
                     subMeterId: data.selected,
                     propertyId,
                     currentReading,
+                    ...(previousReading != null && { previousReading }),
                     nepaliMonth,
                     nepaliYear,
                     nepaliDate: readingDateNepali,
@@ -477,14 +475,49 @@ export default function ElectricityReadingDialog({
                             <SelectValue placeholder={isLoading ? "Loading…" : `Select ${itemLabel}`} />
                         </SelectTrigger>
                         <SelectContent>
-                            {options.length > 0 ? (
-                                options.map((opt) => (
+                            {options.length > 0 ? (() => {
+                                // For sub_meter tab: group generator meters separately
+                                // Generator sub-meters are auto-named "Generator – {name}" by generator.service.js
+                                if (type === "sub_meter") {
+                                    const genMeters = options.filter(o => (o.name ?? "").startsWith("Generator –"));
+                                    const otherMeters = options.filter(o => !(o.name ?? "").startsWith("Generator –"));
+                                    return (
+                                        <>
+                                            {otherMeters.map((opt) => (
+                                                <SelectItem key={opt._id} value={opt._id}>
+                                                    {opt.displayName ?? opt.name ?? opt._id}
+                                                </SelectItem>
+                                            ))}
+                                            {genMeters.length > 0 && (
+                                                <>
+                                                    {otherMeters.length > 0 && (
+                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-gray-400 font-semibold border-t mt-1 pt-2">
+                                                            ⚡ Generator Meters
+                                                        </div>
+                                                    )}
+                                                    {otherMeters.length === 0 && (
+                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-gray-400 font-semibold">
+                                                            ⚡ Generator Meters
+                                                        </div>
+                                                    )}
+                                                    {genMeters.map((opt) => (
+                                                        <SelectItem key={opt._id} value={opt._id}>
+                                                            {opt.name?.replace("Generator – ", "") ?? opt._id}
+                                                            {" "}
+                                                            <span className="text-yellow-600 text-[10px]">(Generator)</span>
+                                                        </SelectItem>
+                                                    ))}
+                                                </>
+                                            )}
+                                        </>
+                                    );
+                                }
+                                return options.map((opt) => (
                                     <SelectItem key={opt._id} value={opt._id}>
-                                        {/* Sub-meters expose displayName; units expose unitName/name */}
                                         {opt.displayName ?? opt.name ?? opt.unitName ?? opt._id}
                                     </SelectItem>
-                                ))
-                            ) : (
+                                ));
+                            })() : (
                                 <SelectItem value="__none__" disabled>
                                     {isLoading ? "Loading…" : `No ${itemLabel.toLowerCase()}s found`}
                                 </SelectItem>

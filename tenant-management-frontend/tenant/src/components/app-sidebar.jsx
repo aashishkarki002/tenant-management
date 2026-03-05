@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Users,
+  Building2,
   DollarSign,
   FileText,
   Wrench,
@@ -11,12 +12,6 @@ import {
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -28,24 +23,37 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Card, CardHeader } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { useNavigate } from "react-router-dom";
-import { NavLink } from "react-router-dom";
+import { useNavigate, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 
-const items = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Tenants", url: "/tenants", icon: Users },
-  { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
-  { title: "Maintenance", url: "/maintenance", icon: Wrench },
-  { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
-  { title: "Electricity", url: "/electricity", icon: Zap },
-  { title: "Accounting", url: "/accounting", icon: FileText },
+// ── Nav groups matching image layout ──────────────────────────────────────────
+const NAV_GROUPS = [
+  {
+    label: "Property",
+    items: [
+      { title: "Dashboard", url: "/", icon: LayoutDashboard },
+      { title: "Tenants", url: "/tenants", icon: Users },
+      { title: "Units", url: "/units", icon: Building2 },
+    ],
+  },
+  {
+    label: "Finance",
+    items: [
+      { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
+      { title: "Accounting", url: "/accounting", icon: FileText },
+      { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { title: "Maintenance", url: "/maintenance", icon: Wrench },
+      { title: "Electricity", url: "/electricity", icon: Zap },
+    ],
+  },
 ];
 
-// Derive up-to-2-letter initials from a full name
 function getInitials(name) {
   if (!name) return "AD";
   return name
@@ -67,11 +75,7 @@ export default function AppSidebar() {
 
   const SignOut = async () => {
     try {
-      try {
-        await api.post("/api/auth/logout");
-      } catch (_) {
-        // non-fatal
-      }
+      try { await api.post("/api/auth/logout"); } catch (_) { }
       logout();
       navigate("/login");
       toast.success("Signed out successfully");
@@ -84,71 +88,91 @@ export default function AppSidebar() {
   };
 
   const initials = getInitials(user?.name);
-  // user.profilePicture is populated by getMe / fetchMe after upload
   const avatarSrc = user?.profilePicture || undefined;
 
   return (
-    <Sidebar variant="sidebar">
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-xl font-bold ml-4 md:ml-10 mt-6 text-black">
-            EasyManage
-          </SidebarGroupLabel>
-          <Separator className="w-full h-px md:h-1 bg-gray-200 my-2" />
-          <SidebarGroupLabel className="text-gray-500 font-bold text-xl">
-            Main Menu
-          </SidebarGroupLabel>
-          <SidebarGroupContent className="p-3">
-            <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title} className="mb-2 text-gray-500">
-                  <SidebarMenuButton
-                    asChild
-                    className="hover:bg-gray-100 hover:text-gray-800 rounded-md flex items-center gap-2"
-                  >
-                    <NavLink to={item.url} onClick={handleNav}>
-                      <item.icon className="w-5 h-5" />
+    <Sidebar
+      variant="sidebar"
+      className="bg-white border-r border-slate-100 w-56"
+    >
+      {/* ── Logo ────────────────────────────────────────────────────── */}
+      <div className="px-5 pt-6 pb-4">
+        <img src="/logo.jpeg" alt="Sallyan House" className="w-10 h-10" />
+        <span className="text-lg font-bold tracking-tight text-slate-900">Sallyan House</span>
+      </div>
+
+      {/* ── Navigation ──────────────────────────────────────────────── */}
+      <SidebarContent className="px-3 flex-1 overflow-y-auto">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label} className="mb-5">
+            {/* Section label — uppercase, muted, tight spacing */}
+            <p className="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-slate-400">
+              {group.label}
+            </p>
+
+            <nav className="flex flex-col gap-0.5">
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.title}
+                  to={item.url}
+                  end={item.url === "/"}
+                  onClick={handleNav}
+                  className={({ isActive }) =>
+                    [
+                      "group flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all duration-150",
+                      "border-l-2",
+                      isActive
+                        ? "border-red-800 bg-red-50 text-red-900"
+                        : "border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800",
+                    ].join(" ")
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <item.icon
+                        className={[
+                          "w-4 h-4 flex-shrink-0 transition-colors",
+                          isActive
+                            ? "text-red-800"
+                            : "text-slate-400 group-hover:text-slate-600",
+                        ].join(" ")}
+                      />
                       <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                    </>
+                  )}
+                </NavLink>
               ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+            </nav>
+          </div>
+        ))}
       </SidebarContent>
 
-      <SidebarFooter className="p-2">
+      {/* ── User footer ─────────────────────────────────────────────── */}
+      <SidebarFooter className="p-3 border-t border-slate-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="w-full focus:outline-none">
-              <Card className="w-full bg-gray-50 hover:bg-gray-200 transition-colors">
-                <CardHeader className="flex flex-row items-center gap-3 p-2 md:flex-col md:items-center md:p-3">
+            <button className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-50 transition-colors focus:outline-none">
+              <Avatar className="h-8 w-8 ring-2 ring-slate-100 flex-shrink-0">
+                {avatarSrc && (
+                  <AvatarImage
+                    src={avatarSrc}
+                    alt={user?.name ?? "Profile"}
+                    className="object-cover"
+                  />
+                )}
+                <AvatarFallback className="bg-slate-200 text-slate-600 font-semibold text-xs">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
 
-                  {/* ── Avatar: shows real photo or initials fallback ── */}
-                  <Avatar className="h-9 w-9 ring-2 ring-white shadow-sm">
-                    {avatarSrc ? (
-                      <AvatarImage
-                        src={avatarSrc}
-                        alt={user?.name ?? "Profile"}
-                        className="object-cover"
-                      />
-                    ) : null}
-                    <AvatarFallback className="bg-slate-200 text-slate-600 font-semibold text-sm">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex flex-col text-left md:text-center leading-tight">
-                    <span className="font-semibold text-sm truncate max-w-[140px]">
-                      {user?.name ?? "Admin"}
-                    </span>
-                    <span className="hidden md:block text-xs text-gray-500 truncate">
-                      {user?.email ?? "admin@gmail.com"}
-                    </span>
-                  </div>
-                </CardHeader>
-              </Card>
+              <div className="flex flex-col text-left leading-tight min-w-0">
+                <span className="text-sm font-semibold text-slate-800 truncate">
+                  {user?.name ?? "Admin"}
+                </span>
+                <span className="text-xs text-slate-400 truncate">
+                  {user?.email ?? "admin@gmail.com"}
+                </span>
+              </div>
             </button>
           </DropdownMenuTrigger>
 

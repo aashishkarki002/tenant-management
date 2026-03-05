@@ -1,8 +1,8 @@
 /**
- * FuelGauge — industrial dark variant
- * Arc gauge driven purely by `pct` prop (0–100).
+ * FuelGauge — works on both light and dark backgrounds.
+ * Pass `dark` prop for dark card backgrounds (defaults to light/white).
  */
-export function FuelGauge({ pct = 0, size = 80 }) {
+export function FuelGauge({ pct = 0, size = 80, dark = false }) {
     const r = 34;
     const cx = 48;
     const cy = 50;
@@ -12,30 +12,17 @@ export function FuelGauge({ pct = 0, size = 80 }) {
     const dashOffset = -circum * 0.125 + (arcLen - fill);
 
     const color =
-        pct <= 10 ? "#f87171" : pct <= 25 ? "#fbbf24" : "#34d399";
-    const glowColor =
-        pct <= 10 ? "rgba(248,113,113,0.35)" : pct <= 25 ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)";
+        pct <= 10 ? "#ef4444" : pct <= 25 ? "#f59e0b" : "#22c55e";
+    const trackColor = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+    const labelColor = dark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)";
 
     return (
-        <svg
-            width={size}
-            height={size}
-            viewBox="0 0 96 96"
-            className="shrink-0"
-            style={{ filter: `drop-shadow(0 0 6px ${glowColor})` }}
-        >
-            {/* Outer ring */}
-            <circle
-                cx={cx} cy={cy} r={38}
-                fill="none"
-                stroke="rgba(255,255,255,0.04)"
-                strokeWidth={1}
-            />
+        <svg width={size} height={size} viewBox="0 0 96 96" className="shrink-0">
             {/* Track */}
             <circle
                 cx={cx} cy={cy} r={r}
                 fill="none"
-                stroke="rgba(255,255,255,0.06)"
+                stroke={trackColor}
                 strokeWidth={8}
                 strokeDasharray={`${arcLen} ${circum}`}
                 strokeDashoffset={-circum * 0.125}
@@ -56,24 +43,24 @@ export function FuelGauge({ pct = 0, size = 80 }) {
             />
             {/* Value */}
             <text
-                x={cx} y={cy + 4}
+                x={cx} y={cy + 5}
                 textAnchor="middle"
-                fontSize={14}
-                fontWeight={900}
+                fontSize={15}
+                fontWeight={800}
                 fill={color}
-                style={{ fontFamily: "'IBM Plex Mono', monospace" }}
+                style={{ fontFamily: "monospace" }}
             >
                 {pct}%
             </text>
             <text
-                x={cx} y={cy + 15}
+                x={cx} y={cy + 16}
                 textAnchor="middle"
                 fontSize={7}
-                fill="rgba(255,255,255,0.2)"
+                fill={labelColor}
                 letterSpacing={2}
             >
                 FUEL
             </text>
         </svg>
     );
-}   
+}

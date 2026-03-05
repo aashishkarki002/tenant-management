@@ -101,20 +101,20 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-4 px-4 pb-2">
 
       {/* ── Collection Card ───────────────────────────────────────────────── */}
-      <Card className="rounded-xl shadow-md w-full bg-orange-800 text-white border-none sm:col-span-2 md:col-span-1">
+      <Card className="rounded-xl shadow-md w-full bg-[#375534] text-white border-none sm:col-span-2 md:col-span-1">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-xs font-semibold tracking-widest uppercase opacity-80">
             Revenue
           </CardTitle>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-md overflow-hidden border border-orange-600 text-[11px] font-semibold shrink-0">
+            <div className="flex rounded-md overflow-hidden border border-white text-[11px] font-semibold shrink-0">
               {['month', 'year'].map((v) => (
                 <button
                   key={v}
                   type="button"
                   onClick={() => setCollectionView(v)}
                   className={`px-2.5 py-1 transition-colors capitalize ${collectionView === v
-                    ? 'bg-white text-orange-800'
+                    ? 'bg-white text-[#6B9071]'
                     : 'bg-transparent text-orange-200 hover:bg-orange-700'
                     }`}
                 >
@@ -122,10 +122,10 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 </button>
               ))}
             </div>
-            <div className="rounded-md bg-orange-700/80 p-1.5">
+            <div className="rounded-md bg-[#6B9071] p-1.5">
               {collectionView === 'year'
-                ? <TrendingUp className="w-4 h-4 text-white" />
-                : <Wallet className="w-4 h-4 text-white" />}
+                ? <TrendingUp className="w-4 h-4 text-[#375534]" />
+                : <Wallet className="w-4 h-4 text-[#375534]" />}
             </div>
           </div>
         </CardHeader>
@@ -143,14 +143,14 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
             </>
           ) : collectionView === 'month' ? (
             <>
-              <p className="text-xs text-orange-300 -mb-1">This month's collection</p>
+              <p className="text-xs text-[#6B9071] -mb-1">This month's collection</p>
 
               {/* Revenue line items scoped to current Nepali month */}
               <ul className="space-y-2.5">
                 {revenueBreakdownThisMonth.length > 0 ? revenueBreakdownThisMonth.map((item) => (
                   <li key={item.code} className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-2 min-w-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-300 shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#6B9071] shrink-0" />
                       <span className="text-sm text-orange-100 truncate">{item.name}</span>
                     </span>
                     <span className="text-sm font-semibold tabular-nums text-white shrink-0">
@@ -160,7 +160,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 )) : (
                   <li className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-300 shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#6B9071] shrink-0" />
                       <span className="text-sm text-orange-100">Rent</span>
                     </span>
                     <span className="text-sm font-semibold tabular-nums text-white">
@@ -171,9 +171,9 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
               </ul>
 
               {/* Total + progress */}
-              <div className="border-t border-orange-600 pt-2.5 space-y-1">
+              <div className="border-t border-[#6B9071] pt-2.5 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-orange-300">Total Collected</span>
+                  <span className="text-xs font-semibold uppercase tracking-widest text-[#6B9071]">Total Collected</span>
                   <span className="text-lg font-bold tabular-nums text-white">
                     {displayCollected != null ? `₹${Number(displayCollected).toLocaleString()}` : '—'}
                   </span>
@@ -182,9 +182,9 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                   <>
                     <Progress
                       value={pct(displayCollected, target)}
-                      className="h-1.5 w-full bg-orange-700 *:data-[slot=progress-indicator]:bg-white *:data-[slot=progress-indicator]:rounded-r-full"
+                      className="h-1.5 w-full bg-[#6B9071] *:data-[slot=progress-indicator]:bg-white *:data-[slot=progress-indicator]:rounded-r-full"
                     />
-                    <p className="text-xs text-orange-300">
+                    <p className="text-xs text-[#6B9071]">
                       {pct(displayCollected, target)}% of ₹{Number(target).toLocaleString()} target
                     </p>
                   </>
@@ -192,8 +192,8 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
               </div>
 
               {/* Outstanding due */}
-              <div className="flex items-center justify-between rounded-lg bg-orange-900/60 px-3 py-2.5 mt-1">
-                <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-orange-300">
+              <div className="flex items-center justify-between rounded-lg bg-[#6B9071]/60 px-3 py-2.5 mt-1">
+                <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6B9071]">
                   <IndianRupee className="w-3.5 h-3.5" />
                   Overall Due
                 </span>
@@ -205,7 +205,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
           ) : (
             /* ── YTD Scorecard ─────────────────────────────────────────── */
             <>
-              <p className="text-xs text-orange-300 -mb-2">
+              <p className="text-xs text-[#6B9071] -mb-2">
                 Collected year-to-date · {elapsedMonths.length} month{elapsedMonths.length !== 1 ? 's' : ''}
               </p>
               <p className="text-3xl sm:text-4xl font-bold tabular-nums">
@@ -216,44 +216,44 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                 <div className="space-y-1">
                   <Progress
                     value={ytdPct}
-                    className="h-2 w-full bg-orange-700 *:data-[slot=progress-indicator]:bg-white *:data-[slot=progress-indicator]:rounded-r-full"
+                    className="h-2 w-full bg-[#6B9071] *:data-[slot=progress-indicator]:bg-white *:data-[slot=progress-indicator]:rounded-r-full"
                   />
-                  <p className="text-xs text-orange-200">
+                  <p className="text-xs text-[#6B9071]">
                     {ytdPct}% of {formatAmount(ytdTarget)} prorated target
                   </p>
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-2 border-t border-orange-700 pt-3">
+              <div className="grid grid-cols-3 gap-2 border-t border-[#6B9071] pt-3">
                 <div className="flex flex-col gap-0.5">
                   <p className="text-lg font-bold tabular-nums">{formatAmount(avgMonthly)}</p>
-                  <p className="text-[10px] text-orange-300 uppercase tracking-wide leading-tight">Avg / month</p>
+                  <p className="text-[10px] text-[#6B9071] uppercase tracking-wide leading-tight">Avg / month</p>
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <p className="text-lg font-bold tabular-nums text-green-300">{hitMonths}</p>
-                  <p className="text-[10px] text-orange-300 uppercase tracking-wide leading-tight">Months hit</p>
+                  <p className="text-[10px] text-[#6B9071] uppercase tracking-wide leading-tight">Months hit</p>
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <p className={`text-lg font-bold tabular-nums ${missedMonths > 0 ? 'text-red-300' : 'text-white'}`}>
                     {missedMonths}
                   </p>
-                  <p className="text-[10px] text-orange-300 uppercase tracking-wide leading-tight">Months missed</p>
+                  <p className="text-[10px] text-[#6B9071] uppercase tracking-wide leading-tight">Months missed</p>
                 </div>
               </div>
 
-              <ul className="space-y-1.5 border-t border-orange-700 pt-3 max-h-[120px] overflow-y-auto">
+              <ul className="space-y-1.5 border-t border-[#6B9071] pt-3 max-h-[120px] overflow-y-auto">
                 {elapsedMonths.map((m) => {
                   const hasData = (m.total ?? 0) > 0;
                   const isCurrent = m.month === currentNpMonth;
                   return (
                     <li key={m.month} className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1.5 min-w-0">
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isCurrent ? 'bg-white' : hasData ? 'bg-green-400' : 'bg-orange-600'}`} />
-                        <span className={`text-xs truncate ${isCurrent ? 'text-white font-semibold' : 'text-orange-200'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isCurrent ? 'bg-white' : hasData ? 'bg-green-400' : 'bg-[#6B9071]'}`} />
+                        <span className={`text-xs truncate ${isCurrent ? 'text-white font-semibold' : 'text-[#6B9071]'}`}>
                           {m.name}{isCurrent ? ' (now)' : ''}
                         </span>
                       </span>
-                      <span className={`text-xs font-medium tabular-nums shrink-0 ${hasData ? 'text-white' : 'text-orange-600'}`}>
+                      <span className={`text-xs font-medium tabular-nums shrink-0 ${hasData ? 'text-white' : 'text-[#6B9071]'}`}>
                         {hasData ? `₹${Number(m.total).toLocaleString()}` : 'no data'}
                       </span>
                     </li>
@@ -271,8 +271,8 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
           <CardTitle className="text-xs font-semibold tracking-widest uppercase text-gray-500">
             Occupancy Rate
           </CardTitle>
-          <div className="rounded-md bg-orange-100 p-1.5">
-            <Building2 className="w-4 h-4 text-orange-800" />
+          <div className="rounded-md bg-[#6B9071] p-1.5">
+            <Building2 className="w-4 h-4 text-[#375534]" />
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -293,7 +293,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
               <div className="flex justify-end text-xs text-gray-400">{vacant} vacant</div>
               <Progress
                 value={occupancyRate}
-                className="h-2 w-full bg-gray-100 *:data-[slot=progress-indicator]:bg-orange-800"
+                className="h-2 w-full bg-gray-100 *:data-[slot=progress-indicator]:bg-[#6B9071]"
               />
               <div className="flex items-center justify-between pt-1">
                 <Badge className={`text-xs border ${occupancyRate >= 80 ? 'text-green-700 bg-green-50 border-green-300'
@@ -303,7 +303,7 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
                   {occupancyRate >= 80 ? 'Stable' : occupancyRate >= 50 ? 'Moderate' : 'Low'}
                 </Badge>
                 <Link to="/dashboard/units">
-                  <Button className="text-xs font-medium text-orange-800 hover:underline bg-white border border-gray-200 hover:bg-orange-50 cursor-pointer h-8 px-3">
+                  <Button className="text-xs font-medium text-[#6B9071] hover:underline bg-white border border-gray-200 hover:bg-[#6B9071] cursor-pointer h-8 px-3">
                     View All Units
                   </Button>
                 </Link>
@@ -335,25 +335,39 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
       </Card>
 
       {/* ── Attention Needed ──────────────────────────────────────────────── */}
-      <Card className={`rounded-xl shadow-md w-full border transition-all duration-300 ${isCritical
-        ? 'border-red-300 bg-gradient-to-br from-red-50 to-orange-50 ring-2 ring-red-200 ring-offset-1'
-        : 'bg-white border-gray-100'
-        }`}>
+      <Card
+        className={`rounded-xl shadow-md w-full border transition-all duration-300 ${isCritical
+          ? "border-red-300   ring-2 ring-red-200 ring-offset-1"
+          : "bg-white border-[#AEC3B0]"
+          }`}
+      >
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div className="flex items-center gap-2">
             {isCritical && (
-              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
+              <AlertTriangle
+                className="w-4 h-4 text-red-500 shrink-0"
+                style={{
+                  animation:
+                    "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+                }}
+              />
             )}
-            <CardTitle className={`text-xs font-semibold tracking-widest uppercase ${isCritical ? 'text-red-700' : 'text-gray-500'}`}>
+
+            <CardTitle
+              className={`text-xs font-semibold tracking-widest uppercase ${isCritical ? "text-red-700" : "text-[#375534]"
+                }`}
+            >
               Attention Needed
             </CardTitle>
           </div>
+
           {urgentCount > 0 && (
             <span className="rounded-full bg-red-500 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm shadow-red-200 animate-pulse">
               {urgentCount} Urgent
             </span>
           )}
         </CardHeader>
+
         <CardContent className="space-y-2.5">
           {loading ? (
             <div className="space-y-2">
@@ -364,58 +378,128 @@ export default function SummaryCard({ stats, loading, error, onRetry }) {
           ) : (
             <>
               {/* Overdue Payments */}
+
               <Link
                 to="/dashboard/transactions"
                 className={`flex items-center justify-between rounded-lg p-3 transition-all group ${overdueCount > 0
-                  ? 'bg-red-500 text-white hover:bg-red-600 shadow-sm shadow-red-200'
-                  : 'border border-gray-100 bg-white text-gray-700 hover:bg-gray-50'
+                  ? "bg-red-500 text-white hover:bg-red-600 shadow-sm shadow-red-200"
+                  : "border border-[#AEC3B0] bg-white text-[#375534] hover:bg-[#E3EED4]"
                   }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`rounded-full p-1.5 shrink-0 ${overdueCount > 0 ? 'bg-red-400/50' : 'bg-gray-100'}`}>
-                    <AlertCircle className={`w-4 h-4 ${overdueCount > 0 ? 'text-white' : 'text-gray-400'}`} />
+                  <div
+                    className={`rounded-full p-1.5 shrink-0 ${overdueCount > 0
+                      ? "bg-red-400/50"
+                      : "bg-[#E3EED4]"
+                      }`}
+                  >
+                    <AlertCircle
+                      className={`w-4 h-4 ${overdueCount > 0
+                        ? "text-white"
+                        : "text-[#6B9071]"
+                        }`}
+                    />
                   </div>
+
                   <div className="text-left">
-                    <p className={`text-sm font-semibold ${overdueCount > 0 ? 'text-white' : 'text-gray-700'}`}>
-                      {overdueCount} Overdue Payment{overdueCount !== 1 ? 's' : ''}
+                    <p
+                      className={`text-sm font-semibold ${overdueCount > 0
+                        ? "text-white"
+                        : "text-[#375534]"
+                        }`}
+                    >
+                      {overdueCount} Overdue Payment
+                      {overdueCount !== 1 ? "s" : ""}
                     </p>
-                    <p className={`text-xs ${overdueCount > 0 ? 'text-red-100' : 'text-gray-400'}`}>
+
+                    <p
+                      className={`text-xs ${overdueCount > 0
+                        ? "text-red-100"
+                        : "text-[#6B9071]"
+                        }`}
+                    >
                       {overdueCount > 0
-                        ? `${overdueCount === 3 ? 'At least ' : ''}${formatAmount(overdueAmount)} total`
-                        : 'All payments up to date'}
+                        ? `${overdueCount === 3
+                          ? "At least "
+                          : ""
+                        }${formatAmount(
+                          overdueAmount
+                        )} total`
+                        : "All payments up to date"}
                     </p>
                   </div>
                 </div>
-                <ChevronRight className={`w-4 h-4 shrink-0 ${overdueCount > 0 ? 'text-red-200' : 'text-gray-400'} group-hover:translate-x-0.5 transition-transform`} />
+
+                <ChevronRight
+                  className={`w-4 h-4 shrink-0 ${overdueCount > 0
+                    ? "text-red-200"
+                    : "text-[#6B9071]"
+                    } group-hover:translate-x-0.5 transition-transform`}
+                />
               </Link>
 
               {/* Maintenance Requests */}
+
               <Link
                 to="/maintenance"
                 className={`flex items-center justify-between rounded-lg p-3 transition-all group ${maintenanceCount > 0
-                  ? 'bg-orange-800 text-white hover:bg-orange-900 shadow-sm shadow-orange-200'
-                  : 'border border-gray-100 bg-white text-gray-700 hover:bg-gray-50'
+                  ? "bg-[#375534] text-white hover:bg-[#2F4A2C] shadow-sm shadow-[#375534]/30"
+                  : "border border-[#AEC3B0] bg-white text-[#375534] hover:bg-[#E3EED4]"
                   }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`rounded-full p-1.5 shrink-0 ${maintenanceCount > 0 ? 'bg-orange-700/50' : 'bg-gray-100'}`}>
-                    <Wrench className={`w-4 h-4 ${maintenanceCount > 0 ? 'text-white' : 'text-gray-400'}`} />
+                  <div
+                    className={`rounded-full p-1.5 shrink-0 ${maintenanceCount > 0
+                      ? "bg-[#6B9071]/50"
+                      : "bg-[#E3EED4]"
+                      }`}
+                  >
+                    <Wrench
+                      className={`w-4 h-4 ${maintenanceCount > 0
+                        ? "text-white"
+                        : "text-[#6B9071]"
+                        }`}
+                    />
                   </div>
+
                   <div className="text-left">
-                    <p className={`text-sm font-semibold ${maintenanceCount > 0 ? 'text-white' : 'text-gray-700'}`}>
-                      {maintenanceCount} Maintenance Request{maintenanceCount !== 1 ? 's' : ''}
+                    <p
+                      className={`text-sm font-semibold ${maintenanceCount > 0
+                        ? "text-white"
+                        : "text-[#375534]"
+                        }`}
+                    >
+                      {maintenanceCount} Maintenance Request
+                      {maintenanceCount !== 1
+                        ? "s"
+                        : ""}
                     </p>
-                    <p className={`text-xs ${maintenanceCount > 0 ? 'text-orange-200' : 'text-gray-400'}`}>
+
+                    <p
+                      className={`text-xs ${maintenanceCount > 0
+                        ? "text-[#AEC3B0]"
+                        : "text-[#6B9071]"
+                        }`}
+                    >
                       {maintenanceDetail}
                     </p>
                   </div>
                 </div>
-                <ChevronRight className={`w-4 h-4 shrink-0 ${maintenanceCount > 0 ? 'text-orange-300' : 'text-gray-400'} group-hover:translate-x-0.5 transition-transform`} />
+
+                <ChevronRight
+                  className={`w-4 h-4 shrink-0 ${maintenanceCount > 0
+                    ? "text-[#AEC3B0]"
+                    : "text-[#6B9071]"
+                    } group-hover:translate-x-0.5 transition-transform`}
+                />
               </Link>
 
               <Link
                 to="/maintenance"
-                className={`inline-flex items-center text-xs font-semibold hover:underline pt-1 ${isCritical ? 'text-red-700' : 'text-orange-800'}`}
+                className={`inline-flex items-center text-xs font-semibold hover:underline pt-1 ${isCritical
+                  ? "text-red-700"
+                  : "text-[#375534]"
+                  }`}
               >
                 Go to Action Center
                 <ChevronRight className="w-3.5 h-3.5 ml-0.5" />

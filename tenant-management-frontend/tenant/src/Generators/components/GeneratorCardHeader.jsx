@@ -18,6 +18,8 @@ export function GeneratorCardHeader({ gen, onCheckClick, onRefillClick, onServic
         gen.tankCapacityLiters ? `Tank ${gen.tankCapacityLiters}L` : null,
         gen.serialNumber ? `S/N ${gen.serialNumber}` : null,
         gen.property?.name,
+        // Show sub-meter linkage status — useful for ops team to confirm metering
+        gen.subMeter ? `⚡ ${gen.subMeter.name ?? "Sub-meter linked"}` : "⚡ No sub-meter",
     ].filter(Boolean);
 
     return (

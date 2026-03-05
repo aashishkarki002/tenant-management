@@ -35,6 +35,12 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
     record.subMeter?.displayName ??
     `Row ${index + 1}`;
 
+  // Generator sub-meters are auto-named "Generator – {name}" by generator.service.js.
+  // Surface this visually so ops staff can distinguish them from other sub-meters.
+  const isGeneratorMeter =
+    record.meterType === "sub_meter" &&
+    (record.subMeter?.name ?? "").startsWith("Generator –");
+
   // Controller stores consumption as `unitsConsumed`; fall back to calculation
   const consumption =
     record.unitsConsumed != null && !Number.isNaN(Number(record.unitsConsumed))
@@ -57,8 +63,10 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
   const paidAmountFormatted = record.paidAmountFormatted ?? (paidAmount > 0 ? fmt(paidAmount) : null);
   const remainingAmountFormatted = record.remainingAmountFormatted ?? fmt(remainingAmount);
 
-  const isPayable =
-    remainingAmount > 0 && String(status).toLowerCase() === "pending";
+  // Industry standard: allow payment on any status that still has a balance.
+  // "partially_paid" and "overdue" both have remainingAmount > 0.
+  const PAYABLE_STATUSES = new Set(["pending", "partially_paid", "overdue"]);
+  const isPayable = remainingAmount > 0 && PAYABLE_STATUSES.has(String(status).toLowerCase());
 
   const openPaymentDialog = useCallback(() => setPaymentDialogOpen(true), []);
 
@@ -76,6 +84,11 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
         {/* NAME */}
         <td className="py-3 px-4">
           <div className="font-medium">{unitName}</div>
+          {isGeneratorMeter && (
+            <span className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200">
+              Generator
+            </span>
+          )}
           {record.isTenantTransition && (
             <span
               title="Previous tenant moved out — reading carried forward to new tenant"
