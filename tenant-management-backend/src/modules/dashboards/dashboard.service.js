@@ -14,6 +14,7 @@ import { Maintenance } from "../maintenance/Maintenance.Model.js";
 import { Payment } from "../payment/payment.model.js";
 import { Transaction } from "../ledger/transactions/Transaction.Model.js";
 import { Generator } from "../maintenance/generators/Generator.Model.js";
+import { Cam } from "../cam/cam.model.js";
 
 // ─── Nepali FY Quarter definitions ────────────────────────────────────────────
 //
@@ -249,10 +250,14 @@ export async function getDashboardStatsData() {
 
   const [
     rentAgg,
+    rentThisMonthAgg,
+    camAgg,
+    camThisMonthAgg,
     revenueAgg,
     revenueByMonthAgg,
     revenueBreakdownAgg,
     revenueBreakdownThisMonthAgg,
+    lateFeeAgg,
   ] = await Promise.all([
     Rent.aggregate([
       {
@@ -270,6 +275,51 @@ export async function getDashboardStatsData() {
           totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
           totalRentPaisa: { $sum: "$rentAmountPaisa" },
           totalOutstandingPaisa: { $sum: "$remaining" },
+        },
+      },
+    ]),
+
+    // Rent billed + collected for the CURRENT Nepali month only
+    Rent.aggregate([
+      { $match: { nepaliYear: npYear, nepaliMonth: npMonth } },
+      {
+        $group: {
+          _id: null,
+          billedPaisa: { $sum: "$rentAmountPaisa" },
+          collectedPaisa: { $sum: "$paidAmountPaisa" },
+        },
+      },
+    ]),
+
+    // CAM all-time totals
+    Cam.aggregate([
+      {
+        $project: {
+          amountPaisa: 1,
+          paidAmountPaisa: 1,
+          remaining: {
+            $max: [{ $subtract: ["$amountPaisa", "$paidAmountPaisa"] }, 0],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalBilledPaisa: { $sum: "$amountPaisa" },
+          totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
+          totalOutstandingPaisa: { $sum: "$remaining" },
+        },
+      },
+    ]),
+
+    // CAM billed + collected for the CURRENT Nepali month only
+    Cam.aggregate([
+      { $match: { nepaliYear: npYear, nepaliMonth: npMonth } },
+      {
+        $group: {
+          _id: null,
+          billedPaisa: { $sum: "$amountPaisa" },
+          collectedPaisa: { $sum: "$paidAmountPaisa" },
         },
       },
     ]),
@@ -341,9 +391,34 @@ export async function getDashboardStatsData() {
       },
       { $sort: { totalAmountPaisa: -1 } },
     ]),
+
+    // ── Late fee summary — current FY (lateFeeApplied=true means fee was charged) ──
+    // Surfaces late fee data that is otherwise invisible on the dashboard.
+    // Uses the index { status: 1, lateFeeApplied: 1 } defined in rent.Model.js.
+    // Fields: totalLateFeePaisa (accrued), totalLatePaidPaisa (collected),
+    //         tenantsCharged (distinct count), tenantsPaid (fully cleared fees).
+    Rent.aggregate([
+      { $match: { lateFeeApplied: true, npYear } },
+      {
+        $group: {
+          _id: null,
+          totalLateFeePaisa: { $sum: "$lateFeePaisa" },
+          totalLatePaidPaisa: { $sum: "$latePaidAmountPaisa" },
+          tenantsCharged: { $sum: 1 },
+          tenantsPaidFees: {
+            $sum: {
+              $cond: [{ $eq: ["$lateFeeStatus", "paid"] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]),
   ]);
 
   const rentSummary = rentAgg[0] || {};
+  const rentThisMonth = rentThisMonthAgg[0] || {};
+  const camSummary = camAgg[0] || {};
+  const camThisMonth = camThisMonthAgg[0] || {};
   const revenueSummary = revenueAgg[0] || {};
 
   // Build a complete 12-month array for a given year, zero-filling missing months.
@@ -664,6 +739,133 @@ export async function getDashboardStatsData() {
         totalOutstanding: (rentSummary.totalOutstandingPaisa || 0) / 100,
       },
 
+      // ── Collection summary (rent + CAM breakdown) ─────────────────────────
+      // Gives the UI everything it needs to render a "Total Collection" card
+      // with a rent vs CAM split, both all-time and current-month scoped.
+      collectionSummary: {
+        // ── Current Nepali month ────────────────────────────────────────────
+        thisMonth: {
+          // Rent
+          rentBilledPaisa: rentThisMonth.billedPaisa || 0,
+          rentCollectedPaisa: rentThisMonth.collectedPaisa || 0,
+          rentOutstandingPaisa: Math.max(
+            0,
+            (rentThisMonth.billedPaisa || 0) -
+              (rentThisMonth.collectedPaisa || 0),
+          ),
+          // CAM
+          camBilledPaisa: camThisMonth.billedPaisa || 0,
+          camCollectedPaisa: camThisMonth.collectedPaisa || 0,
+          camOutstandingPaisa: Math.max(
+            0,
+            (camThisMonth.billedPaisa || 0) -
+              (camThisMonth.collectedPaisa || 0),
+          ),
+          // Combined
+          totalBilledPaisa:
+            (rentThisMonth.billedPaisa || 0) + (camThisMonth.billedPaisa || 0),
+          totalCollectedPaisa:
+            (rentThisMonth.collectedPaisa || 0) +
+            (camThisMonth.collectedPaisa || 0),
+          totalOutstandingPaisa: Math.max(
+            0,
+            (rentThisMonth.billedPaisa || 0) +
+              (camThisMonth.billedPaisa || 0) -
+              (rentThisMonth.collectedPaisa || 0) -
+              (camThisMonth.collectedPaisa || 0),
+          ),
+          // Convenience rupee values (÷100)
+          rentBilled: (rentThisMonth.billedPaisa || 0) / 100,
+          rentCollected: (rentThisMonth.collectedPaisa || 0) / 100,
+          rentOutstanding:
+            Math.max(
+              0,
+              (rentThisMonth.billedPaisa || 0) -
+                (rentThisMonth.collectedPaisa || 0),
+            ) / 100,
+          camBilled: (camThisMonth.billedPaisa || 0) / 100,
+          camCollected: (camThisMonth.collectedPaisa || 0) / 100,
+          camOutstanding:
+            Math.max(
+              0,
+              (camThisMonth.billedPaisa || 0) -
+                (camThisMonth.collectedPaisa || 0),
+            ) / 100,
+          totalBilled:
+            ((rentThisMonth.billedPaisa || 0) +
+              (camThisMonth.billedPaisa || 0)) /
+            100,
+          totalCollected:
+            ((rentThisMonth.collectedPaisa || 0) +
+              (camThisMonth.collectedPaisa || 0)) /
+            100,
+          totalOutstanding:
+            Math.max(
+              0,
+              (rentThisMonth.billedPaisa || 0) +
+                (camThisMonth.billedPaisa || 0) -
+                (rentThisMonth.collectedPaisa || 0) -
+                (camThisMonth.collectedPaisa || 0),
+            ) / 100,
+          // Collection rate for progress bar (0–100)
+          collectionRate:
+            (rentThisMonth.billedPaisa || 0) + (camThisMonth.billedPaisa || 0) >
+            0
+              ? Math.min(
+                  100,
+                  Math.round(
+                    (((rentThisMonth.collectedPaisa || 0) +
+                      (camThisMonth.collectedPaisa || 0)) /
+                      ((rentThisMonth.billedPaisa || 0) +
+                        (camThisMonth.billedPaisa || 0))) *
+                      100,
+                  ),
+                )
+              : 0,
+        },
+
+        // ── All-time totals ─────────────────────────────────────────────────
+        allTime: {
+          // Rent
+          rentBilledPaisa: rentSummary.totalRentPaisa || 0,
+          rentCollectedPaisa: rentSummary.totalCollectedPaisa || 0,
+          rentOutstandingPaisa: rentSummary.totalOutstandingPaisa || 0,
+          // CAM
+          camBilledPaisa: camSummary.totalBilledPaisa || 0,
+          camCollectedPaisa: camSummary.totalCollectedPaisa || 0,
+          camOutstandingPaisa: camSummary.totalOutstandingPaisa || 0,
+          // Combined
+          totalBilledPaisa:
+            (rentSummary.totalRentPaisa || 0) +
+            (camSummary.totalBilledPaisa || 0),
+          totalCollectedPaisa:
+            (rentSummary.totalCollectedPaisa || 0) +
+            (camSummary.totalCollectedPaisa || 0),
+          totalOutstandingPaisa:
+            (rentSummary.totalOutstandingPaisa || 0) +
+            (camSummary.totalOutstandingPaisa || 0),
+          // Rupee values
+          rentBilled: (rentSummary.totalRentPaisa || 0) / 100,
+          rentCollected: (rentSummary.totalCollectedPaisa || 0) / 100,
+          rentOutstanding: (rentSummary.totalOutstandingPaisa || 0) / 100,
+          camBilled: (camSummary.totalBilledPaisa || 0) / 100,
+          camCollected: (camSummary.totalCollectedPaisa || 0) / 100,
+          camOutstanding: (camSummary.totalOutstandingPaisa || 0) / 100,
+          totalBilled:
+            ((rentSummary.totalRentPaisa || 0) +
+              (camSummary.totalBilledPaisa || 0)) /
+            100,
+          totalCollected:
+            ((rentSummary.totalCollectedPaisa || 0) +
+              (camSummary.totalCollectedPaisa || 0)) /
+            100,
+          totalOutstanding:
+            ((rentSummary.totalOutstandingPaisa || 0) +
+              (camSummary.totalOutstandingPaisa || 0)) /
+            100,
+        },
+      },
+
       // ── Revenue ───────────────────────────────────────────────────────────
       totalRevenue: revenueSummary.totalRevenue || 0,
 
@@ -689,6 +891,27 @@ export async function getDashboardStatsData() {
       // which uses getMonthsInQuarter() as the single source of truth.
       quarterlyThisYear,
       quarterlyLastYear,
+
+      // ── Late fee summary — powers the Late Fees KPI tile ─────────────────
+      // lateFeeApplied=true rents for the current FY.
+      // totalAccrued   — total late fees charged (rupees)
+      // totalCollected — total late fees paid back (rupees)
+      // totalOutstanding — accrued minus collected
+      // tenantsCharged — count of rent records with active late fees
+      // tenantsPaidFees — count who have fully cleared their late fee
+      lateFeeSummary: (() => {
+        const lf = lateFeeAgg[0] ?? {};
+        const accrued = (lf.totalLateFeePaisa ?? 0) / 100;
+        const collected = (lf.totalLatePaidPaisa ?? 0) / 100;
+        return {
+          totalAccrued: accrued,
+          totalCollected: collected,
+          totalOutstanding: Math.max(0, accrued - collected),
+          tenantsCharged: lf.tenantsCharged ?? 0,
+          tenantsPaidFees: lf.tenantsPaidFees ?? 0,
+          hasActiveFees: (lf.tenantsCharged ?? 0) > 0,
+        };
+      })(),
 
       // ── Attention ─────────────────────────────────────────────────────────
       overdueRents,

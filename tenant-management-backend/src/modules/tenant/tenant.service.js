@@ -404,26 +404,83 @@ export async function restoreTenant(tenantId) {
 }
 
 export async function searchTenants(query) {
-  const { search, property, block, innerBlock } = query;
+  const { search, property, block, innerBlock, status, frequency, lease } =
+    query;
+
   const filters = { isDeleted: false };
+
+  // ── Location filters ──────────────────────────────────────────────────────
   if (property) filters.property = property;
   if (block) filters.block = block;
   if (innerBlock) filters.innerBlock = innerBlock;
+
+  // ── Text search — $or across name, email, phone ───────────────────────────
+  // Previously only filtered by name. Now matches all identifiable fields.
   if (search) {
     const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    filters.name = new RegExp(escaped, "i");
+    filters.$or = [
+      { name: new RegExp(escaped, "i") },
+      { email: new RegExp(escaped, "i") },
+      { phone: new RegExp(escaped, "i") },
+    ];
+  }
+
+  // ── Status filter — supports single value or array ────────────────────────
+  // Query string: ?status=active&status=inactive  →  status = ["active","inactive"]
+  if (status) {
+    const statusArr = Array.isArray(status) ? status : [status];
+    const validStatuses = ["active", "inactive", "vacated"];
+    const sanitised = statusArr.filter((s) => validStatuses.includes(s));
+    if (sanitised.length) filters.status = { $in: sanitised };
+  }
+
+  // ── Payment frequency filter ───────────────────────────────────────────────
+  if (frequency) {
+    const freqArr = Array.isArray(frequency) ? frequency : [frequency];
+    const validFreqs = ["monthly", "quarterly"];
+    const sanitised = freqArr.filter((f) => validFreqs.includes(f));
+    if (sanitised.length) filters.rentPaymentFrequency = { $in: sanitised };
+  }
+
+  // ── Lease status filter ────────────────────────────────────────────────────
+  // "expiring_soon" = ends within 60 days from now (still in future)
+  // "expired"       = leaseEndDate is already past
+  // Both selected   = union (end date <= 60 days from now, past or future)
+  if (lease) {
+    const leaseArr = Array.isArray(lease) ? lease : [lease];
+    const now = new Date();
+    const future60 = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+
+    if (leaseArr.includes("expiring_soon") && leaseArr.includes("expired")) {
+      filters.leaseEndDate = { $lte: future60 };
+    } else if (leaseArr.includes("expiring_soon")) {
+      filters.leaseEndDate = { $gt: now, $lte: future60 };
+    } else if (leaseArr.includes("expired")) {
+      filters.leaseEndDate = { $lt: now };
+    }
   }
 
   const tenants = await Tenant.find(filters)
-    .populate("property")
-    .populate("block")
-    .populate("innerBlock")
-    .populate("units");
+    .populate({
+      path: "property",
+      match: { isDeleted: false },
+      select: "name address",
+    })
+    .populate({ path: "block", match: { isDeleted: false }, select: "name" })
+    .populate({
+      path: "innerBlock",
+      match: { isDeleted: false },
+      select: "name",
+    })
+    .populate({
+      path: "units",
+      match: { isDeleted: false },
+      select: "unitNumber sqft price",
+    });
 
-  return tenants.map((t) => {
-    t.units = (t.units || []).filter((u) => u != null);
-    return t;
-  });
+  return tenants
+    .filter((t) => Array.isArray(t.units) && t.units.length > 0)
+    .map((t) => t.toJSON());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
