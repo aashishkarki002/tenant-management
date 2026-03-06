@@ -2,19 +2,14 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandSeparator,
+  Command, CommandInput, CommandList, CommandEmpty,
+  CommandGroup, CommandItem, CommandSeparator,
 } from "@/components/ui/command";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Bell, BellOff, Search, X, CheckCheck, Wrench, CreditCard,
-  AlertCircle, Clock, Share, ChevronRight, LayoutDashboard,
-  PlusCircle, Users, Receipt, BookOpen,
+  AlertCircle, Clock, Share, ChevronRight, PlusCircle,
+  Users, Receipt, BookOpen, UserPlus, FileText,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
@@ -30,22 +25,21 @@ import { usePushNotifications } from "../hooks/usePushNotification";
 import { useAppBadge } from "../hooks/useBadge";
 import { HeaderSlot } from "../context/HeaderSlotContext";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Config maps (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Notification config — re-mapped to brand palette ────────────────────────
 const NOTIFICATION_CONFIG = {
-  PAYMENT_NOTIFICATION: { icon: CreditCard, color: "text-emerald-500", bg: "bg-emerald-50", border: "border-emerald-100", label: "Payment", labelColor: "bg-emerald-100 text-emerald-700" },
-  LATE_FEE_NOTIFICATION: { icon: AlertCircle, color: "text-orange-500", bg: "bg-orange-50", border: "border-orange-100", label: "Late Fee", labelColor: "bg-orange-100 text-orange-700" },
-  RENT_OVERDUE: { icon: Clock, color: "text-red-500", bg: "bg-red-50", border: "border-red-100", label: "Overdue", labelColor: "bg-red-100 text-red-700" },
-  RENT_PARTIALLY_PAID: { icon: CreditCard, color: "text-yellow-500", bg: "bg-yellow-50", border: "border-yellow-100", label: "Partial", labelColor: "bg-yellow-100 text-yellow-700" },
-  RENT_PAID: { icon: CreditCard, color: "text-emerald-500", bg: "bg-emerald-50", border: "border-emerald-100", label: "Paid", labelColor: "bg-emerald-100 text-emerald-700" },
-  RENT_REMINDER: { icon: Bell, color: "text-blue-500", bg: "bg-blue-50", border: "border-blue-100", label: "Reminder", labelColor: "bg-blue-100 text-blue-700" },
-  MAINTENANCE_CREATED: { icon: Wrench, color: "text-violet-500", bg: "bg-violet-50", border: "border-violet-100", label: "Maintenance", labelColor: "bg-violet-100 text-violet-700" },
-  MAINTENANCE_ASSIGNED: { icon: Wrench, color: "text-indigo-500", bg: "bg-indigo-50", border: "border-indigo-100", label: "Assigned", labelColor: "bg-indigo-100 text-indigo-700" },
-  MAINTENANCE_COMPLETED: { icon: Wrench, color: "text-teal-500", bg: "bg-teal-50", border: "border-teal-100", label: "Completed", labelColor: "bg-teal-100 text-teal-700" },
-  MAINTENANCE_CANCELLED: { icon: Wrench, color: "text-gray-400", bg: "bg-gray-50", border: "border-gray-100", label: "Cancelled", labelColor: "bg-gray-100 text-gray-500" },
+  PAYMENT_NOTIFICATION: { icon: CreditCard, color: "text-[#2E7A4A]", bg: "bg-[#D4EDE0]", border: "border-[#2E7A4A]/20", label: "Payment", labelColor: "bg-[#D4EDE0] text-[#1D4A2E]" },
+  LATE_FEE_NOTIFICATION: { icon: AlertCircle, color: "text-[#C4721A]", bg: "bg-[#FAEBD3]", border: "border-[#C4721A]/20", label: "Late Fee", labelColor: "bg-[#FAEBD3] text-[#5C3A10]" },
+  RENT_OVERDUE: { icon: Clock, color: "text-[#B02020]", bg: "bg-[#F5D5D5]", border: "border-[#B02020]/20", label: "Overdue", labelColor: "bg-[#F5D5D5] text-[#5C1414]" },
+  RENT_PARTIALLY_PAID: { icon: CreditCard, color: "text-[#C4721A]", bg: "bg-[#FAEBD3]", border: "border-[#C4721A]/20", label: "Partial", labelColor: "bg-[#FAEBD3] text-[#5C3A10]" },
+  RENT_PAID: { icon: CreditCard, color: "text-[#2E7A4A]", bg: "bg-[#D4EDE0]", border: "border-[#2E7A4A]/20", label: "Paid", labelColor: "bg-[#D4EDE0] text-[#1D4A2E]" },
+  RENT_REMINDER: { icon: Bell, color: "text-[#2E5A8C]", bg: "bg-[#D4E4F5]", border: "border-[#2E5A8C]/20", label: "Reminder", labelColor: "bg-[#D4E4F5] text-[#1A2E4A]" },
+  MAINTENANCE_CREATED: { icon: Wrench, color: "text-[#C4721A]", bg: "bg-[#FAEBD3]", border: "border-[#C4721A]/20", label: "Maintenance", labelColor: "bg-[#FAEBD3] text-[#5C3A10]" },
+  MAINTENANCE_ASSIGNED: { icon: Wrench, color: "text-[#2E5A8C]", bg: "bg-[#D4E4F5]", border: "border-[#2E5A8C]/20", label: "Assigned", labelColor: "bg-[#D4E4F5] text-[#1A2E4A]" },
+  MAINTENANCE_COMPLETED: { icon: Wrench, color: "text-[#2E7A4A]", bg: "bg-[#D4EDE0]", border: "border-[#2E7A4A]/20", label: "Done", labelColor: "bg-[#D4EDE0] text-[#1D4A2E]" },
+  MAINTENANCE_CANCELLED: { icon: Wrench, color: "text-[#948472]", bg: "bg-[#EEE9E5]", border: "border-[#DDD6D0]", label: "Cancelled", labelColor: "bg-[#EEE9E5] text-[#625848]" },
 };
-const DEFAULT_CONFIG = { icon: Bell, color: "text-gray-400", bg: "bg-gray-50", border: "border-gray-100", label: "Notification", labelColor: "bg-gray-100 text-gray-600" };
+const DEFAULT_CONFIG = { icon: Bell, color: "text-[#948472]", bg: "bg-[#EEE9E5]", border: "border-[#DDD6D0]", label: "Notification", labelColor: "bg-[#EEE9E5] text-[#625848]" };
+
 const TOAST_CONFIG = {
   PAYMENT_NOTIFICATION: { fn: toast.success }, RENT_PAID: { fn: toast.success },
   RENT_OVERDUE: { fn: toast.error }, LATE_FEE_NOTIFICATION: { fn: toast.warning },
@@ -53,8 +47,16 @@ const TOAST_CONFIG = {
   MAINTENANCE_CREATED: { fn: toast.info }, MAINTENANCE_CANCELLED: { fn: toast.warning },
   RENT_PARTIALLY_PAID: { fn: toast.warning }, RENT_REMINDER: { fn: toast.info },
 };
-const TYPE_STYLES = { tenant: "bg-blue-100 text-blue-700", rent: "bg-green-100 text-green-700", ledger: "bg-orange-100 text-orange-700" };
-const STATUS_DOT = { active: "bg-green-400", inactive: "bg-gray-400", pending: "bg-yellow-400", paid: "bg-green-400", overdue: "bg-red-400", partially_paid: "bg-orange-400" };
+
+const TYPE_STYLES = {
+  tenant: "bg-[#D4E4F5] text-[#1A2E4A]",
+  rent: "bg-[#D4EDE0] text-[#1D4A2E]",
+  ledger: "bg-[#FAEBD3] text-[#5C3A10]",
+};
+const STATUS_DOT = {
+  active: "bg-[#2E7A4A]", inactive: "bg-[#948472]", pending: "bg-[#C4721A]",
+  paid: "bg-[#2E7A4A]", overdue: "bg-[#B02020]", partially_paid: "bg-[#C4721A]",
+};
 const TYPE_ICON = { tenant: Users, rent: Receipt, ledger: BookOpen };
 
 function timeAgo(dateStr) {
@@ -69,11 +71,10 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PushNotificationBanner (named export — used in AppLayout)
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Push Notification Banner — on-brand ─────────────────────────────────────
 export function PushNotificationBanner({ user }) {
-  const { permissionState, isReady, isSubscribed, isIOS, isStandalone, requestPermissionAndSubscribe } = usePushNotifications(user);
+  const { permissionState, isReady, isSubscribed, isIOS, isStandalone, requestPermissionAndSubscribe } =
+    usePushNotifications(user);
   const [dismissed, setDismissed] = useState(() => {
     if (!user) return true;
     return localStorage.getItem(`pushDismissed_${user._id || user.id}`) === "true";
@@ -82,47 +83,73 @@ export function PushNotificationBanner({ user }) {
     if (user) localStorage.setItem(`pushDismissed_${user._id || user.id}`, "true");
     setDismissed(true);
   };
+
   if (dismissed || !user || !isReady || isSubscribed || permissionState === "granted") return null;
+
   if (isIOS && !isStandalone) {
     return (
-      <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mx-4 mb-2">
-        <Share className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+      <div className="flex items-start gap-3 rounded-xl px-4 py-3 mx-4 mb-2 border"
+        style={{ background: "#D4E4F5", borderColor: "rgba(46,90,140,0.25)" }}>
+        <Share className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#2E5A8C" }} />
         <div className="flex-1 text-sm">
-          <p className="font-semibold text-blue-800">Enable push notifications</p>
-          <p className="text-blue-600 mt-0.5">Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then open the app from your home screen and allow notifications.</p>
+          <p className="font-semibold" style={{ color: "#1A2E4A" }}>Add to Home Screen for notifications</p>
+          <p className="mt-0.5 text-xs" style={{ color: "#2E5A8C" }}>
+            Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then open the app and allow notifications.
+          </p>
         </div>
-        <button onClick={dismiss} className="text-blue-400 hover:text-blue-600 transition-colors"><X className="w-4 h-4" /></button>
+        <button onClick={dismiss} className="transition-colors" style={{ color: "#2E5A8C" }}>
+          <X className="w-4 h-4" />
+        </button>
       </div>
     );
   }
+
   if (permissionState === "denied") {
     return (
-      <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mx-4 mb-2">
-        <BellOff className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+      <div className="flex items-start gap-3 rounded-xl px-4 py-3 mx-4 mb-2 border"
+        style={{ background: "#F5D5D5", borderColor: "rgba(176,32,32,0.25)" }}>
+        <BellOff className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#B02020" }} />
         <div className="flex-1 text-sm">
-          <p className="font-semibold text-red-700">Notifications blocked</p>
-          <p className="text-red-500 mt-0.5">In your browser go to <strong>Site Settings → Notifications</strong> and allow <strong>app.sallyanhouse.com</strong>.</p>
+          <p className="font-semibold" style={{ color: "#5C1414" }}>Notifications blocked</p>
+          <p className="mt-0.5 text-xs" style={{ color: "#B02020" }}>
+            Go to <strong>Site Settings → Notifications</strong> and allow <strong>app.sallyanhouse.com</strong>
+          </p>
         </div>
-        <button onClick={dismiss} className="text-red-300 hover:text-red-500 transition-colors"><X className="w-4 h-4" /></button>
+        <button onClick={dismiss} className="transition-colors" style={{ color: "#C47272" }}>
+          <X className="w-4 h-4" />
+        </button>
       </div>
     );
   }
+
   return (
-    <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 mx-4 mb-2">
-      <Bell className="w-4 h-4 text-indigo-500 shrink-0" />
+    <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 mx-4 mb-2 border"
+      style={{ background: "#EEE9E5", borderColor: "#DDD6D0" }}>
+      <Bell className="w-4 h-4 shrink-0" style={{ color: "#3D1414" }} />
       <div className="flex-1 text-sm">
-        <p className="font-semibold text-indigo-800">Enable push notifications</p>
-        <p className="text-indigo-500 mt-0.5 text-xs">Get payment and maintenance alerts even when this tab is closed.</p>
+        <p className="font-semibold text-[13px]" style={{ color: "#3D1414" }}>
+          Stay on top of payments &amp; maintenance
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: "#948472" }}>
+          Enable notifications to get alerts even when this tab is closed.
+        </p>
       </div>
-      <button onClick={requestPermissionAndSubscribe} className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">Enable</button>
-      <button onClick={dismiss} className="text-indigo-300 hover:text-indigo-500 transition-colors"><X className="w-4 h-4" /></button>
+      <button
+        onClick={requestPermissionAndSubscribe}
+        className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all
+                   hover:opacity-90 active:scale-95"
+        style={{ background: "#3D1414", color: "#F0DADA" }}
+      >
+        Enable
+      </button>
+      <button onClick={dismiss} className="transition-colors" style={{ color: "#C8BDB6" }}>
+        <X className="w-4 h-4" />
+      </button>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GlobalSearch (default fallback when no page injects a slot)
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Global Search ────────────────────────────────────────────────────────────
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -138,110 +165,156 @@ export function GlobalSearch() {
 
   useEffect(() => {
     const down = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setOpen((v) => !v); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setOpen(v => !v); }
     };
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, []);
 
   useEffect(() => {
-    if (query.length < 2) { setResults([]); return; }
+    if (!query.trim()) { setResults([]); setLoading(false); return; }
+    setLoading(true);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      setLoading(true);
       try {
-        const { data } = await api.get(`/api/search?q=${encodeURIComponent(query)}&limit=6`);
+        const { data } = await api.get("/api/search", { params: { q: query } });
         setResults(data.results || []);
       } catch { setResults([]); }
       finally { setLoading(false); }
     }, 300);
-    return () => clearTimeout(debounceRef.current);
   }, [query]);
 
-  const saveRecent = (item) => {
-    const updated = [item, ...recent.filter((r) => r._id !== item._id)].slice(0, 5);
+  const handleSelect = (item) => {
+    setOpen(false);
+    const updated = [item, ...recent.filter(r => r.id !== item.id)].slice(0, 5);
     setRecent(updated);
     localStorage.setItem("recent-searches", JSON.stringify(updated));
+    const routes = { tenant: `/tenants/${item.id}`, rent: `/rent-payment/${item.id}`, ledger: `/accounting/${item.id}` };
+    if (routes[item.type]) navigate(routes[item.type]);
   };
 
-  const handleSelect = (item) => { saveRecent(item); navigate(item.url); setOpen(false); setQuery(""); };
-
-  const grouped = {
-    tenant: results.filter((r) => r.type === "tenant"),
-    rent: results.filter((r) => r.type === "rent"),
-    ledger: results.filter((r) => r.type === "ledger"),
-  };
-
-  const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
-  const shortcut = isMac ? "⌘K" : "Ctrl K";
+  const TypeIcon = (type) => TYPE_ICON[type] ?? Bell;
 
   return (
     <>
-      <Button
+      {/* Search trigger button */}
+      <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 h-9 px-3 w-full max-w-xs bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-400 hover:bg-white hover:border-slate-300 transition-all duration-150"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm
+                   transition-all duration-150 hover:border-[#C8BDB6] hover:bg-[#F8F5F2]
+                   focus:outline-none focus:ring-2 focus:ring-[#3D1414]/20"
+        style={{ borderColor: "#DDD6D0", background: "#F8F5F2", color: "#948472", minWidth: isMobile ? "auto" : 220 }}
       >
-        <Search className="w-3.5 h-3.5 shrink-0" />
-        <span className="flex-1 text-left text-xs truncate">{isMobile ? "Search…" : "Search tenants, rents, ledger…"}</span>
+        <Search className="w-4 h-4 shrink-0" style={{ color: "#AFA097" }} />
         {!isMobile && (
-          <kbd className="ml-auto inline-flex items-center bg-white border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-medium text-slate-400 shadow-sm shrink-0">{shortcut}</kbd>
+          <>
+            <span className="flex-1 text-left text-[13px]">Search tenants, units…</span>
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium"
+              style={{ background: "#EEE9E5", color: "#948472" }}>
+              ⌘K
+            </kbd>
+          </>
         )}
-      </Button>
+      </button>
 
-      <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setQuery(""); }}>
-        <DialogContent className="overflow-hidden p-0 shadow-xl max-w-lg">
-          <Command shouldFilter={false} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-slate-400">
-            <CommandInput placeholder="Search tenants, rents, ledger…" value={query} onValueChange={setQuery} />
-            <CommandList>
-              {loading && <div className="px-4 py-3 text-sm text-slate-400 animate-pulse">Searching…</div>}
-              {!query && (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="p-0 gap-0 overflow-hidden max-w-lg border-[#DDD6D0]">
+          <Command className="border-none">
+            <div className="flex items-center border-b px-3" style={{ borderColor: "#EEE9E5" }}>
+              <Search className="w-4 h-4 mr-2 shrink-0" style={{ color: "#AFA097" }} />
+              <CommandInput
+                placeholder="Search tenants, units, payments…"
+                value={query}
+                onValueChange={setQuery}
+                className="border-0 focus:ring-0 py-3 text-sm placeholder:text-[#AFA097]"
+              />
+              {query && (
+                <button onClick={() => setQuery("")} className="ml-2" style={{ color: "#AFA097" }}>
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <CommandList className="max-h-80">
+              {loading && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-5 h-5 rounded-full border-2 border-[#3D1414]/20 border-t-[#3D1414] animate-spin" />
+                </div>
+              )}
+              {!loading && query && results.length === 0 && (
+                <CommandEmpty className="py-8 text-center text-sm" style={{ color: "#948472" }}>
+                  No results for "{query}"
+                </CommandEmpty>
+              )}
+              {!loading && results.length > 0 && (
+                <CommandGroup heading="Results">
+                  {results.map((item) => {
+                    const Icon = TypeIcon(item.type);
+                    return (
+                      <CommandItem
+                        key={item.id}
+                        onSelect={() => handleSelect(item)}
+                        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer
+                                   aria-selected:bg-[#F8F5F2]"
+                      >
+                        <div className={`rounded-md p-1.5 shrink-0 ${TYPE_STYLES[item.type] ?? "bg-[#EEE9E5]"}`}>
+                          <Icon className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: "#1C1A18" }}>{item.name}</p>
+                          {item.sub && <p className="text-xs truncate" style={{ color: "#948472" }}>{item.sub}</p>}
+                        </div>
+                        {item.status && (
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[item.status] ?? "bg-[#948472]"}`} />
+                          </span>
+                        )}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              )}
+              {!query && recent.length > 0 && (
                 <>
-                  <CommandGroup heading="Quick Actions">
-                    <CommandItem onSelect={() => { navigate("/"); setOpen(false); }}><LayoutDashboard className="w-4 h-4 mr-2 text-slate-400" />Go to Dashboard</CommandItem>
-                    <CommandItem onSelect={() => { navigate("/tenants/create"); setOpen(false); }}><PlusCircle className="w-4 h-4 mr-2 text-slate-400" />Add New Tenant</CommandItem>
+                  <CommandGroup heading="Recent">
+                    {recent.map((item) => {
+                      const Icon = TypeIcon(item.type);
+                      return (
+                        <CommandItem
+                          key={item.id}
+                          onSelect={() => handleSelect(item)}
+                          className="flex items-center gap-3 px-3 py-2 cursor-pointer aria-selected:bg-[#F8F5F2]"
+                        >
+                          <Icon className="w-4 h-4 shrink-0" style={{ color: "#AFA097" }} />
+                          <span className="text-sm truncate" style={{ color: "#413D38" }}>{item.name}</span>
+                        </CommandItem>
+                      );
+                    })}
                   </CommandGroup>
-                  {recent.length > 0 && (
-                    <>
-                      <CommandSeparator />
-                      <CommandGroup heading="Recent">
-                        {recent.map((item) => {
-                          const Icon = TYPE_ICON[item.type] || Clock;
-                          return (
-                            <CommandItem key={item._id} value={item._id} onSelect={() => handleSelect(item)}>
-                              <Icon className="w-4 h-4 mr-2 text-slate-400" />
-                              <span className="flex-1 truncate">{item.label}</span>
-                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${TYPE_STYLES[item.type]}`}>{item.type}</span>
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    </>
-                  )}
+                  <CommandSeparator />
                 </>
               )}
-              {query.length >= 2 && !loading && results.length === 0 && <CommandEmpty>No results for "{query}"</CommandEmpty>}
-              {Object.entries(grouped).map(([type, items]) => {
-                if (!items.length) return null;
-                const label = { tenant: "Tenants", rent: "Rents", ledger: "Ledger" }[type];
-                const Icon = TYPE_ICON[type];
-                return (
-                  <CommandGroup key={type} heading={label}>
-                    {items.map((item) => (
-                      <CommandItem key={item._id} value={item._id} onSelect={() => handleSelect(item)}>
-                        <Icon className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
-                        <div className="flex flex-col flex-1 min-w-0">
-                          <span className="text-sm font-medium truncate">{item.label}</span>
-                          {item.sublabel && <span className="text-xs text-slate-400 truncate">{item.sublabel}</span>}
-                        </div>
-                        <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                          {item.badge && <span className={`w-2 h-2 rounded-full ${STATUS_DOT[item.badge] ?? "bg-gray-400"}`} />}
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${TYPE_STYLES[item.type]}`}>{item.type}</span>
-                        </div>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                );
-              })}
+              {!query && (
+                <CommandGroup heading="Quick actions">
+                  {[
+                    { label: "Record a payment", icon: Receipt, route: "/rent-payment?action=new" },
+                    { label: "Add new tenant", icon: UserPlus, route: "/tenants?action=new" },
+                    { label: "Log maintenance", icon: Wrench, route: "/maintenance?action=new" },
+                    { label: "View all units", icon: BookOpen, route: "/units" },
+                  ].map((a) => (
+                    <CommandItem
+                      key={a.label}
+                      onSelect={() => { setOpen(false); navigate(a.route); }}
+                      className="flex items-center gap-3 px-3 py-2 cursor-pointer aria-selected:bg-[#F8F5F2]"
+                    >
+                      <div className="rounded-md p-1.5 shrink-0 bg-[#EEE9E5]">
+                        <a.icon className="w-3.5 h-3.5" style={{ color: "#3D1414" }} />
+                      </div>
+                      <span className="text-sm" style={{ color: "#413D38" }}>{a.label}</span>
+                      <ChevronRight className="w-3.5 h-3.5 ml-auto" style={{ color: "#C8BDB6" }} />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
             </CommandList>
           </Command>
         </DialogContent>
@@ -250,157 +323,223 @@ export function GlobalSearch() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NotificationItem
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Notification Item ────────────────────────────────────────────────────────
 function NotificationItem({ notification, onMarkRead }) {
   const [expanded, setExpanded] = useState(false);
   const config = NOTIFICATION_CONFIG[notification.type] ?? DEFAULT_CONFIG;
   const Icon = config.icon;
-  const handleExpand = () => { setExpanded((v) => !v); if (!notification.isRead) onMarkRead(notification._id || notification.id); };
+
+  const handleExpand = (e) => {
+    e.stopPropagation();
+    if (!notification.isRead) onMarkRead(notification._id || notification.id);
+    setExpanded(v => !v);
+  };
+
   return (
-    <div className={`rounded-xl border p-3 transition-all ${notification.isRead ? "bg-white border-gray-100" : `${config.bg} ${config.border}`}`}>
+    <div
+      className={`rounded-xl p-3.5 border transition-all ${config.border} ${notification.isRead ? "opacity-60" : ""
+        }`}
+      style={{ background: notification.isRead ? "#FDFCFA" : "white" }}
+    >
       <div className="flex items-start gap-3">
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${notification.isRead ? "bg-gray-100" : config.bg}`}>
-          <Icon className={`w-4 h-4 ${notification.isRead ? "text-gray-400" : config.color}`} />
+        <div className={`rounded-lg p-2 shrink-0 ${config.bg}`}>
+          <Icon className={`w-4 h-4 ${config.color}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${config.labelColor}`}>{config.label}</span>
-            {!notification.isRead && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />}
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${config.labelColor}`}>
+              {config.label}
+            </span>
+            {!notification.isRead && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3D1414] shrink-0" />
+            )}
           </div>
-          <p className={`text-sm font-semibold mt-1 ${notification.isRead ? "text-gray-600" : "text-gray-900"}`}>{notification.title}</p>
-          <button onClick={handleExpand} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mt-1 transition-colors">
+          <p className={`text-sm font-semibold mt-1 ${notification.isRead ? "text-[#756F67]" : "text-[#1C1A18]"}`}>
+            {notification.title}
+          </p>
+          <button
+            onClick={handleExpand}
+            className="flex items-center gap-1 text-xs mt-1 transition-colors"
+            style={{ color: "#AFA097" }}
+          >
             <ChevronRight className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
-            {expanded ? "Hide details" : "View details"}
+            {expanded ? "Hide" : "Details"}
           </button>
-          {expanded && <p className="text-xs text-gray-600 mt-1.5 leading-relaxed bg-white/70 rounded-lg px-2.5 py-2 border border-gray-100">{notification.message}</p>}
-          {notification.createdAt && <p className="text-[11px] text-gray-400 mt-1.5">{timeAgo(notification.createdAt)}</p>}
+          {expanded && (
+            <p className="text-xs mt-1.5 leading-relaxed rounded-lg px-2.5 py-2 border"
+              style={{ color: "#413D38", background: "#F8F5F2", borderColor: "#EEE9E5" }}>
+              {notification.message}
+            </p>
+          )}
+          {notification.createdAt && (
+            <p className="text-[11px] mt-1.5" style={{ color: "#AFA097" }}>
+              {timeAgo(notification.createdAt)}
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Header (default export)
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Header (default export) ──────────────────────────────────────────────────
 export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const { user, loading } = useAuth();
+  const navigate = useNavigate();
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     try {
-      const response = await api.get("/api/notification/get-notifications");
-      if (response.data.success) setNotifications(response.data.notifications || []);
-    } catch (error) { console.error("Error fetching notifications:", error); }
+      const { data } = await api.get("/api/notification/get-notifications");
+      if (data.success) setNotifications(data.notifications || []);
+    } catch (err) { console.error(err); }
   }, [user]);
 
-  useEffect(() => { if (loading || !user) return; fetchNotifications(); }, [user, loading, fetchNotifications]);
+  useEffect(() => { if (!loading && user) fetchNotifications(); }, [user, loading, fetchNotifications]);
   useEffect(() => { if (sheetOpen && user) fetchNotifications(); }, [sheetOpen, user, fetchNotifications]);
 
   useEffect(() => {
     const handler = (e) => {
       const id = e.detail;
-      setNotifications((prev) => prev.map((n) => ((n._id || n.id) === id ? { ...n, isRead: true } : n)));
+      setNotifications(prev => prev.map(n => (n._id || n.id) === id ? { ...n, isRead: true } : n));
     };
     window.addEventListener("notification:read", handler);
     return () => window.removeEventListener("notification:read", handler);
   }, []);
 
-  const markAsRead = useCallback(async (notificationId) => {
-    setNotifications((prev) => prev.map((n) => (n._id || n.id) === notificationId ? { ...n, isRead: true } : n));
-    try { await api.patch(`/api/notification/mark-notification-as-read/${notificationId}`); }
-    catch (error) { console.error("Error marking as read:", error); }
+  const markAsRead = useCallback(async (id) => {
+    setNotifications(prev => prev.map(n => (n._id || n.id) === id ? { ...n, isRead: true } : n));
+    try { await api.patch(`/api/notification/mark-notification-as-read/${id}`); }
+    catch (err) { console.error(err); }
   }, []);
 
   const markAllAsRead = useCallback(async () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     try { await api.patch("/api/notification/mark-all-notifications-as-read"); }
-    catch (error) { console.error("Error marking all as read:", error); fetchNotifications(); }
+    catch { fetchNotifications(); }
   }, [fetchNotifications]);
 
   useEffect(() => {
     if (!user) { socket.disconnect(); return; }
     if (!socket.connected) socket.connect();
-    const handleConnect = () => { const adminId = user._id || user.id; if (adminId) socket.emit("join:admin", adminId); };
+    const handleConnect = () => {
+      const id = user._id || user.id;
+      if (id) socket.emit("join:admin", id);
+    };
     const handleNewNotification = (data) => {
-      const notification = data.notification;
-      if (!notification) return;
-      setNotifications((prev) => {
-        const id = notification._id || notification.id;
-        if (prev.some((n) => (n._id || n.id) === id)) return prev;
-        return [notification, ...prev];
+      const n = data.notification;
+      if (!n) return;
+      setNotifications(prev => {
+        const id = n._id || n.id;
+        if (prev.some(x => (x._id || x.id) === id)) return prev;
+        return [n, ...prev];
       });
-      const toastFn = TOAST_CONFIG[notification.type]?.fn ?? toast;
-      toastFn(notification.title, { description: notification.message, duration: 5000 });
+      const fn = TOAST_CONFIG[n.type]?.fn ?? toast;
+      fn(n.title, { description: n.message, duration: 5000 });
     };
     socket.on("connect", handleConnect);
     socket.on("new-notification", handleNewNotification);
     if (socket.connected) handleConnect();
-    return () => { socket.off("connect", handleConnect); socket.off("new-notification", handleNewNotification); };
+    return () => {
+      socket.off("connect", handleConnect);
+      socket.off("new-notification", handleNewNotification);
+    };
   }, [user]);
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const unreadCount = notifications.filter(n => !n.isRead).length;
   const hasUnread = unreadCount > 0;
   useAppBadge(unreadCount);
 
-  const handleSheetOpenChange = (open) => { setSheetOpen(open); if (open) navigator.clearAppBadge?.(); };
+  const handleSheetOpenChange = (open) => {
+    setSheetOpen(open);
+    if (open) navigator.clearAppBadge?.();
+  };
 
   return (
     <header className="flex items-center w-full gap-3">
 
+      {/* Search or page-injected slot */}
       <div className="flex-1 flex items-center gap-3 min-w-0">
         <HeaderSlot fallback={<GlobalSearch />} />
       </div>
 
+
+
       {/* ── Notifications ─────────────────────────────────────────────────── */}
-      <div className="shrink-0">
-        <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-          <SheetTrigger asChild>
-            <Button variant="outline" className="w-10 h-10 rounded-full relative">
-              <Bell className="w-5 h-5 text-gray-500" />
-              {hasUnread && (
-                <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </Badge>
-              )}
-            </Button>
-          </SheetTrigger>
-          <SheetContent className="flex flex-col p-0 gap-0 w-full sm:max-w-md">
-            <SheetHeader className="px-5 pt-5 pb-4 border-b border-gray-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <SheetTitle className="text-base font-semibold">Notifications</SheetTitle>
-                  {hasUnread && <p className="text-xs text-gray-400 mt-0.5">{unreadCount} unread</p>}
-                </div>
+      <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+        <SheetTrigger asChild>
+          <button
+            className="relative w-9 h-9 rounded-lg flex items-center justify-center
+                       border transition-all duration-150 hover:bg-[#F8F5F2] shrink-0
+                       focus:outline-none focus:ring-2 focus:ring-[#3D1414]/20"
+            style={{ borderColor: "#DDD6D0", background: "white" }}
+          >
+            <Bell className="w-4 h-4" style={{ color: hasUnread ? "#3D1414" : "#AFA097" }} />
+            {hasUnread && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full
+                           flex items-center justify-center text-[10px] font-bold px-1"
+                style={{ background: "#B02020", color: "white" }}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
+        </SheetTrigger>
+
+        <SheetContent className="flex flex-col p-0 gap-0 w-full sm:max-w-md border-l border-[#DDD6D0]">
+          <SheetHeader className="px-5 pt-5 pb-4 border-b" style={{ borderColor: "#EEE9E5" }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <SheetTitle className="text-base font-semibold" style={{ color: "#1C1A18" }}>
+                  Notifications
+                </SheetTitle>
                 {hasUnread && (
-                  <Button variant="ghost" size="sm" onClick={markAllAsRead} className="text-xs text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1.5 h-8">
-                    <CheckCheck className="w-3.5 h-3.5" />Mark all read
-                  </Button>
+                  <p className="text-xs mt-0.5" style={{ color: "#948472" }}>
+                    {unreadCount} unread
+                  </p>
                 )}
               </div>
-            </SheetHeader>
-            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-                    <Bell className="w-5 h-5 text-gray-300" />
-                  </div>
-                  <p className="text-sm font-medium text-gray-500">All caught up</p>
-                  <p className="text-xs text-gray-400 mt-1">No new notifications</p>
-                </div>
-              ) : (
-                notifications.map((notification) => (
-                  <NotificationItem key={notification._id || notification.id} notification={notification} onMarkRead={markAsRead} />
-                ))
+              {hasUnread && (
+                <button
+                  onClick={markAllAsRead}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
+                             rounded-lg border transition-colors hover:bg-[#F8F5F2]"
+                  style={{ color: "#3D1414", borderColor: "#DDD6D0" }}
+                >
+                  <CheckCheck className="w-3.5 h-3.5" />
+                  Mark all read
+                </button>
               )}
             </div>
-          </SheetContent>
-        </Sheet>
-      </div>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
+            style={{ background: "#F8F5F2" }}>
+            {notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+                  style={{ background: "#EEE9E5" }}>
+                  <Bell className="w-5 h-5" style={{ color: "#C8BDB6" }} />
+                </div>
+                <p className="text-sm font-medium" style={{ color: "#756F67" }}>All caught up</p>
+                <p className="text-xs mt-1" style={{ color: "#AFA097" }}>No new notifications</p>
+              </div>
+            ) : (
+              notifications.map(n => (
+                <NotificationItem
+                  key={n._id || n.id}
+                  notification={n}
+                  onMarkRead={markAsRead}
+                />
+              ))
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
     </header>
   );
 }

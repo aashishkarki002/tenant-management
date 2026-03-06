@@ -30,6 +30,172 @@ function normalizeDashboardStats(raw) {
   const totalRent = rentSummary.totalRent ?? 0;
   const totalOutstanding = rentSummary.totalOutstanding ?? 0;
 
+  // ── KPI block — all numbers pre-computed, components stay display-only ──
+  //
+  // Prefers the new collectionSummary.thisMonth from the backend (which covers
+  // both rent + CAM for the current Nepali month). Falls back to rentSummary
+  // for older API responses that don't yet return collectionSummary.
+  const cs = raw.collectionSummary?.thisMonth ?? null;
+
+  const rentBilled =
+    cs?.rentBilledPaisa != null ? cs.rentBilledPaisa / 100 : totalRent;
+  const rentCollected =
+    cs?.rentCollectedPaisa != null
+      ? cs.rentCollectedPaisa / 100
+      : totalCollected;
+  const camBilled = cs?.camBilledPaisa != null ? cs.camBilledPaisa / 100 : 0;
+  const camCollected =
+    cs?.camCollectedPaisa != null ? cs.camCollectedPaisa / 100 : 0;
+
+  const totalBilled = rentBilled + camBilled;
+  const totalReceived = rentCollected + camCollected;
+  const totalRemaining = Math.max(0, totalBilled - totalReceived);
+
+  // Bar segment widths as % of totalBilled (clamped 0–100).
+  // rentPct is the rent portion of the full bar.
+  // camPct starts where rentPct ends.
+  const rentPct =
+    totalBilled > 0
+      ? Math.min(100, Math.round((rentCollected / totalBilled) * 100))
+      : 0;
+  const camPct =
+    totalBilled > 0
+      ? Math.min(100 - rentPct, Math.round((camCollected / totalBilled) * 100))
+      : 0;
+  // Overall collection rate (both streams combined)
+  const collectionRate =
+    cs?.collectionRate ??
+    (totalBilled > 0
+      ? Math.min(100, Math.round((totalReceived / totalBilled) * 100))
+      : 0);
+
+  // ── Tenant collection coverage (for the "all clear" state of Outstanding tile) ──
+  //
+  // When outstanding = 0, "how many tenants have paid?" is the next useful
+  // question. We derive it from:
+  //   - raw.activeTenants        — total tenants billed this month
+  //   - raw.overdueRents         — tenants with a remaining balance (any status)
+  //
+  // tenantsWithBalance: count of distinct tenants who still owe something this
+  //   month. Used as the "pending" count in the all-clear state.
+  // tenantsPaid: activeTenants − tenantsWithBalance.
+  // tenantCoverageRate: % of active tenants fully paid up (0–100).
+  //
+  // Note: overdueRents from the backend is a top-3 sample, not the full list.
+  // We use attention.overdueCount (full count) for the number, but we can still
+  // show the coverage rate using activeTenants as the denominator.
+  const activeTenants = raw.activeTenants ?? 0;
+  const overdueRentsList = Array.isArray(raw.overdueRents)
+    ? raw.overdueRents
+    : [];
+  const overdueCount = overdueRentsList.length; // preliminary; overwritten below from attention
+  // We count tenants who have ANY outstanding balance this month from the
+  // full overdueRents count surfaced by the backend (stored in raw directly):
+  const tenantsWithBalance = raw.overdueRentsCount ?? overdueCount ?? 0;
+  const tenantsPaid =
+    activeTenants > 0 ? Math.max(0, activeTenants - tenantsWithBalance) : 0;
+  const tenantCoverageRate =
+    activeTenants > 0
+      ? Math.min(100, Math.round((tenantsPaid / activeTenants) * 100))
+      : 0;
+
+  // ── Vacancy — flip occupancy from % metric to revenue-gap metric ────────────
+  //
+  // The owner doesn't need to know "87% occupied" — they need to know
+  // "3 units vacant, costing ₹42k/mo in lost revenue."
+  // When fully occupied, flip to positive signal: days at full occupancy.
+  //
+  // vacantUnits          — how many units are empty right now
+  // vacancyRevenueLostPaisa — estimated monthly revenue gap
+  //   = (totalRentPaisa / occupiedUnits) × vacantUnits
+  //   Uses average rent per occupied unit as a proxy since per-unit data
+  //   isn't in the dashboard payload. Good enough for the KPI tile.
+  const totalUnitsRaw = raw.totalUnits ?? 0;
+  const occupiedUnitsRaw = raw.occupiedUnits ?? 0;
+  const vacantUnits = Math.max(0, totalUnitsRaw - occupiedUnitsRaw);
+  const avgRentPerUnit =
+    occupiedUnitsRaw > 0
+      ? rentBilled / occupiedUnitsRaw // rupees, current month
+      : 0;
+  const vacancyRevenueLost = Math.round(vacantUnits * avgRentPerUnit); // rupees/mo
+
+  // ── Late Fee summary ──────────────────────────────────────────────────────────
+  //
+  // Surfaces the late fee engine on the dashboard for the first time.
+  // The system accrues late fees daily (master-cron / lateFee.cron) but this
+  // data is invisible to the owner at the dashboard level today.
+  //
+  // Two states for the KPI tile:
+  //
+  //   HAS ACTIVE FEES → show total outstanding late fees + how many tenants
+  //                     are currently being charged. Early warning for tenants
+  //                     becoming a collection problem. Bar = % of accrued fees
+  //                     that have been collected.
+  //
+  //   NO FEES         → positive signal: "No late fees this month"
+  //                     Reassures the owner tenants are paying on time.
+  //                     Completely different meaning from Outstanding=0 (which
+  //                     means principal is settled; this means behaviour is clean).
+  //
+  // feeCollectionRate — what % of accrued late fees have been paid back.
+  //   Used for the bar colour: high = good, low = problem growing.
+  const lf = raw.lateFeeSummary ?? {};
+  const lateFeeAccrued = lf.totalAccrued ?? 0;
+  const lateFeeCollected = lf.totalCollected ?? 0;
+  const lateFeeOutstanding = lf.totalOutstanding ?? 0;
+  const lateFeeTenantsCharged = lf.tenantsCharged ?? 0;
+  const lateFeeTenantsPaid = lf.tenantsPaidFees ?? 0;
+  const hasActiveFees = lf.hasActiveFees ?? false;
+  const feeCollectionRate =
+    lateFeeAccrued > 0
+      ? Math.min(100, Math.round((lateFeeCollected / lateFeeAccrued) * 100))
+      : 0;
+
+  const kpi = {
+    // Raw numbers (rupees)
+    rentBilled,
+    rentCollected,
+    rentOutstanding: Math.max(0, rentBilled - rentCollected),
+    camBilled,
+    camCollected,
+    camOutstanding: Math.max(0, camBilled - camCollected),
+    totalBilled,
+    totalReceived,
+    totalRemaining,
+
+    // Bar segments — stacked progress bar in Collected tile
+    rentPct,
+    camPct,
+    collectionRate,
+
+    // Tenant coverage — Outstanding tile "all clear" state
+    activeTenants,
+    tenantsPaid,
+    tenantsWithBalance,
+    tenantCoverageRate,
+
+    // Vacancy — Occupancy tile
+    totalUnits: totalUnitsRaw,
+    occupiedUnits: occupiedUnitsRaw,
+    vacantUnits,
+    vacancyRevenueLost,
+    occupancyRate: raw.occupancyRate ?? 0,
+
+    // Late Fees — 4th KPI tile
+    // Surfaces the late fee engine on the dashboard for the first time.
+    lateFeeAccrued,
+    lateFeeCollected,
+    lateFeeOutstanding,
+    lateFeeTenantsCharged,
+    lateFeeTenantsPaid,
+    hasActiveFees,
+    feeCollectionRate,
+
+    // Derived booleans
+    allClear: totalRemaining <= 0,
+    fullyOccupied: vacantUnits === 0 && totalUnitsRaw > 0,
+  };
+
   const maintenanceList = Array.isArray(raw.maintenance) ? raw.maintenance : [];
   const openMaintenance = maintenanceList.filter(
     (m) => (m.status || "").toUpperCase() === "OPEN",
@@ -93,6 +259,9 @@ function normalizeDashboardStats(raw) {
   return {
     // Spread all raw fields first so nothing is lost
     ...raw,
+
+    // ── Pre-computed KPI block — single source of truth for KpiStrip ──
+    kpi,
 
     collection: {
       totalCollected,

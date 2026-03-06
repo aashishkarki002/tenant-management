@@ -1,3 +1,4 @@
+// src/pages/rent/components/RentFilter.jsx
 import React from "react";
 import {
     Select,
@@ -6,42 +7,23 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-// ── Use nepaliDate.js as the single source of truth ───────────────────────────
-// NEPALI_MONTH_NAMES is the canonical month name list. getNepaliYearOptions
-// generates a proper year range anchored to the current Nepali year.
 import {
     NEPALI_MONTH_NAMES,
     getNepaliYearOptions,
 } from "../../../utils/nepaliDate";
 
 /**
- * RentFilter
+ * RentFilter — v3
  *
- * Redesign decisions (as design lead):
+ * Changes from v2:
+ * - Status Select replaced with flat chip buttons — matches the V2 design
+ *   where all filters are inline, no nested dropdowns for status.
+ * - Frequency toggle stays at the start of the controls row.
+ * - Active filter chips in the period row remain.
+ * - Overdue quick-toggle replaced by the "Overdue" status chip (same function,
+ *   cleaner — one less control).
  *
- * 1. PERIOD CONTEXT BADGE — a prominent "Falgun 2081" chip sits above the
- *    filter strip so the user always knows which billing period they're viewing
- *    at a glance, before reading any filter control.
- *
- * 2. LEFT-ALIGNED FILTERS — filters are the primary control on this view;
- *    pushing them to the right edge (justify-end) buried them. They now sit
- *    left-aligned in a natural reading order: Month → Year → Status → Property.
- *
- * 3. OVERDUE QUICK-TOGGLE moved into the status select as a styled badge-chip
- *    below the filter row, not a floating orphan button. Reduces visual noise.
- *
- * 4. CLEAR FILTERS is always visible but disabled when filters are at default,
- *    preventing layout shift when it appears/disappears.
- *
- * 5. YEAR OPTIONS from getNepaliYearOptions() (nepaliDate.js) instead of the
- *    ad-hoc baseYear±2 array — respects the canonical supported year range.
- *
- * 6. MONTH OPTIONS built from NEPALI_MONTH_NAMES (nepaliDate.js) instead of
- *    a separate @/constants/nepaliMonths file — one source of truth.
- *
- * Props: unchanged from previous revision (fully backwards compatible).
+ * Props: identical to v2 (fully backwards compatible).
  */
 export const RentFilter = ({
     month,
@@ -56,15 +38,15 @@ export const RentFilter = ({
     onStatusChange,
     onPropertyChange,
     onReset,
+    frequencyView = "monthly",
+    onFrequencyChange,
 }) => {
-    // Build month options from nepaliDate.js constant (1-based value, name label)
     const monthOptions = NEPALI_MONTH_NAMES.map((name, i) => ({
         value: i + 1,
         label: name,
     }));
 
-    // Year options from nepaliDate.js: current year down to 2075, ascending for select
-    const yearOptions = getNepaliYearOptions(2078).reverse(); // ascending: oldest → newest
+    const yearOptions = getNepaliYearOptions(2078).reverse();
 
     const hasActiveFilters =
         status !== "all" ||
@@ -72,50 +54,61 @@ export const RentFilter = ({
         (defaultMonth != null && month !== defaultMonth) ||
         (defaultYear != null && year !== defaultYear);
 
-    const currentMonthName =
-        month != null ? NEPALI_MONTH_NAMES[month - 1] : "—";
+    const currentMonthName = month != null ? NEPALI_MONTH_NAMES[month - 1] : "—";
 
-    // Status display config
-    const statusConfig = {
-        all: { label: "All Statuses", color: null },
-        pending: { label: "Pending", color: "bg-amber-50 text-amber-700 border-amber-200" },
-        partially_paid: { label: "Partial", color: "bg-blue-50 text-blue-700 border-blue-200" },
-        overdue: { label: "Overdue", color: "bg-red-50 text-red-700 border-red-200" },
-        paid: { label: "Paid", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    };
+    // Status chip definitions
+    const statusChips = [
+        { value: "all", label: "All" },
+        { value: "pending", label: "Pending" },
+        { value: "overdue", label: "Overdue", danger: true },
+        { value: "partially_paid", label: "Partial" },
+        { value: "paid", label: "Paid" },
+    ];
+
+    // Active chip label for the period row
+    const activeStatusChip = statusChips.find((c) => c.value === status);
 
     return (
         <div className="space-y-3">
-            {/* ── Period context + active filter chips ─────────────────────────── */}
-            <div className="flex items-center justify-between">
+
+            {/* ── Row 1: period badge + active chips + reset ─────────────────── */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
-                    {/* Primary period badge — always visible */}
-                    <div className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white tracking-wide">
-                        <span className="opacity-60">Period</span>
+                    {/* Period badge */}
+                    <div className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white tracking-wide">
+                        <span className="opacity-50 font-medium">Period</span>
                         <span>{currentMonthName} {year}</span>
                     </div>
 
-                    {/* Active filter chips */}
-                    {status !== "all" && statusConfig[status] && (
-                        <span
-                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${statusConfig[status].color}`}
-                        >
-                            {statusConfig[status].label}
+                    {/* Active status chip (dismissible) */}
+                    {status !== "all" && activeStatusChip && (
+                        <span className={[
+                            "inline-flex items-center gap-1 rounded-md border px-2 py-0.5",
+                            "text-[11px] font-semibold",
+                            activeStatusChip.danger
+                                ? "bg-red-50 text-red-700 border-red-200"
+                                : "bg-slate-50 text-slate-700 border-slate-200",
+                        ].join(" ")}>
+                            {activeStatusChip.label}
                             <button
+                                type="button"
                                 onClick={() => onStatusChange?.("all")}
-                                className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                                className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
                                 aria-label="Remove status filter"
                             >
                                 ×
                             </button>
                         </span>
                     )}
+
+                    {/* Active property chip (dismissible) */}
                     {propertyId && (
-                        <span className="inline-flex items-center gap-1 rounded-md border bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 border-slate-200">
+                        <span className="inline-flex items-center gap-1 rounded-md border bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 border-slate-200">
                             {properties.find((p) => p._id === propertyId)?.name ?? "Property"}
                             <button
+                                type="button"
                                 onClick={() => onPropertyChange?.("")}
-                                className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                                className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
                                 aria-label="Remove property filter"
                             >
                                 ×
@@ -124,25 +117,48 @@ export const RentFilter = ({
                     )}
                 </div>
 
-                {/* Clear all — always mounted, disabled when no active filters */}
+                {/* Reset */}
                 <button
                     type="button"
                     onClick={onReset}
                     disabled={!hasActiveFilters}
-                    className="text-xs text-slate-500 hover:text-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium"
+                    className="text-[11px] font-semibold text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                     Reset to current period
                 </button>
             </div>
 
-            {/* ── Filter controls ───────────────────────────────────────────────── */}
+            {/* ── Row 2: all controls in one flex line ────────────────────────── */}
             <div className="flex flex-wrap gap-2 items-center">
+
+                {/* Frequency toggle */}
+                <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5 shrink-0">
+                    {["monthly", "quarterly"].map((freq) => (
+                        <button
+                            key={freq}
+                            type="button"
+                            onClick={() => onFrequencyChange?.(freq)}
+                            className={[
+                                "px-3 py-1 text-[11px] font-semibold rounded transition-colors capitalize",
+                                frequencyView === freq
+                                    ? "bg-slate-900 text-white shadow-sm"
+                                    : "text-slate-500 hover:bg-slate-100",
+                            ].join(" ")}
+                        >
+                            {freq}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Divider */}
+                <div className="h-5 w-px bg-slate-200 hidden sm:block shrink-0" />
+
                 {/* Month */}
                 <Select
                     value={month != null ? String(month) : undefined}
                     onValueChange={(v) => onMonthChange?.(Number(v))}
                 >
-                    <SelectTrigger className="h-8 w-[130px] text-sm border-slate-200 bg-white">
+                    <SelectTrigger className="h-8 w-[128px] text-xs border-slate-200 bg-white">
                         <SelectValue placeholder="Month" />
                     </SelectTrigger>
                     <SelectContent>
@@ -159,7 +175,7 @@ export const RentFilter = ({
                     value={year != null ? String(year) : undefined}
                     onValueChange={(v) => onYearChange?.(Number(v))}
                 >
-                    <SelectTrigger className="h-8 w-[90px] text-sm border-slate-200 bg-white">
+                    <SelectTrigger className="h-8 w-[86px] text-xs border-slate-200 bg-white">
                         <SelectValue placeholder="Year" />
                     </SelectTrigger>
                     <SelectContent>
@@ -172,62 +188,60 @@ export const RentFilter = ({
                 </Select>
 
                 {/* Divider */}
-                <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+                <div className="h-5 w-px bg-slate-200 hidden sm:block shrink-0" />
 
-                {/* Status */}
-                <Select
-                    value={status}
-                    onValueChange={(v) => onStatusChange?.(v)}
-                >
-                    <SelectTrigger className="h-8 w-[140px] text-sm border-slate-200 bg-white">
-                        <SelectValue placeholder="All Statuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="partially_paid">Partially Paid</SelectItem>
-                        <SelectItem value="overdue">Overdue</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                    </SelectContent>
-                </Select>
+                {/* Status chips — flat buttons, no Select dropdown */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    {statusChips.map(({ value, label, danger }) => {
+                        const isActive = status === value;
+                        return (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => onStatusChange?.(value)}
+                                className={[
+                                    "h-8 inline-flex items-center gap-1.5 rounded-md border px-3",
+                                    "text-[11px] font-semibold transition-colors",
+                                    isActive && danger
+                                        ? "bg-red-600 border-red-600 text-white"
+                                        : isActive
+                                            ? "bg-slate-900 border-slate-900 text-white"
+                                            : danger
+                                                ? "border-red-200 text-red-600 bg-red-50 hover:bg-red-100"
+                                                : "border-slate-200 text-slate-500 bg-white hover:bg-slate-50 hover:text-slate-800",
+                                ].join(" ")}
+                            >
+                                {danger && (
+                                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isActive ? "bg-white" : "bg-red-500"}`} />
+                                )}
+                                {label}
+                            </button>
+                        );
+                    })}
+                </div>
 
-                {/* Property (only when data is available) */}
+                {/* Property select — only when available */}
                 {properties.length > 0 && (
-                    <Select
-                        value={propertyId || "all"}
-                        onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
-                    >
-                        <SelectTrigger className="h-8 w-[150px] text-sm border-slate-200 bg-white">
-                            <SelectValue placeholder="All Properties" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Properties</SelectItem>
-                            {properties.map((p) => (
-                                <SelectItem key={p._id} value={p._id}>
-                                    {p.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <>
+                        <div className="h-5 w-px bg-slate-200 hidden sm:block shrink-0" />
+                        <Select
+                            value={propertyId || "all"}
+                            onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
+                        >
+                            <SelectTrigger className="h-8 w-[148px] text-xs border-slate-200 bg-white">
+                                <SelectValue placeholder="All Properties" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Properties</SelectItem>
+                                {properties.map((p) => (
+                                    <SelectItem key={p._id} value={p._id}>
+                                        {p.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </>
                 )}
-
-                {/* Overdue quick-toggle — styled as a compact pill, not a full button */}
-                <button
-                    type="button"
-                    onClick={() =>
-                        onStatusChange?.(status === "overdue" ? "all" : "overdue")
-                    }
-                    className={`h-8 inline-flex items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors ${status === "overdue"
-                        ? "bg-red-600 border-red-600 text-white"
-                        : "border-red-200 text-red-600 bg-red-50 hover:bg-red-100"
-                        }`}
-                >
-                    <span
-                        className={`h-1.5 w-1.5 rounded-full ${status === "overdue" ? "bg-white" : "bg-red-500"
-                            }`}
-                    />
-                    Overdue only
-                </button>
             </div>
         </div>
     );

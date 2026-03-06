@@ -1,10 +1,6 @@
 // src/components/layout/AppLayout.jsx
-import { useLocation } from "react-router-dom";
 import {
-  SidebarProvider,
-  SidebarTrigger,
-  SidebarInset,
-  SidebarRail,
+  SidebarProvider, SidebarTrigger, SidebarInset, SidebarRail,
 } from "../ui/sidebar";
 import AppSidebar from "../app-sidebar";
 import StaffSidebar from "../staff-sidebar";
@@ -23,24 +19,39 @@ export default function AppLayout({ children }) {
         {isAdmin ? <AppSidebar /> : <StaffSidebar />}
         <SidebarRail />
 
-        <SidebarInset className="relative flex flex-col min-h-screen">
-          {/*
-            border-b  → separates this header row from the page content below
-            border-l  → aligns exactly with the sidebar's right edge (border-r on Sidebar)
-            Both borders must live here — on the full-width wrapper that spans
-            from the sidebar edge to the viewport edge — NOT inside <Header />,
-            where the SidebarTrigger offset would misalign them.
-          */}
-          <header className="flex items-center gap-2 bg-white px-3 h-14 shrink-0 border-b border-l border-gray-200">
-            <SidebarTrigger />
+        <SidebarInset className="relative flex flex-col min-h-screen bg-[#F8F5F2]">
+
+          {/* ── Top bar — brand-matched to sidebar ──────────────────────── */}
+          <header
+            className="flex items-center gap-3 px-4 h-14 shrink-0 border-b border-l"
+            style={{
+              background: "white",
+              borderColor: "#DDD6D0",
+            }}
+          >
+            {/* Sidebar toggle — styled to match brand */}
+            <SidebarTrigger
+              className="w-8 h-8 rounded-md flex items-center justify-center
+                         border border-[#DDD6D0] bg-white hover:bg-[#F8F5F2]
+                         text-[#948472] hover:text-[#3D1414] transition-all shrink-0"
+            />
+
+            {/* Thin brand accent rule between trigger and content */}
+            <div className="w-px h-5 shrink-0" style={{ background: "#EEE9E5" }} />
+
             <Header />
           </header>
 
+          {/* ── Push notification banner — below header, above content ─── */}
           <PushNotificationBanner user={user} />
 
-          <main className="flex-1 p-4 overflow-x-hidden">
-            <div className="mx-auto max-w-6xl w-full">{children}</div>
+          {/* ── Page content ─────────────────────────────────────────────── */}
+          <main className="flex-1 overflow-x-hidden">
+            <div className="mx-auto max-w-6xl w-full px-4 py-4">
+              {children}
+            </div>
           </main>
+
         </SidebarInset>
       </SidebarProvider>
     </HeaderSlotProvider>

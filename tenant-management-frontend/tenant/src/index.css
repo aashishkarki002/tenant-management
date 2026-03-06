@@ -41,73 +41,171 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* ─────────────────────────────────────────────
+   OKLCH REFERENCE — Sallyan House Brand Colors
+   ─────────────────────────────────────────────
+   Burgundy 950  #1A0A0A → oklch(0.11 0.04  19)
+   Burgundy 900  #2C0F0F → oklch(0.16 0.06  19)
+   Burgundy 800  #3D1414 → oklch(0.22 0.08  19)  ← Primary
+   Burgundy 700  #521C1C → oklch(0.28 0.08  19)
+   Burgundy 600  #6B2424 → oklch(0.35 0.09  19)
+   Burgundy 500  #8B3030 → oklch(0.43 0.10  19)
+   Burgundy 400  #A84848 → oklch(0.52 0.10  19)
+   Burgundy 300  #C47272 → oklch(0.63 0.09  19)
+   Burgundy 200  #DDA8A8 → oklch(0.76 0.06  19)
+   Burgundy 100  #F0DADA → oklch(0.90 0.03  19)
+   Burgundy 50   #FAF0F0 → oklch(0.96 0.01  19)
+
+   Taupe 900  #3A3228 → oklch(0.26 0.02  58)
+   Taupe 800  #4E4538 → oklch(0.33 0.03  58)  ← Logo bar
+   Taupe 700  #625848 → oklch(0.40 0.03  58)
+   Taupe 600  #7A6E5C → oklch(0.49 0.03  58)
+   Taupe 500  #948472 → oklch(0.58 0.04  58)  ← Secondary
+   Taupe 400  #AFA097 → oklch(0.69 0.03  58)
+   Taupe 300  #C8BDB6 → oklch(0.79 0.02  58)
+   Taupe 200  #DDD6D0 → oklch(0.87 0.01  58)
+   Taupe 100  #EEE9E5 → oklch(0.93 0.01  58)
+   Taupe 50   #F8F5F2 → oklch(0.97 0.01  58)
+
+   Neutral 900  #1C1A18 → oklch(0.17 0.01  58)
+   Neutral 800  #2E2B27 → oklch(0.24 0.01  58)
+   Neutral 700  #413D38 → oklch(0.31 0.01  58)
+   Neutral 600  #5A554E → oklch(0.41 0.01  58)
+   Neutral 500  #756F67 → oklch(0.52 0.01  58)
+   Neutral 400  #928C84 → oklch(0.63 0.01  58)
+   Neutral 300  #B0AAA3 → oklch(0.73 0.01  58)
+   Neutral 200  #CEC9C3 → oklch(0.82 0.01  58)
+   Neutral 100  #E8E4DF → oklch(0.91 0.01  58)
+   Neutral 50   #F5F3F0 → oklch(0.96 0.01  58)
+   White        #FDFCFA → oklch(0.99 0.00  58)
+
+   Success 700  #1D4A2E → oklch(0.31 0.07 152)
+   Success 500  #2E7A4A → oklch(0.48 0.10 152)
+   Success 100  #D4EDE0 → oklch(0.91 0.04 152)
+
+   Warning 700  #5C3A10 → oklch(0.34 0.07  55)
+   Warning 500  #C4721A → oklch(0.60 0.13  55)
+   Warning 100  #FAEBD3 → oklch(0.94 0.04  75)
+
+   Error 700    #5C1414 → oklch(0.28 0.08  19)
+   Error 500    #B02020 → oklch(0.45 0.14  19)
+   Error 100    #F5D5D5 → oklch(0.91 0.04  19)
+
+   Info 700     #1A2E4A → oklch(0.24 0.05 245)
+   Info 500     #2E5A8C → oklch(0.43 0.09 245)
+   Info 100     #D4E4F5 → oklch(0.91 0.04 245)
+───────────────────────────────────────────── */
+
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Base */
+  --background: oklch(0.97 0.01 58); /* Taupe 50   #F8F5F2 */
+  --foreground: oklch(0.17 0.01 58); /* Neutral 900 #1C1A18 */
+
+  /* Card */
+  --card: oklch(0.99 0 58); /* White Warm #FDFCFA */
+  --card-foreground: oklch(0.17 0.01 58); /* Neutral 900 */
+
+  /* Popover */
+  --popover: oklch(0.99 0 58);
+  --popover-foreground: oklch(0.17 0.01 58);
+
+  /* Primary — Sallyan Burgundy 800 */
+  --primary: oklch(0.22 0.08 19); /* #3D1414 */
+  --primary-foreground: oklch(0.9 0.03 19); /* Burgundy 100 #F0DADA */
+
+  /* Secondary — Taupe 100 surface */
+  --secondary: oklch(0.93 0.01 58); /* Taupe 100 #EEE9E5 */
+  --secondary-foreground: oklch(0.31 0.01 58); /* Neutral 700 #413D38 */
+
+  /* Muted */
+  --muted: oklch(0.96 0.01 58); /* Neutral 50 #F5F3F0 */
+  --muted-foreground: oklch(0.52 0.01 58); /* Neutral 500 #756F67 */
+
+  /* Accent — Taupe 500 */
+  --accent: oklch(0.58 0.04 58); /* #948472 */
+  --accent-foreground: oklch(0.99 0 0); /* White */
+
+  /* Destructive — Error 500 */
+  --destructive: oklch(0.45 0.14 19); /* #B02020 */
+
+  /* Borders & Inputs */
+  --border: oklch(0.87 0.01 58); /* Taupe 200 #DDD6D0 */
+  --input: oklch(0.87 0.01 58);
+  --ring: oklch(0.22 0.08 19); /* Burgundy 800 */
+
+  /* Charts — brand-harmonious set */
+  --chart-1: oklch(0.22 0.08 19); /* Burgundy 800  */
+  --chart-2: oklch(0.58 0.04 58); /* Taupe 500     */
+  --chart-3: oklch(0.48 0.1 152); /* Success 500   */
+  --chart-4: oklch(0.6 0.13 55); /* Warning 500   */
+  --chart-5: oklch(0.43 0.09 245); /* Info 500      */
+
+  /* Sidebar */
+  --sidebar: oklch(0.22 0.08 19); /* Burgundy 800 — dark nav */
+  --sidebar-foreground: oklch(0.9 0.03 19); /* Burgundy 100 */
+  --sidebar-primary: oklch(0.9 0.03 19); /* Burgundy 100 — active label */
+  --sidebar-primary-foreground: oklch(0.22 0.08 19);
+  --sidebar-accent: oklch(0.28 0.08 19); /* Burgundy 700 — hover */
+  --sidebar-accent-foreground: oklch(0.9 0.03 19);
+  --sidebar-border: oklch(0.16 0.06 19); /* Burgundy 900 */
+  --sidebar-ring: oklch(0.58 0.04 58); /* Taupe 500 */
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Base */
+  --background: oklch(0.16 0.01 58); /* Near Neutral 900 */
+  --foreground: oklch(0.96 0.01 58); /* Taupe 50 */
+
+  /* Card */
+  --card: oklch(0.22 0.01 58); /* Neutral 800 */
+  --card-foreground: oklch(0.96 0.01 58);
+
+  /* Popover */
+  --popover: oklch(0.22 0.01 58);
+  --popover-foreground: oklch(0.96 0.01 58);
+
+  /* Primary — lighter Burgundy for dark surfaces */
+  --primary: oklch(0.76 0.06 19); /* Burgundy 200 #DDA8A8 */
+  --primary-foreground: oklch(0.16 0.06 19); /* Burgundy 900 */
+
+  /* Secondary */
+  --secondary: oklch(0.31 0.01 58); /* Neutral 700 */
+  --secondary-foreground: oklch(0.91 0.01 58); /* Neutral 100 */
+
+  /* Muted */
+  --muted: oklch(0.28 0.01 58); /* Neutral 800ish */
+  --muted-foreground: oklch(0.63 0.01 58); /* Neutral 400 */
+
+  /* Accent — lighter Taupe */
+  --accent: oklch(0.69 0.03 58); /* Taupe 400 #AFA097 */
+  --accent-foreground: oklch(0.17 0.01 58);
+
+  /* Destructive */
+  --destructive: oklch(0.63 0.09 19); /* Burgundy 300 — softer on dark */
+
+  /* Borders */
+  --border: oklch(0.99 0 0 / 10%);
+  --input: oklch(0.99 0 0 / 15%);
+  --ring: oklch(0.76 0.06 19); /* Burgundy 200 */
+
+  /* Charts */
+  --chart-1: oklch(0.76 0.06 19); /* Burgundy 200  */
+  --chart-2: oklch(0.69 0.03 58); /* Taupe 400     */
+  --chart-3: oklch(0.91 0.04 152); /* Success 100   */
+  --chart-4: oklch(0.94 0.04 75); /* Warning 100   */
+  --chart-5: oklch(0.91 0.04 245); /* Info 100      */
+
+  /* Sidebar — deep Burgundy */
+  --sidebar: oklch(0.11 0.04 19); /* Burgundy 950 #1A0A0A */
+  --sidebar-foreground: oklch(0.9 0.03 19); /* Burgundy 100 */
+  --sidebar-primary: oklch(0.76 0.06 19); /* Burgundy 200 */
+  --sidebar-primary-foreground: oklch(0.16 0.06 19);
+  --sidebar-accent: oklch(0.22 0.08 19); /* Burgundy 800 */
+  --sidebar-accent-foreground: oklch(0.9 0.03 19);
+  --sidebar-border: oklch(0.99 0 0 / 10%);
+  --sidebar-ring: oklch(0.69 0.03 58); /* Taupe 400 */
 }
 
 @layer base {

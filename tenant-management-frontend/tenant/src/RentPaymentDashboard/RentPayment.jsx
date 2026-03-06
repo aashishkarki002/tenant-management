@@ -1,7 +1,5 @@
 // src/pages/rent/RentPayment.jsx
 import React, { useState, useMemo, useCallback } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRentData } from "./hooks/useRentData";
 import { usePaymentForm } from "./hooks/usePaymentForm";
 import { RentTable } from "./components/RentTable";
@@ -14,22 +12,7 @@ import { AdminRentActions } from "./components/AdminRentAction";
 import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDate";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 
-// ── Header slot: page title only — no CTAs on this page ──────────────────────
-// Declared at module level → stable reference → useLayoutEffect fires once.
-const RentPaymentHeaderSlot = (
-  <div className="flex flex-col justify-center min-w-0">
-    <h1 className="text-sm font-semibold text-slate-900 leading-tight truncate">
-      Rent Management
-    </h1>
-    <p className="text-xs text-slate-400 truncate">
-      Track and record rent collection across all tenants
-    </p>
-  </div>
-);
-
 const RentPayment = () => {
-  useHeaderSlot(RentPaymentHeaderSlot);
-
   const {
     rents, payments, bankAccounts, cams, properties,
     loading, paymentsLoading,
@@ -41,12 +24,19 @@ const RentPayment = () => {
     getRents, getPayments, fetchRentSummary, getCams,
   } = useRentData();
 
+  // Tab state lives here — no longer driven by shadcn Tabs
+  const [activeTab, setActiveTab] = useState("rent");
   const [datePickerResetKey, setDatePickerResetKey] = useState(0);
   const [frequencyView, setFrequencyView] = useState("monthly");
 
   const frequencyFilteredRents = useMemo(
     () => rents.filter((r) => (r.rentFrequency || "monthly") === frequencyView),
     [rents, frequencyView],
+  );
+
+  const overdueCount = useMemo(
+    () => rents.filter((r) => (r.status || "").toLowerCase() === "overdue").length,
+    [rents],
   );
 
   const { frequencyTotalDue, frequencyTotalCollected } = useMemo(() => {
@@ -95,97 +85,137 @@ const RentPayment = () => {
 
   const currentMonthName = filterRentMonth != null ? NEPALI_MONTH_NAMES[filterRentMonth - 1] : "";
 
+  // ── Header slot ───────────────────────────────────────────────────────────
+  // Inline tab nav + CTAs live here — the page body is pure content.
+  // activeTab is a dep so the active state re-renders in the header.
+  useHeaderSlot(
+    () => (
+      <div className="flex items-center gap-3 w-full min-w-0">
+        {/* Brand mark */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="h-1.5 w-1.5 rounded-full bg-slate-900" />
+          <span className="text-sm font-semibold text-slate-900 whitespace-nowrap">
+            Rent Management
+          </span>
+        </div>
+
+        <div className="h-5 w-px bg-slate-200 shrink-0" />
+
+        {/* Inline tab pills */}
+        <nav className="flex items-center gap-0.5 shrink-0">
+          {[
+            { id: "rent", label: "Rent" },
+            { id: "payments", label: "Payment History" },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={[
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md",
+                "text-xs font-semibold transition-colors",
+                activeTab === t.id
+                  ? "bg-slate-100 text-slate-900"
+                  : "text-slate-400 hover:text-slate-700 hover:bg-slate-50",
+              ].join(" ")}
+            >
+              {t.label}
+              {t.id === "rent" && overdueCount > 0 && (
+                <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+                  {overdueCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        <div className="flex-1 min-w-0" />
+
+        {/* Global CTAs */}
+        <AdminRentActions onProcessSuccess={getRents} />
+      </div>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeTab, overdueCount, currentMonthName, filterRentYear, getRents],
+  );
+
+  // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <Card className="overflow-hidden">
-        <div className="animate-pulse p-6 space-y-4">
-          <div className="h-8 bg-slate-100 rounded w-48" />
-          <div className="h-4 bg-slate-100 rounded w-32" />
-          <div className="h-32 bg-slate-100 rounded-xl" />
-          <div className="h-64 bg-slate-100 rounded" />
-        </div>
-      </Card>
+      <div className="animate-pulse space-y-4">
+        <div className="h-9 bg-slate-100 rounded-xl w-full" />
+        <div className="h-24 bg-slate-100 rounded-xl w-full" />
+        <div className="h-64 bg-slate-100 rounded-xl w-full" />
+      </div>
     );
   }
 
   return (
     <form onSubmit={handleSubmit}>
-      <Card className="overflow-hidden border-slate-200">
-        <Tabs defaultValue="rent">
-          {/* ── Tab navigation only — title lives in the header slot ─────── */}
-          <div className="px-4 sm:px-6 pt-4 pb-0 border-b border-slate-100">
-            <TabsList className="grid grid-cols-2 w-full max-w-xs h-9 bg-slate-100 p-0.5 rounded-lg -mb-px">
-              <TabsTrigger
-                value="rent"
-                className="rounded-md text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
+
+      {/* ══ RENT TAB ═════════════════════════════════════════════════════════ */}
+      {activeTab === "rent" && (
+        <div className="space-y-4">
+
+          {/* Overdue nudge banner */}
+          {overdueCount > 0 && filterStatus !== "overdue" && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="h-2 w-2 rounded-full bg-red-500 shrink-0 animate-pulse" />
+                <p className="text-xs font-semibold text-red-700 whitespace-nowrap">
+                  {overdueCount} overdue rent{overdueCount !== 1 ? "s" : ""} need attention
+                </p>
+                <span className="hidden sm:inline text-xs text-red-400">
+                  · {currentMonthName} {filterRentYear}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFilterStatus("overdue")}
+                className="shrink-0 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
               >
-                Rent
-              </TabsTrigger>
-              <TabsTrigger
-                value="payments"
-                className="rounded-md text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
-              >
-                Payment History
-              </TabsTrigger>
-            </TabsList>
+                Show overdue
+              </button>
+            </div>
+          )}
+
+          {/* Filters — scopes the KPIs below */}
+          <div className="rounded-xl border border-slate-200 bg-white px-4 sm:px-5 py-3.5">
+            <RentFilter
+              month={filterRentMonth}
+              year={filterRentYear}
+              status={filterStatus}
+              propertyId={filterPropertyId}
+              properties={properties}
+              defaultMonth={defaultRentMonth}
+              defaultYear={defaultRentYear}
+              onMonthChange={setFilterRentMonth}
+              onYearChange={setFilterRentYear}
+              onStatusChange={setFilterStatus}
+              onPropertyChange={setFilterPropertyId}
+              onReset={handleClearRentFilters}
+              frequencyView={frequencyView}
+              onFrequencyChange={setFrequencyView}
+            />
           </div>
 
-          {/* ══ RENT TAB ═════════════════════════════════════════════════════ */}
-          <TabsContent value="rent" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+          {/* KPI strip — answers the scoped question */}
+          <RentSummaryCard
+            totalCollected={frequencyTotalCollected}
+            totalDue={frequencyTotalDue}
+            frequencyView={frequencyView}
+            currentMonthName={currentMonthName}
+            currentYear={filterRentYear}
+          />
 
-            <div className="px-4 sm:px-6 pt-4 pb-3 border-b border-slate-100 bg-slate-50/50">
-              <RentFilter
-                month={filterRentMonth}
-                year={filterRentYear}
-                status={filterStatus}
-                propertyId={filterPropertyId}
-                properties={properties}
-                defaultMonth={defaultRentMonth}
-                defaultYear={defaultRentYear}
-                onMonthChange={setFilterRentMonth}
-                onYearChange={setFilterRentYear}
-                onStatusChange={setFilterStatus}
-                onPropertyChange={setFilterPropertyId}
-                onReset={handleClearRentFilters}
-              />
+          {/* Rent table */}
+          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div className="flex items-center px-4 sm:px-5 py-3 border-b border-slate-100">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide tabular-nums">
+                {frequencyFilteredRents.length} record{frequencyFilteredRents.length !== 1 ? "s" : ""}
+              </span>
             </div>
-
-            <RentSummaryCard
-              totalCollected={frequencyTotalCollected}
-              totalDue={frequencyTotalDue}
-              frequencyView={frequencyView}
-              currentMonthName={currentMonthName}
-              currentYear={filterRentYear}
-            />
-
-            <div className="px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">View</span>
-                <div className="inline-flex rounded-md border border-slate-200 bg-white p-0.5 gap-0.5">
-                  {["monthly", "quarterly"].map((freq) => (
-                    <button
-                      key={freq}
-                      type="button"
-                      onClick={() => setFrequencyView(freq)}
-                      className={`px-3 py-1 text-xs font-semibold rounded transition-colors capitalize ${frequencyView === freq
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-600 hover:bg-slate-50"
-                        }`}
-                    >
-                      {freq}
-                    </button>
-                  ))}
-                </div>
-                {frequencyFilteredRents.length > 0 && (
-                  <span className="text-xs text-slate-400 tabular-nums">
-                    {frequencyFilteredRents.length} record{frequencyFilteredRents.length !== 1 ? "s" : ""}
-                  </span>
-                )}
-              </div>
-              <AdminRentActions onProcessSuccess={getRents} />
-            </div>
-
-            <CardContent className="px-4 sm:px-6 pt-4">
+            <div className="px-4 sm:px-5 pt-2 pb-4">
               <RentTable
                 rents={frequencyFilteredRents}
                 cams={cams}
@@ -204,46 +234,48 @@ const RentPayment = () => {
                 handleOpenDialog={paymentForm.handleOpenDialog}
                 handleAmountChange={paymentForm.handleAmountChange}
               />
-            </CardContent>
-          </TabsContent>
-
-          {/* ══ PAYMENTS TAB ══════════════════════════════════════════════════ */}
-          <TabsContent value="payments" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
-            <div className="px-4 sm:px-6 pt-5 pb-2">
-              <h2 className="text-base font-semibold text-slate-900">Payment History</h2>
-              <p className="text-sm text-slate-500 mt-0.5">
-                All recorded payments across tenants and billing periods
-              </p>
             </div>
+          </div>
+        </div>
+      )}
 
-            <CardContent className="px-4 sm:px-6">
-              <PaymentFilters
-                filterStartDate={filterStartDate}
-                filterEndDate={filterEndDate}
-                filterPaymentMethod={filterPaymentMethod}
-                setFilterStartDate={setFilterStartDate}
-                setFilterEndDate={setFilterEndDate}
-                setFilterPaymentMethod={setFilterPaymentMethod}
-                datePickerResetKey={datePickerResetKey}
-                onReset={handleClearPaymentFilters}
-              />
-              {paymentsLoading ? (
-                <div className="space-y-3 py-4">
-                  {[...Array(5)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="h-12 bg-slate-100 rounded animate-pulse"
-                      style={{ opacity: 1 - i * 0.15 }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <PaymentsTable payments={payments} />
-              )}
-            </CardContent>
-          </TabsContent>
-        </Tabs>
-      </Card>
+      {/* ══ PAYMENTS TAB ═════════════════════════════════════════════════════ */}
+      {activeTab === "payments" && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Payment History</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              All recorded payments across tenants and billing periods
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white px-4 sm:px-5 py-4">
+            <PaymentFilters
+              filterStartDate={filterStartDate}
+              filterEndDate={filterEndDate}
+              filterPaymentMethod={filterPaymentMethod}
+              setFilterStartDate={setFilterStartDate}
+              setFilterEndDate={setFilterEndDate}
+              setFilterPaymentMethod={setFilterPaymentMethod}
+              datePickerResetKey={datePickerResetKey}
+              onReset={handleClearPaymentFilters}
+            />
+            {paymentsLoading ? (
+              <div className="space-y-3 pt-2">
+                {[...Array(5)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-12 bg-slate-100 rounded-lg animate-pulse"
+                    style={{ opacity: 1 - i * 0.15 }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <PaymentsTable payments={payments} />
+            )}
+          </div>
+        </div>
+      )}
     </form>
   );
 };

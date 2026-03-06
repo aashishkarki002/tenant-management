@@ -1,59 +1,100 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
-    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-    Cell, LabelList, ReferenceArea, ReferenceLine,
+    ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
+    ResponsiveContainer, Cell, LabelList, ReferenceArea,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { NEPALI_MONTH_NAMES, getCurrentNepaliMonth } from '../../../utils/nepaliDate';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Palette ──────────────────────────────────────────────────────────────────
 
-const HIGHLIGHT_FILL = '#375534';   // orange-800 — brand accent, current month only
-const MUTED_FILL = '#6B9071';   // slate-300 — all other recorded months
-const EMPTY_FILL = '#F5F7F4';   // slate-100 — months with no data
+const COLOR = {
+    barHighlight: '#3D1414',
+    barRecorded: '#A07070',
+    barEmpty: '#F0EBE8',
+    trendLine: '#C4721A',
+    up: '#2E7A4A',
+    down: '#B02020',
+    flat: '#7A6858',
+    gridLine: '#EEE9E5',
+    axisText: '#B0A090',
+    axisHighlight: '#3D1414',
+};
 
 const MONTH_SHORT = NEPALI_MONTH_NAMES.map((n) => n.slice(0, 3));
 
-/**
- * Nepali fiscal year quarters (Shrawan = month 1):
- *   Q1: Shrawan–Ashwin   (1–3)
- *   Q2: Kartik–Poush     (4–6)
- *   Q3: Magh–Chaitra     (7–9)
- *   Q4: Baisakh–Ashadh   (10–12)
- */
 const QUARTERS = [
-    { label: 'Q1', months: [1, 2, 3], fill: 'rgba(241,245,249,0.55)' },
-    { label: 'Q2', months: [4, 5, 6], fill: 'rgba(248,250,252,0.0)' },
-    { label: 'Q3', months: [7, 8, 9], fill: 'rgba(241,245,249,0.55)' },
-    { label: 'Q4', months: [10, 11, 12], fill: 'rgba(248,250,252,0.0)' },
+    { label: 'Q1', months: [1, 2, 3] },
+    { label: 'Q2', months: [4, 5, 6] },
+    { label: 'Q3', months: [7, 8, 9] },
+    { label: 'Q4', months: [10, 11, 12] },
 ];
 
-// ─── Approximate Nepali year (BS) from Gregorian ──────────────────────────────
-// Industry note: use a proper BS library (e.g. `bikram-sambat`) in production.
-// This approximation is sufficient for display-only FY labels.
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function getApproxNepaliYear() {
     const now = new Date();
-    const adYr = now.getFullYear();
-    const adMon = now.getMonth(); // 0-indexed; Nepali new year ~mid-April (month 3)
-    return adMon >= 3 ? adYr + 56 : adYr + 57;
+    return now.getMonth() >= 3 ? now.getFullYear() + 56 : now.getFullYear() + 57;
+}
+
+function fmtCompact(n) {
+    if (n == null) return '—';
+    if (n >= 10_00_000) return `${(n / 10_00_000).toFixed(1)}Cr`;
+    if (n >= 1_00_000) return `${(n / 1_00_000).toFixed(1)}L`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+    return `${n}`;
+}
+
+function fmtFull(n) {
+    return `₹${Number(n).toLocaleString('en-IN')}`;
+}
+
+// ─── Trend / analytics ────────────────────────────────────────────────────────
+//
+// calcTrend: least-squares linear regression over recorded months.
+//   direction 'up'   = slope > 1.5% of mean revenue (meaningful growth)
+//   direction 'down' = slope < -1.5% of mean (meaningful decline)
+//   direction 'flat' = within noise band
+
+function calcTrend(recorded) {
+    if (recorded.length < 2) return { slope: 0, direction: 'flat' };
+    const n = recorded.length;
+    const xs = recorded.map((_, i) => i);
+    const ys = recorded.map((d) => d.revenue);
+    const meanX = xs.reduce((s, x) => s + x, 0) / n;
+    const meanY = ys.reduce((s, y) => s + y, 0) / n;
+    const num = xs.reduce((s, x, i) => s + (x - meanX) * (ys[i] - meanY), 0);
+    const den = xs.reduce((s, x) => s + (x - meanX) ** 2, 0);
+    const slope = den === 0 ? 0 : num / den;
+    const direction = slope > meanY * 0.015 ? 'up'
+        : slope < -meanY * 0.015 ? 'down'
+            : 'flat';
+    return { slope, direction };
+}
+
+// rollingAvg: 3-month centered average, null for empty months.
+// Smooths single-month noise (vacancy gaps, lump payments).
+
+function rollingAvg(data, window = 3) {
+    return data.map((d, i) => {
+        if (d.isEmpty) return null;
+        const half = Math.floor(window / 2);
+        const slice = data.slice(Math.max(0, i - half), Math.min(data.length, i + half + 1));
+        const active = slice.filter((s) => !s.isEmpty);
+        if (active.length === 0) return null;
+        return active.reduce((s, a) => s + a.revenue, 0) / active.length;
+    });
 }
 
 // ─── Data builder ─────────────────────────────────────────────────────────────
 
-/**
- * Normalises raw backend data into a 12-entry Recharts array (Shrawan → Ashadh).
- * Adds `momChange` (month-over-month %) derived from the previous non-empty month.
- *
- * Industry pattern: "enrich at the boundary" — components receive ready-to-render
- * data; they never compute derived metrics inline during render.
- */
 function buildChartData(items, currentMonth, highlightCurrent) {
     if (!Array.isArray(items) || items.length === 0) return [];
 
     const hasMonthField = items.some((it) => it.month != null);
-
     let base;
+
     if (hasMonthField) {
         const lookup = new Map(items.map((it) => [it.month, it]));
         base = MONTH_SHORT.map((shortName, i) => {
@@ -61,9 +102,7 @@ function buildChartData(items, currentMonth, highlightCurrent) {
             const item = lookup.get(monthNum);
             const revenue = Number(item?.total ?? item?.revenue ?? 0) || 0;
             return {
-                name: shortName,
-                month: monthNum,
-                revenue,
+                name: shortName, month: monthNum, revenue,
                 isEmpty: revenue === 0,
                 isHighlighted: highlightCurrent && monthNum === currentMonth,
             };
@@ -74,61 +113,125 @@ function buildChartData(items, currentMonth, highlightCurrent) {
             return {
                 name: item.name ?? item.label ?? '',
                 month: item.month ?? null,
-                revenue,
-                isEmpty: revenue === 0,
-                isHighlighted: highlightCurrent
-                    ? item.month === currentMonth
-                    : Boolean(item.isHighlighted),
+                revenue, isEmpty: revenue === 0,
+                isHighlighted: highlightCurrent ? item.month === currentMonth : Boolean(item.isHighlighted),
             };
         });
     }
 
-    // ── Compute month-over-month % change ────────────────────────────────────
-    // We compare against the most recent *non-empty* prior month so that months
-    // with zero revenue don't produce misleading +∞ annotations.
-    return base.map((item, idx) => {
-        if (item.isEmpty || item.revenue === 0) return { ...item, momChange: null };
-        // Walk backwards to find the last non-empty month
-        let prevRevenue = 0;
+    // Month-over-month vs last non-empty month
+    const withMom = base.map((item, idx) => {
+        if (item.isEmpty) return { ...item, momChange: null };
+        let prev = 0;
         for (let i = idx - 1; i >= 0; i--) {
-            if (!base[i].isEmpty && base[i].revenue > 0) {
-                prevRevenue = base[i].revenue;
-                break;
-            }
+            if (!base[i].isEmpty && base[i].revenue > 0) { prev = base[i].revenue; break; }
         }
-        const momChange = prevRevenue > 0
-            ? Math.round(((item.revenue - prevRevenue) / prevRevenue) * 100)
-            : null;
+        const momChange = prev > 0 ? Math.round(((item.revenue - prev) / prev) * 100) : null;
         return { ...item, momChange };
     });
+
+    // Attach rolling average as `trend` for the Line series
+    const avgs = rollingAvg(withMom, 3);
+    return withMom.map((d, i) => ({ ...d, trend: avgs[i] }));
 }
 
-// ─── Formatters ───────────────────────────────────────────────────────────────
+// ─── Verdict computation ──────────────────────────────────────────────────────
+//
+// Answers the owner's core question: "Is my revenue growing or declining?"
+// Pure function — all logic here, zero logic in components.
 
-function fmtCompact(n) {
-    if (n == null) return '—';
-    if (n >= 10_00_000) return `₹${(n / 10_00_000).toFixed(1)}Cr`;
-    if (n >= 1_00_000) return `₹${(n / 1_00_000).toFixed(1)}L`;
-    if (n >= 1_000) return `₹${(n / 1_000).toFixed(0)}k`;
-    return `₹${n}`;
+function computeVerdict(monthlyData) {
+    const recorded = monthlyData.filter((d) => !d.isEmpty);
+    if (recorded.length < 2) return null;
+
+    const { direction } = calcTrend(recorded);
+
+    // Recent momentum: trend of just the last 3 recorded months
+    const { direction: recentDir } = calcTrend(recorded.slice(-3));
+
+    const ytdTotal = recorded.reduce((s, d) => s + d.revenue, 0);
+
+    // First-half vs second-half average (period-over-period change)
+    const half = Math.floor(recorded.length / 2);
+    const firstAvg = recorded.slice(0, half).reduce((s, d) => s + d.revenue, 0) / (half || 1);
+    const secondAvg = recorded.slice(half).reduce((s, d) => s + d.revenue, 0) / (recorded.length - half || 1);
+    const popChange = firstAvg > 0
+        ? Math.round(((secondAvg - firstAvg) / firstAvg) * 100)
+        : null;
+
+    const peak = recorded.reduce((b, d) => d.revenue > b.revenue ? d : b, recorded[0]);
+    const trough = recorded.reduce((b, d) => d.revenue < b.revenue ? d : b, recorded[0]);
+
+    return { direction, recentDir, ytdTotal, popChange, peak, trough, recorded };
 }
 
-function fmtFull(n) {
-    return `₹${Number(n).toLocaleString('en-IN')}`;
-}
+// ─── VerdictBadge ─────────────────────────────────────────────────────────────
+//
+// The first thing the owner reads — directly answers the question.
+// Sits ABOVE the chart so it's visible before the bars.
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function VerdictBadge({ verdict }) {
+    if (!verdict) return null;
+    const { direction, recentDir, popChange, ytdTotal, recorded } = verdict;
 
-function ChartSkeleton() {
+    const isUp = direction === 'up';
+    const isDown = direction === 'down';
+    const Icon = isUp ? ArrowUpRight : isDown ? ArrowDownRight : Minus;
+
+    const theme = isUp
+        ? { bg: '#F0FAF3', border: '#C3E8CF', iconBg: '#2E7A4A', text: '#1A5C34', sub: '#2E7A4A' }
+        : isDown
+            ? { bg: '#FDF2F2', border: '#F0CBCB', iconBg: '#B02020', text: '#8A1515', sub: '#B02020' }
+            : { bg: '#F8F5F2', border: '#E8E0D8', iconBg: '#7A6858', text: '#3D2A20', sub: '#7A6858' };
+
+    const label = isUp ? 'Growing' : isDown ? 'Declining' : 'Stable';
+    const recentLabel = recentDir === 'up' ? 'Accelerating ↑'
+        : recentDir === 'down' ? 'Slowing ↓'
+            : 'Holding steady';
+    const popText = popChange != null
+        ? `${popChange > 0 ? '+' : ''}${popChange}% second-half vs first`
+        : null;
+
     return (
-        <div className="h-full w-full flex items-end gap-1 px-2">
-            {[40, 65, 30, 80, 55, 70, 45, 60, 75, 50, 35, 68].map((h, i) => (
-                <div
-                    key={i}
-                    className="flex-1 rounded-t animate-pulse bg-slate-100"
-                    style={{ height: `${h}%`, minHeight: 6 }}
-                />
-            ))}
+        <div className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 border"
+            style={{ background: theme.bg, borderColor: theme.border }}>
+
+            <div className="rounded-lg p-1.5 shrink-0" style={{ background: theme.iconBg }}>
+                <Icon className="w-3.5 h-3.5 text-white" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-sm font-bold leading-none" style={{ color: theme.text }}>
+                        Revenue {label}
+                    </span>
+                    <span className="text-[11px] font-semibold" style={{ color: theme.sub }}>
+                        {recentLabel}
+                    </span>
+                </div>
+                {(popText || recorded.length > 0) && (
+                    <p className="text-[10px] mt-0.5 font-medium" style={{ color: theme.sub }}>
+                        {[
+                            popText,
+                            `${recorded.length} months recorded`,
+                            `YTD ₹${fmtCompact(ytdTotal)}`,
+                        ].filter(Boolean).join(' · ')}
+                    </p>
+                )}
+            </div>
+
+            {/* Trend line legend swatch */}
+            <div className="flex items-center gap-1.5 shrink-0">
+                <svg width="22" height="10" viewBox="0 0 22 10">
+                    <path d="M1 9 C5 9 7 1 11 1 C15 1 17 6 21 4"
+                        stroke={COLOR.trendLine} strokeWidth="2"
+                        fill="none" strokeLinecap="round" />
+                </svg>
+                <span className="text-[9px] font-semibold tracking-wide uppercase"
+                    style={{ color: COLOR.trendLine }}>
+                    3-mo avg
+                </span>
+            </div>
         </div>
     );
 }
@@ -137,26 +240,42 @@ function ChartSkeleton() {
 
 function CustomTooltip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
-    const { revenue, isEmpty, momChange, month } = payload[0]?.payload ?? {};
-    const monthName = month != null ? NEPALI_MONTH_NAMES[month - 1] : label;
+    const d = payload[0]?.payload ?? {};
+    const monthName = d.month != null ? NEPALI_MONTH_NAMES[d.month - 1] : label;
+    const trendVal = payload.find((p) => p.dataKey === 'trend')?.value;
 
     return (
-        <div className="bg-white border border-zinc-200 rounded-lg shadow-lg px-3 py-2 text-xs min-w-[120px]">
-            <p className="font-semibold text-zinc-700 mb-1.5">{monthName}</p>
-            {isEmpty ? (
-                <p className="text-zinc-400 italic">No data recorded</p>
+        <div className="rounded-xl border shadow-lg px-3 py-2.5 text-xs min-w-[150px]"
+            style={{ background: '#FDFCFA', borderColor: '#DDD6D0' }}>
+            <p className="font-bold mb-2" style={{ color: '#1C1A18' }}>{monthName}</p>
+
+            {d.isEmpty ? (
+                <p style={{ color: '#B0A090' }} className="italic">No data recorded</p>
             ) : (
                 <>
-                    <p className="text-orange-800 font-bold tabular-nums text-sm">
-                        {fmtFull(revenue)}
-                    </p>
-                    {momChange != null && (
-                        <p className={`mt-1 font-semibold tabular-nums ${momChange > 0 ? 'text-emerald-600' :
-                            momChange < 0 ? 'text-red-500' : 'text-zinc-400'
-                            }`}>
-                            {momChange > 0 ? '▲' : momChange < 0 ? '▼' : '—'}{' '}
-                            {Math.abs(momChange)}% vs prev month
-                        </p>
+                    <div className="flex items-center justify-between gap-4 mb-1">
+                        <span style={{ color: '#7A6858' }}>Revenue</span>
+                        <span className="font-bold tabular-nums" style={{ color: COLOR.barHighlight }}>
+                            {fmtFull(d.revenue)}
+                        </span>
+                    </div>
+                    {trendVal != null && (
+                        <div className="flex items-center justify-between gap-4 mb-1">
+                            <span style={{ color: '#7A6858' }}>3-mo avg</span>
+                            <span className="font-semibold tabular-nums" style={{ color: COLOR.trendLine }}>
+                                {fmtFull(Math.round(trendVal))}
+                            </span>
+                        </div>
+                    )}
+                    {d.momChange != null && (
+                        <div className="flex items-center justify-between gap-4 pt-1 border-t"
+                            style={{ borderColor: '#EEE9E5' }}>
+                            <span style={{ color: '#7A6858' }}>vs prev month</span>
+                            <span className="font-bold tabular-nums"
+                                style={{ color: d.momChange > 0 ? COLOR.up : d.momChange < 0 ? COLOR.down : COLOR.flat }}>
+                                {d.momChange > 0 ? '+' : ''}{d.momChange}%
+                            </span>
+                        </div>
                     )}
                 </>
             )}
@@ -164,67 +283,46 @@ function CustomTooltip({ active, payload, label }) {
     );
 }
 
-// ─── Custom X-Axis Tick ───────────────────────────────────────────────────────
+// ─── X-Axis tick ─────────────────────────────────────────────────────────────
 
 function XAxisTick({ x, y, payload, monthlyData }) {
     const point = monthlyData.find((d) => d.name === payload.value);
     const isHighlight = point?.isHighlighted ?? false;
     const isEmpty = point?.isEmpty ?? false;
-
     return (
         <g transform={`translate(${x},${y})`}>
             {isHighlight && (
-                <circle cx={0} cy={14} r={10} fill={HIGHLIGHT_FILL} opacity={0.1} />
+                <rect x={-9} y={4} width={18} height={14} rx={4}
+                    fill={COLOR.barHighlight} opacity={0.1} />
             )}
-            <text
-                x={0} y={0} dy={14}
-                textAnchor="middle"
-                fontSize={9}
+            <text x={0} y={0} dy={14} textAnchor="middle" fontSize={9}
                 fontWeight={isHighlight ? 700 : 400}
-                fill={isHighlight ? HIGHLIGHT_FILL : isEmpty ? '#e2e8f0' : '#94a3b8'}
-            >
+                fill={isHighlight ? COLOR.axisHighlight : isEmpty ? '#DDD6D0' : COLOR.axisText}>
                 {payload.value}
             </text>
         </g>
     );
 }
 
-// ─── MoM Label (above each bar) ───────────────────────────────────────────────
+// ─── MoM label above bar ─────────────────────────────────────────────────────
 
-/**
- * Renders a compact month-over-month % annotation above each bar.
- *
- * Design rules:
- *  - Hidden for empty months (no data to compare against)
- *  - Hidden when |change| < 2% — prevents annotation noise on stable months
- *  - Green for positive, red for negative, suppressed when null
- */
 function MoMLabel({ x, y, width, index, monthlyData }) {
     if (!monthlyData) return null;
     const point = monthlyData[index];
     if (!point || point.isEmpty || point.momChange == null) return null;
-    if (Math.abs(point.momChange) < 2) return null; // suppress noise
-
+    if (Math.abs(point.momChange) < 3) return null;
     const isPos = point.momChange > 0;
-    const color = isPos ? '#16a34a' : '#dc2626';
-    const prefix = isPos ? '+' : '';
-
     return (
-        <text
-            x={x + width / 2}
-            y={y - 5}
-            textAnchor="middle"
-            fontSize={8}
-            fontWeight={700}
-            fill={color}
-            style={{ pointerEvents: 'none' }}
-        >
-            {prefix}{point.momChange}%
+        <text x={x + width / 2} y={y - 5} textAnchor="middle"
+            fontSize={7} fontWeight={700}
+            fill={isPos ? COLOR.up : COLOR.down}
+            style={{ pointerEvents: 'none' }}>
+            {isPos ? '+' : ''}{point.momChange}%
         </text>
     );
 }
 
-// ─── Current Month Callout Chip ───────────────────────────────────────────────
+// ─── Current month callout ────────────────────────────────────────────────────
 
 function CurrentMonthCallout({ data, currentMonth, nepaliYear }) {
     const point = data.find((d) => d.month === currentMonth);
@@ -232,40 +330,34 @@ function CurrentMonthCallout({ data, currentMonth, nepaliYear }) {
 
     if (!point || point.isEmpty) {
         return (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-100 text-xs text-zinc-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 shrink-0" />
-                <span className="font-medium">{mthName} {nepaliYear}</span>
-                <span className="text-zinc-300">·</span>
-                <span>No data recorded yet</span>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                style={{ background: '#F8F5F2', border: '1px solid #EEE9E5' }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#DDD6D0' }} />
+                <span className="font-semibold" style={{ color: '#7A6858' }}>{mthName} {nepaliYear}</span>
+                <span style={{ color: '#DDD6D0' }}>·</span>
+                <span style={{ color: '#B0A090' }}>No data recorded yet</span>
             </div>
         );
     }
 
-    const MomIcon = point.momChange == null ? Minus
-        : point.momChange > 0 ? TrendingUp : TrendingDown;
-    const momColor = point.momChange == null ? 'text-zinc-400'
-        : point.momChange > 0 ? 'text-emerald-600' : 'text-red-500';
+    const MomIcon = point.momChange == null ? Minus : point.momChange > 0 ? TrendingUp : TrendingDown;
+    const momColor = point.momChange == null ? COLOR.flat : point.momChange > 0 ? COLOR.up : COLOR.down;
 
     return (
-        <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-orange-50 border border-orange-100 text-xs">
-            {/* "You are here" dot */}
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-800 shrink-0 ring-2 ring-orange-200" />
-
-            {/* Month + year */}
-            <span className="font-semibold text-orange-900">{mthName} {nepaliYear}</span>
-
-            <span className="text-orange-300">·</span>
-
-            {/* Revenue */}
-            <span className="font-bold text-orange-800 tabular-nums">
+        <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs"
+            style={{ background: '#FBF7F5', border: '1px solid #EEE9E5' }}>
+            <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ background: COLOR.barHighlight, outline: '2px solid #F0DADA', outlineOffset: '1px' }} />
+            <span className="font-bold" style={{ color: COLOR.barHighlight }}>{mthName} {nepaliYear}</span>
+            <span style={{ color: '#DDD6D0' }}>·</span>
+            <span className="font-bold tabular-nums" style={{ color: '#1C1A18' }}>
                 {fmtFull(point.revenue)}
             </span>
-
-            {/* MoM delta */}
             {point.momChange != null && (
                 <>
-                    <span className="text-orange-300">·</span>
-                    <span className={`flex items-center gap-0.5 font-semibold tabular-nums ${momColor}`}>
+                    <span style={{ color: '#DDD6D0' }}>·</span>
+                    <span className="flex items-center gap-0.5 font-semibold tabular-nums"
+                        style={{ color: momColor }}>
                         <MomIcon className="w-3 h-3" />
                         {point.momChange > 0 ? '+' : ''}{point.momChange}% vs last month
                     </span>
@@ -275,97 +367,67 @@ function CurrentMonthCallout({ data, currentMonth, nepaliYear }) {
     );
 }
 
-// ─── Summary Strip ────────────────────────────────────────────────────────────
+// ─── Summary strip ────────────────────────────────────────────────────────────
 
-/**
- * Below-chart 3-metric strip.
- * Answers: "Where am I in the FY?" at a glance without reading bar heights.
- */
 function SummaryStrip({ data }) {
     const recorded = data.filter((d) => !d.isEmpty);
-    const totalMonths = data.length;
-    const totalRev = recorded.reduce((s, d) => s + d.revenue, 0);
-
-    const peak = recorded.reduce(
-        (best, d) => (d.revenue > (best?.revenue ?? 0) ? d : best),
-        null,
-    );
-    const peakName = peak ? NEPALI_MONTH_NAMES[peak.month - 1] : null;
-
     if (recorded.length === 0) return null;
 
+    const ytdTotal = recorded.reduce((s, d) => s + d.revenue, 0);
+    const avg = Math.round(ytdTotal / recorded.length);
+    const peak = recorded.reduce((b, d) => d.revenue > b.revenue ? d : b, recorded[0]);
+    const peakName = NEPALI_MONTH_NAMES[peak.month - 1];
+
     return (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 pt-2 border-t border-zinc-100">
-            {/* FY progress */}
-            <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-semibold tracking-widest uppercase text-zinc-400">
-                    FY Progress
-                </span>
-                <span className="text-[10px] font-bold text-zinc-600 tabular-nums">
-                    {recorded.length}/{totalMonths} months
-                </span>
-            </div>
-
-            {/* YTD total */}
-            <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-semibold tracking-widest uppercase text-zinc-400">
-                    YTD
-                </span>
-                <span className="text-[10px] font-bold text-zinc-700 tabular-nums">
-                    {fmtCompact(totalRev)}
-                </span>
-            </div>
-
-            {/* Peak month */}
-            {peakName && (
-                <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold tracking-widest uppercase text-zinc-400">
-                        Peak
-                    </span>
-                    <span className="text-[10px] font-bold text-zinc-600 tabular-nums">
-                        {peakName} · {fmtCompact(peak.revenue)}
-                    </span>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 pt-2 border-t"
+            style={{ borderColor: COLOR.gridLine }}>
+            {[
+                { label: 'FY Progress', value: `${recorded.length}/12 months` },
+                { label: 'YTD', value: `₹${fmtCompact(ytdTotal)}` },
+                { label: 'Avg / mo', value: `₹${fmtCompact(avg)}` },
+                peakName ? { label: 'Peak', value: `${peakName} · ₹${fmtCompact(peak.revenue)}` } : null,
+            ].filter(Boolean).map(({ label, value }) => (
+                <div key={label} className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold tracking-widest uppercase"
+                        style={{ color: '#B0A090' }}>{label}</span>
+                    <span className="text-[10px] font-bold tabular-nums"
+                        style={{ color: '#3D2A20' }}>{value}</span>
                 </div>
-            )}
+            ))}
         </div>
     );
 }
 
-// ─── Empty State ──────────────────────────────────────────────────────────────
+// ─── Skeleton / Empty ─────────────────────────────────────────────────────────
+
+function ChartSkeleton() {
+    return (
+        <div className="h-full w-full flex items-end gap-1 px-2">
+            {[40, 65, 30, 80, 55, 70, 45, 60, 75, 50, 35, 68].map((h, i) => (
+                <div key={i} className="flex-1 rounded-t animate-pulse"
+                    style={{ height: `${h}%`, minHeight: 6, background: '#EEE9E5' }} />
+            ))}
+        </div>
+    );
+}
 
 function EmptyState() {
     return (
-        <div className="h-full w-full flex flex-col items-center justify-center gap-2 border border-dashed border-zinc-200 rounded-lg text-center px-4">
-            <p className="text-xs font-medium text-zinc-500">No revenue data yet</p>
-            <p className="text-[10px] text-zinc-400">Record payments to see your monthly trend</p>
+        <div className="h-full w-full flex flex-col items-center justify-center gap-2
+            rounded-xl border border-dashed text-center px-4"
+            style={{ borderColor: '#DDD6D0' }}>
+            <p className="text-xs font-semibold" style={{ color: '#7A6858' }}>No revenue data yet</p>
+            <p className="text-[10px]" style={{ color: '#B0A090' }}>Record payments to see your trend</p>
         </div>
     );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
-/**
- * BarDiagram — Revenue Trend chart.
- *
- * ARCHITECTURE NOTE (moved toggle to Dashboard header):
- * This component is now a pure display component. It receives `period` as a
- * prop from Dashboard.jsx, which owns the period state and renders the
- * Year toggle in the global header slot. This follows the "lift state to
- * the nearest common ancestor" pattern — the header and this chart both need
- * period, so Dashboard owns it.
- *
- * Props:
- *   stats      — normalised stats object from useStats()
- *   loading    — boolean
- *   error      — string | null
- *   period     — 'thisYear' | 'lastYear' (controlled by Dashboard header)
- *   propertyId — future multi-property support
- */
-export default function BarDiagram({ stats, loading, error, period = 'thisYear', propertyId }) {
+export default function BarDiagram({ stats, loading, error, period = 'thisYear' }) {
     const currentNepaliMonth = getCurrentNepaliMonth();
     const nepaliYear = getApproxNepaliYear();
 
-    // FY label: "FY 2081–82" (this year) or "FY 2080–81" (last year)
     const fyYear = period === 'thisYear' ? nepaliYear : nepaliYear - 1;
     const fyLabel = `FY ${fyYear}–${String(fyYear + 1).slice(-2)}`;
 
@@ -373,152 +435,127 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear',
         ? (stats?.revenueThisYear ?? stats?.revenueByMonth ?? [])
         : (stats?.revenueLastYear ?? stats?.revenueByMonth ?? []);
 
-    const monthlyData = buildChartData(
-        rawData,
-        currentNepaliMonth,
-        period === 'thisYear',
+    const monthlyData = useMemo(
+        () => buildChartData(rawData, currentNepaliMonth, period === 'thisYear'),
+        [rawData, currentNepaliMonth, period],
     );
 
+    const verdict = useMemo(() => computeVerdict(monthlyData), [monthlyData]);
     const hasNoData = monthlyData.length === 0 || monthlyData.every((d) => d.isEmpty);
 
-    // Quarter ReferenceArea x-boundaries (short names, must match XAxis dataKey values)
     const qBands = QUARTERS.map((q) => ({
         ...q,
         x1: MONTH_SHORT[q.months[0] - 1],
         x2: MONTH_SHORT[q.months[q.months.length - 1] - 1],
+        fill: q.months[0] % 2 === 1 ? 'rgba(200,185,175,0.07)' : 'rgba(0,0,0,0)',
     }));
 
     return (
-        <Card className="w-full overflow-hidden shadow-sm rounded-xl border-zinc-200">
-            {/* ── Header ──────────────────────────────────────────────────────── */}
+        <Card className="w-full overflow-hidden shadow-none rounded-2xl border-0">
             <CardHeader className="flex flex-row items-start justify-between px-4 pt-4 pb-2 gap-3">
-                <div className="min-w-0 space-y-0.5">
-                    <CardTitle className="text-sm font-semibold text-zinc-900">
+                <div className="space-y-0.5">
+                    <CardTitle className="text-sm font-bold" style={{ color: '#1C1A18' }}>
                         Revenue Trend
                     </CardTitle>
-                    {/* Fiscal year subtitle — always visible, answers "which year am I looking at?" */}
-                    <p className="text-[11px] font-semibold text-zinc-400 tracking-wide">
+                    <p className="text-[11px] font-semibold tracking-wide" style={{ color: '#B0A090' }}>
                         {loading ? 'Loading…' : fyLabel}
                     </p>
                 </div>
 
-                {/* Quarter legend — top-right, minimal */}
                 {!loading && !hasNoData && (
                     <div className="flex items-center gap-3 shrink-0">
                         {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
-                            <span key={q} className="text-[10px] font-semibold text-zinc-400 tracking-wide">
-                                {q}
-                            </span>
+                            <span key={q} className="text-[10px] font-semibold tracking-wide"
+                                style={{ color: '#C8BDB6' }}>{q}</span>
                         ))}
                     </div>
                 )}
             </CardHeader>
 
             <CardContent className="px-4 pb-4 space-y-3">
-                {error && (
-                    <p className="text-xs text-red-500 font-medium">{error}</p>
-                )}
+                {error && <p className="text-xs font-medium" style={{ color: COLOR.down }}>{error}</p>}
 
-                {/* ── Current Month Callout ──────────────────────────────────────── */}
+                {/* Verdict badge — the direct answer to "growing or declining?" */}
+                {!loading && !hasNoData && verdict && <VerdictBadge verdict={verdict} />}
+
+                {/* Current month callout */}
                 {!loading && !hasNoData && period === 'thisYear' && (
-                    <CurrentMonthCallout
-                        data={monthlyData}
-                        currentMonth={currentNepaliMonth}
-                        nepaliYear={fyYear}
-                    />
+                    <CurrentMonthCallout data={monthlyData} currentMonth={currentNepaliMonth} nepaliYear={fyYear} />
                 )}
 
-                {/* ── Chart ─────────────────────────────────────────────────────── */}
-                {/*
-          Height: 160px desktop. Quarter bands use ReferenceArea (Recharts built-in).
-          MoM annotations use LabelList with a custom SVG text renderer.
-          Industry note: keep chart height fixed — fluid height causes layout shift
-          when data loads and feels unstable in executive dashboards.
-        */}
-                <div className="h-[148px] md:h-[164px] w-full">
+                {/* Chart: bars + trend line overlay */}
+                <div className="h-[160px] md:h-[180px] w-full">
                     {loading ? (
                         <ChartSkeleton />
                     ) : hasNoData ? (
                         <EmptyState />
                     ) : (
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
+                            <ComposedChart
                                 data={monthlyData}
-                                margin={{ top: 20, right: 2, left: 0, bottom: 4 }}
-                                barCategoryGap="18%"
+                                margin={{ top: 22, right: 6, left: 0, bottom: 4 }}
+                                barCategoryGap="22%"
                             >
-                                {/* Quarter background bands */}
+                                {/* Quarter background shading */}
                                 {qBands.map((q) => (
-                                    <ReferenceArea
-                                        key={q.label}
-                                        x1={q.x1}
-                                        x2={q.x2}
-                                        fill={q.fill}
-                                        stroke="none"
+                                    <ReferenceArea key={q.label}
+                                        x1={q.x1} x2={q.x2} fill={q.fill} stroke="none"
                                         label={{
-                                            value: q.label,
-                                            position: 'insideTopLeft',
-                                            fontSize: 8,
-                                            fontWeight: 600,
-                                            fill: '#cbd5e1',
-                                            dx: 2,
-                                            dy: -14,
+                                            value: q.label, position: 'insideTopLeft',
+                                            fontSize: 8, fontWeight: 600, fill: '#C8BDB6', dx: 2, dy: -16,
                                         }}
                                     />
                                 ))}
 
-                                <XAxis
-                                    dataKey="name"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={(props) => (
-                                        <XAxisTick {...props} monthlyData={monthlyData} />
-                                    )}
+                                <XAxis dataKey="name" axisLine={false} tickLine={false}
+                                    tick={(props) => <XAxisTick {...props} monthlyData={monthlyData} />}
                                     interval={0}
                                 />
                                 <YAxis hide />
-                                <Tooltip
-                                    content={<CustomTooltip />}
-                                    cursor={{ fill: '#f8fafc', radius: 3 }}
-                                />
+                                <Tooltip content={<CustomTooltip />}
+                                    cursor={{ fill: 'rgba(200,185,175,0.12)', radius: 4 }} />
 
-                                <Bar dataKey="revenue" radius={[3, 3, 0, 0]} maxBarSize={30} minPointSize={2}>
-                                    {/* Per-bar fill driven by state (empty / muted / highlight) */}
+                                {/* Revenue bars */}
+                                <Bar dataKey="revenue" radius={[3, 3, 0, 0]} maxBarSize={28} minPointSize={2}>
                                     {monthlyData.map((entry, index) => (
-                                        <Cell
-                                            key={index}
+                                        <Cell key={index}
                                             fill={
-                                                entry.isEmpty ? EMPTY_FILL
-                                                    : entry.isHighlighted ? HIGHLIGHT_FILL
-                                                        : MUTED_FILL
+                                                entry.isEmpty ? COLOR.barEmpty
+                                                    : entry.isHighlighted ? COLOR.barHighlight
+                                                        : COLOR.barRecorded
                                             }
-                                            stroke={entry.isEmpty ? '#e2e8f0' : 'none'}
+                                            stroke={entry.isEmpty ? '#DDD6D0' : 'none'}
                                             strokeWidth={entry.isEmpty ? 1 : 0}
                                             strokeDasharray={entry.isEmpty ? '3 2' : 'none'}
                                         />
                                     ))}
-
-                                    {/*
-                    MoM label list — custom SVG text above each bar.
-                    `monthlyData` is closed over so the renderer can look up
-                    momChange by index without Recharts needing to know about it.
-                  */}
-                                    <LabelList
-                                        dataKey="revenue"
-                                        content={(props) => (
-                                            <MoMLabel {...props} monthlyData={monthlyData} />
-                                        )}
+                                    <LabelList dataKey="revenue"
+                                        content={(props) => <MoMLabel {...props} monthlyData={monthlyData} />}
                                     />
                                 </Bar>
-                            </BarChart>
+
+                                {/*
+                                  Trend line — 3-month rolling average.
+                                  Drawn on top of bars. Orange so it contrasts the burgundy/rose bars.
+                                  connectNulls keeps it continuous across future empty months.
+                                  dot={false} for a clean read; activeDot appears only on hover.
+                                */}
+                                <Line
+                                    dataKey="trend"
+                                    type="monotone"
+                                    stroke={COLOR.trendLine}
+                                    strokeWidth={2}
+                                    dot={false}
+                                    activeDot={{ r: 4, fill: COLOR.trendLine, stroke: '#FDFCFA', strokeWidth: 2 }}
+                                    connectNulls
+                                />
+                            </ComposedChart>
                         </ResponsiveContainer>
                     )}
                 </div>
 
-                {/* ── Summary Strip ──────────────────────────────────────────────── */}
-                {!loading && !hasNoData && (
-                    <SummaryStrip data={monthlyData} />
-                )}
+                {/* Summary strip */}
+                {!loading && !hasNoData && <SummaryStrip data={monthlyData} />}
             </CardContent>
         </Card>
     );

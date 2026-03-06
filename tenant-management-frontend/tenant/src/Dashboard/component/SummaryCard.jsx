@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Wallet, Building2, AlertCircle, Wrench, ChevronRight, IndianRupee, AlertTriangle, TrendingUp } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import {
+  Wallet, Building2, AlertCircle, Wrench, ChevronRight,
+  TrendingUp, CheckCircle2, Clock, AlertTriangle,
+} from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
-// ─── Formatters ───────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatAmount(val) {
+function fmt(val) {
   if (val == null || val === '') return '—';
   const n = Number(val);
   if (Number.isNaN(n)) return String(val);
@@ -17,498 +16,546 @@ function formatAmount(val) {
   return `₹${n.toLocaleString()}`;
 }
 
-function pct(collected, target) {
-  if (!target || !collected) return 0;
-  return Math.min(100, Math.round((Number(collected) / Number(target)) * 100));
+function pct(a, b) {
+  if (!b || !a) return 0;
+  return Math.min(100, Math.round((Number(a) / Number(b)) * 100));
 }
 
-// ─── Skeletons ────────────────────────────────────────────────────────────────
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded bg-white/20 ${className}`} />;
-}
-function SkeletonLight({ className = '' }) {
-  return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
-}
-function SkeletonDanger({ className = '' }) {
-  return <div className={`animate-pulse rounded bg-red-200 ${className}`} />;
+function Bone({ w = 'w-full', h = 'h-4', dark = false }) {
+  return <div className={`animate-pulse rounded-md ${w} ${h} ${dark ? 'bg-white/10' : 'bg-[#EEE9E5]'}`} />;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function Card({ children, className = '', style = {} }) {
+  return (
+    <div className={`rounded-2xl border overflow-hidden flex flex-col ${className}`}
+      style={{ borderColor: '#DDD6D0', ...style }}>
+      {children}
+    </div>
+  );
+}
 
-export default function SummaryCard({ stats, loading, error, onRetry }) {
-  const [collectionView, setCollectionView] = useState('month');
+// ─── 1. MONEY IN ─────────────────────────────────────────────────────────────
 
-  // ── Revenue / Collection ─────────────────────────────────────────────────
-  // Primary source: rentSummary from backend (all-time totals)
+function RevenueCard({ stats, loading }) {
+  const [view, setView] = useState('month');
   const rentSummary = stats?.rentSummary ?? {};
-  const totalCollected = rentSummary.totalCollected ?? null;
+  const collected = rentSummary.totalCollected ?? null;
   const target = rentSummary.totalRent ?? null;
+  const breakdown = stats?.revenueBreakdownThisMonth ?? stats?.revenueBreakdown ?? [];
+  const thisMonth = breakdown.reduce((s, r) => s + (r.amount ?? 0), 0);
+  const display = thisMonth > 0 ? thisMonth : collected;
+  const collPct = pct(display, target);
+
+  const yearData = stats?.revenueThisYear ?? [];
+  const npMonth = stats?.npMonth ?? null;
+  const elapsed = yearData.filter(m => npMonth == null || m.month <= npMonth);
+  const ytd = elapsed.reduce((s, m) => s + (m.total ?? 0), 0);
+  const ytdTarget = target != null && elapsed.length > 0 ? target * elapsed.length : null;
+  const ytdPct = pct(ytd, ytdTarget);
+  const hitMonths = elapsed.filter(m => (m.total ?? 0) > 0).length;
+  const missedMonths = elapsed.length - hitMonths;
+  const avgMonthly = elapsed.length > 0 ? ytd / elapsed.length : 0;
+
+  return (
+    <Card style={{ background: '#3D1414', borderColor: '#521C1C' }}>
+      <div className="flex items-start justify-between px-5 pt-5 pb-3">
+        <div>
+          <p className="text-[10px] font-semibold tracking-[0.2em] uppercase mb-1.5"
+            style={{ color: '#8B3030' }}>Revenue</p>
+          {loading ? <Bone dark w="w-32" h="h-10" /> : (
+            <p className="text-4xl font-bold tabular-nums leading-none" style={{ color: 'white' }}>
+              {view === 'month'
+                ? (display != null ? `₹${Number(display).toLocaleString()}` : '—')
+                : `₹${Number(ytd).toLocaleString()}`}
+            </p>
+          )}
+          {!loading && <p className="text-xs mt-1.5" style={{ color: '#C47272' }}>
+            {view === 'month' ? 'Collected this month' : `YTD · ${elapsed.length} months`}
+          </p>}
+        </div>
+        <div className="flex rounded-lg overflow-hidden border border-white/10 text-[11px] font-semibold mt-1 shrink-0">
+          {[['month', 'Month'], ['year', 'YTD']].map(([v, l]) => (
+            <button key={v} onClick={() => setView(v)} className="px-3 py-1.5 transition-all"
+              style={view === v ? { background: '#F0DADA', color: '#3D1414' } : { background: 'transparent', color: 'rgba(240,218,218,0.4)' }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!loading && target != null && target > 0 && (
+        <div className="px-5 pb-4 space-y-1.5">
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#521C1C' }}>
+            <div className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${view === 'month' ? collPct : ytdPct}%`, background: '#DDA8A8' }} />
+          </div>
+          <p className="text-[11px]" style={{ color: '#C47272' }}>
+            {view === 'month' ? `${collPct}% of ${fmt(target)} target` : `${ytdPct}% of ${fmt(ytdTarget)} prorated`}
+          </p>
+        </div>
+      )}
+      {loading && <div className="px-5 pb-4 space-y-2"><Bone dark h="h-2" /><Bone dark w="w-24" h="h-3" /></div>}
+
+      <div className="flex-1 px-5 pb-5">
+        {loading ? (
+          <div className="space-y-2.5"><Bone dark /><Bone dark w="w-5/6" /><Bone dark w="w-4/6" /></div>
+        ) : view === 'month' ? (
+          breakdown.length > 0 && (
+            <div className="space-y-2 border-t pt-3" style={{ borderColor: '#521C1C' }}>
+              <p className="text-[10px] uppercase tracking-[0.15em] mb-2" style={{ color: '#8B3030' }}>Breakdown</p>
+              {breakdown.map(item => (
+                <div key={item.code} className="flex justify-between items-center gap-2">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="w-1 h-1 rounded-full shrink-0" style={{ background: '#948472' }} />
+                    <span className="text-xs truncate" style={{ color: '#DDA8A8' }}>{item.name}</span>
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: '#F0DADA' }}>
+                    {fmt(item.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2 border-t pt-3" style={{ borderColor: '#521C1C' }}>
+              {[
+                { val: fmt(avgMonthly), label: 'Avg / mo', color: '#F0DADA' },
+                { val: hitMonths, label: 'Months hit', color: '#6EE7B7' },
+                { val: missedMonths, label: 'Missed', color: missedMonths > 0 ? '#FCA5A5' : '#F0DADA' },
+              ].map((s, i) => (
+                <div key={i}>
+                  <p className="text-lg font-bold tabular-nums" style={{ color: s.color }}>{s.val}</p>
+                  <p className="text-[10px] uppercase tracking-wide mt-0.5" style={{ color: '#8B3030' }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-1.5 max-h-[130px] overflow-y-auto">
+              {elapsed.map(m => {
+                const has = (m.total ?? 0) > 0;
+                const cur = m.month === npMonth;
+                return (
+                  <div key={m.month} className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ background: cur ? '#F0DADA' : has ? '#6EE7B7' : '#521C1C' }} />
+                      <span className="text-xs truncate"
+                        style={{ color: cur ? '#F0DADA' : '#C47272', fontWeight: cur ? 600 : 400 }}>
+                        {m.name}{cur ? ' · now' : ''}
+                      </span>
+                    </span>
+                    <span className="text-xs font-medium tabular-nums shrink-0"
+                      style={{ color: has ? '#F0DADA' : '#521C1C' }}>
+                      {has ? `₹${Number(m.total).toLocaleString()}` : 'no data'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <Link to="/rent-payment"
+        className="flex items-center justify-between px-5 py-3 border-t text-xs font-semibold
+                   transition-all hover:opacity-75 group"
+        style={{ borderColor: '#521C1C', color: '#DDA8A8' }}>
+        View all transactions
+        <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+      </Link>
+    </Card>
+  );
+}
+
+// ─── 2. MONEY RISK ────────────────────────────────────────────────────────────
+
+function MoneyRiskCard({ stats, loading }) {
+  const rentSummary = stats?.rentSummary ?? {};
   const outstanding = rentSummary.totalOutstanding ?? null;
+  const target = rentSummary.totalRent ?? null;
+  const attention = stats?.attention ?? {};
+  const overdueCount = attention.overdueCount ?? 0;
+  const overdueAmount = attention.overdueAmount ?? 0;
+  const overdueTenants = attention.overdueTenants ?? [];
+  const collectedPct = pct((target ?? 0) - (outstanding ?? 0), target);
+  const allClear = outstanding != null && Number(outstanding) <= 0;
 
-  // This-month breakdown from revenueBreakdownThisMonth; fall back to all-time
-  const revenueBreakdownThisMonth = stats?.revenueBreakdownThisMonth ?? stats?.revenueBreakdown ?? [];
-  const thisMonthTotal = revenueBreakdownThisMonth.reduce((s, r) => s + (r.amount ?? 0), 0);
-  // Display amount for "Month" view: prefer scoped month total, fall back to all-time collected
-  const displayCollected = thisMonthTotal > 0 ? thisMonthTotal : totalCollected;
+  return (
+    <Card>
+      <div className="px-5 pt-5 pb-4 border-b" style={{ borderColor: '#EEE9E5' }}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.2em] uppercase mb-1.5"
+              style={{ color: '#948472' }}>Outstanding</p>
+            {loading ? <Bone w="w-28" h="h-10" /> : (
+              <p className="text-4xl font-bold tabular-nums leading-none"
+                style={{ color: allClear ? '#2E7A4A' : '#B02020' }}>
+                {outstanding != null ? `₹${Number(outstanding).toLocaleString()}` : '—'}
+              </p>
+            )}
+            {!loading && <p className="text-xs mt-1.5" style={{ color: '#948472' }}>
+              {allClear ? 'All dues cleared' : `${overdueCount} tenant${overdueCount !== 1 ? 's' : ''} overdue`}
+            </p>}
+          </div>
+          <div className="rounded-xl p-2.5 mt-1"
+            style={{ background: allClear ? '#D4EDE0' : '#F5D5D5' }}>
+            {allClear
+              ? <CheckCircle2 className="w-5 h-5" style={{ color: '#2E7A4A' }} />
+              : <AlertCircle className="w-5 h-5" style={{ color: '#B02020' }} />}
+          </div>
+        </div>
 
-  // ── YTD scorecard (revenueThisYear is guaranteed 12-entry array from hook) ─
-  const revenueThisYear = stats?.revenueThisYear ?? [];
-  const currentNpMonth = stats?.npMonth ?? null;
+        {!loading && target != null && target > 0 && (
+          <div className="mt-4 space-y-1.5">
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: '#F5D5D5' }}>
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${collectedPct}%`,
+                  background: collectedPct >= 80 ? '#2E7A4A' : collectedPct >= 50 ? '#C4721A' : '#B02020'
+                }} />
+            </div>
+            <div className="flex justify-between text-[11px]" style={{ color: '#948472' }}>
+              <span>{collectedPct}% collected of {fmt(target)}</span>
+              <span style={{ color: outstanding > 0 ? '#B02020' : '#2E7A4A' }}>{fmt(outstanding)} left</span>
+            </div>
+          </div>
+        )}
+      </div>
 
-  const elapsedMonths = revenueThisYear.filter(m => currentNpMonth == null || m.month <= currentNpMonth);
-  const ytdCollected = elapsedMonths.reduce((s, m) => s + (m.total ?? 0), 0);
-  const hitMonths = elapsedMonths.filter(m => (m.total ?? 0) > 0).length;
-  const missedMonths = elapsedMonths.length - hitMonths;
-  const avgMonthly = elapsedMonths.length > 0 ? ytdCollected / elapsedMonths.length : 0;
-  // Prorated YTD target = single-month target × elapsed months
-  const ytdTarget = target != null && elapsedMonths.length > 0 ? target * elapsedMonths.length : null;
-  const ytdPct = pct(ytdCollected, ytdTarget);
+      <div className="flex-1 px-5 py-4">
+        {loading ? (
+          <div className="space-y-2.5"><Bone /><Bone w="w-5/6" /><Bone w="w-4/6" /></div>
+        ) : overdueTenants.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest mb-2.5"
+              style={{ color: '#948472' }}>Overdue tenants</p>
+            {overdueTenants.slice(0, 4).map((t, i) => (
+              <div key={t._id ?? i}
+                className="flex items-center justify-between rounded-xl px-3 py-2.5 border"
+                style={{ background: '#FFF8F8', borderColor: 'rgba(176,32,32,0.15)' }}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold"
+                    style={{ background: '#F5D5D5', color: '#B02020' }}>
+                    {(t.name ?? '?')[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold truncate" style={{ color: '#1C1A18' }}>{t.name}</p>
+                    <p className="text-[10px]" style={{ color: '#948472' }}>{t.unit ?? `Unit ${t.unitNumber ?? ''}`}</p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 ml-2">
+                  <p className="text-sm font-bold tabular-nums" style={{ color: '#B02020' }}>
+                    {fmt(t.amount ?? t.outstanding)}
+                  </p>
+                  {t.daysOverdue != null && (
+                    <p className="text-[10px]" style={{ color: '#C47272' }}>{t.daysOverdue}d overdue</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+            <CheckCircle2 className="w-8 h-8 mb-2" style={{ color: '#2E7A4A' }} />
+            <p className="text-sm font-semibold" style={{ color: '#1D4A2E' }}>No overdue payments</p>
+            <p className="text-xs mt-0.5" style={{ color: '#948472' }}>All tenants are up to date</p>
+          </div>
+        )}
+      </div>
 
-  // ── Occupancy — use normalized shape from hook ────────────────────────────
-  const occupancy = stats?.occupancy ?? {};
-  const occupancyRate = occupancy.occupancyRate ?? occupancy.rate ?? 0;
-  const occupied = occupancy.occupiedUnits ?? occupancy.occupied ?? 0;
-  const totalUnits = occupancy.totalUnits ?? occupancy.total ?? 0;
-  const vacant = occupancy.vacantUnits ?? occupancy.vacant ?? Math.max(0, totalUnits - occupied);
+      <Link to="/dashboard/transactions"
+        className="flex items-center justify-between px-5 py-3 border-t text-xs font-semibold
+                   transition-all hover:bg-[#F8F5F2] group"
+        style={{ borderColor: '#EEE9E5', color: '#3D1414' }}>
+        View all payments
+        <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+      </Link>
+    </Card>
+  );
+}
 
+// ─── 3. BUILDING STATUS ───────────────────────────────────────────────────────
+
+function BuildingCard({ stats, loading }) {
+  const occ = stats?.occupancy ?? {};
+  const rate = occ.occupancyRate ?? occ.rate ?? 0;
+  const occupied = occ.occupiedUnits ?? occ.occupied ?? 0;
+  const total = occ.totalUnits ?? occ.total ?? 0;
+  const vacant = occ.vacantUnits ?? occ.vacant ?? Math.max(0, total - occupied);
+  const contracts = stats?.contractsEndingSoon ?? [];
+
+  const rateColor = rate >= 80 ? '#2E7A4A' : rate >= 50 ? '#C4721A' : '#B02020';
+  const rateBg = rate >= 80 ? '#D4EDE0' : rate >= 50 ? '#FAEBD3' : '#F5D5D5';
+  const rateLabel = rate >= 80 ? 'Healthy' : rate >= 50 ? 'Moderate' : 'Low';
+  const gridSize = Math.min(total, 30);
+  const dots = Array.from({ length: gridSize }, (_, i) => i < occupied);
+
+  return (
+    <Card>
+      <div className="px-5 pt-5 pb-4 border-b" style={{ borderColor: '#EEE9E5' }}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.2em] uppercase mb-1.5"
+              style={{ color: '#948472' }}>Occupancy</p>
+            {loading ? <Bone w="w-24" h="h-10" /> : (
+              <p className="text-4xl font-bold tabular-nums leading-none" style={{ color: rateColor }}>
+                {rate}%
+              </p>
+            )}
+            {!loading && <p className="text-xs mt-1.5" style={{ color: '#948472' }}>
+              {occupied} occupied · {vacant} vacant of {total}
+            </p>}
+          </div>
+          <div className="flex flex-col items-end gap-2 mt-1">
+            <div className="rounded-xl p-2.5" style={{ background: '#EEE9E5' }}>
+              <Building2 className="w-5 h-5" style={{ color: '#3D1414' }} />
+            </div>
+            {!loading && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: rateBg, color: rateColor }}>{rateLabel}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Visual unit grid */}
+        {!loading && total > 0 && (
+          <div className="mt-4">
+            <div className="flex flex-wrap gap-1">
+              {dots.map((isOcc, i) => (
+                <div key={i} className="w-3 h-3 rounded-sm transition-colors"
+                  style={{ background: isOcc ? '#3D1414' : '#EEE9E5' }} />
+              ))}
+              {total > 30 && <span className="text-[10px] self-center ml-1" style={{ color: '#AFA097' }}>+{total - 30}</span>}
+            </div>
+            <div className="flex items-center gap-3 mt-1.5">
+              {[['#3D1414', 'Occupied'], ['#EEE9E5', 'Vacant']].map(([bg, label]) => (
+                <span key={label} className="flex items-center gap-1.5 text-[10px]" style={{ color: '#948472' }}>
+                  <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: bg }} />{label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 px-5 py-4">
+        {loading ? (
+          <div className="space-y-2"><Bone /><Bone w="w-5/6" /></div>
+        ) : (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-widest mb-2.5 flex items-center gap-1.5"
+              style={{ color: '#948472' }}>
+              <Clock className="w-3 h-3" />Leases ending soon
+            </p>
+            {contracts.length > 0 ? (
+              <div className="space-y-2">
+                {contracts.slice(0, 3).map((c, i) => (
+                  <div key={c._id ?? i}
+                    className="flex items-center justify-between rounded-xl px-3 py-2.5 border"
+                    style={{ background: '#F8F5F2', borderColor: '#EEE9E5' }}>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold truncate" style={{ color: '#1C1A18' }}>{c.name}</p>
+                      <p className="text-[10px]" style={{ color: '#948472' }}>{c.unit ?? ''}</p>
+                    </div>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ml-2"
+                      style={c.daysUntilEnd <= 7
+                        ? { background: '#F5D5D5', color: '#B02020' }
+                        : c.daysUntilEnd <= 14
+                          ? { background: '#FAEBD3', color: '#C4721A' }
+                          : { background: '#EEE9E5', color: '#756F67' }}>
+                      {c.daysUntilEnd}d left
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs py-2" style={{ color: '#AFA097' }}>No leases expiring soon</p>
+            )}
+          </>
+        )}
+      </div>
+
+      <Link to="/dashboard/units"
+        className="flex items-center justify-between px-5 py-3 border-t text-xs font-semibold
+                   transition-all hover:bg-[#F8F5F2] group"
+        style={{ borderColor: '#EEE9E5', color: '#3D1414' }}>
+        Manage units
+        <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+      </Link>
+    </Card>
+  );
+}
+
+// ─── 4. ACTION QUEUE ──────────────────────────────────────────────────────────
+
+function ActionCard({ stats, loading }) {
+  const navigate = useNavigate();
   const attention = stats?.attention ?? {};
   const overdueCount = attention.overdueCount ?? 0;
   const overdueAmount = attention.overdueAmount ?? 0;
   const maintenanceCount = attention.maintenanceCount ?? stats?.maintenanceOpen ?? 0;
   const maintenanceDetail = attention.maintenanceDetail
     ?? (maintenanceCount > 0 ? `${maintenanceCount} open request${maintenanceCount !== 1 ? 's' : ''}` : 'No open requests');
+  const expiring = (stats?.contractsEndingSoon ?? []).filter(c => c.daysUntilEnd <= 14);
+  const urgentTotal = (overdueCount > 0 ? 1 : 0) + (maintenanceCount > 0 ? 1 : 0) + (expiring.length > 0 ? 1 : 0);
+  const allClear = urgentTotal === 0;
 
-  // ── Contracts ending soon ─────────────────────────────────────────────────
-  const contractsEndingSoon = stats?.contractsEndingSoon ?? [];
+  const rows = [
+    {
+      id: 'overdue', route: '/dashboard/transactions',
+      label: overdueCount > 0 ? `${overdueCount} overdue payment${overdueCount !== 1 ? 's' : ''}` : 'Payments up to date',
+      sub: overdueCount > 0 ? `${fmt(overdueAmount)} total pending` : 'No overdue rent',
+      icon: AlertCircle, urgent: overdueCount > 0,
+      urgentBg: 'rgba(176,32,32,0.07)', urgentBorder: 'rgba(176,32,32,0.22)',
+      iconBg: overdueCount > 0 ? '#F5D5D5' : '#EEE9E5',
+      iconColor: overdueCount > 0 ? '#B02020' : '#948472',
+      labelColor: overdueCount > 0 ? '#5C1414' : '#413D38',
+      amount: overdueCount > 0 ? fmt(overdueAmount) : null,
+      amountColor: '#B02020',
+      cta: overdueCount > 0 ? 'Collect' : null,
+      ctaStyle: { background: '#F5D5D5', color: '#B02020' },
+    },
+    {
+      id: 'maintenance', route: '/maintenance',
+      label: maintenanceCount > 0 ? `${maintenanceCount} maintenance request${maintenanceCount !== 1 ? 's' : ''}` : 'No maintenance issues',
+      sub: maintenanceDetail,
+      icon: Wrench, urgent: maintenanceCount > 0,
+      urgentBg: 'rgba(196,114,26,0.07)', urgentBorder: 'rgba(196,114,26,0.22)',
+      iconBg: maintenanceCount > 0 ? '#FAEBD3' : '#EEE9E5',
+      iconColor: maintenanceCount > 0 ? '#C4721A' : '#948472',
+      labelColor: maintenanceCount > 0 ? '#5C3A10' : '#413D38',
+      amount: null, amountColor: null,
+      cta: maintenanceCount > 0 ? 'Review' : null,
+      ctaStyle: { background: '#FAEBD3', color: '#C4721A' },
+    },
+    {
+      id: 'contracts', route: '/dashboard/units',
+      label: expiring.length > 0 ? `${expiring.length} lease${expiring.length !== 1 ? 's' : ''} expiring ≤14d` : 'No leases expiring',
+      sub: expiring.length > 0 ? expiring.slice(0, 2).map(c => c.name).join(', ') : 'All leases current',
+      icon: Clock, urgent: expiring.length > 0,
+      urgentBg: 'rgba(46,90,140,0.06)', urgentBorder: 'rgba(46,90,140,0.2)',
+      iconBg: expiring.length > 0 ? '#D4E4F5' : '#EEE9E5',
+      iconColor: expiring.length > 0 ? '#2E5A8C' : '#948472',
+      labelColor: expiring.length > 0 ? '#1A2E4A' : '#413D38',
+      amount: null, amountColor: null,
+      cta: expiring.length > 0 ? 'Renew' : null,
+      ctaStyle: { background: '#D4E4F5', color: '#1A2E4A' },
+    },
+  ];
 
-  const urgentCount = overdueCount + maintenanceCount;
-  const isCritical = urgentCount > 0;
+  return (
+    <Card style={{ borderColor: urgentTotal > 0 ? 'rgba(176,32,32,0.28)' : '#DDD6D0' }}>
+      <div className="px-5 pt-5 pb-4 border-b" style={{ borderColor: '#EEE9E5' }}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.2em] uppercase mb-1.5"
+              style={{ color: '#948472' }}>Action Queue</p>
+            {loading ? <Bone w="w-40" h="h-7" /> : (
+              <p className="text-2xl font-bold leading-none"
+                style={{ color: allClear ? '#2E7A4A' : '#1C1A18' }}>
+                {allClear ? 'All clear' : `${urgentTotal} item${urgentTotal !== 1 ? 's' : ''} need attention`}
+              </p>
+            )}
+          </div>
+          {!loading && urgentTotal > 0 && (
+            <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1 mt-1"
+              style={{ background: '#F5D5D5' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#B02020' }} />
+              <span className="text-[11px] font-bold" style={{ color: '#B02020' }}>{urgentTotal} urgent</span>
+            </div>
+          )}
+          {!loading && allClear && (
+            <div className="rounded-xl p-2.5 mt-1" style={{ background: '#D4EDE0' }}>
+              <CheckCircle2 className="w-5 h-5" style={{ color: '#2E7A4A' }} />
+            </div>
+          )}
+        </div>
+      </div>
 
-  // ── Error state ───────────────────────────────────────────────────────────
+      <div className="flex-1 px-5 py-4 space-y-2.5">
+        {loading ? (
+          <div className="space-y-2.5"><Bone h="h-16" /><Bone h="h-16" /><Bone h="h-16" /></div>
+        ) : rows.map(r => {
+          const Icon = r.icon;
+          return (
+            <Link key={r.id} to={r.route}
+              className="flex items-center justify-between rounded-xl px-3.5 py-3 border
+                         transition-all duration-150 group hover:shadow-sm"
+              style={r.urgent
+                ? { background: r.urgentBg, borderColor: r.urgentBorder }
+                : { background: '#F8F5F2', borderColor: '#EEE9E5' }}>
+              <div className="flex items-center gap-3">
+                <div className="rounded-full p-2 shrink-0" style={{ background: r.iconBg }}>
+                  <Icon className="w-4 h-4" style={{ color: r.iconColor }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: r.labelColor }}>{r.label}</p>
+                  <p className="text-xs mt-0.5 line-clamp-1" style={{ color: '#948472' }}>{r.sub}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                {r.amount && <span className="text-sm font-bold tabular-nums" style={{ color: r.amountColor }}>{r.amount}</span>}
+                {r.cta && (
+                  <span className="hidden sm:inline-flex text-[11px] font-semibold px-2.5 py-1 rounded-lg"
+                    style={r.ctaStyle}>{r.cta}</span>
+                )}
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform"
+                  style={{ color: '#C8BDB6' }} />
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Quick-add footer */}
+      <div className="px-5 py-3 border-t flex items-center gap-2"
+        style={{ borderColor: '#EEE9E5', background: '#F8F5F2' }}>
+        <p className="text-[10px] font-semibold uppercase tracking-widest mr-auto" style={{ color: '#AFA097' }}>
+          Quick add
+        </p>
+        {[
+          { label: '+ Payment', route: '/rent-payment?action=new' },
+          { label: '+ Maintenance', route: '/maintenance?action=new' },
+        ].map(b => (
+          <button key={b.label} onClick={() => navigate(b.route)}
+            className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all
+                       hover:border-[#3D1414] hover:text-[#3D1414] hover:bg-white active:scale-95"
+            style={{ borderColor: '#DDD6D0', color: '#756F67', background: 'white' }}>
+            {b.label}
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
+
+export default function SummaryCard({ stats, loading, error, onRetry }) {
   if (error) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 p-4">
-        <Card className="md:col-span-3 p-6 border-destructive/50 bg-destructive/5">
-          <p className="text-sm text-destructive mb-2">{error}</p>
-          {onRetry && <Button variant="outline" size="sm" onClick={onRetry}>Retry</Button>}
-        </Card>
+      <div className="p-4">
+        <div className="rounded-2xl border px-6 py-5"
+          style={{ background: '#F5D5D5', borderColor: 'rgba(176,32,32,0.3)' }}>
+          <p className="text-sm font-medium mb-3" style={{ color: '#B02020' }}>{error}</p>
+          {onRetry && (
+            <button onClick={onRetry}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors"
+              style={{ borderColor: '#B02020', color: '#B02020' }}>
+              Retry
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-4 px-4 pb-2">
-
-      {/* ── Collection Card ───────────────────────────────────────────────── */}
-      <Card className="rounded-xl shadow-md w-full bg-[#375534] text-white border-none sm:col-span-2 md:col-span-1">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-xs font-semibold tracking-widest uppercase opacity-80">
-            Revenue
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-md overflow-hidden border border-white text-[11px] font-semibold shrink-0">
-              {['month', 'year'].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setCollectionView(v)}
-                  className={`px-2.5 py-1 transition-colors capitalize ${collectionView === v
-                    ? 'bg-white text-[#6B9071]'
-                    : 'bg-transparent text-orange-200 hover:bg-orange-700'
-                    }`}
-                >
-                  {v === 'month' ? 'Month' : 'Year'}
-                </button>
-              ))}
-            </div>
-            <div className="rounded-md bg-[#6B9071] p-1.5">
-              {collectionView === 'year'
-                ? <TrendingUp className="w-4 h-4 text-[#375534]" />
-                : <Wallet className="w-4 h-4 text-[#375534]" />}
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {loading ? (
-            <>
-              <Skeleton className="h-9 w-32" />
-              <Skeleton className="h-2 w-full" />
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-full" />
-              </div>
-              <Skeleton className="h-4 w-40" />
-            </>
-          ) : collectionView === 'month' ? (
-            <>
-              <p className="text-xs text-[#6B9071] -mb-1">This month's collection</p>
-
-              {/* Revenue line items scoped to current Nepali month */}
-              <ul className="space-y-2.5">
-                {revenueBreakdownThisMonth.length > 0 ? revenueBreakdownThisMonth.map((item) => (
-                  <li key={item.code} className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#6B9071] shrink-0" />
-                      <span className="text-sm text-orange-100 truncate">{item.name}</span>
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums text-white shrink-0">
-                      {formatAmount(item.amount)}
-                    </span>
-                  </li>
-                )) : (
-                  <li className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#6B9071] shrink-0" />
-                      <span className="text-sm text-orange-100">Rent</span>
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums text-white">
-                      {displayCollected != null ? `₹${Number(displayCollected).toLocaleString()}` : '—'}
-                    </span>
-                  </li>
-                )}
-              </ul>
-
-              {/* Total + progress */}
-              <div className="border-t border-[#6B9071] pt-2.5 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-[#6B9071]">Total Collected</span>
-                  <span className="text-lg font-bold tabular-nums text-white">
-                    {displayCollected != null ? `₹${Number(displayCollected).toLocaleString()}` : '—'}
-                  </span>
-                </div>
-                {target != null && target > 0 && (
-                  <>
-                    <Progress
-                      value={pct(displayCollected, target)}
-                      className="h-1.5 w-full bg-[#6B9071] *:data-[slot=progress-indicator]:bg-white *:data-[slot=progress-indicator]:rounded-r-full"
-                    />
-                    <p className="text-xs text-[#6B9071]">
-                      {pct(displayCollected, target)}% of ₹{Number(target).toLocaleString()} target
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {/* Outstanding due */}
-              <div className="flex items-center justify-between rounded-lg bg-[#6B9071]/60 px-3 py-2.5 mt-1">
-                <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6B9071]">
-                  <IndianRupee className="w-3.5 h-3.5" />
-                  Overall Due
-                </span>
-                <span className={`text-sm font-bold tabular-nums ${outstanding != null && Number(outstanding) > 0 ? 'text-red-300' : 'text-green-300'}`}>
-                  {outstanding != null ? `₹${Number(outstanding).toLocaleString()}` : '—'}
-                </span>
-              </div>
-            </>
-          ) : (
-            /* ── YTD Scorecard ─────────────────────────────────────────── */
-            <>
-              <p className="text-xs text-[#6B9071] -mb-2">
-                Collected year-to-date · {elapsedMonths.length} month{elapsedMonths.length !== 1 ? 's' : ''}
-              </p>
-              <p className="text-3xl sm:text-4xl font-bold tabular-nums">
-                {`₹${Number(ytdCollected).toLocaleString()}`}
-              </p>
-
-              {ytdTarget != null && (
-                <div className="space-y-1">
-                  <Progress
-                    value={ytdPct}
-                    className="h-2 w-full bg-[#6B9071] *:data-[slot=progress-indicator]:bg-white *:data-[slot=progress-indicator]:rounded-r-full"
-                  />
-                  <p className="text-xs text-[#6B9071]">
-                    {ytdPct}% of {formatAmount(ytdTarget)} prorated target
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2 border-t border-[#6B9071] pt-3">
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-lg font-bold tabular-nums">{formatAmount(avgMonthly)}</p>
-                  <p className="text-[10px] text-[#6B9071] uppercase tracking-wide leading-tight">Avg / month</p>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-lg font-bold tabular-nums text-green-300">{hitMonths}</p>
-                  <p className="text-[10px] text-[#6B9071] uppercase tracking-wide leading-tight">Months hit</p>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <p className={`text-lg font-bold tabular-nums ${missedMonths > 0 ? 'text-red-300' : 'text-white'}`}>
-                    {missedMonths}
-                  </p>
-                  <p className="text-[10px] text-[#6B9071] uppercase tracking-wide leading-tight">Months missed</p>
-                </div>
-              </div>
-
-              <ul className="space-y-1.5 border-t border-[#6B9071] pt-3 max-h-[120px] overflow-y-auto">
-                {elapsedMonths.map((m) => {
-                  const hasData = (m.total ?? 0) > 0;
-                  const isCurrent = m.month === currentNpMonth;
-                  return (
-                    <li key={m.month} className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 min-w-0">
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isCurrent ? 'bg-white' : hasData ? 'bg-green-400' : 'bg-[#6B9071]'}`} />
-                        <span className={`text-xs truncate ${isCurrent ? 'text-white font-semibold' : 'text-[#6B9071]'}`}>
-                          {m.name}{isCurrent ? ' (now)' : ''}
-                        </span>
-                      </span>
-                      <span className={`text-xs font-medium tabular-nums shrink-0 ${hasData ? 'text-white' : 'text-[#6B9071]'}`}>
-                        {hasData ? `₹${Number(m.total).toLocaleString()}` : 'no data'}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Occupancy Rate ────────────────────────────────────────────────── */}
-      <Card className="rounded-xl shadow-md w-full bg-white text-gray-900 border border-gray-100">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-xs font-semibold tracking-widest uppercase text-gray-500">
-            Occupancy Rate
-          </CardTitle>
-          <div className="rounded-md bg-[#6B9071] p-1.5">
-            <Building2 className="w-4 h-4 text-[#375534]" />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {loading ? (
-            <>
-              <SkeletonLight className="h-9 w-20" />
-              <SkeletonLight className="h-3 w-24" />
-              <SkeletonLight className="h-2 w-full" />
-              <div className="flex justify-between pt-1">
-                <SkeletonLight className="h-6 w-16" />
-                <SkeletonLight className="h-9 w-28" />
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="text-3xl sm:text-4xl font-bold text-gray-900">{occupancyRate}%</p>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">{occupied} of {totalUnits} units</p>
-              <div className="flex justify-end text-xs text-gray-400">{vacant} vacant</div>
-              <Progress
-                value={occupancyRate}
-                className="h-2 w-full bg-gray-100 *:data-[slot=progress-indicator]:bg-[#6B9071]"
-              />
-              <div className="flex items-center justify-between pt-1">
-                <Badge className={`text-xs border ${occupancyRate >= 80 ? 'text-green-700 bg-green-50 border-green-300'
-                  : occupancyRate >= 50 ? 'text-yellow-700 bg-yellow-50 border-yellow-300'
-                    : 'text-red-700 bg-red-50 border-red-300'
-                  }`}>
-                  {occupancyRate >= 80 ? 'Stable' : occupancyRate >= 50 ? 'Moderate' : 'Low'}
-                </Badge>
-                <Link to="/dashboard/units">
-                  <Button className="text-xs font-medium text-[#6B9071] hover:underline bg-white border border-gray-200 hover:bg-[#6B9071] cursor-pointer h-8 px-3">
-                    View All Units
-                  </Button>
-                </Link>
-              </div>
-
-              {contractsEndingSoon.length > 0 && (
-                <div className="border-t border-gray-100 pt-3 mt-1">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                    Leases ending soon
-                  </p>
-                  <ul className="space-y-1.5">
-                    {contractsEndingSoon.slice(0, 2).map((c, i) => (
-                      <li key={c._id ?? i} className="flex items-center justify-between">
-                        <span className="text-xs text-gray-700 truncate">{c.name}</span>
-                        <span className={`text-xs font-semibold shrink-0 ml-2 px-1.5 py-0.5 rounded-full ${c.daysUntilEnd <= 7 ? 'bg-red-50 text-red-600'
-                          : c.daysUntilEnd <= 14 ? 'bg-amber-50 text-amber-600'
-                            : 'bg-gray-50 text-gray-500'
-                          }`}>
-                          {c.daysUntilEnd}d
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Attention Needed ──────────────────────────────────────────────── */}
-      <Card
-        className={`rounded-xl shadow-md w-full border transition-all duration-300 ${isCritical
-          ? "border-red-300   ring-2 ring-red-200 ring-offset-1"
-          : "bg-white border-[#AEC3B0]"
-          }`}
-      >
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div className="flex items-center gap-2">
-            {isCritical && (
-              <AlertTriangle
-                className="w-4 h-4 text-red-500 shrink-0"
-                style={{
-                  animation:
-                    "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-                }}
-              />
-            )}
-
-            <CardTitle
-              className={`text-xs font-semibold tracking-widest uppercase ${isCritical ? "text-red-700" : "text-[#375534]"
-                }`}
-            >
-              Attention Needed
-            </CardTitle>
-          </div>
-
-          {urgentCount > 0 && (
-            <span className="rounded-full bg-red-500 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm shadow-red-200 animate-pulse">
-              {urgentCount} Urgent
-            </span>
-          )}
-        </CardHeader>
-
-        <CardContent className="space-y-2.5">
-          {loading ? (
-            <div className="space-y-2">
-              <SkeletonDanger className="h-16 w-full" />
-              <SkeletonDanger className="h-16 w-full" />
-              <SkeletonLight className="h-4 w-36" />
-            </div>
-          ) : (
-            <>
-              {/* Overdue Payments */}
-
-              <Link
-                to="/dashboard/transactions"
-                className={`flex items-center justify-between rounded-lg p-3 transition-all group ${overdueCount > 0
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-sm shadow-red-200"
-                  : "border border-[#AEC3B0] bg-white text-[#375534] hover:bg-[#E3EED4]"
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`rounded-full p-1.5 shrink-0 ${overdueCount > 0
-                      ? "bg-red-400/50"
-                      : "bg-[#E3EED4]"
-                      }`}
-                  >
-                    <AlertCircle
-                      className={`w-4 h-4 ${overdueCount > 0
-                        ? "text-white"
-                        : "text-[#6B9071]"
-                        }`}
-                    />
-                  </div>
-
-                  <div className="text-left">
-                    <p
-                      className={`text-sm font-semibold ${overdueCount > 0
-                        ? "text-white"
-                        : "text-[#375534]"
-                        }`}
-                    >
-                      {overdueCount} Overdue Payment
-                      {overdueCount !== 1 ? "s" : ""}
-                    </p>
-
-                    <p
-                      className={`text-xs ${overdueCount > 0
-                        ? "text-red-100"
-                        : "text-[#6B9071]"
-                        }`}
-                    >
-                      {overdueCount > 0
-                        ? `${overdueCount === 3
-                          ? "At least "
-                          : ""
-                        }${formatAmount(
-                          overdueAmount
-                        )} total`
-                        : "All payments up to date"}
-                    </p>
-                  </div>
-                </div>
-
-                <ChevronRight
-                  className={`w-4 h-4 shrink-0 ${overdueCount > 0
-                    ? "text-red-200"
-                    : "text-[#6B9071]"
-                    } group-hover:translate-x-0.5 transition-transform`}
-                />
-              </Link>
-
-              {/* Maintenance Requests */}
-
-              <Link
-                to="/maintenance"
-                className={`flex items-center justify-between rounded-lg p-3 transition-all group ${maintenanceCount > 0
-                  ? "bg-[#375534] text-white hover:bg-[#2F4A2C] shadow-sm shadow-[#375534]/30"
-                  : "border border-[#AEC3B0] bg-white text-[#375534] hover:bg-[#E3EED4]"
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`rounded-full p-1.5 shrink-0 ${maintenanceCount > 0
-                      ? "bg-[#6B9071]/50"
-                      : "bg-[#E3EED4]"
-                      }`}
-                  >
-                    <Wrench
-                      className={`w-4 h-4 ${maintenanceCount > 0
-                        ? "text-white"
-                        : "text-[#6B9071]"
-                        }`}
-                    />
-                  </div>
-
-                  <div className="text-left">
-                    <p
-                      className={`text-sm font-semibold ${maintenanceCount > 0
-                        ? "text-white"
-                        : "text-[#375534]"
-                        }`}
-                    >
-                      {maintenanceCount} Maintenance Request
-                      {maintenanceCount !== 1
-                        ? "s"
-                        : ""}
-                    </p>
-
-                    <p
-                      className={`text-xs ${maintenanceCount > 0
-                        ? "text-[#AEC3B0]"
-                        : "text-[#6B9071]"
-                        }`}
-                    >
-                      {maintenanceDetail}
-                    </p>
-                  </div>
-                </div>
-
-                <ChevronRight
-                  className={`w-4 h-4 shrink-0 ${maintenanceCount > 0
-                    ? "text-[#AEC3B0]"
-                    : "text-[#6B9071]"
-                    } group-hover:translate-x-0.5 transition-transform`}
-                />
-              </Link>
-
-              <Link
-                to="/maintenance"
-                className={`inline-flex items-center text-xs font-semibold hover:underline pt-1 ${isCritical
-                  ? "text-red-700"
-                  : "text-[#375534]"
-                  }`}
-              >
-                Go to Action Center
-                <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-              </Link>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4">
+      <RevenueCard stats={stats} loading={loading} />
+      <MoneyRiskCard stats={stats} loading={loading} />
+      <BuildingCard stats={stats} loading={loading} />
+      <ActionCard stats={stats} loading={loading} />
     </div>
   );
 }
