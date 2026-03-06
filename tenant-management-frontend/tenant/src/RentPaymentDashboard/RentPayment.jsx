@@ -8,7 +8,7 @@ import { PaymentFilters } from "./components/PaymentFilters";
 import { RentSummaryCard } from "./components/RentSummaryCard";
 import { getPaymentAmounts } from "./utils/paymentUtil";
 import { RentFilter } from "./components/RentFilter";
-import { AdminRentActions } from "./components/AdminRentAction";
+import { AdminRentAction } from "./components/AdminRentAction";
 import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDate";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 
@@ -132,7 +132,7 @@ const RentPayment = () => {
         <div className="flex-1 min-w-0" />
 
         {/* Global CTAs */}
-        <AdminRentActions onProcessSuccess={getRents} />
+        <AdminRentAction onProcessSuccess={getRents} />
       </div>
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
