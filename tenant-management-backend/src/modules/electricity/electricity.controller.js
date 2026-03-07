@@ -234,6 +234,7 @@ export const getElectricityReadings = async (req, res) => {
       endDate,
       meterType, // optional filter
       billTo,
+      searchQuery,
     } = req.query;
 
     // Validate meterType if supplied
@@ -258,6 +259,7 @@ export const getElectricityReadings = async (req, res) => {
       endDate,
       meterType,
       billTo,
+      searchQuery: searchQuery?.trim() || undefined,
     });
 
     const readings = result.data?.readings ?? [];

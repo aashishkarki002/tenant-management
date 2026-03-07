@@ -634,10 +634,6 @@ class ElectricityService {
       query.status = filters.status;
     }
 
-    /**
-     * BLOCK / INNER BLOCK FILTER
-     * Ignore when blockId === "all"
-     */
     if (
       (filters.blockId && filters.blockId !== "all") ||
       filters.innerBlockId
@@ -664,9 +660,6 @@ class ElectricityService {
       ];
     }
 
-    /**
-     * DATE RANGE FILTER
-     */
     if (filters.startDate || filters.endDate) {
       query.readingDate = {};
 
@@ -681,7 +674,11 @@ class ElectricityService {
       }
     }
 
-    const readings = await Electricity.find(query)
+    if (filters.meterType) {
+      query.meterType = filters.meterType;
+    }
+
+    let readings = await Electricity.find(query)
       .populate("tenant", "name email phone")
       .populate({
         path: "unit",
@@ -694,6 +691,32 @@ class ElectricityService {
       .populate("property", "name address")
       .populate("previousTenant", "name")
       .sort({ readingDate: -1, createdAt: -1 });
+
+    if (filters.searchQuery) {
+      const searchLower = filters.searchQuery.toLowerCase();
+      readings = readings.filter((reading) => {
+        const unitName = (
+          reading.unit?.name ??
+          reading.unit?.unitName ??
+          reading.subMeter?.name ??
+          ""
+        ).toLowerCase();
+        const meterType = (reading.meterType ?? "").toLowerCase();
+        const status = (reading.status ?? "").toLowerCase();
+        const blockName = (reading.unit?.block?.name ?? "").toLowerCase();
+        const innerBlockName = (reading.unit?.innerBlock?.name ?? "").toLowerCase();
+        const tenantName = (reading.tenant?.name ?? "").toLowerCase();
+
+        return (
+          unitName.includes(searchLower) ||
+          meterType.includes(searchLower) ||
+          status.includes(searchLower) ||
+          blockName.includes(searchLower) ||
+          innerBlockName.includes(searchLower) ||
+          tenantName.includes(searchLower)
+        );
+      });
+    }
 
     const readingsForResponse = readings.map((r) =>
       r.toObject({ virtuals: true }),
