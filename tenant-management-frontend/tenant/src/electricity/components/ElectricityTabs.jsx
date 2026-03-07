@@ -1,13 +1,5 @@
 import React from "react";
-import { Button } from "@/components/ui/button";
 
-/**
- * Tab definitions — maps display label to activeTab key and meterType.
- *
- * Industry note: tab values must NEVER be empty strings — falsy values
- * cause silent bugs in conditional checks (e.g. `if (activeTab)` skips "unit").
- * Use explicit string keys that match what filterReadingsByTab expects.
- */
 const TABS = [
   { label: "All", value: "all", typeKey: null },
   { label: "Units", value: "unit", typeKey: "unit" },
@@ -16,13 +8,6 @@ const TABS = [
   { label: "Sub-Meter", value: "sub_meter", typeKey: "sub_meter" },
 ];
 
-/**
- * @param {Object} props
- * @param {string} props.activeTab         — one of the tab values above
- * @param {Function} props.onTabChange
- * @param {number}  [props.flaggedCount]
- * @param {Object}  [props.countsByType]   — { unit, common_area, parking, sub_meter }
- */
 export function ElectricityTabs({
   activeTab,
   onTabChange,
@@ -30,44 +15,59 @@ export function ElectricityTabs({
   countsByType = {},
 }) {
   return (
-    <div className="flex gap-2 mb-4 flex-wrap">
+    <div className="flex gap-1 mb-4 flex-wrap border-b border-[#F0EDE9] pb-3">
       {TABS.map((tab) => {
         const count = tab.typeKey ? (countsByType[tab.typeKey] ?? 0) : null;
         const isActive = activeTab === tab.value;
 
         return (
-          <Button
+          <button
             key={tab.value}
             type="button"
             onClick={() => onTabChange(tab.value)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5
-              ${isActive ? "bg-gray-200 text-black" : "bg-transparent text-gray-600 hover:bg-gray-100"}`}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5
+              ${isActive
+                ? "bg-[#3D1414] text-white"
+                : "text-[#948472] hover:bg-[#F0EDE9] hover:text-[#625848]"
+              }`}
           >
             {tab.label}
             {count != null && count > 0 && (
-              <span className={`text-xs rounded-full px-1.5 py-0.5 font-semibold
-                ${isActive ? "bg-gray-400 text-white" : "bg-gray-200 text-gray-600"}`}>
+              <span
+                className={`text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none
+                  ${isActive
+                    ? "bg-white/20 text-white"
+                    : "bg-[#F0EDE9] text-[#948472]"
+                  }`}
+              >
                 {count}
               </span>
             )}
-          </Button>
+          </button>
         );
       })}
 
-      {/* Flagged tab — only rendered when there are flagged readings */}
       {flaggedCount > 0 && (
-        <Button
+        <button
           type="button"
           onClick={() => onTabChange("flagged")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5
-            ${activeTab === "flagged" ? "bg-red-100 text-red-700" : "bg-transparent text-red-500 hover:bg-red-50"}`}
+          className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5
+            ${activeTab === "flagged"
+              ? "bg-red-600 text-white"
+              : "text-red-500 hover:bg-red-50"
+            }`}
         >
-          ⚑ Flagged
-          <span className={`text-xs rounded-full px-1.5 py-0.5 font-semibold
-            ${activeTab === "flagged" ? "bg-red-300 text-white" : "bg-red-100 text-red-600"}`}>
+          Flagged
+          <span
+            className={`text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none
+              ${activeTab === "flagged"
+                ? "bg-white/20 text-white"
+                : "bg-red-100 text-red-600"
+              }`}
+          >
             {flaggedCount}
           </span>
-        </Button>
+        </button>
       )}
     </div>
   );

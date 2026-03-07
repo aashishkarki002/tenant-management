@@ -11,14 +11,7 @@ export const DocumentsTab = ({ formik, isLoading, onPrevious, onClose }) => {
             <CardContent className="p-6 space-y-5">
                 <DocumentUploadSection formik={formik} />
 
-                <div className="space-y-2">
-                    <Label>Agreement Signed Date</Label>
-                    <DualCalendarTailwind
-                        onChange={(englishDate) =>
-                            formik.setFieldValue("dateOfAgreementSigned", englishDate)
-                        }
-                    />
-                </div>
+
 
                 <div className="flex gap-3">
                     <Button type="button" variant="outline" onClick={onPrevious}>

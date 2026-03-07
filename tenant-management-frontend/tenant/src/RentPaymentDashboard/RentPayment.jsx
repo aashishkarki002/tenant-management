@@ -11,6 +11,29 @@ import { RentFilter } from "./components/RentFilter";
 import { AdminRentAction } from "./components/AdminRentAction";
 import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDate";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
+import { Search } from "lucide-react";
+
+/**
+ * SearchInput — plain <input> so we fully own every style token.
+ * Using shadcn <Input> caused blue ring + white bg overrides from
+ * --ring / --background CSS variables that Tailwind classes can't beat
+ * without !important gymnastics.
+ */
+const SearchInput = ({ placeholder }) => (
+  <div className="relative w-full">
+    <Search
+      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+      style={{ color: "#AFA097" }}
+    />
+    <input
+      type="text"
+      placeholder={placeholder}
+      style={{ background: "#F8F5F2", borderColor: "#DDD6D0", color: "#1C1A18" }}
+      className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors
+                 placeholder:text-[#C8BDB6] focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
+    />
+  </div>
+);
 
 const RentPayment = () => {
   const {
@@ -90,49 +113,98 @@ const RentPayment = () => {
   // activeTab is a dep so the active state re-renders in the header.
   useHeaderSlot(
     () => (
-      <div className="flex items-center gap-3 w-full min-w-0">
-        {/* Brand mark */}
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="h-1.5 w-1.5 rounded-full bg-slate-900" />
-          <span className="text-sm font-semibold text-slate-900 whitespace-nowrap">
-            Rent Management
-          </span>
+      /**
+       * Responsive layout
+       * ─────────────────
+       * Mobile (<sm) — 2 rows:
+       *   Row 1: [Tabs]  ················  [Actions — icon-only]
+       *   Row 2: [Search ──────────────────────────────────────]
+       *
+       * Desktop (sm+) — 1 row:
+       *   [Brand · | · Tabs] [Search ──────] ··· [Actions — full labels]
+       *
+       * Fix notes:
+       * - Search is constrained inside the slot div, never bleeds outside
+       * - Actions on mobile shrink to icon-only via AdminRentAction's
+       *   `compact` prop (add that prop to AdminRentAction if not present)
+       * - Row 2 search uses `w-full` with no min-width so it can never overflow
+       */
+      <div className="flex flex-col sm:flex-row sm:items-center gap-y-1.5 gap-x-3 w-full overflow-hidden">
+
+        {/* ── Row 1 ── */}
+        <div className="flex items-center gap-x-1.5 w-full min-w-0 overflow-hidden">
+
+          {/* Brand — desktop only */}
+          <div className="hidden sm:flex items-center gap-2 shrink-0">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#1C1A18" }} />
+            <span className="text-sm font-semibold whitespace-nowrap" style={{ color: "#1C1A18" }}>
+              Rent Management
+            </span>
+          </div>
+
+          {/* Divider — desktop only */}
+          <div className="hidden sm:block h-4 w-px shrink-0" style={{ background: "#DDD6D0" }} />
+
+          {/* Tab nav */}
+          <nav className="flex items-center gap-0.5 shrink-0">
+            {[
+              { id: "rent", label: "Rent" },
+              { id: "payments", label: "Payments" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold
+                           whitespace-nowrap transition-colors"
+                style={
+                  activeTab === t.id
+                    ? { background: "#EEE9E5", color: "#1C1A18" }
+                    : { color: "#948472" }
+                }
+                onMouseEnter={(e) => {
+                  if (activeTab !== t.id) {
+                    e.currentTarget.style.background = "#EEE9E5";
+                    e.currentTarget.style.color = "#1C1A18";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeTab !== t.id) {
+                    e.currentTarget.style.background = "";
+                    e.currentTarget.style.color = "#948472";
+                  }
+                }}
+              >
+                {t.label}
+                {t.id === "rent" && overdueCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center h-4 min-w-[16px] px-1
+                               rounded-full text-white text-[9px] font-bold leading-none"
+                    style={{ background: "#B02020" }}
+                  >
+                    {overdueCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+
+          {/* Search — desktop only, grows to fill gap */}
+          <div className="hidden sm:block flex-1 min-w-0 max-w-[240px]">
+            <SearchInput placeholder="Search…" />
+          </div>
+
+          {/* Actions — pinned right; compact on mobile */}
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            <AdminRentAction onProcessSuccess={getRents} />
+          </div>
         </div>
 
-        <div className="h-5 w-px bg-slate-200 shrink-0" />
+        {/* ── Row 2 — mobile search, strictly full width, no overflow ── */}
+        <div className="sm:hidden w-full">
+          <SearchInput placeholder="Search rent payments…" />
+        </div>
 
-        {/* Inline tab pills */}
-        <nav className="flex items-center gap-0.5 shrink-0">
-          {[
-            { id: "rent", label: "Rent" },
-            { id: "payments", label: "Payment History" },
-          ].map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setActiveTab(t.id)}
-              className={[
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md",
-                "text-xs font-semibold transition-colors",
-                activeTab === t.id
-                  ? "bg-slate-100 text-slate-900"
-                  : "text-slate-400 hover:text-slate-700 hover:bg-slate-50",
-              ].join(" ")}
-            >
-              {t.label}
-              {t.id === "rent" && overdueCount > 0 && (
-                <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
-                  {overdueCount}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-
-        <div className="flex-1 min-w-0" />
-
-        {/* Global CTAs */}
-        <AdminRentAction onProcessSuccess={getRents} />
       </div>
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps

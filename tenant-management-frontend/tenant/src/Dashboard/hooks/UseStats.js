@@ -37,12 +37,12 @@ function normalizeDashboardStats(raw) {
   // for older API responses that don't yet return collectionSummary.
   const cs = raw.collectionSummary?.thisMonth ?? null;
 
-  const rentBilled =
-    cs?.rentBilledPaisa != null ? cs.rentBilledPaisa / 100 : totalRent;
+  // Always use current-month paisa values from collectionSummary.thisMonth.
+  // Never fall back to all-time rentSummary totals — that would make the bar
+  // show an all-time figure then jump when cs loads, causing the stale bar bug.
+  const rentBilled = cs?.rentBilledPaisa != null ? cs.rentBilledPaisa / 100 : 0;
   const rentCollected =
-    cs?.rentCollectedPaisa != null
-      ? cs.rentCollectedPaisa / 100
-      : totalCollected;
+    cs?.rentCollectedPaisa != null ? cs.rentCollectedPaisa / 100 : 0;
   const camBilled = cs?.camBilledPaisa != null ? cs.camBilledPaisa / 100 : 0;
   const camCollected =
     cs?.camCollectedPaisa != null ? cs.camCollectedPaisa / 100 : 0;
@@ -88,10 +88,28 @@ function normalizeDashboardStats(raw) {
   const overdueRentsList = Array.isArray(raw.overdueRents)
     ? raw.overdueRents
     : [];
-  const overdueCount = overdueRentsList.length; // preliminary; overwritten below from attention
-  // We count tenants who have ANY outstanding balance this month from the
-  // full overdueRents count surfaced by the backend (stored in raw directly):
-  const tenantsWithBalance = raw.overdueRentsCount ?? overdueCount ?? 0;
+
+  // overdueRents from the backend is a top-3 sample — its .length is never
+  // a reliable headcount. Derive tenantsWithBalance from collectionSummary
+  // paisa values instead, which reflect the full dataset.
+  //
+  // Strategy: estimate how many tenants haven't fully paid by dividing total
+  // outstanding paisa by the average billing per tenant. ceil() because any
+  // partial balance means that tenant hasn't cleared their dues.
+  const csTotalOutstandingPaisa = cs?.totalOutstandingPaisa ?? 0;
+  const csTotalBilledPaisa = cs?.totalBilledPaisa ?? 0;
+  const avgBilledPerTenant =
+    activeTenants > 0 && csTotalBilledPaisa > 0
+      ? csTotalBilledPaisa / activeTenants
+      : 0;
+  const tenantsWithBalance =
+    avgBilledPerTenant > 0
+      ? Math.min(
+          activeTenants,
+          Math.ceil(csTotalOutstandingPaisa / avgBilledPerTenant),
+        )
+      : overdueRentsList.length; // last-resort: fall back to sample size
+
   const tenantsPaid =
     activeTenants > 0 ? Math.max(0, activeTenants - tenantsWithBalance) : 0;
   const tenantCoverageRate =
@@ -201,7 +219,16 @@ function normalizeDashboardStats(raw) {
     (m) => (m.status || "").toUpperCase() === "OPEN",
   );
 
-  const overdueRents = Array.isArray(raw.overdueRents) ? raw.overdueRents : [];
+  // Normalize overdueRents — use displayStatus (computed by the backend from
+  // payment data) instead of the raw status field. The pre-save hook never
+  // writes "overdue" to the DB, so raw status on past-due unpaid rents is
+  // "pending". displayStatus is always authoritative.
+  const overdueRents = Array.isArray(raw.overdueRents)
+    ? raw.overdueRents.map((r) => ({
+        ...r,
+        status: r.displayStatus ?? r.status, // displayStatus wins
+      }))
+    : [];
 
   const overdueAmount = overdueRents.reduce((sum, r) => {
     if (r.remainingPaisa != null) return sum + r.remainingPaisa / 100;
@@ -284,8 +311,9 @@ function normalizeDashboardStats(raw) {
     },
 
     attention: {
-      urgentCount: overdueRents.length + (openMaintenance.length > 0 ? 1 : 0),
-      overdueCount: overdueRents.length,
+      urgentCount:
+        kpi.tenantsWithBalance + (openMaintenance.length > 0 ? 1 : 0),
+      overdueCount: kpi.tenantsWithBalance, // full count, not the top-3 sample
       overdueAmount,
       overduePayments: overdueRents.length,
       overdueTotal: overdueAmount,
@@ -307,7 +335,14 @@ function normalizeDashboardStats(raw) {
     generatorsDueService: Array.isArray(raw.generatorsDueService)
       ? raw.generatorsDueService
       : [],
-    upcomingRents: Array.isArray(raw.upcomingRents) ? raw.upcomingRents : [],
+    // Use displayStatus for upcomingRents too — unpaid rents due in the future
+    // should show "pending", not whatever stale value the DB has.
+    upcomingRents: Array.isArray(raw.upcomingRents)
+      ? raw.upcomingRents.map((r) => ({
+          ...r,
+          status: r.displayStatus ?? r.status,
+        }))
+      : [],
     overdueRents,
     contractsEndingSoon: Array.isArray(raw.contractsEndingSoon)
       ? raw.contractsEndingSoon

@@ -108,7 +108,7 @@ function normalizeActivities(stats) {
 }
 
 function normalizeUpcomingRents(stats) {
-  return (stats?.upcomingRents ?? []).map((r, i) => ({
+  return (stats?.upcomingRentsEnglish ?? []).map((r, i) => ({
     id: r._id ?? i,
     tenantName: r.tenant?.name ?? r.tenantName ?? '—',
     propertyName: r.property?.name ?? r.propertyName ?? '',

@@ -1,31 +1,47 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../../../plugins/axios";
 
-export const useAccounting = (selectedQuarter, ledgerType = "all") => {
+export const useAccounting = (
+  selectedQuarter,
+  ledgerType = "all",
+  startDate = "",
+  endDate = "",
+) => {
   const [summary, setSummary] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [ledgerEntries, setLedgerEntries] = useState([]);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
+  /** Build query params — handles quarter, custom range, or no filter */
+  const buildParams = useCallback(() => {
+    const params = {};
+    if (selectedQuarter === "custom") {
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+    } else if (selectedQuarter) {
+      params.quarter = selectedQuarter;
+    }
+    return params;
+  }, [selectedQuarter, startDate, endDate]);
+
   const fetchSummary = useCallback(async () => {
     try {
       setLoadingSummary(true);
-      const params = {};
-      if (selectedQuarter) params.quarter = selectedQuarter;
-      const response = await api.get("/api/accounting/summary", { params });
+      const response = await api.get("/api/accounting/summary", {
+        params: buildParams(),
+      });
       setSummary(response.data.data);
     } catch (error) {
       console.error("Failed to fetch accounting summary", error);
     } finally {
       setLoadingSummary(false);
     }
-  }, [selectedQuarter]);
+  }, [buildParams]);
 
   const fetchLedger = useCallback(async () => {
     try {
       setLoadingLedger(true);
-      const params = {};
-      if (selectedQuarter) params.quarter = selectedQuarter;
+      const params = buildParams();
       if (ledgerType && ledgerType !== "all") params.type = ledgerType;
       const response = await api.get("/api/ledger/get-ledger", { params });
       const data = response.data?.data;
@@ -37,7 +53,7 @@ export const useAccounting = (selectedQuarter, ledgerType = "all") => {
     } finally {
       setLoadingLedger(false);
     }
-  }, [selectedQuarter, ledgerType]);
+  }, [buildParams, ledgerType]);
 
   useEffect(() => {
     fetchSummary();

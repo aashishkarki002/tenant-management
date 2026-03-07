@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
 
@@ -9,45 +9,43 @@ export const usePagination = (items, itemsPerPage = 10) => {
   const itemsLength = items?.length || 0;
   const totalPages = Math.max(1, Math.ceil(itemsLength / itemsPerPage));
 
-  // Reset to page 1 when items length actually changes
-  // Also ensure currentPage doesn't exceed totalPages
+  // Reset to page 1 only when the items array length changes.
+  // Deliberately NOT including currentPage or totalPages here — those
+  // are derived values that would cause an infinite update cycle.
   useEffect(() => {
     const currentLength = items?.length || 0;
     if (prevItemsLengthRef.current !== currentLength) {
       setCurrentPage(1);
       prevItemsLengthRef.current = currentLength;
-    } else if (currentPage > totalPages && totalPages > 0) {
-      // Adjust if current page exceeds available pages (e.g., after filtering)
-      setCurrentPage(totalPages);
     }
-  }, [itemsLength, totalPages, currentPage]);
+  }, [itemsLength]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ensure currentPage is within valid range
+  // Separately clamp the page when totalPages shrinks (e.g. after filtering).
+  // Using a ref guard prevents the double-render loop.
+  useEffect(() => {
+    setCurrentPage((prev) => (prev > totalPages ? totalPages : prev));
+  }, [totalPages]);
+
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
 
   const startIndex = (safeCurrentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, itemsLength);
-  
+
   const paginatedItems = useMemo(() => {
     if (!items || items.length === 0) return [];
     return items.slice(startIndex, endIndex);
   }, [items, startIndex, endIndex]);
 
   const goToPage = (page) => {
-    const pageNumber = Math.max(1, Math.min(page, totalPages));
-    setCurrentPage(pageNumber);
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
 
   const nextPage = () => {
-    if (safeCurrentPage < totalPages) {
-      setCurrentPage(safeCurrentPage + 1);
-    }
+    if (safeCurrentPage < totalPages) setCurrentPage(safeCurrentPage + 1);
   };
 
   const prevPage = () => {
-    if (safeCurrentPage > 1) {
-      setCurrentPage(safeCurrentPage - 1);
-    }
+    if (safeCurrentPage > 1) setCurrentPage(safeCurrentPage - 1);
   };
 
   return {

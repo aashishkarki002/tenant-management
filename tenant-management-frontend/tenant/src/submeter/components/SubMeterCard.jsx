@@ -26,7 +26,7 @@ export default function SubMeterCard({ meter, onAddReading, onDeactivate }) {
     setLoadingReadings(true);
     try {
       const res = await api.get(
-        `/api/electricity/sub-meters/readings/${meter._id}`,
+        `/api/electricity/sub-meters/readings`,
         { params: { limit: 6 } }
       );
       if (res.data.success) setReadings(res.data.data.readings);

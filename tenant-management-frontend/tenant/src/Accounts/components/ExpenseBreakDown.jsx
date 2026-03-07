@@ -5,6 +5,26 @@
 // Tabs: Overview · Transactions · Analysis
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import NepaliDate from "nepali-datetime";
+
+// ─── BS date helpers ──────────────────────────────────────────────────────────
+const BS_MONTH_NAMES_EXP = [
+    "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
+    "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
+];
+function toNepaliDateExp(v) {
+    if (!v) return null;
+    try { return new NepaliDate(new Date(v)); } catch { return null; }
+}
+function toBSDateExp(v) {
+    const nd = toNepaliDateExp(v); if (!nd) return "—";
+    return `${nd.getDate()} ${BS_MONTH_NAMES_EXP[nd.getMonth()]} ${nd.getYear()}`;
+}
+function toBSMonthYear(nepaliYear, nepaliMonth) {
+    // nepaliMonth here is 1-indexed (from DB schema)
+    if (!nepaliYear || !nepaliMonth) return "—";
+    return `${BS_MONTH_NAMES_EXP[(nepaliMonth - 1) % 12]} ${nepaliYear}`;
+}
 import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -12,6 +32,7 @@ import {
 import { PlusIcon, Download, RefreshCw, ArrowUpRightIcon, ArrowDownRightIcon } from "lucide-react";
 import { AddExpenseDialog } from "./AddExpenseDialog";
 import { useBankAccounts } from "../hooks/useAccounting";
+import { usePagination } from "../hooks/usePagination";
 import api from "../../../plugins/axios";
 
 // ─── Design tokens — identical to AccountingPage ──────────────────────────────
@@ -120,13 +141,16 @@ function transform(expenses = []) {
     expenses.forEach(e => { const s = e.status ?? "RECORDED"; statusMap[s] = (statusMap[s] || 0) + 1; });
 
     // Transactions
-    const txns = [...expenses].sort((a, b) => new Date(b.EnglishDate ?? b.createdAt) - new Date(a.EnglishDate ?? a.createdAt)).slice(0, 50).map(e => ({
+    const txns = [...expenses].sort((a, b) => new Date(b.EnglishDate ?? b.createdAt) - new Date(a.EnglishDate ?? a.createdAt)).map(e => ({
         id: e._id,
         source: e.source?.name ?? "—",
         ref: e.referenceType ?? "MANUAL",
         payee: e.payeeType,
         amt: toRs(e.amountPaisa),
-        date: e.nepaliYear ? `${e.nepaliYear}-${String(e.nepaliMonth).padStart(2, "0")}` : (e.EnglishDate ? new Date(e.EnglishDate).toLocaleDateString("en-IN") : "—"),
+        // BS date: prefer nepaliYear+nepaliMonth from model, fall back to converting EnglishDate
+        date: e.nepaliYear && e.nepaliMonth
+            ? toBSMonthYear(e.nepaliYear, e.nepaliMonth)
+            : toBSDateExp(e.EnglishDate ?? e.createdAt),
         status: e.status ?? "RECORDED",
         notes: e.notes ?? "",
     }));
@@ -139,7 +163,6 @@ function transform(expenses = []) {
 
 // ─── Atoms ────────────────────────────────────────────────────────────────────
 const S = `
-  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
   @keyframes ex-up   { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
   @keyframes ex-spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
   @keyframes ex-pulse{ 0%,100%{opacity:.45} 50%{opacity:.85} }
@@ -193,7 +216,7 @@ function PPill({ t }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function ExpenseBreakDown({ onExpenseAdded, selectedQuarter = null, compareMode = false, compareQuarter = null, customStartDate = "", customEndDate = "" }) {
+export default function ExpenseBreakDown({ onExpenseAdded, selectedQuarter = null, compareMode = false, compareQuarter = null, customStartDate = "", customEndDate = "", openDialog = false, onDialogOpenHandled }) {
     const [tab, setTab] = useState("overview");
     const [all, setAll] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -202,6 +225,14 @@ export default function ExpenseBreakDown({ onExpenseAdded, selectedQuarter = nul
     const [tenants, setTenants] = useState([]);
     const [expSources, setExpSources] = useState([]);
     const { bankAccounts } = useBankAccounts();
+
+    // Parent (AccountingPage nav) can trigger the dialog via prop
+    useEffect(() => {
+        if (openDialog) {
+            setOpen(true);
+            onDialogOpenHandled?.();
+        }
+    }, [openDialog]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const fetch = useCallback(async () => {
         setLoading(true); setErr(null);
@@ -462,45 +493,72 @@ export default function ExpenseBreakDown({ onExpenseAdded, selectedQuarter = nul
             )}
 
             {/* ══════════════════ TRANSACTIONS ══════════════════════════════════════ */}
-            {tab === "transactions" && (
-                <Card delay={0} style={{ padding: 0 }}>
-                    <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>All Transactions</div>
-                            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Latest {D.txns.length} · {periodLabel}</div>
+            {tab === "transactions" && (() => {
+                const TXN_PAGE_SIZE = 20;
+                const { paginatedItems: pageTxns, currentPage, totalPages, nextPage, prevPage, startIndex } = usePagination(D.txns, TXN_PAGE_SIZE);
+                return (
+                    <Card delay={0} style={{ padding: 0 }}>
+                        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>All Transactions</div>
+                                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{D.txns.length} total · {periodLabel}</div>
+                            </div>
+                            <button onClick={exportCSV} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.mid, cursor: "pointer" }}>
+                                <Download size={13} />Export CSV
+                            </button>
                         </div>
-                        <button onClick={exportCSV} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.mid, cursor: "pointer" }}>
-                            <Download size={13} />Export CSV
-                        </button>
-                    </div>
-                    {loading ? <div style={{ padding: 20 }}><Sk /><Sk /><Sk /></div> : D.txns.length === 0 ? <None msg="No transactions for this period" /> : (
-                        <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                <thead>
-                                    <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                                        {["Source", "Ref", "Payee", "Amount", "Date", "Status", "Notes"].map(h => (
-                                            <th key={h} style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: ".06em", textTransform: "uppercase" }}>{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {D.txns.map((t, i) => (
-                                        <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}50`, background: i % 2 === 0 ? C.surface : C.alt + "70" }}>
-                                            <td style={{ padding: "9px 14px", fontWeight: 600, color: C.text, fontSize: 13 }}>{t.source}</td>
-                                            <td style={{ padding: "9px 14px" }}><RPill t={t.ref} /></td>
-                                            <td style={{ padding: "9px 14px" }}><PPill t={t.payee} /></td>
-                                            <td style={{ padding: "9px 14px", fontWeight: 700, color: C.negative, fontSize: 13 }}>−{fmt(t.amt)}</td>
-                                            <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12 }}>{t.date}</td>
-                                            <td style={{ padding: "9px 14px" }}><SPill s={t.status} /></td>
-                                            <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </Card>
-            )}
+                        {loading ? <div style={{ padding: 20 }}><Sk /><Sk /><Sk /></div> : D.txns.length === 0 ? <None msg="No transactions for this period" /> : (
+                            <>
+                                <div style={{ overflowX: "auto" }}>
+                                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                                                {["#", "Source", "Ref", "Payee", "Amount", "Date", "Status", "Notes"].map(h => (
+                                                    <th key={h} style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: ".06em", textTransform: "uppercase" }}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {pageTxns.map((t, i) => (
+                                                <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}50`, background: i % 2 === 0 ? C.surface : C.alt + "70" }}>
+                                                    <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12 }}>{startIndex + i + 1}</td>
+                                                    <td style={{ padding: "9px 14px", fontWeight: 600, color: C.text, fontSize: 13 }}>{t.source}</td>
+                                                    <td style={{ padding: "9px 14px" }}><RPill t={t.ref} /></td>
+                                                    <td style={{ padding: "9px 14px" }}><PPill t={t.payee} /></td>
+                                                    <td style={{ padding: "9px 14px", fontWeight: 700, color: C.negative, fontSize: 13 }}>−{fmt(t.amt)}</td>
+                                                    <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12 }}>{t.date}</td>
+                                                    <td style={{ padding: "9px 14px" }}><SPill s={t.status} /></td>
+                                                    <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {totalPages > 1 && (
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderTop: `1px solid ${C.border}` }}>
+                                        <span style={{ fontSize: 12, color: C.muted }}>
+                                            Showing {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, D.txns.length)} of {D.txns.length}
+                                        </span>
+                                        <div style={{ display: "flex", gap: 6 }}>
+                                            <button onClick={prevPage} disabled={currentPage === 1}
+                                                style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>
+                                                ← Prev
+                                            </button>
+                                            <span style={{ padding: "5px 12px", fontSize: 12, color: C.muted }}>
+                                                {currentPage} / {totalPages}
+                                            </span>
+                                            <button onClick={nextPage} disabled={currentPage === totalPages}
+                                                style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>
+                                                Next →
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </Card>
+                );
+            })()}
 
             {/* ══════════════════ ANALYSIS ══════════════════════════════════════════ */}
             {tab === "analysis" && (

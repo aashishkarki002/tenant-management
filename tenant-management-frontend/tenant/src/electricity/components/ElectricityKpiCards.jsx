@@ -1,0 +1,148 @@
+import React from "react";
+import { Zap, DollarSign, AlertTriangle, Gauge } from "lucide-react";
+
+const fmt = {
+  kwh: (n) =>
+    Number(n).toLocaleString("en-NP", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
+    }),
+  rs: (n) =>
+    `Rs ${Number(n).toLocaleString("en-NP", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    })}`,
+};
+
+const METER_TYPE_KEYS = ["unit", "common_area", "parking", "sub_meter"];
+
+function deriveKpis(grouped, summary) {
+  const totalConsumption = Number(summary.grandTotalUnits) || 0;
+  const totalRevenue = Number(summary.grandTotalAmount) || 0;
+  const totalReadings = Number(summary.totalReadings) || 0;
+
+  let pendingAmount = 0;
+  let pendingCount = 0;
+  let recordedMeters = 0;
+  let totalMeters = 0;
+
+  for (const key of METER_TYPE_KEYS) {
+    const bucket = grouped[key];
+    if (!bucket) continue;
+    const readings = bucket.readings ?? [];
+    totalMeters += readings.length;
+
+    for (const r of readings) {
+      if (r.currentReading != null && Number(r.currentReading) > 0) {
+        recordedMeters++;
+      }
+      const status = String(r.status ?? "pending").toLowerCase();
+      if (status === "pending" || status === "partially_paid" || status === "overdue") {
+        pendingAmount += Number(r.remainingAmount ?? r.totalAmount ?? 0);
+        pendingCount++;
+      }
+    }
+  }
+
+  return {
+    totalConsumption,
+    totalRevenue,
+    pendingAmount,
+    pendingCount,
+    recordedMeters,
+    totalMeters,
+  };
+}
+
+const KPI_CONFIG = [
+  {
+    id: "consumption",
+    label: "Total Consumption",
+    icon: Zap,
+    iconBg: "bg-blue-50",
+    iconColor: "text-blue-600",
+    borderAccent: "border-l-blue-500",
+    getValue: (kpis) => `${fmt.kwh(kpis.totalConsumption)} kWh`,
+    getSub: () => "This billing period",
+  },
+  {
+    id: "revenue",
+    label: "Electricity Revenue",
+    icon: DollarSign,
+    iconBg: "bg-emerald-50",
+    iconColor: "text-emerald-600",
+    borderAccent: "border-l-emerald-500",
+    getValue: (kpis) => fmt.rs(kpis.totalRevenue),
+    getSub: () => "Billed this period",
+  },
+  {
+    id: "pending",
+    label: "Pending Bills",
+    icon: AlertTriangle,
+    iconBg: "bg-orange-50",
+    iconColor: "text-orange-600",
+    borderAccent: "border-l-orange-500",
+    getValue: (kpis) => fmt.rs(kpis.pendingAmount),
+    getSub: (kpis) =>
+      kpis.pendingCount > 0 ? `${kpis.pendingCount} tenant${kpis.pendingCount !== 1 ? "s" : ""} unpaid` : "All bills paid",
+    getAlert: (kpis) => kpis.pendingCount > 0,
+  },
+  {
+    id: "meters",
+    label: "Readings Completed",
+    icon: Gauge,
+    iconBg: "bg-cyan-50",
+    iconColor: "text-cyan-600",
+    borderAccent: "border-l-cyan-500",
+    getValue: (kpis) => `${kpis.recordedMeters} / ${kpis.totalMeters}`,
+    getSub: () => "Meters recorded",
+    getAlert: (kpis) => kpis.totalMeters > 0 && kpis.recordedMeters < kpis.totalMeters,
+    getAlertText: (kpis) => {
+      const missing = kpis.totalMeters - kpis.recordedMeters;
+      return `${missing} meter${missing !== 1 ? "s" : ""} missing readings`;
+    },
+  },
+];
+
+export function ElectricityKpiCards({ grouped = {}, summary = {} }) {
+  const kpis = deriveKpis(grouped, summary);
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {KPI_CONFIG.map((config) => {
+        const Icon = config.icon;
+        const showAlert = config.getAlert?.(kpis);
+
+        return (
+          <div
+            key={config.id}
+            className={`relative bg-white rounded-xl border border-[#E8E4E0] border-l-4 ${config.borderAccent}
+              px-4 py-4 transition-shadow hover:shadow-md`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold tracking-wide uppercase text-[#948472] mb-1">
+                  {config.label}
+                </p>
+                <p className="text-xl font-bold text-[#1C1A18] leading-tight truncate">
+                  {config.getValue(kpis)}
+                </p>
+                <p className="text-xs text-[#948472] mt-1">{config.getSub(kpis)}</p>
+              </div>
+              <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${config.iconBg} shrink-0`}>
+                <Icon className={`w-5 h-5 ${config.iconColor}`} />
+              </div>
+            </div>
+
+            {showAlert && config.getAlertText && (
+              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                {config.getAlertText(kpis)}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

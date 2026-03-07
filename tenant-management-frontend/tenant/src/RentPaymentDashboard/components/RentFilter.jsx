@@ -13,17 +13,24 @@ import {
 } from "../../../utils/nepaliDate";
 
 /**
- * RentFilter — v3
+ * RentFilter — v4  (mobile-first rewrite)
  *
- * Changes from v2:
- * - Status Select replaced with flat chip buttons — matches the V2 design
- *   where all filters are inline, no nested dropdowns for status.
- * - Frequency toggle stays at the start of the controls row.
- * - Active filter chips in the period row remain.
- * - Overdue quick-toggle replaced by the "Overdue" status chip (same function,
- *   cleaner — one less control).
+ * Mobile layout  (<sm):
+ *   Row 1 — [Period badge] ················· [Reset]
+ *   Row 2 — [Monthly|Quarterly]  [Month ▾]  [Year ▾]
+ *   Row 3 — [All][Pending][Overdue][Partial][Paid]  ← sideways-scroll strip
+ *   Row 4 — [All Properties ▾]   (only when properties exist)
  *
- * Props: identical to v2 (fully backwards compatible).
+ * Desktop layout (sm+):
+ *   Row 1 — [Period badge] [active chips] ········ [Reset]
+ *   Row 2 — [Freq] | [Month] [Year] | [status chips] | [Property]
+ *
+ * Key fixes vs v3:
+ * - Controls split into explicit rows instead of one `flex-wrap` soup
+ * - Status chips live in an `overflow-x-auto` strip — never wrap on mobile
+ * - All selects + toggles use the app's warm neutral palette (#F8F5F2 / #DDD6D0)
+ *   instead of generic `bg-white / border-slate-200`
+ * - Property select is full-width on mobile, auto-width on desktop
  */
 export const RentFilter = ({
     month,
@@ -56,7 +63,6 @@ export const RentFilter = ({
 
     const currentMonthName = month != null ? NEPALI_MONTH_NAMES[month - 1] : "—";
 
-    // Status chip definitions
     const statusChips = [
         { value: "all", label: "All" },
         { value: "pending", label: "Pending" },
@@ -65,29 +71,38 @@ export const RentFilter = ({
         { value: "paid", label: "Paid" },
     ];
 
-    // Active chip label for the period row
     const activeStatusChip = statusChips.find((c) => c.value === status);
 
+    // Shared Select trigger class — warm palette, no shadcn white override
+    const triggerCls =
+        "h-8 text-xs border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] " +
+        "focus:ring-[#3D1414]/10 focus:border-[#AFA097]";
+
     return (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
 
             {/* ── Row 1: period badge + active chips + reset ─────────────────── */}
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+
                     {/* Period badge */}
-                    <div className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white tracking-wide">
-                        <span className="opacity-50 font-medium">Period</span>
+                    <div
+                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
+                                   text-[11px] font-semibold tracking-wide shrink-0"
+                        style={{ background: "#1C1A18", color: "#F0DADA" }}
+                    >
+                        <span style={{ opacity: 0.5 }}>Period</span>
                         <span>{currentMonthName} {year}</span>
                     </div>
 
-                    {/* Active status chip (dismissible) */}
+                    {/* Active status chip — desktop only (visible inline in strip on mobile) */}
                     {status !== "all" && activeStatusChip && (
                         <span className={[
-                            "inline-flex items-center gap-1 rounded-md border px-2 py-0.5",
+                            "hidden sm:inline-flex items-center gap-1 rounded-md border px-2 py-0.5",
                             "text-[11px] font-semibold",
                             activeStatusChip.danger
                                 ? "bg-red-50 text-red-700 border-red-200"
-                                : "bg-slate-50 text-slate-700 border-slate-200",
+                                : "bg-[#F8F5F2] text-[#1C1A18] border-[#DDD6D0]",
                         ].join(" ")}>
                             {activeStatusChip.label}
                             <button
@@ -95,70 +110,74 @@ export const RentFilter = ({
                                 onClick={() => onStatusChange?.("all")}
                                 className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
                                 aria-label="Remove status filter"
-                            >
-                                ×
-                            </button>
+                            >×</button>
                         </span>
                     )}
 
-                    {/* Active property chip (dismissible) */}
+                    {/* Active property chip — desktop only */}
                     {propertyId && (
-                        <span className="inline-flex items-center gap-1 rounded-md border bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 border-slate-200">
+                        <span className="hidden sm:inline-flex items-center gap-1 rounded-md border
+                                         bg-[#F8F5F2] px-2 py-0.5 text-[11px] font-semibold
+                                         text-[#1C1A18] border-[#DDD6D0]">
                             {properties.find((p) => p._id === propertyId)?.name ?? "Property"}
                             <button
                                 type="button"
                                 onClick={() => onPropertyChange?.("")}
                                 className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
                                 aria-label="Remove property filter"
-                            >
-                                ×
-                            </button>
+                            >×</button>
                         </span>
                     )}
                 </div>
 
-                {/* Reset */}
                 <button
                     type="button"
                     onClick={onReset}
                     disabled={!hasActiveFilters}
-                    className="text-[11px] font-semibold text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    className="shrink-0 text-[11px] font-semibold transition-colors whitespace-nowrap
+                               disabled:opacity-30 disabled:cursor-not-allowed"
+                    style={{ color: "#AFA097" }}
+                    onMouseEnter={(e) => { if (hasActiveFilters) e.currentTarget.style.color = "#1C1A18"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "#AFA097"; }}
                 >
                     Reset to current period
                 </button>
             </div>
 
-            {/* ── Row 2: all controls in one flex line ────────────────────────── */}
-            <div className="flex flex-wrap gap-2 items-center">
+            {/* ── Row 2: Frequency toggle + Month + Year ───────────────────────── */}
+            <div className="flex items-center gap-2">
 
                 {/* Frequency toggle */}
-                <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5 gap-0.5 shrink-0">
+                <div
+                    className="inline-flex rounded-md border p-0.5 gap-0.5 shrink-0"
+                    style={{ borderColor: "#DDD6D0", background: "#F8F5F2" }}
+                >
                     {["monthly", "quarterly"].map((freq) => (
                         <button
                             key={freq}
                             type="button"
                             onClick={() => onFrequencyChange?.(freq)}
-                            className={[
-                                "px-3 py-1 text-[11px] font-semibold rounded transition-colors capitalize",
+                            className="px-3 py-1 text-[11px] font-semibold rounded transition-colors capitalize"
+                            style={
                                 frequencyView === freq
-                                    ? "bg-slate-900 text-white shadow-sm"
-                                    : "text-slate-500 hover:bg-slate-100",
-                            ].join(" ")}
+                                    ? { background: "#1C1A18", color: "#F0DADA" }
+                                    : { color: "#948472" }
+                            }
                         >
                             {freq}
                         </button>
                     ))}
                 </div>
 
-                {/* Divider */}
-                <div className="h-5 w-px bg-slate-200 hidden sm:block shrink-0" />
+                {/* Vertical divider — desktop only */}
+                <div className="hidden sm:block h-5 w-px shrink-0" style={{ background: "#DDD6D0" }} />
 
-                {/* Month */}
+                {/* Month select */}
                 <Select
                     value={month != null ? String(month) : undefined}
                     onValueChange={(v) => onMonthChange?.(Number(v))}
                 >
-                    <SelectTrigger className="h-8 w-[128px] text-xs border-slate-200 bg-white">
+                    <SelectTrigger className={`${triggerCls} w-[116px]`}>
                         <SelectValue placeholder="Month" />
                     </SelectTrigger>
                     <SelectContent>
@@ -170,12 +189,12 @@ export const RentFilter = ({
                     </SelectContent>
                 </Select>
 
-                {/* Year */}
+                {/* Year select */}
                 <Select
                     value={year != null ? String(year) : undefined}
                     onValueChange={(v) => onYearChange?.(Number(v))}
                 >
-                    <SelectTrigger className="h-8 w-[86px] text-xs border-slate-200 bg-white">
+                    <SelectTrigger className={`${triggerCls} w-[80px]`}>
                         <SelectValue placeholder="Year" />
                     </SelectTrigger>
                     <SelectContent>
@@ -187,62 +206,90 @@ export const RentFilter = ({
                     </SelectContent>
                 </Select>
 
-                {/* Divider */}
-                <div className="h-5 w-px bg-slate-200 hidden sm:block shrink-0" />
-
-                {/* Status chips — flat buttons, no Select dropdown */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                    {statusChips.map(({ value, label, danger }) => {
-                        const isActive = status === value;
-                        return (
-                            <button
-                                key={value}
-                                type="button"
-                                onClick={() => onStatusChange?.(value)}
-                                className={[
-                                    "h-8 inline-flex items-center gap-1.5 rounded-md border px-3",
-                                    "text-[11px] font-semibold transition-colors",
-                                    isActive && danger
-                                        ? "bg-red-600 border-red-600 text-white"
-                                        : isActive
-                                            ? "bg-slate-900 border-slate-900 text-white"
-                                            : danger
-                                                ? "border-red-200 text-red-600 bg-red-50 hover:bg-red-100"
-                                                : "border-slate-200 text-slate-500 bg-white hover:bg-slate-50 hover:text-slate-800",
-                                ].join(" ")}
-                            >
-                                {danger && (
-                                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isActive ? "bg-white" : "bg-red-500"}`} />
-                                )}
-                                {label}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* Property select — only when available */}
+                {/* Property — inline on desktop only */}
                 {properties.length > 0 && (
                     <>
-                        <div className="h-5 w-px bg-slate-200 hidden sm:block shrink-0" />
-                        <Select
-                            value={propertyId || "all"}
-                            onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
-                        >
-                            <SelectTrigger className="h-8 w-[148px] text-xs border-slate-200 bg-white">
-                                <SelectValue placeholder="All Properties" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Properties</SelectItem>
-                                {properties.map((p) => (
-                                    <SelectItem key={p._id} value={p._id}>
-                                        {p.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <div className="hidden sm:block h-5 w-px shrink-0" style={{ background: "#DDD6D0" }} />
+                        <div className="hidden sm:block">
+                            <Select
+                                value={propertyId || "all"}
+                                onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
+                            >
+                                <SelectTrigger className={`${triggerCls} w-[148px]`}>
+                                    <SelectValue placeholder="All Properties" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Properties</SelectItem>
+                                    {properties.map((p) => (
+                                        <SelectItem key={p._id} value={p._id}>
+                                            {p.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </>
                 )}
             </div>
+
+            {/* ── Row 3: Status chips — horizontally scrollable on mobile ─────── */}
+            <div
+                className="flex items-center gap-1.5 overflow-x-auto"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+                {statusChips.map(({ value, label, danger }) => {
+                    const isActive = status === value;
+                    return (
+                        <button
+                            key={value}
+                            type="button"
+                            onClick={() => onStatusChange?.(value)}
+                            className="h-8 inline-flex items-center gap-1.5 rounded-md border px-3
+                                       text-[11px] font-semibold transition-colors shrink-0"
+                            style={
+                                isActive && danger
+                                    ? { background: "#B02020", borderColor: "#B02020", color: "white" }
+                                    : isActive
+                                        ? { background: "#1C1A18", borderColor: "#1C1A18", color: "#F0DADA" }
+                                        : danger
+                                            ? { background: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
+                                            : { background: "#F8F5F2", borderColor: "#DDD6D0", color: "#948472" }
+                            }
+                        >
+                            {danger && (
+                                <span
+                                    className="h-1.5 w-1.5 rounded-full shrink-0"
+                                    style={{ background: isActive ? "white" : "#EF4444" }}
+                                />
+                            )}
+                            {label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* ── Row 4: Property select — mobile only, full width ─────────────── */}
+            {properties.length > 0 && (
+                <div className="sm:hidden">
+                    <Select
+                        value={propertyId || "all"}
+                        onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
+                    >
+                        <SelectTrigger className={`${triggerCls} w-full`}>
+                            <SelectValue placeholder="All Properties" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Properties</SelectItem>
+                            {properties.map((p) => (
+                                <SelectItem key={p._id} value={p._id}>
+                                    {p.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
+
         </div>
     );
 };

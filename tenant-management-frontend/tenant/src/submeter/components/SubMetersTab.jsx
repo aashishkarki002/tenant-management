@@ -14,7 +14,9 @@ import { METER_TYPE_META } from "../../Settings/components/constants";
 import CreateSubMeterModal from "./CreateSubMeterModal";
 import AddReadingModal from "../../Settings/components/AddReadingModal";
 import SubMeterCard from "./SubMeterCard";
+import { useHeaderSlot } from "../../context/HeaderSlotContext";
 
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 export default function SubMetersTab({ propertyId }) {
   const [meters, setMeters] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,9 +81,26 @@ export default function SubMetersTab({ propertyId }) {
     filterType === "all" ? meters : meters.filter((m) => m.meterType === filterType);
 
 
-
+  useHeaderSlot(() => (
+    <Button
+      onClick={() => setShowCreateModal(true)}
+      className="flex items-center gap-2 right-0  text-white rounded-xl px-4 py-2.5"
+    >
+      <PlusCircleIcon className="w-4 h-4" />
+      Add Meter
+    </Button>
+  ), []);
   return (
     <div className="mt-4">
+      <Breadcrumb className="mb-4 flex items-center ">
+        <BreadcrumbItem>
+          <BreadcrumbLink href="/Electricity" >Electricity</BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbLink href="/submeter" className="text-sm text-slate-500">Sub-Meters</BreadcrumbLink>
+        </BreadcrumbItem>
+      </Breadcrumb>
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
@@ -90,13 +109,7 @@ export default function SubMetersTab({ propertyId }) {
             Manage meters for common areas, parking &amp; shared infrastructure
           </p>
         </div>
-        <Button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2  text-white rounded-xl px-4 py-2.5"
-        >
-          <PlusCircleIcon className="w-4 h-4" />
-          Add Meter
-        </Button>
+
       </div>
 
       {/* Summary strip */}

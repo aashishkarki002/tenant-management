@@ -29,15 +29,15 @@ export default function AppLayout({ children }) {
               borderColor: "#DDD6D0",
             }}
           >
-            {/* Sidebar toggle — styled to match brand */}
+            {/* Sidebar toggle — mt-1 keeps it optically aligned to top row */}
             <SidebarTrigger
               className="w-8 h-8 rounded-md flex items-center justify-center
-                         border border-[#DDD6D0] bg-white hover:bg-[#F8F5F2]
-                         text-[#948472] hover:text-[#3D1414] transition-all shrink-0"
+             border border-[#DDD6D0] bg-white hover:bg-[#F8F5F2]
+             text-[#948472] hover:text-[#3D1414] transition-all shrink-0"
             />
 
             {/* Thin brand accent rule between trigger and content */}
-            <div className="w-px h-5 shrink-0" style={{ background: "#EEE9E5" }} />
+            <div className="w-px h-5 mt-1.5 sm:mt-0 shrink-0" style={{ background: "#EEE9E5" }} />
 
             <Header />
           </header>

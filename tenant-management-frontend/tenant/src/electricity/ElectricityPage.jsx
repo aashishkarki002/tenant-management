@@ -1,9 +1,3 @@
-/**
- * Electricity page: data fetching, layout, and composition.
- * Composes hooks + presentational components; no UI logic in hooks.
- * Connected to backend: GET readings with filters, POST create-reading for new rows.
- */
-
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import useProperty from "../hooks/use-property";
@@ -12,8 +6,10 @@ import api from "../../plugins/axios";
 import { useElectricityData } from "./hooks/useElectricityData";
 import { useNewElectricityRows } from "./hooks/useNewElectricityRows";
 import { ElectricityHeader } from "./components/ElectricityHeader";
+import { ElectricityKpiCards } from "./components/ElectricityKpiCards";
 import { ElectricityFilters } from "./components/ElectricityFilters";
 import { ElectricitySummaryCards } from "./components/ElectricitySummaryCards";
+import { ElectricityInsights } from "./components/ElectricityInsights";
 import { ElectricityTable } from "./components/ElectricityTable";
 import { createReading } from "./utils/electricityApi";
 import {
@@ -24,35 +20,22 @@ import {
 import { PAGE_SIZE } from "./utils/electricityConstants";
 import { getMonthOptions } from "../../plugins/useNepaliDate";
 import { getCurrentNepaliMonthYear } from "@/constants/nepaliMonths";
-
-// -- Constants -----------------------------------------------------------------
+import { useHeaderSlot } from "../context/HeaderSlotContext";
+import { GlobalSearch } from "../components/header";
+import { Button } from "@/components/ui/button";
+import { PlusIcon, Download, Settings } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const METER_TYPE_KEYS = ["unit", "common_area", "parking", "sub_meter"];
 
-// -- Helpers -------------------------------------------------------------------
-
 const buildDefaultFilterValues = () => {
   const { month, year } = getCurrentNepaliMonthYear();
-  return {
-    blockId: "all",
-    innerBlockId: "",
-    month,  // numeric 1-12
-    year,   // numeric e.g. 2081
-  };
+  return { blockId: "all", innerBlockId: "", month, year };
 };
 
-/**
- * Flatten the grouped API response into a single ordered array.
- * Order follows METER_TYPE_KEYS so the table is visually grouped
- * without needing a sort pass.
- */
 const flattenGrouped = (grouped = {}) =>
   METER_TYPE_KEYS.flatMap((key) => grouped[key]?.readings ?? []);
 
-/**
- * Derive tab badge counts from the grouped response.
- * Uses the pre-computed `count` field in each bucket.
- */
 const countsFromGrouped = (grouped = {}) => ({
   unit: grouped.unit?.count ?? 0,
   common_area: grouped.common_area?.count ?? 0,
@@ -60,16 +43,16 @@ const countsFromGrouped = (grouped = {}) => ({
   sub_meter: grouped.sub_meter?.count ?? 0,
 });
 
-// -- Page ----------------------------------------------------------------------
-
 export default function ElectricityPage() {
   const { property } = useProperty();
   const { units } = useUnits({ occupied: true });
+  const navigate = useNavigate();
   const [tenants, setTenants] = useState([]);
   const [filterValues, setFilterValues] = useState(buildDefaultFilterValues);
   const [activeTab, setActiveTab] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const allBlocks = useMemo(() => {
     if (!property || !Array.isArray(property)) return [];
@@ -90,7 +73,6 @@ export default function ElectricityPage() {
     return undefined;
   }, [filterValues.blockId, property]);
 
-  // Build API filters using numeric month/year directly -- no string parsing needed
   const apiFilters = useMemo(
     () => ({
       propertyId: propertyIdFromBlock || undefined,
@@ -113,10 +95,7 @@ export default function ElectricityPage() {
 
   const { grouped, summary, loading, refetch } = useElectricityData(apiFilters);
 
-  // Flat list -- single source of truth for the table, export, and new-row logic
   const readings = useMemo(() => flattenGrouped(grouped), [grouped]);
-
-  // Tab badge counts derived from grouped buckets (no extra fetch needed)
   const countsByType = useMemo(() => countsFromGrouped(grouped), [grouped]);
 
   const { newRows, addNewRow, updateNewRow, removeNewRow, clearNewRows } =
@@ -167,13 +146,46 @@ export default function ElectricityPage() {
     setCurrentPage(1);
   }, []);
 
-  // Build a human-readable period label for export / display
   const periodLabel = useMemo(() => {
     const monthOptions = getMonthOptions();
     const monthName =
       monthOptions.find((m) => m.value === filterValues.month)?.label ?? "Month";
     return `${monthName} ${filterValues.year}`;
   }, [filterValues.month, filterValues.year]);
+
+  // Header slot — inject search + action buttons into the global header
+  useHeaderSlot(
+    () => (
+      <div className="flex items-center gap-2 w-full">
+        <div className="flex-1 max-w-xs">
+          <GlobalSearch />
+        </div>
+        <div className="flex items-center gap-2 ml-auto shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setDialogOpen(true)}
+            className="hover:opacity-90"
+            style={{ background: "#3D1414", color: "#F0DADA" }}
+          >
+            <PlusIcon className="w-3 h-3" />
+            <span className="hidden sm:inline ml-1.5">Add Reading</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/submeter")}
+            className="border-[#DDD6D0] text-[#1C1A18] hover:bg-[#F8F5F2] hover:text-[#3D1414]"
+          >
+            <Settings className="w-3 h-3" />
+            <span className="hidden sm:inline ml-1.5">Submeters</span>
+          </Button>
+        </div>
+      </div>
+    ),
+    []
+  );
 
   const handleExportReport = useCallback(() => {
     if (!readings.length) {
@@ -207,7 +219,6 @@ export default function ElectricityPage() {
         `Row ${index + 1}`;
       const prev = Number(record.previousReading) || 0;
       const curr = Number(record.currentReading) || 0;
-      // Controller stores consumption as `unitsConsumed`; fall back to calculated
       const consumption = Number(record.unitsConsumed) || getConsumption(record);
       const status = record.status || "pending";
       const trend = getTrendPercent(consumption, prev);
@@ -262,7 +273,7 @@ export default function ElectricityPage() {
       await Promise.all(
         validRows.map((row) =>
           createReading({
-            meterType: "unit", // inline rows are always unit readings
+            meterType: "unit",
             tenantId: unitIdToTenantId[row.unitId],
             unitId: row.unitId,
             currentReading: parseFloat(row.currentUnit),
@@ -293,10 +304,13 @@ export default function ElectricityPage() {
     refetch,
   ]);
 
+  const handleOpenAddReading = useCallback(() => setDialogOpen(true), []);
+
   return (
-    <form onSubmit={(e) => e.preventDefault()}>
-      <div>
-        <div className="mt-3">
+    <div className="min-h-screen pb-8" style={{ background: "#F8F5F2" }}>
+      <form onSubmit={(e) => e.preventDefault()}>
+        <div className="space-y-4 pt-5">
+          {/* 1. Page Title + Actions */}
           <ElectricityHeader
             onExportReport={handleExportReport}
             onAddReading={addNewRow}
@@ -306,18 +320,29 @@ export default function ElectricityPage() {
             saving={saving}
             property={property}
             allBlocks={allBlocks}
+            dialogOpen={dialogOpen}
+            setDialogOpen={setDialogOpen}
           />
 
+          {/* 2. KPI Cards */}
+          <ElectricityKpiCards grouped={grouped} summary={summary} />
+
+          {/* 3. Filters */}
           <ElectricityFilters
-            className="m-3"
             filterValues={filterValues}
             onChange={handleFilterChange}
             allBlocks={allBlocks}
             availableInnerBlocks={availableInnerBlocks}
+            periodLabel={periodLabel}
           />
 
+          {/* 4. Consumption Breakdown */}
           <ElectricitySummaryCards grouped={grouped} summary={summary} />
 
+          {/* 5. Insight Widgets */}
+          <ElectricityInsights grouped={grouped} />
+
+          {/* 6. Readings Table */}
           <ElectricityTable
             loading={loading}
             readings={readings}
@@ -331,9 +356,10 @@ export default function ElectricityPage() {
             onRemoveNewRow={removeNewRow}
             onPaymentRecorded={refetch}
             countsByType={countsByType}
+            onAddReading={handleOpenAddReading}
           />
         </div>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }

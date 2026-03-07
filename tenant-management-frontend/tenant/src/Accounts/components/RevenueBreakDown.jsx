@@ -5,12 +5,34 @@
 // Tabs: Overview · Tenants · Transactions · Analysis
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import NepaliDate from "nepali-datetime";
+
+// ─── BS date helpers ──────────────────────────────────────────────────────────
+const BS_MONTH_NAMES = [
+    "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
+    "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
+];
+const BS_MONTH_SHORT = ["Bai", "Jes", "Ash", "Shr", "Bha", "Asw", "Kar", "Man", "Pou", "Mag", "Fal", "Cha"];
+
+function toNepaliDate(isoOrDate) {
+    if (!isoOrDate) return null;
+    try { return new NepaliDate(new Date(isoOrDate)); } catch { return null; }
+}
+function toBSDate(v) {
+    const nd = toNepaliDate(v); if (!nd) return "—";
+    return `${nd.getDate()} ${BS_MONTH_NAMES[nd.getMonth()]} ${nd.getYear()}`;
+}
+function toBSMonthShort(v) {
+    const nd = toNepaliDate(v); if (!nd) return "—";
+    return `${nd.getDate()} ${BS_MONTH_SHORT[nd.getMonth()]}`;
+}
 import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { PlusIcon, Download, RefreshCw, ArrowUpRightIcon, ArrowDownRightIcon } from "lucide-react";
 import { AddRevenueDialog } from "./AddRevenueDialog";
+import { usePagination } from "../hooks/usePagination";
 import api from "../../../plugins/axios";
 
 // ─── Design tokens — identical to AccountingPage ──────────────────────────────
@@ -40,8 +62,11 @@ const C = {
 
 const PALETTE = [C.forestLight, C.blue, C.violet, C.amber, C.teal, "#BE185D", "#D97706", "#0891B2"];
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const Q_MONTHS = { 1: [6, 7, 8], 2: [9, 10, 11], 3: [0, 1, 2], 4: [3, 4, 5] };
+// BS months used for chart labels (already defined above as BS_MONTH_NAMES)
+// Correct Nepali fiscal quarter → 0-indexed BS month mapping
+// Q1: Shrawan(3) Bhadra(4) Ashwin(5) | Q2: Kartik(6) Mangsir(7) Poush(8)
+// Q3: Magh(9) Falgun(10) Chaitra(11) | Q4: Baisakh(0) Jestha(1) Ashadh(2)
+const Q_MONTHS_BS = { 1: [3, 4, 5], 2: [6, 7, 8], 3: [9, 10, 11], 4: [0, 1, 2] };
 const Q_LABELS = {
     1: "Q1 · Shrawan–Ashwin", 2: "Q2 · Kartik–Poush",
     3: "Q3 · Magh–Chaitra", 4: "Q4 · Baishakh–Ashadh",
@@ -63,12 +88,16 @@ const pct = (a, b) => b > 0 ? ((a / b) * 100).toFixed(1) : "0.0";
 
 function applyFilter(data, q, s, e) {
     if (q === "custom") {
-        const [st, en] = [new Date(s), new Date(e)];
+        const st = new Date(s), en = new Date(new Date(e).setHours(23, 59, 59, 999));
         return data.filter(r => { const d = new Date(r.date); return !isNaN(d) && d >= st && d <= en; });
     }
     if (!q) return data;
-    const months = Q_MONTHS[q] ?? [];
-    return data.filter(r => { const d = new Date(r.date); return !isNaN(d) && months.includes(d.getMonth()); });
+    const bsMonths = Q_MONTHS_BS[q] ?? [];
+    // Filter using Nepali calendar month — not Gregorian
+    return data.filter(r => {
+        const nd = toNepaliDate(r.date);
+        return nd !== null && bsMonths.includes(nd.getMonth());
+    });
 }
 
 function transform(revs = []) {
@@ -86,12 +115,13 @@ function transform(revs = []) {
     const rev = streams.reduce((s, x) => s + x.amt, 0);
     streams.forEach(s => { s.pct = rev ? +((s.amt / rev) * 100).toFixed(1) : 0; });
 
-    // Monthly trend (area)
+    // Monthly trend — keyed + labelled using BS calendar
     const mMap = {};
     revs.forEach(r => {
-        const d = new Date(r.date); if (isNaN(d)) return;
-        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        if (!mMap[k]) mMap[k] = { k, label: MONTHS[d.getMonth()], revenue: 0, n: 0 };
+        const nd = toNepaliDate(r.date); if (!nd) return;
+        // key: "BSYYYY-MM" (0-indexed BS month, zero-padded)
+        const k = `${nd.getYear()}-${String(nd.getMonth()).padStart(2, "0")}`;
+        if (!mMap[k]) mMap[k] = { k, label: BS_MONTH_NAMES[nd.getMonth()], revenue: 0, n: 0 };
         mMap[k].revenue += toRs(r.amountPaisa); mMap[k].n++;
     });
     const trend = Object.values(mMap).sort((a, b) => a.k.localeCompare(b.k)).slice(-8);
@@ -124,13 +154,13 @@ function transform(revs = []) {
     const topTenants = Object.values(tMap).map(t => ({ ...t, sources: [...t.sources].join(", ") })).sort((a, b) => b.amt - a.amt).slice(0, 8);
 
     // Transactions
-    const txns = [...revs].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 50).map(r => ({
+    const txns = [...revs].sort((a, b) => new Date(b.date) - new Date(a.date)).map(r => ({
         id: r._id,
         payer: r.payerType === "TENANT" ? (r.tenant?.name ?? "Tenant") : (r.externalPayer?.name ?? "External"),
         source: r.source?.name ?? "—",
         ref: r.referenceType ?? "MANUAL",
         amt: toRs(r.amountPaisa),
-        date: r.date ? new Date(r.date).toLocaleDateString("en-IN") : "—",
+        date: toBSDate(r.date),  // BS date — consistent with all other date displays
         status: r.status ?? "RECORDED",
         type: r.payerType,
     }));
@@ -143,7 +173,6 @@ function transform(revs = []) {
 
 // ─── Atoms ────────────────────────────────────────────────────────────────────
 const S = `
-  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
   @keyframes rv-up   { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
   @keyframes rv-spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
   @keyframes rv-pulse{ 0%,100%{opacity:.45} 50%{opacity:.85} }
@@ -197,7 +226,7 @@ function TPill({ t }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, compareMode, compareQuarter, customStartDate, customEndDate }) {
+export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, compareMode, compareQuarter, customStartDate, customEndDate, openDialog = false, onDialogOpenHandled }) {
     const [tab, setTab] = useState("overview");
     const [all, setAll] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -206,6 +235,14 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
     const [tenants, setTenants] = useState([]);
     const [sources, setSources] = useState([]);
     const [banks, setBanks] = useState([]);
+
+    // Parent (AccountingPage nav) can trigger the dialog via prop
+    useEffect(() => {
+        if (openDialog) {
+            setOpen(true);
+            onDialogOpenHandled?.();
+        }
+    }, [openDialog]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const fetch = useCallback(async () => {
         setLoading(true); setErr(null);
@@ -537,45 +574,72 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
             )}
 
             {/* ══════════════════ TRANSACTIONS ══════════════════════════════════════ */}
-            {tab === "transactions" && (
-                <Card delay={0} style={{ padding: 0 }}>
-                    <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>All Transactions</div>
-                            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Latest {D.txns.length} · {periodLabel}</div>
+            {tab === "transactions" && (() => {
+                const TXN_PAGE_SIZE = 20;
+                const { paginatedItems: pageTxns, currentPage, totalPages, nextPage, prevPage, startIndex } = usePagination(D.txns, TXN_PAGE_SIZE);
+                return (
+                    <Card delay={0} style={{ padding: 0 }}>
+                        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>All Transactions</div>
+                                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{D.txns.length} total · {periodLabel}</div>
+                            </div>
+                            <button onClick={exportCSV} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.mid, cursor: "pointer" }}>
+                                <Download size={13} />Export CSV
+                            </button>
                         </div>
-                        <button onClick={exportCSV} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.mid, cursor: "pointer" }}>
-                            <Download size={13} />Export CSV
-                        </button>
-                    </div>
-                    {loading ? <div style={{ padding: 20 }}><Sk /><Sk /><Sk /></div> : D.txns.length === 0 ? <None msg="No transactions" /> : (
-                        <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                <thead>
-                                    <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                                        {["Payer", "Source", "Ref", "Type", "Amount", "Date", "Status"].map(h => (
-                                            <th key={h} style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: ".06em", textTransform: "uppercase" }}>{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {D.txns.map((t, i) => (
-                                        <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}50`, background: i % 2 === 0 ? C.surface : C.alt + "70" }}>
-                                            <td style={{ padding: "9px 14px", fontWeight: 600, color: C.text, fontSize: 13 }}>{t.payer}</td>
-                                            <td style={{ padding: "9px 14px", color: C.mid, fontSize: 13 }}>{t.source}</td>
-                                            <td style={{ padding: "9px 14px" }}><RPill t={t.ref} /></td>
-                                            <td style={{ padding: "9px 14px" }}><TPill t={t.type} /></td>
-                                            <td style={{ padding: "9px 14px", fontWeight: 700, color: C.positive, fontSize: 13 }}>{fmt(t.amt)}</td>
-                                            <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12 }}>{t.date}</td>
-                                            <td style={{ padding: "9px 14px" }}><SPill s={t.status} /></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </Card>
-            )}
+                        {loading ? <div style={{ padding: 20 }}><Sk /><Sk /><Sk /></div> : D.txns.length === 0 ? <None msg="No transactions" /> : (
+                            <>
+                                <div style={{ overflowX: "auto" }}>
+                                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                                                {["#", "Payer", "Source", "Ref", "Type", "Amount", "Date", "Status"].map(h => (
+                                                    <th key={h} style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: ".06em", textTransform: "uppercase" }}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {pageTxns.map((t, i) => (
+                                                <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}50`, background: i % 2 === 0 ? C.surface : C.alt + "70" }}>
+                                                    <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12 }}>{startIndex + i + 1}</td>
+                                                    <td style={{ padding: "9px 14px", fontWeight: 600, color: C.text, fontSize: 13 }}>{t.payer}</td>
+                                                    <td style={{ padding: "9px 14px", color: C.mid, fontSize: 13 }}>{t.source}</td>
+                                                    <td style={{ padding: "9px 14px" }}><RPill t={t.ref} /></td>
+                                                    <td style={{ padding: "9px 14px" }}><TPill t={t.type} /></td>
+                                                    <td style={{ padding: "9px 14px", fontWeight: 700, color: C.positive, fontSize: 13 }}>{fmt(t.amt)}</td>
+                                                    <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12 }}>{t.date}</td>
+                                                    <td style={{ padding: "9px 14px" }}><SPill s={t.status} /></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {totalPages > 1 && (
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderTop: `1px solid ${C.border}` }}>
+                                        <span style={{ fontSize: 12, color: C.muted }}>
+                                            Showing {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, D.txns.length)} of {D.txns.length}
+                                        </span>
+                                        <div style={{ display: "flex", gap: 6 }}>
+                                            <button onClick={prevPage} disabled={currentPage === 1}
+                                                style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>
+                                                ← Prev
+                                            </button>
+                                            <span style={{ padding: "5px 12px", fontSize: 12, color: C.textMid }}>
+                                                {currentPage} / {totalPages}
+                                            </span>
+                                            <button onClick={nextPage} disabled={currentPage === totalPages}
+                                                style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>
+                                                Next →
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </Card>
+                );
+            })()}
 
             {/* ══════════════════ ANALYSIS ══════════════════════════════════════════ */}
             {tab === "analysis" && (

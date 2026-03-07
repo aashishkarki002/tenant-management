@@ -25,12 +25,6 @@ import { PAYMENT_METHODS } from "../../Tenant/addTenant/constants/tenant.constan
 /** Valid payment method values (must match backend: cash | bank_transfer | cheque | mobile_wallet) */
 const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
 
-function parseNepaliDate(nepaliStr) {
-  if (!nepaliStr || typeof nepaliStr !== "string") return null;
-  const parts = nepaliStr.trim().split("-").map(Number);
-  if (parts.length < 3) return null;
-  return { year: parts[0], month: parts[1], day: parts[2] };
-}
 
 function getInitialValues() {
   return {
@@ -66,7 +60,6 @@ export function AddExpenseDialog({
       setSubmitting(true);
       try {
         const payeeType = values.payeeType === "tenant" ? "TENANT" : "EXTERNAL";
-        const nepali = parseNepaliDate(values.nepaliDateStr);
         const englishDate = values.date || new Date().toISOString().split("T")[0];
 
         const rawMethod = values.paymentMethod;
@@ -74,32 +67,29 @@ export function AddExpenseDialog({
           typeof rawMethod === "string" && VALID_PAYMENT_METHODS.includes(rawMethod)
             ? rawMethod
             : PAYMENT_METHODS.BANK_TRANSFER;
+
+        // Send the BS string as-is — the backend owns Date.UTC() conversion.
+        // Never send a JS Date or .toISOString() for nepaliDate from the
+        // frontend: local timezone on the client would corrupt it.
+        const nepaliDateStr = values.nepaliDateStr || null;
+
         const payload = {
           source: values.source,
           amount: Number(values.amount),
           EnglishDate: englishDate,
+          nepaliDateStr,          // "2082-11-23" — backend resolves to UTC Date
           referenceType: values.referenceType || "MANUAL",
           referenceId: values.referenceId || undefined,
           notes: values.notes || undefined,
           payeeType,
           paymentMethod,
         };
+
         if (
           paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
           paymentMethod === PAYMENT_METHODS.CHEQUE
         ) {
           if (values.bankAccountId) payload.bankAccountId = values.bankAccountId;
-        }
-
-        if (nepali) {
-          payload.nepaliDate = values.nepaliDateStr;
-          payload.nepaliMonth = nepali.month;
-          payload.nepaliYear = nepali.year;
-        } else {
-          const today = new Date();
-          payload.nepaliYear = 2081;
-          payload.nepaliMonth = today.getMonth() + 1;
-          payload.nepaliDate = `${payload.nepaliYear}-${String(payload.nepaliMonth).padStart(2, "0")}-15`;
         }
 
         if (payeeType === "TENANT") {
@@ -335,55 +325,55 @@ export function AddExpenseDialog({
           {/* Bank account picker — shown when payment method is bank_transfer or cheque */}
           {(formik.values?.paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
             formik.values?.paymentMethod === PAYMENT_METHODS.CHEQUE) && (
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-slate-900">Deposit To</label>
-              <div className="grid gap-3">
-                {Array.isArray(bankAccounts) &&
-                  bankAccounts.map((bank) => (
-                    <button
-                      key={bank._id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedBankAccountId(bank._id);
-                        formik.setFieldValue("bankAccountId", bank._id);
-                      }}
-                      className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
-                        ? "border-slate-900 bg-slate-900/[0.03]"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="font-semibold text-slate-900">{bank.bankName}</p>
-                          <p className="text-xs text-slate-500">
-                            **** **** {bank.accountNumber?.slice(-4) || "****"}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
-                            Balance
-                          </p>
-                          <p className="font-semibold text-slate-900 text-sm">
-                            ₹{bank.balance?.toLocaleString() || "0"}
-                          </p>
-                        </div>
-                        {selectedBankAccountId === bank._id && (
-                          <div className="ml-3 text-slate-900">
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                              <path
-                                fillRule="evenodd"
-                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-slate-900">Deposit To</label>
+                <div className="grid gap-3">
+                  {Array.isArray(bankAccounts) &&
+                    bankAccounts.map((bank) => (
+                      <button
+                        key={bank._id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBankAccountId(bank._id);
+                          formik.setFieldValue("bankAccountId", bank._id);
+                        }}
+                        className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
+                          ? "border-slate-900 bg-slate-900/[0.03]"
+                          : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <p className="font-semibold text-slate-900">{bank.bankName}</p>
+                            <p className="text-xs text-slate-500">
+                              **** **** {bank.accountNumber?.slice(-4) || "****"}
+                            </p>
                           </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                          <div className="text-right">
+                            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
+                              Balance
+                            </p>
+                            <p className="font-semibold text-slate-900 text-sm">
+                              ₹{bank.balance?.toLocaleString() || "0"}
+                            </p>
+                          </div>
+                          {selectedBankAccountId === bank._id && (
+                            <div className="ml-3 text-slate-900">
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* Notes */}
           <div className="space-y-2">

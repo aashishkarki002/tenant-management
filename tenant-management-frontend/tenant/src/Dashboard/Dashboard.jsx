@@ -47,7 +47,7 @@ export default function Dashboard() {
         </Link>
         <Link to="/rent-payment">
           <Button variant="outline" size="sm"
-            className="border-[#DDD6D0] text-[#3D1414] hover:bg-[#F8F5F2]">
+            className="border-[#DDD6D0] text-[#1C1A18] hover:bg-[#F8F5F2] hover:text-[#3D1414]">
             <ReceiptTextIcon className="w-3 h-3" />
             <span className="hidden sm:inline ml-1.5">Record Payment</span>
           </Button>

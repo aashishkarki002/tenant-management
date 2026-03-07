@@ -458,10 +458,11 @@ export default function Header() {
   };
 
   return (
-    <header className="flex items-center w-full gap-3">
+    <header className="flex items-start w-full gap-3 p-2">
 
-      {/* Search or page-injected slot */}
-      <div className="flex-1 flex items-center gap-3 min-w-0">
+      {/* Search or page-injected slot — items-start on parent so 2-row
+          mobile slot is never clipped by vertical centering */}
+      <div className="flex-1 min-w-0 pt-0.5">
         <HeaderSlot fallback={<GlobalSearch />} />
       </div>
 
@@ -473,7 +474,7 @@ export default function Header() {
           <button
             className="relative w-9 h-9 rounded-lg flex items-center justify-center
                        border transition-all duration-150 hover:bg-[#F8F5F2] shrink-0
-                       focus:outline-none focus:ring-2 focus:ring-[#3D1414]/20"
+                       focus:outline-none focus:ring-2 focus:ring-[#3D1414]/20 mt-0.5"
             style={{ borderColor: "#DDD6D0", background: "white" }}
           >
             <Bell className="w-4 h-4" style={{ color: hasUnread ? "#3D1414" : "#AFA097" }} />

@@ -1,36 +1,42 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, ChevronDown, ChevronUp, Zap, Calendar, List } from 'lucide-react';
+import {
+  Plus, ChevronDown, ChevronUp, Zap, Calendar, List,
+  Search, LayoutGrid, LayoutList,
+} from 'lucide-react';
 import MaintenanceCard from './components/MaintenanceCard';
 import MaintenanceCalendar from './components/MaintenanceCalendar';
+import MaintenanceTable from './components/MaintenanceTable';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, DialogTrigger, DialogClose,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import DualCalendarTailwind from '@/components/dualDate';
 import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import api from '../../plugins/axios';
 import { useUnits } from '../hooks/use-units';
 import { useBankAccounts } from '../Accounts/hooks/useAccounting';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { useFormik } from 'formik';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import { Empty, EmptyTitle } from '@/components/ui/empty';
 import { cn } from '@/lib/utils';
 import GeneratorPanel from '../Generators/Generator';
-
+import { useHeaderSlot } from '../context/HeaderSlotContext';
 
 /* ── Style helpers ────────────────────────────────────────────────────────── */
 export const getPriorityStyle = (priority) => {
   const p = (priority || '').toUpperCase();
-  if (p === 'URGENT') return 'bg-red-600 text-red-50';
-  if (p === 'HIGH') return 'bg-orange-500 text-orange-50';
-  if (p === 'MEDIUM') return 'bg-amber-500 text-amber-50';
-  return 'bg-gray-500 text-gray-100';
+  if (p === 'URGENT') return 'bg-red-100 text-red-700';
+  if (p === 'HIGH') return 'bg-orange-100 text-orange-700';
+  if (p === 'MEDIUM') return 'bg-amber-100 text-amber-700';
+  return 'bg-gray-100 text-gray-600';
 };
 
 export const getStatusStyle = (status) => {
@@ -51,6 +57,14 @@ const PRIORITY_OPTIONS = [
 const STATUS_FILTERS = ['All', 'OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 const PRIORITY_FILTERS = ['All', 'Urgent', 'High', 'Medium', 'Low'];
 
+const SECTION_CONFIG = [
+  { key: 'overdue', label: 'Overdue', dot: 'bg-red-500', textColor: 'text-red-700' },
+  { key: 'urgent', label: 'Urgent Priority', dot: 'bg-orange-500', textColor: 'text-orange-700' },
+  { key: 'open', label: 'Open', dot: 'bg-slate-400', textColor: 'text-slate-700' },
+  { key: 'inProgress', label: 'In Progress', dot: 'bg-blue-500', textColor: 'text-blue-700' },
+  { key: 'completed', label: 'Completed', dot: 'bg-emerald-500', textColor: 'text-emerald-700' },
+];
+
 /* ─────────────────────────────────────────────────────────────────────────── */
 export default function Maintenance() {
   const [tenant, setTenant] = useState([]);
@@ -63,6 +77,9 @@ export default function Maintenance() {
   const [staffs, setStaffs] = useState([]);
   const [statusFilter, setStatusFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
+  const [activeTab, setActiveTab] = useState('list');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState('cards');
 
   const [formSections, setFormSections] = useState({
     general: true, property: false, assign: false, timing: false,
@@ -99,7 +116,6 @@ export default function Maintenance() {
       title: '', category: '', priority: '', status: '',
       unit: '', tenant: '', assignTo: '', estimatedCost: '',
       description: '', scheduledDate: '',
-      // Nepali equivalents — populated by DualCalendarTailwind's second onChange arg
       scheduledNepaliDate: '', scheduledNepaliMonth: null, scheduledNepaliYear: null,
     },
     onSubmit: async (values) => {
@@ -117,9 +133,6 @@ export default function Maintenance() {
           assignedTo: values.assignTo || undefined,
           amount: values.estimatedCost ? parseFloat(values.estimatedCost) : 0,
           scheduledDate: values.scheduledDate ? new Date(values.scheduledDate) : new Date(),
-          // Pass denormalised Nepali fields so the service can index them.
-          // If the user didn't pick a date via the BS picker, derive from the
-          // English date as a safe fallback.
           ...parseNepaliFields(values.scheduledDate || new Date().toISOString().slice(0, 10)),
         };
         const response = await api.post('/api/maintenance/create', maintenanceData);
@@ -143,7 +156,7 @@ export default function Maintenance() {
   useEffect(() => {
     if (formik.values.unit) {
       const foundTenant = tenant.find((t) =>
-        t.units?.some((u) => (typeof u === 'object' ? u._id : u)?.toString() === formik.values.unit?.toString())
+        t.units?.some((u) => (typeof u === 'object' ? u._id : u)?.toString() === formik.values.unit?.toString()),
       );
       if (foundTenant) {
         setSelectedTenant(foundTenant);
@@ -173,7 +186,11 @@ export default function Maintenance() {
   /* ── Stats ── */
   const stats = useMemo(() => {
     const list = maintenance || [];
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
     const open = list.filter((m) => (m.status || 'OPEN').toUpperCase() === 'OPEN').length;
     const inProgress = list.filter((m) => (m.status || '').toUpperCase() === 'IN_PROGRESS').length;
     const overdue = list.filter((m) => {
@@ -181,10 +198,12 @@ export default function Maintenance() {
       if (s === 'COMPLETED' || s === 'CANCELLED') return false;
       try { const d = new Date(m.scheduledDate); d.setHours(0, 0, 0, 0); return d < today; } catch { return false; }
     }).length;
-    const highPriority = list.filter((m) => ['HIGH', 'URGENT'].includes((m.priority || '').toUpperCase())).length;
-    const estimated = list.reduce((s, m) => s + (Number(m.amount) || 0), 0);
-    const collected = list.reduce((s, m) => s + (Number(m.paidAmount) || 0), 0);
-    return { total: list.length, open, inProgress, overdue, highPriority, estimated, collected, outstanding: estimated - collected };
+    const completedThisWeek = list.filter((m) => {
+      if ((m.status || '').toUpperCase() !== 'COMPLETED') return false;
+      try { const d = new Date(m.updatedAt || m.scheduledDate); return d >= weekAgo; } catch { return false; }
+    }).length;
+
+    return { open, inProgress, overdue, completedThisWeek };
   }, [maintenance]);
 
   /* ── Filtered list ── */
@@ -192,99 +211,268 @@ export default function Maintenance() {
     let list = maintenance || [];
     if (statusFilter !== 'All') list = list.filter((m) => (m.status || 'OPEN').toUpperCase() === statusFilter);
     if (priorityFilter !== 'All') list = list.filter((m) => (m.priority || '').toLowerCase() === priorityFilter.toLowerCase());
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((m) =>
+        (m.title || '').toLowerCase().includes(q) ||
+        (m.unit?.name || '').toLowerCase().includes(q) ||
+        (m.tenant?.name || '').toLowerCase().includes(q) ||
+        (m.description || '').toLowerCase().includes(q) ||
+        (m.assignedTo?.name || '').toLowerCase().includes(q),
+      );
+    }
     return list;
-  }, [maintenance, statusFilter, priorityFilter]);
+  }, [maintenance, statusFilter, priorityFilter, searchQuery]);
 
+  /* ── Grouped tickets for card view ── */
+  const groupedTickets = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const groups = { overdue: [], urgent: [], open: [], inProgress: [], completed: [] };
 
+    filteredMaintenance.forEach((t) => {
+      const status = (t.status || 'OPEN').toUpperCase();
+      const priority = (t.priority || '').toUpperCase();
+      const isOverdue =
+        status !== 'COMPLETED' &&
+        status !== 'CANCELLED' &&
+        (() => {
+          try {
+            const d = new Date(t.scheduledDate);
+            d.setHours(0, 0, 0, 0);
+            return d < today;
+          } catch {
+            return false;
+          }
+        })();
+
+      if (isOverdue) groups.overdue.push(t);
+      else if (priority === 'URGENT' && status !== 'COMPLETED' && status !== 'CANCELLED') groups.urgent.push(t);
+      else if (status === 'OPEN') groups.open.push(t);
+      else if (status === 'IN_PROGRESS') groups.inProgress.push(t);
+      else groups.completed.push(t);
+    });
+
+    return groups;
+  }, [filteredMaintenance]);
+
+  const hasAnyTickets = filteredMaintenance.length > 0;
+  const hasActiveFilters = statusFilter !== 'All' || priorityFilter !== 'All' || searchQuery.trim();
+
+  /* ── Card render helper ── */
+  const renderCard = (item) => {
+    const isExpanded = expandedCards.has(item._id);
+    const workOrderId = `#WO-${String(item._id || '').slice(-4).toUpperCase()}`;
+    const toggleExpand = () => {
+      const next = new Set(expandedCards);
+      if (isExpanded) next.delete(item._id);
+      else next.add(item._id);
+      setExpandedCards(next);
+    };
+    return (
+      <MaintenanceCard
+        key={item._id}
+        maintenanceItem={item}
+        isExpanded={isExpanded}
+        toggleExpand={toggleExpand}
+        getPriorityStyle={getPriorityStyle}
+        formatStatus={formatStatus}
+        formatDate={formatDate}
+        workOrderId={workOrderId}
+        onUpdate={fetchMaintenance}
+        bankAccounts={bankAccounts}
+      />
+    );
+  };
+
+  // ── Header slot ─────────────────────────────────────────────────────────
+  useHeaderSlot(
+    () => (
+      <div className="flex items-center w-full min-w-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="hidden sm:flex items-center gap-2 shrink-0">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#1C1A18' }} />
+            <span className="text-sm font-semibold whitespace-nowrap" style={{ color: '#1C1A18' }}>
+              Maintenance
+            </span>
+          </div>
+          <div className="hidden sm:block h-4 w-px shrink-0" style={{ background: '#DDD6D0' }} />
+          <nav className="flex items-center gap-1 flex-1 sm:flex-none">
+            {[
+              { id: 'list', label: 'List', Icon: List },
+              { id: 'calendar', label: 'Calendar', Icon: Calendar },
+              { id: 'generator', label: 'Generator', Icon: Zap },
+            ].map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors"
+                style={
+                  activeTab === id
+                    ? { background: '#EEE9E5', color: '#1C1A18' }
+                    : { color: '#948472' }
+                }
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+        <div className="ml-auto shrink-0">
+          <AddTaskDialog
+            formik={formik}
+            formSections={formSections}
+            toggleFormSection={toggleFormSection}
+            unit={units ?? []}
+            staffs={staffs ?? []}
+            selectedTenant={selectedTenant}
+            isLoading={isLoading}
+            compact
+          />
+        </div>
+      </div>
+    ),
+    [activeTab],
+  );
 
   /* ────────────────────────────────────────────────────────────────────────
      RENDER
   ──────────────────────────────────────────────────────────────────────── */
   return (
     <div className="pb-12">
-      {/* ── Page title (always visible) ── */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Maintenance</h1>
-        <p className="mt-1 text-sm text-gray-500">Schedule repairs and manage tasks</p>
-      </div>
-
-      {/* ── Tabs — at the very top ── */}
-      <Tabs defaultValue="list" className="space-y-6">
-        <TabsList className="h-10 w-full rounded-lg bg-gray-100 p-1 grid grid-cols-3 sm:flex sm:w-auto">
-          <TabsTrigger value="list" className="gap-1.5 rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <List className="h-4 w-4 shrink-0" /><span className="hidden sm:inline">List</span>
-          </TabsTrigger>
-          <TabsTrigger value="calendar" className="gap-1.5 rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <Calendar className="h-4 w-4 shrink-0" /><span className="hidden sm:inline">Calendar</span>
-          </TabsTrigger>
-          <TabsTrigger value="generator" className="gap-1.5 rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <Zap className="h-4 w-4 shrink-0" /><span className="hidden sm:inline">Generator</span>
-          </TabsTrigger>
-        </TabsList>
-
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         {/* ════════════════ LIST TAB ════════════════ */}
-        <TabsContent value="list" className="space-y-5">
+        <TabsContent value="list" className="space-y-6">
 
-          {/* Header row with Add button — only on list tab */}
-          <div className="flex items-center justify-between gap-4">
-            <div /> {/* spacer */}
-            <AddTaskDialog
-              formik={formik}
-              formSections={formSections}
-              toggleFormSection={toggleFormSection}
-              unit={units ?? []}
-              staffs={staffs ?? []}
-              selectedTenant={selectedTenant}
-              isLoading={isLoading}
+          {/* ── Page Header ── */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Maintenance</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Manage repair requests and track maintenance tasks
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50/50 p-0.5">
+                <button
+                  onClick={() => setViewMode('cards')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                    viewMode === 'cards'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700',
+                  )}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  Cards
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                    viewMode === 'table'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700',
+                  )}
+                >
+                  <LayoutList className="h-3.5 w-3.5" />
+                  Table
+                </button>
+              </div>
+              <AddTaskDialog
+                formik={formik}
+                formSections={formSections}
+                toggleFormSection={toggleFormSection}
+                unit={units ?? []}
+                staffs={staffs ?? []}
+                selectedTenant={selectedTenant}
+                isLoading={isLoading}
+              />
+            </div>
+          </div>
+
+          {/* ── KPI Cards ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            {[
+              {
+                label: 'Open',
+                value: stats.open,
+                bg: 'bg-slate-50', border: 'border-slate-200',
+                numColor: 'text-slate-700',
+              },
+              {
+                label: 'In Progress',
+                value: stats.inProgress,
+                bg: 'bg-blue-50', border: 'border-blue-200',
+                numColor: 'text-blue-700',
+              },
+              {
+                label: 'Overdue',
+                value: stats.overdue,
+                bg: stats.overdue > 0 ? 'bg-red-50' : 'bg-gray-50',
+                border: stats.overdue > 0 ? 'border-red-200' : 'border-gray-200',
+                numColor: stats.overdue > 0 ? 'text-red-700' : 'text-gray-400',
+              },
+              {
+                label: 'Completed This Week',
+                value: stats.completedThisWeek,
+                bg: 'bg-emerald-50', border: 'border-emerald-200',
+                numColor: 'text-emerald-700',
+              },
+            ].map(({ label, value, bg, border, numColor }) => (
+              <div key={label} className={cn('rounded-xl border p-5 shadow-sm', bg, border)}>
+                <p className={cn('text-3xl font-bold tabular-nums', numColor)}>{value}</p>
+                <p className="mt-1 text-xs font-medium text-gray-500">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Search ── */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <Input
+              placeholder="Search repairs, tenants, or units..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white border-gray-200 h-10"
             />
           </div>
 
-          {/* Stats — 4 cards */}
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                { label: 'Open', value: stats.open, color: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200' },
-                { label: 'In Progress', value: stats.inProgress, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-                { label: 'High Priority', value: stats.highPriority, color: stats.highPriority > 0 ? 'text-orange-700' : 'text-gray-400', bg: stats.highPriority > 0 ? 'bg-orange-50' : 'bg-gray-50', border: stats.highPriority > 0 ? 'border-orange-200' : 'border-gray-200' },
-                { label: 'Overdue', value: stats.overdue, color: stats.overdue > 0 ? 'text-red-700' : 'text-gray-400', bg: stats.overdue > 0 ? 'bg-red-50' : 'bg-gray-50', border: stats.overdue > 0 ? 'border-red-200' : 'border-gray-200' },
-              ].map(({ label, value, color, bg, border }) => (
-                <div key={label} className={cn('rounded-xl border p-4 shadow-sm', bg, border)}>
-                  <p className={cn('text-2xl font-bold tabular-nums', color)}>{value}</p>
-                  <p className="mt-0.5 text-xs text-gray-500">{label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Financial inline */}
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-1 pt-1 text-xs text-gray-400">
-              <span className="font-medium text-gray-600">₹{stats.estimated.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-              <span>estimated</span>
-              <span className="mx-1 text-gray-300">·</span>
-              <span className="font-medium text-emerald-600">₹{stats.collected.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-              <span>collected</span>
-              <span className="mx-1 text-gray-300">·</span>
-              <span className={cn('font-medium', stats.outstanding > 0 ? 'text-amber-600' : 'text-gray-400')}>
-                ₹{stats.outstanding.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-              </span>
-              <span>outstanding</span>
-            </div>
-          </div>
-
-          {/* Filter bar */}
+          {/* ── Filters ── */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {/* Status filters */}
             <div className="flex items-center gap-2">
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">Status</span>
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Status
+              </span>
               <div className="sm:hidden flex-1">
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="h-8 text-sm bg-white border-gray-300"><SelectValue /></SelectTrigger>
-                  <SelectContent>{STATUS_FILTERS.map((s) => <SelectItem key={s} value={s}>{s === 'All' ? 'All' : formatStatus(s)}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="h-8 text-sm bg-white border-gray-300">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_FILTERS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s === 'All' ? 'All' : formatStatus(s)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
-              <div className="hidden sm:flex flex-wrap gap-1.5">
+              <div className="hidden sm:flex items-center rounded-lg border border-gray-200 bg-gray-50/50 p-0.5">
                 {STATUS_FILTERS.map((s) => (
-                  <button key={s} onClick={() => setStatusFilter(s)}
-                    className={cn('rounded-full px-3 py-1 text-xs font-medium transition',
-                      statusFilter === s ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')}>
+                  <button
+                    key={s}
+                    onClick={() => setStatusFilter(s)}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
+                      statusFilter === s
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700',
+                    )}
+                  >
                     {s === 'All' ? 'All' : formatStatus(s)}
                   </button>
                 ))}
@@ -293,66 +481,101 @@ export default function Maintenance() {
 
             <div className="hidden sm:block h-4 w-px bg-gray-200" />
 
+            {/* Priority filters */}
             <div className="flex items-center gap-2">
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">Priority</span>
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Priority
+              </span>
               <div className="sm:hidden flex-1">
                 <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                  <SelectTrigger className="h-8 text-sm bg-white border-gray-300"><SelectValue /></SelectTrigger>
-                  <SelectContent>{PRIORITY_FILTERS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="h-8 text-sm bg-white border-gray-300">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORITY_FILTERS.map((p) => (
+                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
-              <div className="hidden sm:flex flex-wrap gap-1.5">
+              <div className="hidden sm:flex items-center rounded-lg border border-gray-200 bg-gray-50/50 p-0.5">
                 {PRIORITY_FILTERS.map((p) => (
-                  <button key={p} onClick={() => setPriorityFilter(p)}
-                    className={cn('rounded-full px-3 py-1 text-xs font-medium transition',
-                      priorityFilter === p ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')}>
+                  <button
+                    key={p}
+                    onClick={() => setPriorityFilter(p)}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                      priorityFilter === p
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700',
+                    )}
+                  >
                     {p}
                   </button>
                 ))}
               </div>
             </div>
 
-            {(statusFilter !== 'All' || priorityFilter !== 'All') && (
+            {/* Result count */}
+            {hasActiveFilters && (
               <span className="ml-auto text-xs text-gray-400">
                 {filteredMaintenance.length} result{filteredMaintenance.length !== 1 ? 's' : ''}
               </span>
             )}
           </div>
 
-          {/* Cards */}
-          {filteredMaintenance.length > 0 ? (
-            <div className="space-y-3">
-              {filteredMaintenance.map((item) => {
-                const isExpanded = expandedCards.has(item._id);
-                const workOrderId = `#WO-${String(item._id || '').slice(-4).toUpperCase()}`;
-                const toggleExpand = () => {
-                  const next = new Set(expandedCards);
-                  if (isExpanded) next.delete(item._id); else next.add(item._id);
-                  setExpandedCards(next);
-                };
-                return (
-                  <MaintenanceCard
-                    key={item._id}
-                    maintenanceItem={item}
-                    isExpanded={isExpanded}
-                    toggleExpand={toggleExpand}
-                    getPriorityStyle={getPriorityStyle}
-                    formatStatus={formatStatus}
-                    formatDate={formatDate}
-                    workOrderId={workOrderId}
-                    onUpdate={fetchMaintenance}
-                    bankAccounts={bankAccounts}
-                  />
-                );
-              })}
-            </div>
+          {/* ── Content ── */}
+          {hasAnyTickets ? (
+            viewMode === 'cards' ? (
+              <div className="space-y-8">
+                {SECTION_CONFIG.map(({ key, label, dot, textColor }) => {
+                  const items = groupedTickets[key];
+                  if (!items || items.length === 0) return null;
+                  return (
+                    <div key={key}>
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div className={cn('h-2 w-2 rounded-full', dot)} />
+                        <h3 className={cn('text-sm font-semibold', textColor)}>{label}</h3>
+                        <span className="text-xs text-gray-400 tabular-nums">{items.length}</span>
+                        <div className="flex-1 border-t border-gray-100" />
+                      </div>
+                      <div className="space-y-4">
+                        {items.map(renderCard)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <MaintenanceTable
+                data={filteredMaintenance}
+                formatStatus={formatStatus}
+                formatDate={formatDate}
+                onUpdate={fetchMaintenance}
+                bankAccounts={bankAccounts}
+              />
+            )
           ) : (
-            <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/50">
+            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/50 gap-4">
               <Empty>
                 <EmptyTitle className="text-gray-500">
-                  {maintenance.length === 0 ? 'No maintenance tasks found' : 'No tasks match the current filters'}
+                  {maintenance.length === 0
+                    ? 'No maintenance tasks yet'
+                    : 'No tasks match the current filters'}
                 </EmptyTitle>
               </Empty>
+              {maintenance.length === 0 && (
+                <AddTaskDialog
+                  formik={formik}
+                  formSections={formSections}
+                  toggleFormSection={toggleFormSection}
+                  unit={units ?? []}
+                  staffs={staffs ?? []}
+                  selectedTenant={selectedTenant}
+                  isLoading={isLoading}
+                  label="Create First Repair"
+                />
+              )}
             </div>
           )}
         </TabsContent>
@@ -361,52 +584,77 @@ export default function Maintenance() {
         <TabsContent value="calendar">
           <MaintenanceCalendar maintenance={maintenance} />
         </TabsContent>
+
+        {/* ════════════════ GENERATOR TAB ════════════════ */}
         <TabsContent value="generator">
           <GeneratorPanel />
         </TabsContent>
-
       </Tabs>
     </div>
   );
 }
 
-/* ── Add Task Dialog — extracted to avoid remount-on-every-keystroke bug ─── */
-function AddTaskDialog({ formik, formSections, toggleFormSection, unit, staffs, selectedTenant, isLoading }) {
+/* ── Add Task Dialog ─────────────────────────────────────────────────────── */
+function AddTaskDialog({
+  formik, formSections, toggleFormSection,
+  unit, staffs, selectedTenant, isLoading,
+  compact = false, label,
+}) {
+  const buttonLabel = label || '+ New Repair';
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button className="w-full sm:w-auto bg-blue-600 text-white hover:bg-blue-700 shadow-sm">
-          <Plus className="mr-2 h-4 w-4" /> Schedule Repair
-        </Button>
+        {compact ? (
+          <Button size="icon" variant="ghost" className="h-8 w-8">
+            <Plus className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button className="bg-primary text-white hover:bg-primary/80 shadow-sm">
+            <Plus className="mr-1.5 h-4 w-4" /> {buttonLabel}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl lg:max-w-3xl bg-white text-black max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900">Add Maintenance Task</DialogTitle>
-          <DialogDescription className="text-gray-600">Log new repair or upkeep request</DialogDescription>
+          <DialogTitle className="text-xl font-bold text-gray-900">
+            Add Maintenance Task
+          </DialogTitle>
+          <DialogDescription className="text-gray-600">
+            Log new repair or upkeep request
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={formik.handleSubmit} className="mt-4">
           <div className="space-y-4">
-
-            {/* General Info */}
-            <FormSection title="General Information" open={formSections.general} toggle={() => toggleFormSection('general')}>
+            <FormSection
+              title="General Information"
+              open={formSections.general}
+              toggle={() => toggleFormSection('general')}
+            >
               <div>
                 <Label htmlFor="title" className="text-gray-700">Task Title</Label>
-                <Input id="title" name="title" placeholder="e.g., AC Repair or Leaking Faucet"
+                <Input
+                  id="title" name="title"
+                  placeholder="e.g., AC Repair or Leaking Faucet"
                   value={formik.values.title} onChange={formik.handleChange}
-                  className="mt-1.5 bg-white border-gray-300" />
+                  className="mt-1.5 bg-white border-gray-300"
+                />
               </div>
               <div>
                 <Label className="text-gray-700">Task Description</Label>
-                <Input name="description" placeholder="Enter description"
+                <Input
+                  name="description" placeholder="Enter description"
                   value={formik.values.description} onChange={formik.handleChange}
-                  className="mt-1.5 bg-white border-gray-300" />
+                  className="mt-1.5 bg-white border-gray-300"
+                />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <Label className="text-gray-700">Category</Label>
                   <Select value={formik.values.category} onValueChange={(v) => formik.setFieldValue('category', v)}>
-                    <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select category" /></SelectTrigger>
+                    <SelectTrigger className="mt-1.5 bg-white border-gray-300">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="repair">Repair</SelectItem>
                       <SelectItem value="maintenance">Maintenance</SelectItem>
@@ -418,7 +666,9 @@ function AddTaskDialog({ formik, formSections, toggleFormSection, unit, staffs, 
                 <div>
                   <Label className="text-gray-700">Status</Label>
                   <Select value={formik.values.status} onValueChange={(v) => formik.setFieldValue('status', v)}>
-                    <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectTrigger className="mt-1.5 bg-white border-gray-300">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="OPEN">Open</SelectItem>
                       <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
@@ -431,53 +681,93 @@ function AddTaskDialog({ formik, formSections, toggleFormSection, unit, staffs, 
               <div>
                 <Label className="text-gray-700">Priority Level</Label>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {PRIORITY_OPTIONS.map(({ value, dot, label }) => (
-                    <Button key={value} type="button" variant="outline"
+                  {PRIORITY_OPTIONS.map(({ value, dot, label: lbl }) => (
+                    <Button
+                      key={value} type="button" variant="outline"
                       onClick={() => formik.setFieldValue('priority', value)}
-                      className={cn('rounded-full text-sm font-medium transition',
+                      className={cn(
+                        'rounded-full text-sm font-medium transition',
                         formik.values.priority === value
                           ? 'border-gray-700 bg-gray-700 text-white'
-                          : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50')}>
-                      <span className={cn('mr-1.5 h-2 w-2 rounded-full', dot)} />{label}
+                          : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50',
+                      )}
+                    >
+                      <span className={cn('mr-1.5 h-2 w-2 rounded-full', dot)} />{lbl}
                     </Button>
                   ))}
                 </div>
               </div>
             </FormSection>
 
-            {/* Property & Tenant */}
-            <FormSection title="Property & Tenant" open={formSections.property} toggle={() => toggleFormSection('property')}>
+            <FormSection
+              title="Property & Tenant"
+              open={formSections.property}
+              toggle={() => toggleFormSection('property')}
+            >
               <div>
                 <Label className="text-gray-700">Unit Number</Label>
                 <Select value={formik.values.unit} onValueChange={(v) => formik.setFieldValue('unit', v)}>
-                  <SelectTrigger className="mt-1.5 bg-white border-gray-300"><SelectValue placeholder="Select unit" /></SelectTrigger>
-                  <SelectContent>{(unit ?? []).map((u) => <SelectItem key={u._id} value={u._id}>{u.name}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="mt-1.5 bg-white border-gray-300">
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(unit ?? []).map((u) => (
+                      <SelectItem key={u._id} value={u._id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
               {selectedTenant && (
                 <div className="rounded-md border border-gray-200 bg-white p-4">
                   <p className="mb-2 text-sm font-medium text-gray-700">Tenant Details</p>
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
-                    <div><span className="text-gray-500">Name</span><p className="font-medium text-gray-900">{selectedTenant.name || 'N/A'}</p></div>
-                    <div><span className="text-gray-500">Email</span><p className="text-gray-900">{selectedTenant.email || 'N/A'}</p></div>
-                    <div><span className="text-gray-500">Phone</span><p className="text-gray-900">{selectedTenant.phone || 'N/A'}</p></div>
-                    {selectedTenant.address && <div className="sm:col-span-2"><span className="text-gray-500">Address</span><p className="text-gray-900">{selectedTenant.address}</p></div>}
+                    <div>
+                      <span className="text-gray-500">Name</span>
+                      <p className="font-medium text-gray-900">{selectedTenant.name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Email</span>
+                      <p className="text-gray-900">{selectedTenant.email || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Phone</span>
+                      <p className="text-gray-900">{selectedTenant.phone || 'N/A'}</p>
+                    </div>
+                    {selectedTenant.address && (
+                      <div className="sm:col-span-2">
+                        <span className="text-gray-500">Address</span>
+                        <p className="text-gray-900">{selectedTenant.address}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
             </FormSection>
 
-            {/* Assign + Timing */}
             <div className="grid gap-4 lg:grid-cols-2">
-              <FormSection title="Assign To" open={formSections.assign} toggle={() => toggleFormSection('assign')}>
+              <FormSection
+                title="Assign To"
+                open={formSections.assign}
+                toggle={() => toggleFormSection('assign')}
+              >
                 <div>
                   <Label className="text-gray-700">Assign To Staff</Label>
-                  <Select value={formik.values.assignTo || ''} onValueChange={(v) => formik.setFieldValue('assignTo', v)} disabled={(staffs ?? []).length === 0}>
+                  <Select
+                    value={formik.values.assignTo || ''}
+                    onValueChange={(v) => formik.setFieldValue('assignTo', v)}
+                    disabled={(staffs ?? []).length === 0}
+                  >
                     <SelectTrigger className="mt-1.5 bg-white border-gray-300">
                       <SelectValue placeholder={(staffs ?? []).length === 0 ? 'No staff available' : 'Select staff'} />
                     </SelectTrigger>
                     {(staffs ?? []).length > 0 && (
-                      <SelectContent>{(staffs ?? []).map((s) => <SelectItem key={s._id} value={s._id}>{s.name || s.email || 'Unnamed'}</SelectItem>)}</SelectContent>
+                      <SelectContent>
+                        {(staffs ?? []).map((s) => (
+                          <SelectItem key={s._id} value={s._id}>
+                            {s.name || s.email || 'Unnamed'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     )}
                   </Select>
                 </div>
@@ -485,21 +775,27 @@ function AddTaskDialog({ formik, formSections, toggleFormSection, unit, staffs, 
                   <Label className="text-gray-700">Estimated Cost</Label>
                   <div className="relative mt-1.5">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600">₹</span>
-                    <Input name="estimatedCost" type="number" value={formik.values.estimatedCost}
-                      onChange={formik.handleChange} className="pl-8 bg-white border-gray-300" />
+                    <Input
+                      name="estimatedCost" type="number"
+                      value={formik.values.estimatedCost}
+                      onChange={formik.handleChange}
+                      className="pl-8 bg-white border-gray-300"
+                    />
                   </div>
                 </div>
               </FormSection>
 
-              <FormSection title="Timing & Documentation" open={formSections.timing} toggle={() => toggleFormSection('timing')}>
+              <FormSection
+                title="Timing & Documentation"
+                open={formSections.timing}
+                toggle={() => toggleFormSection('timing')}
+              >
                 <Label className="text-gray-700">Scheduled Date (English/Nepali)</Label>
                 <div className="mt-1.5">
                   <DualCalendarTailwind
                     value={formik.values.scheduledDate || ''}
                     onChange={(englishDate, nepaliDateStr) => {
                       formik.setFieldValue('scheduledDate', englishDate);
-                      // Store the Nepali fields so the submit handler can send
-                      // them to the backend without a second conversion.
                       if (nepaliDateStr) {
                         const { nepaliMonth, nepaliYear } = parseNepaliFields(englishDate);
                         formik.setFieldValue('scheduledNepaliDate', nepaliDateStr);
@@ -519,8 +815,7 @@ function AddTaskDialog({ formik, formSections, toggleFormSection, unit, staffs, 
             </DialogClose>
             {isLoading
               ? <Spinner className="h-4 w-4 animate-spin" />
-              : <Button type="submit" className="bg-blue-600 text-white hover:bg-blue-700">Save</Button>
-            }
+              : <Button type="submit" className="bg-primary text-white hover:bg-primary/80">Save</Button>}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -528,14 +823,18 @@ function AddTaskDialog({ formik, formSections, toggleFormSection, unit, staffs, 
   );
 }
 
-/* ── Reusable collapsible form section ───────────────────────────────────── */
+/* ── Collapsible form section ──────────────────────────────────────────── */
 function FormSection({ title, open, toggle, children }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50/50">
-      <button type="button" onClick={toggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left font-semibold text-gray-900">
+      <button
+        type="button" onClick={toggle}
+        className="flex w-full items-center justify-between px-4 py-3 text-left font-semibold text-gray-900"
+      >
         {title}
-        {open ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
+        {open
+          ? <ChevronUp className="h-4 w-4 text-gray-500" />
+          : <ChevronDown className="h-4 w-4 text-gray-500" />}
       </button>
       {open && (
         <div className="space-y-4 border-t border-gray-200 px-4 pb-4 pt-3">
