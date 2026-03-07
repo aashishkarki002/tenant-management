@@ -23,6 +23,7 @@ import {
   createSubMeter,
   getSubMeters,
   updateSubMeter,
+  deactivateSubMeter,
 } from "./subMeter.controller.js";
 import upload from "../../middleware/upload.js";
 import { protect } from "../../middleware/protect.js";
@@ -36,8 +37,8 @@ router.post("/rate/:propertyId", protect, setElectricityRate);
 // ── Sub-Meters ────────────────────────────────────────────────────────────────
 // NOTE: specific paths before parameterised ones to avoid route collisions
 router.post("/sub-meters/create", protect, createSubMeter);
-
 router.put("/sub-meters/update/:subMeterId", protect, updateSubMeter);
+router.delete("/sub-meters/deactivate/:id", protect, deactivateSubMeter);
 
 // GET /api/electricity/sub-meters?propertyId=... (query param; controller validates)
 router.get("/sub-meters", getSubMeters);

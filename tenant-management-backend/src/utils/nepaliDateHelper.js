@@ -267,10 +267,14 @@ function getNepaliMonthDates(year, month) {
   const lastDayEndDate = addNepaliDays(lastDay, 1).getDateObject(); // Exclusive end
   const nepaliTodayDate = nepaliToday.getDateObject();
 
-  // Current English date info
-  const englishNow = new Date();
-  const englishMonth = englishNow.getMonth() + 1; // 1-based
-  const englishYear = englishNow.getFullYear();
+  // Derive englishMonth/englishYear from the Nepali today's English equivalent.
+  // Using new Date() (UTC) here causes an off-by-one near month boundaries
+  // because Nepal is UTC+5:45 — the server clock can still be in the previous
+  // English month while Nepal has already crossed into the new one.
+  // nepaliToday.getDateObject() returns the correctly-converted English Date.
+  const nepaliTodayEnglish = nepaliToday.getDateObject();
+  const englishMonth = nepaliTodayEnglish.getMonth() + 1; // 1-based
+  const englishYear = nepaliTodayEnglish.getFullYear();
 
   return {
     // Nepali dates

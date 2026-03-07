@@ -49,6 +49,8 @@ const camSchema = new mongoose.Schema(
       enum: ["pending", "paid", "partially_paid", "overdue", "cancelled"],
       default: "pending",
     },
+    englishDueDate: { type: Date, default: null },
+    nepaliDueDate: { type: Date, default: null },
     paidDate: { type: Date, default: null },
     notes: { type: String, default: "" },
     emailReminderSent: {

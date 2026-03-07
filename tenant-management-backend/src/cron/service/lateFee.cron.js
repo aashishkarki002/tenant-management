@@ -123,9 +123,7 @@ function getEffectiveDaysLate(nepaliDueDate, gracePeriodDays) {
   }
 
   // Parse the Nepali date string correctly
-  let dueDateNp;
-  // ✅ FIX — NepaliDate constructor accepts a JS Date and converts correctly
-  dueDateNp = new NepaliDate(nepaliDueDate);
+  const dueDateNp = new NepaliDate(nepaliDueDate);
 
   // Get today's Nepali date
   const todayNp = new NepaliDate();

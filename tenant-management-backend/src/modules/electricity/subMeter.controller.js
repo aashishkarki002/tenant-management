@@ -202,6 +202,39 @@ export const updateSubMeter = async (req, res) => {
   }
 };
 
+/**
+ * DELETE /api/electricity/sub-meters/deactivate/:id
+ * Soft-delete — sets isActive: false, preserves all reading history.
+ */
+export const deactivateSubMeter = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const subMeter = await SubMeter.findByIdAndUpdate(
+      id,
+      { isActive: false },
+      { new: true },
+    );
+
+    if (!subMeter) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Sub-meter not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Sub-meter "${subMeter.name}" deactivated`,
+      data: subMeter,
+    });
+  } catch (error) {
+    console.error("Error deactivating sub-meter:", error);
+    res
+      .status(500)
+      .json({ success: false, message: error.message || "Server error" });
+  }
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatType(meterType) {

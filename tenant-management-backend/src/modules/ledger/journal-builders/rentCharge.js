@@ -51,7 +51,12 @@ export function buildRentChargeJournal(rent) {
       ? Math.ceil(nepaliMonth / 3)
       : undefined;
 
-  const description = `Rent charge for ${nepaliMonth}/${nepaliYear} — ${tenantName}`;
+  // Match the security-deposit pattern: always say "from <TenantName>" so the
+  // ledger entry is unambiguous when scanning across multiple tenants.
+  const description =
+    billingFrequency === "quarterly"
+      ? `Rent charge (Q${quarter} ${nepaliYear}) from ${tenantName}`
+      : `Rent charge for ${nepaliMonth}/${nepaliYear} from ${tenantName}`;
 
   // ── 4. Build canonical payload ───────────────────────────────────────────
   return buildJournalPayload({
@@ -72,13 +77,13 @@ export function buildRentChargeJournal(rent) {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
         debitAmountPaisa: rentAmountPaisa,
         creditAmountPaisa: 0,
-        description: `Rent receivable for ${nepaliMonth}/${nepaliYear}`,
+        description: `Rent receivable for ${nepaliMonth}/${nepaliYear} from ${tenantName}`,
       },
       {
         accountCode: ACCOUNT_CODES.REVENUE,
         debitAmountPaisa: 0,
         creditAmountPaisa: rentAmountPaisa,
-        description: `Rental income for ${nepaliMonth}/${nepaliYear}`,
+        description: `Rental income for ${nepaliMonth}/${nepaliYear} from ${tenantName}`,
       },
     ],
     meta: { billingFrequency, quarter },

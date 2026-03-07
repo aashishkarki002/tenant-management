@@ -11,6 +11,12 @@ import {
   PAYMENT_METHODS,
   assertValidPaymentMethod,
 } from "../../utils/paymentAccountUtils.js";
+import NepaliDate from "nepali-datetime";
+import {
+  parseNepaliISO,
+  resolveNepaliPeriod,
+  getNepaliYearMonthFromDate,
+} from "../../utils/nepaliDateHelper.js";
 
 /**
  * Create an expense, post a journal transaction, and write ledger entries —
@@ -37,9 +43,10 @@ export async function createExpense(expenseData, externalSession = null) {
       amountPaisa,
       amount,
       EnglishDate,
-      nepaliDate,
-      nepaliMonth,
-      nepaliYear,
+      nepaliDate: rawNepaliDate,
+      nepaliDateStr, // "YYYY-MM-DD" BS string — canonical input
+      nepaliMonth: rawNepaliMonth,
+      nepaliYear: rawNepaliYear,
       payeeType,
       tenant,
       referenceType,
@@ -71,6 +78,79 @@ export async function createExpense(expenseData, externalSession = null) {
       }
       bankAccountCode = bank.accountCode;
     }
+
+    // ── Canonical Nepali date resolution ─────────────────────────────────
+    //
+    // THE CORE BUG this block fixes:
+    //   nd.getDateObject() returns a Date whose time parts are in the LOCAL
+    //   timezone of the Node process (Nepal server = UTC+5:45).
+    //   Serialising that with .toISOString() turns local midnight 00:00+05:45
+    //   into 18:15:00Z the PREVIOUS day — which is exactly what was stored.
+    //
+    // Fix: extract year/month/day integers from NepaliDate and build the
+    //   stored Date with Date.UTC() — always yields UTC midnight for the
+    //   correct English-equivalent calendar day, regardless of server TZ.
+    //
+    // Resolution priority (first truthy path wins):
+    //   1. nepaliDateStr  "YYYY-MM-DD" BS string   ← canonical, most reliable
+    //   2. rawNepaliDate  any Date/ISO the frontend sent
+    //   3. Derive from EnglishDate / now
+    //
+    function nepaliToUTCMidnight(nd) {
+      // nd.getDateObject() gives local-time Date — we only read the calendar
+      // digits (year/month/day) and rebuild in UTC to prevent TZ shift.
+      const eq = nd.getDateObject();
+      return new Date(Date.UTC(eq.getFullYear(), eq.getMonth(), eq.getDate()));
+    }
+
+    let nepaliDate; // Date — UTC midnight of the English-equivalent day
+    let nepaliMonth; // 1-based integer (matches DB schema)
+    let nepaliYear; // integer
+
+    try {
+      if (nepaliDateStr && /^\d{4}-\d{2}-\d{2}$/.test(String(nepaliDateStr))) {
+        // Path 1 — BS string e.g. "2082-11-23"
+        const nd = parseNepaliISO(nepaliDateStr);
+        nepaliDate = nepaliToUTCMidnight(nd); // 2026-03-07T00:00:00.000Z ✓
+        nepaliYear = nd.getYear();
+        nepaliMonth = nd.getMonth() + 1;
+      } else if (rawNepaliDate) {
+        // Path 2 — a Date/ISO string was sent
+        const parsed = new Date(rawNepaliDate);
+        if (isNaN(parsed.getTime()))
+          throw new Error("Unparseable nepaliDate: " + rawNepaliDate);
+        const nd = new NepaliDate(parsed);
+        nepaliDate = nepaliToUTCMidnight(nd);
+        nepaliYear = nd.getYear();
+        nepaliMonth = nd.getMonth() + 1;
+      } else {
+        // Path 3 — nothing Nepali supplied; derive from EnglishDate
+        const anchor = EnglishDate ? new Date(EnglishDate) : new Date();
+        const nd = new NepaliDate(anchor);
+        nepaliDate = nepaliToUTCMidnight(nd);
+        nepaliYear = nd.getYear();
+        nepaliMonth = nd.getMonth() + 1;
+        console.warn(
+          "[createExpense] nepaliDateStr not supplied — derived:",
+          anchor.toISOString(),
+          "→ BS",
+          nepaliYear,
+          nepaliMonth,
+        );
+      }
+
+      // Integrity check — resolveNepaliPeriod throws on out-of-range values
+      const resolved = resolveNepaliPeriod({
+        nepaliMonth,
+        nepaliYear,
+        fallbackDate: EnglishDate ? new Date(EnglishDate) : new Date(),
+      });
+      nepaliMonth = resolved.nepaliMonth;
+      nepaliYear = resolved.nepaliYear;
+    } catch (ndErr) {
+      throw new Error("Nepali date resolution failed: " + ndErr.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────
 
     // Convert to paisa if needed
     const finalAmountPaisa =

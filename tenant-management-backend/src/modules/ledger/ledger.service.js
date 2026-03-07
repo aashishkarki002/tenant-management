@@ -172,6 +172,9 @@ class LedgerService {
         property: entry.property ?? payloadProperty ?? null,
         nepaliMonth,
         nepaliYear,
+        // Store the full Nepali date string (BS "YYYY-MM-DD") directly on the
+        // entry so statements can display it without joining Transaction.
+        nepaliDate: typeof nepaliDate === "string" ? nepaliDate : null,
         transactionDate,
       });
     }
@@ -282,7 +285,10 @@ class LedgerService {
         return {
           _id: entry._id,
           date: entry.transactionDate,
-          nepaliDate: entry.nepaliDate,
+          // Prefer the Nepali date string stored on the entry itself.
+          // Falls back to the populated transaction's nepaliDate for entries
+          // written before this field was added to LedgerEntry.
+          nepaliDate: entry.nepaliDate ?? entry.transaction?.nepaliDate ?? null,
           nepaliMonth: entry.nepaliMonth,
           nepaliYear: entry.nepaliYear,
           account: entry.account,

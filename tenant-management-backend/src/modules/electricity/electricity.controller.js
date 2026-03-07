@@ -345,7 +345,14 @@ export const recordElectricityPayment = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { electricityId, amount, paymentDate, nepaliDate, paymentMethod, bankAccountId } = req.body;
+    const {
+      electricityId,
+      amount,
+      paymentDate,
+      nepaliDate,
+      paymentMethod,
+      bankAccountId,
+    } = req.body;
 
     if (!electricityId || !amount) {
       await session.abortTransaction();

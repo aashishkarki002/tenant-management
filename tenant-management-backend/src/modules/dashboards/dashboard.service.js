@@ -491,21 +491,63 @@ export async function getDashboardStatsData() {
     { $unwind: { path: "$property", preserveNullAndEmptyArrays: true } },
     {
       $addFields: {
-        remaining: { $subtract: ["$rentAmount", "$paidAmount"] },
-        remainingPaisa: { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+        remainingPaisa: {
+          $subtract: [
+            {
+              $subtract: [
+                "$rentAmountPaisa",
+                { $ifNull: ["$tdsAmountPaisa", 0] },
+              ],
+            },
+            "$paidAmountPaisa",
+          ],
+        },
+        // displayStatus: the correct status derived from payment data, not the
+        // stored DB field. The pre-save hook never writes "overdue" — it only
+        // writes pending / partially_paid / paid. A rent that is past its due
+        // date and unpaid sits in the DB as "pending". We compute the true
+        // status here so the frontend always receives the right value.
+        //
+        //   paid           → paidAmountPaisa >= effectiveRent
+        //   partially_paid → some payment made but balance remains
+        //   overdue        → nothing paid AND past due date (always true here)
+        displayStatus: {
+          $switch: {
+            branches: [
+              {
+                case: {
+                  $gte: [
+                    "$paidAmountPaisa",
+                    {
+                      $subtract: [
+                        "$rentAmountPaisa",
+                        { $ifNull: ["$tdsAmountPaisa", 0] },
+                      ],
+                    },
+                  ],
+                },
+                then: "paid",
+              },
+              {
+                case: { $gt: ["$paidAmountPaisa", 0] },
+                then: "partially_paid",
+              },
+            ],
+            default: "overdue",
+          },
+        },
       },
     },
     {
       $project: {
         tenant: 1,
         property: 1,
-        rentAmount: 1,
-        paidAmount: 1,
         rentAmountPaisa: 1,
         paidAmountPaisa: 1,
+        tdsAmountPaisa: 1,
         nepaliDueDate: 1,
-        status: 1,
-        remaining: 1,
+        status: 1, // raw DB value (kept for audit)
+        displayStatus: 1, // computed correct status — use this in the UI
         remainingPaisa: 1,
       },
     },
@@ -590,21 +632,60 @@ export async function getDashboardStatsData() {
     { $unwind: { path: "$property", preserveNullAndEmptyArrays: true } },
     {
       $addFields: {
-        remaining: { $subtract: ["$rentAmount", "$paidAmount"] },
-        remainingPaisa: { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+        remainingPaisa: {
+          $subtract: [
+            {
+              $subtract: [
+                "$rentAmountPaisa",
+                { $ifNull: ["$tdsAmountPaisa", 0] },
+              ],
+            },
+            "$paidAmountPaisa",
+          ],
+        },
+        // displayStatus: same logic as overdueRents but due date is in the
+        // future — so unpaid rents are correctly "pending", not "overdue".
+        //
+        //   paid           → paidAmountPaisa >= effectiveRent
+        //   partially_paid → some payment made but balance remains
+        //   pending        → nothing paid, due date not yet passed (always true here)
+        displayStatus: {
+          $switch: {
+            branches: [
+              {
+                case: {
+                  $gte: [
+                    "$paidAmountPaisa",
+                    {
+                      $subtract: [
+                        "$rentAmountPaisa",
+                        { $ifNull: ["$tdsAmountPaisa", 0] },
+                      ],
+                    },
+                  ],
+                },
+                then: "paid",
+              },
+              {
+                case: { $gt: ["$paidAmountPaisa", 0] },
+                then: "partially_paid",
+              },
+            ],
+            default: "pending",
+          },
+        },
       },
     },
     {
       $project: {
         tenant: 1,
         property: 1,
-        rentAmount: 1,
-        paidAmount: 1,
         rentAmountPaisa: 1,
         paidAmountPaisa: 1,
+        tdsAmountPaisa: 1,
         nepaliDueDate: 1,
-        status: 1,
-        remaining: 1,
+        status: 1, // raw DB value (kept for audit)
+        displayStatus: 1, // computed correct status — use this in the UI
         remainingPaisa: 1,
       },
     },
@@ -955,6 +1036,52 @@ export async function getDashboardStats(req, res) {
     res.status(500).json({
       success: false,
       message: "Failed to fetch dashboard stats",
+    });
+  }
+}
+
+// ─── GET /api/dashboard/upcoming-rents ────────────────────────────────────────
+//
+// Returns rents due within the next 7 Nepali days.
+// Used by the Dashboard "Upcoming" toggle in the Needs Attention panel.
+//
+// Query params:
+//   days (optional) — number of days to look ahead (default: 7)
+//   limit (optional) — max results (default: 10)
+
+export async function getUpcomingRents(req, res) {
+  try {
+    const days = parseInt(req.query.days, 10) || 7;
+    const limit = parseInt(req.query.limit, 10) || 10;
+
+    const { nepaliToday } = getNepaliMonthDates();
+
+    // nepaliDueDate is stored as the English-equivalent Date of the Nepali
+    // due date (via NepaliDate.getDateObject()). Build the query range the
+    // same way so the $gte / $lte comparison is apples-to-apples.
+    const startDate = nepaliToday.getDateObject();
+    const endDate = addNepaliDays(nepaliToday, days).getDateObject();
+
+    const upcomingRents = await Rent.getRentsDueWithinPeriod(
+      startDate,
+      endDate,
+      limit,
+    );
+
+    res.json({
+      success: true,
+      message: `Upcoming rents within ${days} days fetched successfully`,
+      data: {
+        upcomingRents,
+        count: upcomingRents.length,
+        daysAhead: days,
+      },
+    });
+  } catch (error) {
+    console.error("Upcoming rents error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch upcoming rents",
     });
   }
 }

@@ -331,6 +331,7 @@ rentSchema.index({ nepaliYear: 1, nepaliMonth: 1, status: 1, property: 1 });
 rentSchema.index({ nepaliDueDate: 1 });
 rentSchema.index({ tenant: 1, status: 1 });
 rentSchema.index({ englishYear: 1, englishMonth: 1 });
+rentSchema.index({ englishDueDate: 1 });
 rentSchema.index({ "unitBreakdown.unit": 1 });
 rentSchema.index({ useUnitBreakdown: 1 });
 rentSchema.index({ status: 1, lateFeeApplied: 1 }); // lateFee.cron queries
@@ -420,6 +421,87 @@ rentSchema.methods.getFinancialSummary = function () {
     lateFeeStatus: this.lateFeeStatus,
     rentFrequency: this.rentFrequency,
   };
+};
+/**
+ * Get rents due within an English date range that still have an outstanding balance.
+ *
+ * Unlike getRentsDueWithinPeriod (Nepali calendar), this queries englishDueDate
+ * directly — no Nepali date conversion needed at the call site.
+ *
+ * @param {Date} startDate  - start of window, time zeroed (midnight)
+ * @param {Date} endDate    - end of window, time set to 23:59:59.999
+ * @param {number} limit    - max results (default 10)
+ * @returns {Promise<Array>}
+ */
+rentSchema.statics.getRentsDueWithinEnglishPeriod = async function (
+  startDate,
+  endDate,
+  limit = 10,
+) {
+  return this.aggregate([
+    {
+      $match: {
+        englishDueDate: { $gte: startDate, $lte: endDate },
+        $expr: {
+          $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+        },
+      },
+    },
+    { $sort: { englishDueDate: 1 } },
+    { $limit: limit },
+    {
+      $lookup: {
+        from: "tenants",
+        localField: "tenant",
+        foreignField: "_id",
+        as: "tenant",
+        pipeline: [{ $project: { name: 1 } }],
+      },
+    },
+    { $unwind: { path: "$tenant", preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: "properties",
+        localField: "property",
+        foreignField: "_id",
+        as: "property",
+        pipeline: [{ $project: { name: 1 } }],
+      },
+    },
+    { $unwind: { path: "$property", preserveNullAndEmptyArrays: true } },
+    {
+      $addFields: {
+        remainingPaisa: {
+          $subtract: [
+            {
+              $subtract: [
+                "$rentAmountPaisa",
+                { $ifNull: ["$tdsAmountPaisa", 0] },
+              ],
+            },
+            "$paidAmountPaisa",
+          ],
+        },
+      },
+    },
+    {
+      $project: {
+        tenant: 1,
+        property: 1,
+        rentAmountPaisa: 1,
+        paidAmountPaisa: 1,
+        tdsAmountPaisa: 1,
+        englishDueDate: 1,
+        nepaliDueDate: 1,
+        nepaliMonth: 1,
+        nepaliYear: 1,
+        englishMonth: 1,
+        englishYear: 1,
+        status: 1,
+        remainingPaisa: 1,
+      },
+    },
+  ]);
 };
 
 export const Rent = mongoose.model("Rent", rentSchema);

@@ -78,20 +78,6 @@ const maintenanceSchema = new mongoose.Schema(
     completionNotes: String,
     recurring: { type: Boolean, default: false },
     recurringIntervalDays: Number,
-
-    // ============================================
-    // DENORMALIZED NEPALI DATE FIELDS
-    // Industry pattern: store derived Nepali year/month alongside the
-    // English Date so you can do indexed month-range queries without
-    // a runtime conversion on every read.
-    //
-    // Naming convention matches Expense model for consistency.
-    // All months are 1-based (1 = Baisakh … 12 = Chaitra).
-    // ============================================
-
-    // ── Scheduled date in Nepali calendar ───────────────────────────────────
-    // Set at creation time from scheduledDate. Used for "tasks due this
-    // Nepali month" dashboards and cron-based reminders.
     scheduledNepaliMonth: {
       type: Number,
       min: 1,
@@ -100,10 +86,9 @@ const maintenanceSchema = new mongoose.Schema(
     scheduledNepaliYear: {
       type: Number,
     },
-
-    // ── Completion date in Nepali calendar ──────────────────────────────────
-    // Set when status transitions to COMPLETED. Used for expense
-    // reconciliation reports filtered by Nepali fiscal month.
+    scheduledNepaliDate: {
+      type: Date,
+    },
     completionNepaliDate: {
       type: Date,
     },

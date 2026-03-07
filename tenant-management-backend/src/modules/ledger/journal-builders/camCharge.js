@@ -1,27 +1,60 @@
+/**
+ * camCharge.js
+ *
+ * Builds the journal payload for a CAM charge:
+ *   DR  Accounts Receivable  (ASSET ↑ — tenant owes CAM)
+ *   CR  Revenue              (REVENUE ↑ — CAM income earned)
+ *
+ * Aligned with rentCharge.js:
+ *   - Uses getRawPaisa() to safely extract the integer paisa value.
+ *   - Uses buildJournalPayload() for a validated, canonical output.
+ *   - Uses assertNepaliFields() to catch wrong calendar fields early.
+ *   - Includes tenant name in all descriptions (matches security-deposit pattern).
+ */
+
 import { ACCOUNT_CODES } from "../config/accounts.js";
-import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
+import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
+import { getRawPaisa } from "../../../utils/moneyUtil.js";
+import { assertNepaliFields } from "../../../utils/nepaliDateHelper.js";
 
 /**
- * Build journal payload for a CAM charge (DR Accounts Receivable, CR Revenue).
- * Uses paisa for all amounts.
- * @param {Object} cam - Cam document with _id, tenant, property, nepaliMonth, nepaliYear, nepaliDate, amountPaisa, createdAt
- * @param {Object} options - { createdBy } (Cam model may not have createdBy; pass from caller)
- * @returns {Object} Journal payload for postJournalEntry
+ * @param {Object} cam  - Cam document (Mongoose doc or plain object)
+ *   Must have:  _id, tenant, property, nepaliMonth, nepaliYear, amountPaisa
+ *   Optional:   createdAt, createdBy, nepaliDate, tenant.name
+ *
+ * @param {Object} options
+ *   @param {*}      options.createdBy  - Admin ObjectId (overrides cam.createdBy)
+ *
+ * @returns {Object} Canonical journal payload for postJournalEntry
  */
 export function buildCamChargeJournal(cam, options = {}) {
-  const { createdBy } = options;
-  const transactionDate = cam.createdAt || new Date();
-  const nepaliDate = cam.nepaliDate || transactionDate;
-  const nepaliMonth = cam.nepaliMonth;
-  const nepaliYear = cam.nepaliYear;
-  const description = `CAM charge for ${nepaliMonth}/${nepaliYear} from ${cam?.tenant?.name}`;
+  // ── 1. Nepali calendar validation ────────────────────────────────────────
+  assertNepaliFields({
+    nepaliYear: cam.nepaliYear,
+    nepaliMonth: cam.nepaliMonth,
+  });
 
-  // Get CAM amount in paisa (use paisa field if available, otherwise convert)
-  const amountPaisa = cam.amountPaisa !== undefined
-    ? cam.amountPaisa
-    : (cam.amount ? rupeesToPaisa(cam.amount) : 0);
+  // ── 2. Extract raw paisa — no guessing, no coercion ──────────────────────
+  const amountPaisa = getRawPaisa(cam, "amountPaisa");
 
-  return {
+  // ── 3. Metadata ──────────────────────────────────────────────────────────
+  const transactionDate =
+    cam.createdAt instanceof Date
+      ? cam.createdAt
+      : new Date(cam.createdAt ?? Date.now());
+  const nepaliDate =
+    cam.nepaliDate instanceof Date ? cam.nepaliDate : transactionDate;
+  const { nepaliMonth, nepaliYear } = cam;
+  const tenantName = cam.tenant?.name ?? "Tenant";
+  const createdBy = options.createdBy ?? cam.createdBy ?? null;
+
+  // ── 4. Descriptions — include tenant name so ledger entries are
+  //       unambiguous when scanning across multiple tenants (matches
+  //       security-deposit and rent-charge patterns).
+  const description = `CAM charge for ${nepaliMonth}/${nepaliYear} from ${tenantName}`;
+
+  // ── 5. Build canonical payload ───────────────────────────────────────────
+  return buildJournalPayload({
     transactionType: "CAM_CHARGE",
     referenceType: "Cam",
     referenceId: cam._id,
@@ -30,28 +63,23 @@ export function buildCamChargeJournal(cam, options = {}) {
     nepaliMonth,
     nepaliYear,
     description,
-    createdBy: createdBy || cam.createdBy,
+    createdBy,
     totalAmountPaisa: amountPaisa,
-    totalAmount: amountPaisa / 100, // Backward compatibility
     tenant: cam.tenant,
     property: cam.property,
     entries: [
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
         debitAmountPaisa: amountPaisa,
-        debitAmount: amountPaisa / 100, // Backward compatibility
         creditAmountPaisa: 0,
-        creditAmount: 0,
-        description: `CAM receivable for ${nepaliMonth}/${nepaliYear}`,
+        description: `CAM receivable for ${nepaliMonth}/${nepaliYear} from ${tenantName}`,
       },
       {
         accountCode: ACCOUNT_CODES.REVENUE,
         debitAmountPaisa: 0,
-        debitAmount: 0,
         creditAmountPaisa: amountPaisa,
-        creditAmount: amountPaisa / 100, // Backward compatibility
-        description: `CAM income for ${nepaliMonth}/${nepaliYear}`,
+        description: `CAM income for ${nepaliMonth}/${nepaliYear} from ${tenantName}`,
       },
     ],
-  };
+  });
 }

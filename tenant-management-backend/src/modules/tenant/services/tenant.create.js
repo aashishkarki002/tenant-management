@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { Tenant } from "../Tenant.Model.js";
 import { Unit } from "../../units/Unit.Model.js";
 import { parseUnitIds, filterOccupiedUnits } from "../helpers/unit.helper.js";
@@ -11,8 +10,6 @@ import { ledgerService } from "../../ledger/ledger.service.js";
 import { buildRentChargeJournal } from "../../ledger/journal-builders/index.js";
 import { buildSecurityDepositJournal } from "../../ledger/journal-builders/securityDeposit.js";
 import { applyPaymentToBank } from "../../banks/bank.domain.js";
-import { createLiability } from "../../liabilities/liabilty.service.js";
-import { createCam } from "../../cam/cam.service.js";
 import { createSd } from "../../securityDeposits/sd.service.js";
 import { calculateQuarterlyRentCycle } from "../../../utils/quarterlyRentHelper.js";
 import { buildCamChargeJournal } from "../../ledger/journal-builders/camCharge.js";
@@ -23,6 +20,7 @@ import {
   formatMoney,
   divideMoney,
 } from "../../../utils/moneyUtil.js";
+import { createCam } from "../../cam/cam.service.js";
 
 import {
   calculateMultiUnitLease,
@@ -416,7 +414,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
     englishYear: isQuarterly
       ? rentCycleData.chargeDate.english.getFullYear()
       : englishYear,
-    nepaliDueDate: rentCycleData.dueDate.nepali,
+    nepaliDueDate: rentCycleData.dueDate.english,
     englishDueDate: rentCycleData.dueDate.english,
     lateFee: 0,
     useUnitBreakdown: true,
@@ -457,7 +455,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
       status: "pending",
       year: englishYear,
       month: englishMonth,
-      nepaliDueDate: rentCycleData.dueDate.nepali,
+      nepaliDueDate: rentCycleData.dueDate.english,
     },
     adminId,
     session,
@@ -585,21 +583,8 @@ export async function createTenantTransaction(body, files, adminId, session) {
       });
     }
 
-    // ── D. Record the obligation to return this deposit (LIABILITY record)
-    //      This exists for ALL modes — even bank_guarantee creates a future obligation.
-    await createLiability({
-      source: "SECURITY_DEPOSIT", // LiabilitySource code
-      amountPaisa: sdDoc.amountPaisa, // rupees (Liability.amount field)
-      date: sdDoc.paidDate ?? new Date(),
-      payeeType: "TENANT",
-      tenant: tenant[0]._id,
-      referenceType: "SECURITY_DEPOSIT",
-      referenceId: sdDoc._id,
-      status: "RECORDED",
-      notes: `Security deposit for tenant ${tenant[0].name} — mode: ${mode}`,
-      createdBy: adminId,
-      session,
-    });
+    // ── D. LIABILITY record is created inside createSd — do not call createLiability here.
+    //      Calling it again would produce a duplicate record for every tenant creation.
   }
 
   // ============================================

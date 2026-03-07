@@ -58,6 +58,13 @@ const ledgerEntrySchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    // Full Nepali date string "YYYY-MM-DD" (BS) — e.g. "2081-04-15"
+    // Stored here so ledger queries and statements can display it directly
+    // without joining the Transaction document.
+    nepaliDate: {
+      type: String,
+      default: null,
+    },
     transactionDate: {
       type: Date,
       required: true,
@@ -109,7 +116,7 @@ ledgerEntrySchema.pre("save", async function () {
     throw new Error("Entry must have either debit or credit amount");
   }
 });
-ledgerEntrySchema.index({ nepaliMonth: 1, nepaliYear: 1 });
+ledgerEntrySchema.index({ nepaliMonth: 1, nepaliYear: 1, nepaliDate: 1 });
 ledgerEntrySchema.index({ transaction: 1, account: 1 });
 ledgerEntrySchema.index({ tenant: 1, transactionDate: -1 });
 ledgerEntrySchema.index({ property: 1, transactionDate: -1 });
