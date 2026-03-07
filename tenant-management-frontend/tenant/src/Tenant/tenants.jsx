@@ -6,7 +6,7 @@ import {
   ChevronDown, Filter, Banknote, CalendarClock,
   LayoutGrid, List, AlertTriangle, DollarSign,
   MoreVertical, Eye, CreditCard, Bell, Pencil, XCircle,
-  Phone, Mail, Upload,
+  Phone, Mail, Upload, SlidersHorizontal,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent,
@@ -29,11 +29,11 @@ import { useHeaderSlot } from "../context/HeaderSlotContext";
 
 // ─── Filter Registry ───────────────────────────────────────────────────────────
 //
-// Industry standard: declare all filters here as data.
-// Adding a new filter = adding one object. Zero render code changes.
-// The same pattern is used by Linear, Notion, and Jira.
+// Progressive disclosure pattern: separate essential filters from advanced ones.
+// Essential = used frequently by 80% of users (Status, Payment)
+// Advanced = used occasionally for specific workflows (Billing, Lease)
 //
-const FILTER_GROUPS = [
+const ESSENTIAL_FILTERS = [
   {
     key: "status",
     label: "Status",
@@ -54,9 +54,12 @@ const FILTER_GROUPS = [
       { value: "overdue", label: "Overdue", dot: "bg-red-500" },
     ],
   },
+];
+
+const ADVANCED_FILTERS = [
   {
     key: "frequency",
-    label: "Billing",
+    label: "Billing Frequency",
     icon: Banknote,
     options: [
       { value: "monthly", label: "Monthly" },
@@ -65,14 +68,17 @@ const FILTER_GROUPS = [
   },
   {
     key: "lease",
-    label: "Lease",
+    label: "Lease Status",
     icon: CalendarClock,
     options: [
-      { value: "expiring_soon", label: "Expiring Soon" },
+      { value: "expiring_soon", label: "Expiring Soon (< 30 days)" },
       { value: "expired", label: "Expired" },
     ],
   },
 ];
+
+// Combined for backward compatibility
+const FILTER_GROUPS = [...ESSENTIAL_FILTERS, ...ADVANCED_FILTERS];
 
 // ─── URL param helpers ─────────────────────────────────────────────────────────
 //
@@ -232,17 +238,315 @@ function FilterGroupButton({ group, selectedValues, onToggle }) {
   );
 }
 
+// ─── Advanced Filters Popover ──────────────────────────────────────────────────
+//
+// Desktop: Shows advanced filters in a clean popover panel
+// Reduces cognitive load by hiding rarely-used filters behind progressive disclosure
+//
+function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
+  const [open, setOpen] = useState(false);
+  
+  const advancedActiveCount = ADVANCED_FILTERS.reduce(
+    (count, group) => count + (filters[group.key]?.length ?? 0),
+    0
+  );
+
+  const handleToggle = () => {
+    setOpen(v => !v);
+  };
+
+  const handleFilterToggle = (key, value) => {
+    onFilterToggle(key, value);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={handleToggle}
+        className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-sm font-medium
+                   transition-colors shrink-0
+                   ${advancedActiveCount > 0
+            ? "bg-[#3D1414] text-white border-[#3D1414]"
+            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"}`}
+      >
+        <SlidersHorizontal className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">More Filters</span>
+        {advancedActiveCount > 0 && (
+          <span className="bg-white/30 text-white text-xs rounded-full w-4 h-4
+                           flex items-center justify-center font-bold">
+            {advancedActiveCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          
+          {/* Popover Panel */}
+          <div className="absolute top-11 right-0 z-50 bg-white rounded-xl border border-gray-200
+                          shadow-xl w-72 overflow-hidden">
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Advanced Filters</h3>
+              <button
+                onClick={() => setOpen(false)}
+                className="w-6 h-6 rounded-lg hover:bg-gray-100 flex items-center justify-center
+                           transition-colors"
+              >
+                <X className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Filter Groups */}
+            <div className="p-3 space-y-3 max-h-96 overflow-y-auto">
+              {ADVANCED_FILTERS.map(group => {
+                const Icon = group.icon;
+                const selectedValues = filters[group.key] ?? [];
+                
+                return (
+                  <div key={group.key}>
+                    <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-2 px-1">
+                      <Icon className="w-3.5 h-3.5" />
+                      {group.label}
+                    </label>
+                    <div className="space-y-1">
+                      {group.options.map(opt => {
+                        const isSelected = selectedValues.includes(opt.value);
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => handleFilterToggle(group.key, opt.value)}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-all
+                                       flex items-center gap-2
+                                       ${isSelected
+                                ? "bg-[#3D1414]/10 text-[#3D1414] border-[#3D1414]/30 font-medium"
+                                : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"}`}
+                          >
+                            {opt.dot && <span className={`w-2 h-2 rounded-full ${opt.dot}`} />}
+                            <span className="text-sm flex-1">{opt.label}</span>
+                            {isSelected && (
+                              <span className="text-[#3D1414] text-sm">✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer - only show if filters are active */}
+            {advancedActiveCount > 0 && (
+              <div className="px-3 py-2.5 border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    ADVANCED_FILTERS.forEach(group => {
+                      (filters[group.key] ?? []).forEach(value => {
+                        handleFilterToggle(group.key, value);
+                      });
+                    });
+                  }}
+                  className="w-full text-xs text-gray-500 hover:text-gray-700 font-medium
+                             py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Clear advanced filters
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Mobile Filter Drawer ──────────────────────────────────────────────────────
+//
+// Mobile-first design pattern: consolidate all filters into a single drawer
+// to prevent horizontal overflow and improve touch interaction.
+//
+function MobileFilterDrawer({ 
+  isOpen, 
+  onClose, 
+  filters, 
+  allBlocks, 
+  onBlockChange,
+  onFilterToggle,
+  onClearAll,
+}) {
+  if (!isOpen) return null;
+
+  const selectedBlock = allBlocks.find(b => b._id === filters.block) ?? null;
+  const selectedInner = selectedBlock?.innerBlocks?.find(
+    ib => ib._id === filters.innerBlock
+  ) ?? null;
+
+  const activeFilterCount = 
+    (filters.block ? 1 : 0) +
+    (filters.status?.length ?? 0) +
+    (filters.paymentStatus?.length ?? 0) +
+    (filters.frequency?.length ?? 0) +
+    (filters.lease?.length ?? 0);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black/40 z-50 sm:hidden"
+        onClick={onClose}
+      />
+      
+      {/* Drawer */}
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl 
+                      max-h-[85vh] overflow-hidden flex flex-col sm:hidden
+                      animate-in slide-in-from-bottom duration-300">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Filters</h3>
+            {activeFilterCount > 0 && (
+              <p className="text-xs text-gray-500 mt-0.5">
+                {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} applied
+              </p>
+            )}
+          </div>
+          <button 
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center
+                       hover:bg-gray-200 transition-colors"
+          >
+            <X className="w-4 h-4 text-gray-600" />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-5">
+          
+          {/* Block Selection */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+              Location
+            </label>
+            <div className="space-y-1.5">
+              <button
+                onClick={() => onBlockChange(null, null)}
+                className={`w-full text-left px-4 py-3 rounded-xl border transition-all
+                           ${!filters.block
+                    ? "bg-[#3D1414] text-white border-[#3D1414] shadow-sm"
+                    : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"}`}
+              >
+                <span className="text-sm font-medium">All Blocks</span>
+              </button>
+              
+              {allBlocks.map(block => (
+                <div key={block._id}>
+                  <button
+                    onClick={() => onBlockChange(block, null)}
+                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all
+                               ${filters.block === block._id && !filters.innerBlock
+                        ? "bg-[#3D1414] text-white border-[#3D1414] shadow-sm"
+                        : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"}`}
+                  >
+                    <span className="text-sm font-medium">{block.name}</span>
+                  </button>
+                  
+                  {/* Inner blocks */}
+                  {Array.isArray(block.innerBlocks) && block.innerBlocks.length > 0 && (
+                    <div className="ml-4 mt-1.5 space-y-1.5">
+                      {block.innerBlocks.map(inner => (
+                        <button
+                          key={inner._id}
+                          onClick={() => onBlockChange(block, inner)}
+                          className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm
+                                     ${filters.innerBlock === inner._id
+                              ? "bg-[#3D1414]/10 text-[#3D1414] border-[#3D1414]/30 font-medium"
+                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"}`}
+                        >
+                          {inner.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Attribute Filters */}
+          {FILTER_GROUPS.map(group => {
+            const Icon = group.icon;
+            const selectedValues = filters[group.key] ?? [];
+            
+            return (
+              <div key={group.key}>
+                <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                  <Icon className="w-3.5 h-3.5" />
+                  {group.label}
+                </label>
+                <div className="space-y-1.5">
+                  {group.options.map(opt => {
+                    const isSelected = selectedValues.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => onFilterToggle(group.key, opt.value)}
+                        className={`w-full text-left px-4 py-3 rounded-xl border transition-all
+                                   flex items-center gap-2.5
+                                   ${isSelected
+                            ? "bg-[#3D1414]/10 text-[#3D1414] border-[#3D1414]/30 font-medium"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"}`}
+                      >
+                        {opt.dot && <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />}
+                        <span className="text-sm flex-1">{opt.label}</span>
+                        {isSelected && (
+                          <span className="text-[#3D1414] text-base">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="border-t border-gray-100 px-5 py-4 flex gap-3">
+          <Button
+            variant="outline"
+            onClick={onClearAll}
+            disabled={activeFilterCount === 0}
+            className="flex-1 h-11 text-sm font-semibold border-gray-200 hover:bg-gray-50
+                       disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Clear All
+          </Button>
+          <Button
+            onClick={onClose}
+            className="flex-1 h-11 text-sm font-semibold bg-[#3D1414] hover:bg-[#3D1414]/90 text-white"
+          >
+            Apply Filters
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Contextual Header Slot ────────────────────────────────────────────────────
 //
-// ARCHITECTURE CHANGE from original:
-//   OLD: TenantHeaderSlot owned filter state and called onFilter callback
-//        via useEffect — indirect, hard to trace.
-//   NEW: All filter state lives in Tenants (URL-synced). Header slot receives
-//        controlled props and fires direct setters. Zero side-channel data flow.
+// PROGRESSIVE DISCLOSURE UX:
+//   Desktop: [Search] [Block ▾] [Status] [Payment] [More Filters ▾] | [Import] [Add]
+//   - Only essential filters (Status, Payment) visible by default
+//   - Advanced filters (Billing, Lease) behind "More Filters" button
+//   - Reduces cognitive load while keeping power-user features accessible
 //
-// Layout pattern: [Search][FilterGroups] · spacer · divider · [CTAs]
-// This prevents overflow on medium viewports regardless of how many filters
-// are added — the spacer absorbs the gap, CTAs stay pinned right.
+// Mobile:  [Search ───────────────────] [Filters(n)] [+]
+//   - All filters consolidated into single drawer (unchanged)
 //
 function TenantHeaderSlot({
   filters,
@@ -251,7 +555,10 @@ function TenantHeaderSlot({
   onBlockChange,
   onFilterToggle,
   onNavigate,
+  onClearAll,
 }) {
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
   const selectedBlock = allBlocks.find(b => b._id === filters.block) ?? null;
   const selectedInner = selectedBlock?.innerBlocks?.find(
     ib => ib._id === filters.innerBlock
@@ -263,139 +570,182 @@ function TenantHeaderSlot({
       : selectedBlock.name
     : "All Blocks";
 
+  // Count active filters for mobile badge
+  const mobileActiveFilterCount = 
+    (filters.block ? 1 : 0) +
+    (filters.status?.length ?? 0) +
+    (filters.paymentStatus?.length ?? 0) +
+    (filters.frequency?.length ?? 0) +
+    (filters.lease?.length ?? 0);
+
   return (
-    /**
-     * Responsive layout
-     * ─────────────────
-     * Mobile (<sm) — 2 rows:
-     *   Row 1: [Filters…] ············· [Add CTA icon] [Msg icon]
-     *   Row 2: [Search ─────────────────────────────────────────]
-     *
-     * Desktop (sm+) — 1 row:
-     *   [Search] [Block ▾] [Status][Payment][Lease] · | · [Add Tenant] [Message]
-     */
-    <div className="flex flex-col sm:flex-row sm:items-center gap-y-1.5 gap-x-2 w-full overflow-hidden">
+    <>
+      <MobileFilterDrawer
+        isOpen={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        filters={filters}
+        allBlocks={allBlocks}
+        onBlockChange={onBlockChange}
+        onFilterToggle={onFilterToggle}
+        onClearAll={onClearAll}
+      />
 
-      {/* ── Row 1 ── */}
-      <div className="flex items-center gap-1.5 w-full min-w-0 overflow-hidden">
-
-        {/* Search — desktop only inline */}
-        <div className="relative hidden sm:block w-52 shrink-0">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: "#AFA097" }} />
-          <input
-            type="text"
-            placeholder="Search tenant, phone, or unit…"
-            value={filters.search}
-            onChange={e => onSearchChange(e.target.value)}
-            style={{ background: "#F8F5F2", borderColor: "#DDD6D0", color: "#1C1A18" }}
-            className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors
-                       placeholder:text-[#C8BDB6] focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
-          />
-        </div>
-
-        {/* Block filter */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className="h-8 text-xs shrink-0 max-w-[120px] sm:max-w-[148px] justify-between gap-1
-                         border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] hover:bg-[#EEE9E5]"
-            >
-              <span className="truncate">{blockLabel}</span>
-              <ArrowDown className="w-3 h-3 shrink-0" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="start">
-            <DropdownMenuItem onClick={() => onBlockChange(null, null)}>All Blocks</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {allBlocks.length === 0 ? (
-              <DropdownMenuItem disabled>No blocks available</DropdownMenuItem>
-            ) : (
-              allBlocks.map(block => (
-                <DropdownMenuSub key={block._id}>
-                  <DropdownMenuSubTrigger>{block.name}</DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuItem onClick={() => onBlockChange(block, null)}>
-                      All {block.name}
-                    </DropdownMenuItem>
-                    {Array.isArray(block.innerBlocks) && block.innerBlocks.length > 0 && (
-                      <>
-                        <DropdownMenuSeparator />
-                        {block.innerBlocks.map(inner => (
-                          <DropdownMenuItem key={inner._id} onClick={() => onBlockChange(block, inner)}>
-                            {inner.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </>
-                    )}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              ))
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Attribute filter groups — icon-only on mobile */}
-        <div className="flex items-center gap-1">
-          {FILTER_GROUPS.map(group => (
-            <FilterGroupButton
-              key={group.key}
-              group={group}
-              selectedValues={filters[group.key] ?? []}
-              onToggle={onFilterToggle}
+      <div className="flex items-center gap-2 w-full">
+        
+        {/* ── Mobile Layout ────────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-2 w-full sm:hidden">
+          {/* Search - primary action, takes most space */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-[#AFA097]" />
+            <input
+              type="text"
+              placeholder="Search tenants…"
+              value={filters.search}
+              onChange={e => onSearchChange(e.target.value)}
+              className="w-full h-11 pl-10 pr-3 text-sm rounded-xl border border-[#DDD6D0]
+                         bg-[#F8F5F2] text-[#1C1A18] placeholder:text-[#C8BDB6]
+                         outline-none transition-colors
+                         focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
             />
-          ))}
+          </div>
+
+          {/* Filters button with active count badge */}
+          <button
+            onClick={() => setMobileDrawerOpen(true)}
+            className={`relative h-11 px-4 rounded-xl border font-medium text-sm
+                       transition-all shrink-0 flex items-center gap-2
+                       ${mobileActiveFilterCount > 0
+                ? "bg-[#3D1414] text-white border-[#3D1414]"
+                : "bg-[#F8F5F2] text-gray-700 border-[#DDD6D0]"}`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            {mobileActiveFilterCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full 
+                               bg-red-500 text-white text-[10px] font-bold
+                               flex items-center justify-center border-2 border-white">
+                {mobileActiveFilterCount}
+              </span>
+            )}
+          </button>
+
+          {/* Add tenant - primary CTA */}
+          <Button
+            onClick={onNavigate.toAdd}
+            className="h-11 w-11 p-0 bg-[#3D1414] hover:bg-[#3D1414]/90 text-white shrink-0
+                       flex items-center justify-center rounded-xl"
+          >
+            <Plus className="w-5 h-5" />
+          </Button>
         </div>
 
-        {/* Spacer */}
-        <div className="flex-1 min-w-0" />
+        {/* ── Desktop Layout ───────────────────────────────────────────────────── */}
+        <div className="hidden sm:flex items-center gap-2 w-full">
+          {/* Search */}
+          <div className="relative w-56 shrink-0">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none text-[#AFA097]" />
+            <input
+              type="text"
+              placeholder="Search tenant, phone, or unit…"
+              value={filters.search}
+              onChange={e => onSearchChange(e.target.value)}
+              className="w-full h-9 pl-8 pr-3 text-xs rounded-lg border border-[#DDD6D0]
+                         bg-[#F8F5F2] text-[#1C1A18] placeholder:text-[#C8BDB6]
+                         outline-none transition-colors
+                         focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
+            />
+          </div>
 
-        {/* Divider — desktop only */}
-        <div className="hidden sm:block w-px h-5 bg-[#DDD6D0] shrink-0" />
+          {/* Block filter */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-9 text-xs shrink-0 max-w-[148px] justify-between gap-1
+                           border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] hover:bg-[#EEE9E5]"
+              >
+                <span className="truncate">{blockLabel}</span>
+                <ArrowDown className="w-3 h-3 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="start">
+              <DropdownMenuItem onClick={() => onBlockChange(null, null)}>All Blocks</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {allBlocks.length === 0 ? (
+                <DropdownMenuItem disabled>No blocks available</DropdownMenuItem>
+              ) : (
+                allBlocks.map(block => (
+                  <DropdownMenuSub key={block._id}>
+                    <DropdownMenuSubTrigger>{block.name}</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuItem onClick={() => onBlockChange(block, null)}>
+                        All {block.name}
+                      </DropdownMenuItem>
+                      {Array.isArray(block.innerBlocks) && block.innerBlocks.length > 0 && (
+                        <>
+                          <DropdownMenuSeparator />
+                          {block.innerBlocks.map(inner => (
+                            <DropdownMenuItem key={inner._id} onClick={() => onBlockChange(block, inner)}>
+                              {inner.name}
+                            </DropdownMenuItem>
+                          ))}
+                        </>
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        {/* CTAs */}
-        <Button
-          variant="outline"
-          title="Import Tenants"
-          className="hidden sm:flex h-8 px-3 text-xs font-semibold
-                     border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] hover:bg-[#EEE9E5]
-                     shrink-0 items-center justify-center"
-          onClick={onNavigate.toMessage}
-        >
-          <Upload className="w-3.5 h-3.5 shrink-0" />
-          <span className="ml-1.5 whitespace-nowrap">Import</span>
-        </Button>
+          {/* Essential filters (Status, Payment) - always visible */}
+          <div className="flex items-center gap-1.5">
+            {ESSENTIAL_FILTERS.map(group => (
+              <FilterGroupButton
+                key={group.key}
+                group={group}
+                selectedValues={filters[group.key] ?? []}
+                onToggle={onFilterToggle}
+              />
+            ))}
+          </div>
 
-        <Button
-          title="Add Tenant"
-          className="h-8 w-8 sm:w-auto px-0 sm:px-3 text-xs font-semibold
-                     bg-[#3D1414] hover:bg-[#3D1414]/90 text-white shrink-0
-                     flex items-center justify-center"
-          onClick={onNavigate.toAdd}
-        >
-          <Plus className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden sm:inline ml-1.5 whitespace-nowrap">Add Tenant</span>
-        </Button>
-
-      </div>
-
-      {/* ── Row 2 — mobile search, full width ── */}
-      <div className="sm:hidden w-full">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: "#AFA097" }} />
-          <input
-            type="text"
-            placeholder="Search tenant, phone, or unit…"
-            value={filters.search}
-            onChange={e => onSearchChange(e.target.value)}
-            style={{ background: "#F8F5F2", borderColor: "#DDD6D0", color: "#1C1A18" }}
-            className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors
-                       placeholder:text-[#C8BDB6] focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
+          {/* Advanced filters - progressive disclosure */}
+          <AdvancedFiltersPopover
+            filters={filters}
+            onFilterToggle={onFilterToggle}
           />
-        </div>
-      </div>
 
-    </div>
+          {/* Spacer */}
+          <div className="flex-1 min-w-0" />
+
+          {/* Divider */}
+          <div className="w-px h-5 bg-[#DDD6D0] shrink-0" />
+
+          {/* CTAs */}
+          <Button
+            variant="outline"
+            onClick={onNavigate.toMessage}
+            className="h-9 px-3 text-xs font-semibold
+                       border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] hover:bg-[#EEE9E5]
+                       shrink-0 flex items-center gap-1.5"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Import
+          </Button>
+
+          <Button
+            onClick={onNavigate.toAdd}
+            className="h-9 px-3 text-xs font-semibold
+                       bg-[#3D1414] hover:bg-[#3D1414]/90 text-white shrink-0
+                       flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Tenant
+          </Button>
+        </div>
+
+      </div>
+    </>
   );
 }
 
@@ -602,6 +952,7 @@ export default function Tenants() {
         onBlockChange={handleBlockChange}
         onFilterToggle={toggleMultiFilter}
         onNavigate={navCallbacks}
+        onClearAll={clearAllFilters}
       />
     ),
     [filters, allBlocks] // re-inject when filters or blocks change

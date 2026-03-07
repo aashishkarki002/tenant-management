@@ -44,11 +44,9 @@ export function useElectricityData(filters = {}) {
         const data = await getReadings(params);
 
         if (data?.grouped) {
-          // Grouped response — standard path (no meterType filter sent)
           setGrouped(data.grouped);
           setSummary(data.summary ?? EMPTY_SUMMARY);
         } else if (data?.readings) {
-          // Flat response — meterType filter was supplied; rebuild a single bucket
           const meterType = data.meterType ?? "unit";
           const readings = data.readings ?? [];
           setGrouped({
@@ -88,6 +86,8 @@ export function useElectricityData(filters = {}) {
       filters.nepaliYear,
       filters.nepaliMonth,
       filters.status,
+      filters.meterType,
+      filters.searchQuery,
     ],
   );
 

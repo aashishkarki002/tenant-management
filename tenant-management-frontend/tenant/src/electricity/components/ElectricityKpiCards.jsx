@@ -116,27 +116,37 @@ export function ElectricityKpiCards({ grouped = {}, summary = {} }) {
         return (
           <div
             key={config.id}
-            className={`relative bg-white rounded-xl border border-[#E8E4E0] border-l-4 ${config.borderAccent}
-              px-4 py-4 transition-shadow hover:shadow-md`}
+            className={`group relative bg-white rounded-xl border border-[#E8E4E0] 
+              px-4 py-4 transition-all duration-200 hover:shadow-lg hover:scale-[1.02]
+              ${showAlert ? "ring-2 ring-orange-200/50" : ""}`}
           >
+            {/* Left accent border */}
+            <div
+              className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${config.borderAccent.replace("border-l-", "bg-")} 
+                transition-all duration-200 group-hover:w-1.5`}
+            />
+
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold tracking-wide uppercase text-[#948472] mb-1">
+                <p className="text-[11px] font-semibold tracking-wide uppercase text-[#948472] mb-1.5">
                   {config.label}
                 </p>
-                <p className="text-xl font-bold text-[#1C1A18] leading-tight truncate">
+                <p className="text-2xl font-bold text-[#1C1A18] leading-tight truncate">
                   {config.getValue(kpis)}
                 </p>
-                <p className="text-xs text-[#948472] mt-1">{config.getSub(kpis)}</p>
+                <p className="text-xs text-[#948472] mt-1.5">{config.getSub(kpis)}</p>
               </div>
-              <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${config.iconBg} shrink-0`}>
+              <div className={`flex items-center justify-center w-11 h-11 rounded-xl ${config.iconBg} 
+                shrink-0 transition-transform duration-200 group-hover:scale-110`}>
                 <Icon className={`w-5 h-5 ${config.iconColor}`} />
               </div>
             </div>
 
             {showAlert && config.getAlertText && (
-              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
-                <AlertTriangle className="w-3 h-3 shrink-0" />
+              <div className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-amber-700 
+                bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5
+                animate-in fade-in slide-in-from-top-1 duration-200">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 {config.getAlertText(kpis)}
               </div>
             )}

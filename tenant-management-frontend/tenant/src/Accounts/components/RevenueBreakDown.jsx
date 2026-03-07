@@ -33,6 +33,7 @@ import {
 import { PlusIcon, Download, RefreshCw, ArrowUpRightIcon, ArrowDownRightIcon } from "lucide-react";
 import { AddRevenueDialog } from "./AddRevenueDialog";
 import { usePagination } from "../hooks/usePagination";
+import { useIsMobile } from "@/hooks/use-mobile";
 import api from "../../../plugins/axios";
 
 // ─── Design tokens — identical to AccountingPage ──────────────────────────────
@@ -227,6 +228,7 @@ function TPill({ t }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, compareMode, compareQuarter, customStartDate, customEndDate, openDialog = false, onDialogOpenHandled }) {
+    const isMobile = useIsMobile();
     const [tab, setTab] = useState("overview");
     const [all, setAll] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -285,14 +287,14 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
                     <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 3 }}>{periodLabel}</div>
                     <div style={{ fontSize: 13, color: C.mid }}>{loading ? "Loading…" : `${D.totals.n} transactions · ${fmt(D.totals.rev)}`}</div>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={fetch} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: isMobile ? "wrap" : "nowrap", width: isMobile ? "100%" : "auto" }}>
+                    <button onClick={fetch} style={{ padding: isMobile ? "10px 12px" : "8px 10px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", minHeight: isMobile ? 44 : "auto" }}>
                         <RefreshCw size={14} color={C.mid} style={{ animation: loading ? "rv-spin 1s linear infinite" : "none" }} />
                     </button>
-                    <button onClick={exportCSV} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.mid, cursor: "pointer" }}>
-                        <Download size={13} />CSV
+                    <button onClick={exportCSV} style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "10px 16px" : "8px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.mid, cursor: "pointer", minHeight: isMobile ? 44 : "auto" }}>
+                        <Download size={13} />{isMobile ? "" : "CSV"}
                     </button>
-                    <button onClick={() => setOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 9, border: "none", background: C.forest, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    <button onClick={() => setOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "10px 16px" : "8px 16px", borderRadius: 9, border: "none", background: C.forest, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", flex: isMobile ? 1 : "initial", justifyContent: "center", minHeight: isMobile ? 44 : "auto" }}>
                         <PlusIcon size={14} />Add Revenue
                     </button>
                 </div>
@@ -320,7 +322,11 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
             })()}
 
             {/* ── Hero KPI strip ────────────────────────────────────────────────── */}
-            <div style={{ display: "grid", gridTemplateColumns: "220px repeat(4,1fr)", gap: 14, marginBottom: 18 }}>
+            <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "220px repeat(4,1fr)",
+                gap: 14, marginBottom: 18
+            }}>
                 {/* Dark hero */}
                 <Dark delay={0}>
                     <Lbl light>Total Revenue</Lbl>
@@ -354,9 +360,9 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
             </div>
 
             {/* ── Tab nav ───────────────────────────────────────────────────────── */}
-            <div style={{ display: "flex", gap: 4, background: C.alt, borderRadius: 12, padding: 4, width: "fit-content", marginBottom: 18 }}>
+            <div style={{ display: "flex", gap: 4, background: C.alt, borderRadius: 12, padding: 4, width: isMobile ? "100%" : "fit-content", marginBottom: 18, overflowX: isMobile ? "auto" : "visible" }}>
                 {TABS.map(t => (
-                    <button key={t} onClick={() => setTab(t)} style={{ padding: "7px 18px", borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === t ? C.forest : "transparent", color: tab === t ? "#fff" : C.mid, transition: "all .15s" }}>
+                    <button key={t} onClick={() => setTab(t)} style={{ padding: isMobile ? "9px 16px" : "7px 18px", borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === t ? C.forest : "transparent", color: tab === t ? "#fff" : C.mid, transition: "all .15s", flex: isMobile ? 1 : "initial", minHeight: isMobile ? 44 : "auto", whiteSpace: "nowrap" }}>
                         {t[0].toUpperCase() + t.slice(1)}
                     </button>
                 ))}
@@ -367,7 +373,11 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
                     {/* Row 1: Area trend + Payer donut */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 250px", gap: 16 }}>
+                    <div style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "1fr 250px",
+                        gap: 16
+                    }}>
                         <Card delay={5}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
                                 <div><Lbl style={{ marginBottom: 2 }}>Revenue Trend</Lbl><div style={{ fontSize: 11, color: C.muted }}>{periodLabel} · monthly</div></div>
@@ -420,7 +430,11 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
                     </div>
 
                     {/* Row 2: Source table + Ref types + Stats */}
-                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 16 }}>
+                    <div style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 1fr",
+                        gap: 16
+                    }}>
 
                         {/* Source distribution table */}
                         <Card delay={7}>
@@ -507,7 +521,11 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
             {/* ══════════════════ TENANTS ═══════════════════════════════════════════ */}
             {tab === "tenants" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16 }}>
+                    <div style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr",
+                        gap: 16
+                    }}>
                         {/* Tenant leaderboard */}
                         <Card delay={0}>
                             <Lbl>Top Tenant Contributors</Lbl>
@@ -646,7 +664,11 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
                     {/* Revenue concentration */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <div style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                        gap: 16
+                    }}>
                         <Card delay={0}>
                             <Lbl>Revenue Concentration Risk</Lbl>
                             {loading ? <><Sk /><Sk /></> : D.streams.length === 0 ? <None /> : (
@@ -703,7 +725,11 @@ export default function RevenueBreakDown({ onRevenueAdded, selectedQuarter, comp
                     </div>
 
                     {/* Payer analysis */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+                    <div style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr",
+                        gap: 16
+                    }}>
                         {D.payerSplit.map((p, i) => (
                             <Card key={p.name} delay={i + 2}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>

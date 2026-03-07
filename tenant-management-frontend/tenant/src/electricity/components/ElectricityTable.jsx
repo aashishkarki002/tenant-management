@@ -3,7 +3,6 @@ import { ElectricityTabs } from "./ElectricityTabs";
 import { ElectricityTableRow } from "./ElectricityTableRow";
 import { ElectricityPagination } from "./ElectricityPagination";
 import { isFlagged } from "../utils/electricityCalculations";
-import { filterReadingsByTab } from "../utils/useSubMeterTypes";
 import { PAGE_SIZE } from "../utils/electricityConstants";
 import { Zap, PlusCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,9 +23,10 @@ export function ElectricityTable({
   onAddReading,
 }) {
   const filteredData = React.useMemo(() => {
-    const byTab = filterReadingsByTab(readings, activeTab);
-    if (activeTab === "flagged") return byTab.filter((r) => isFlagged(r));
-    return byTab;
+    if (activeTab === "flagged") {
+      return readings.filter((r) => isFlagged(r));
+    }
+    return readings;
   }, [readings, activeTab]);
 
   const flaggedCount = React.useMemo(

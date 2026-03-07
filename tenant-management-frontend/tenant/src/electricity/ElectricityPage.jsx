@@ -21,9 +21,9 @@ import { PAGE_SIZE } from "./utils/electricityConstants";
 import { getMonthOptions } from "../../plugins/useNepaliDate";
 import { getCurrentNepaliMonthYear } from "@/constants/nepaliMonths";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
-import { GlobalSearch } from "../components/header";
 import { Button } from "@/components/ui/button";
-import { PlusIcon, Download, Settings } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { PlusIcon, Download, Settings, Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const METER_TYPE_KEYS = ["unit", "common_area", "parking", "sub_meter"];
@@ -32,9 +32,6 @@ const buildDefaultFilterValues = () => {
   const { month, year } = getCurrentNepaliMonthYear();
   return { blockId: "all", innerBlockId: "", month, year };
 };
-
-const flattenGrouped = (grouped = {}) =>
-  METER_TYPE_KEYS.flatMap((key) => grouped[key]?.readings ?? []);
 
 const countsFromGrouped = (grouped = {}) => ({
   unit: grouped.unit?.count ?? 0,
@@ -53,6 +50,7 @@ export default function ElectricityPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const allBlocks = useMemo(() => {
     if (!property || !Array.isArray(property)) return [];
@@ -83,6 +81,8 @@ export default function ElectricityPage() {
       innerBlockId: filterValues.innerBlockId || undefined,
       nepaliYear: filterValues.year,
       nepaliMonth: filterValues.month,
+      meterType: activeTab === "all" ? undefined : activeTab,
+      searchQuery: searchQuery.trim() || undefined,
     }),
     [
       propertyIdFromBlock,
@@ -90,12 +90,20 @@ export default function ElectricityPage() {
       filterValues.innerBlockId,
       filterValues.year,
       filterValues.month,
+      activeTab,
+      searchQuery,
     ]
   );
 
   const { grouped, summary, loading, refetch } = useElectricityData(apiFilters);
 
-  const readings = useMemo(() => flattenGrouped(grouped), [grouped]);
+  const readings = useMemo(() => {
+    if (activeTab === "all") {
+      return METER_TYPE_KEYS.flatMap((key) => grouped[key]?.readings ?? []);
+    }
+    return grouped[activeTab]?.readings ?? [];
+  }, [grouped, activeTab]);
+
   const countsByType = useMemo(() => countsFromGrouped(grouped), [grouped]);
 
   const { newRows, addNewRow, updateNewRow, removeNewRow, clearNewRows } =
@@ -139,6 +147,7 @@ export default function ElectricityPage() {
 
   const handleFilterChange = useCallback((field, value) => {
     setFilterValues((prev) => ({ ...prev, [field]: value }));
+    setCurrentPage(1);
   }, []);
 
   const handleTabChange = useCallback((tab) => {
@@ -152,40 +161,6 @@ export default function ElectricityPage() {
       monthOptions.find((m) => m.value === filterValues.month)?.label ?? "Month";
     return `${monthName} ${filterValues.year}`;
   }, [filterValues.month, filterValues.year]);
-
-  // Header slot — inject search + action buttons into the global header
-  useHeaderSlot(
-    () => (
-      <div className="flex items-center gap-2 w-full">
-        <div className="flex-1 max-w-xs">
-          <GlobalSearch />
-        </div>
-        <div className="flex items-center gap-2 ml-auto shrink-0">
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setDialogOpen(true)}
-            className="hover:opacity-90"
-            style={{ background: "#3D1414", color: "#F0DADA" }}
-          >
-            <PlusIcon className="w-3 h-3" />
-            <span className="hidden sm:inline ml-1.5">Add Reading</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/submeter")}
-            className="border-[#DDD6D0] text-[#1C1A18] hover:bg-[#F8F5F2] hover:text-[#3D1414]"
-          >
-            <Settings className="w-3 h-3" />
-            <span className="hidden sm:inline ml-1.5">Submeters</span>
-          </Button>
-        </div>
-      </div>
-    ),
-    []
-  );
 
   const handleExportReport = useCallback(() => {
     if (!readings.length) {
@@ -245,6 +220,68 @@ export default function ElectricityPage() {
     URL.revokeObjectURL(url);
     toast.success("Report exported.");
   }, [readings, summary, periodLabel]);
+
+  useHeaderSlot(
+    () => (
+      <div className="flex items-center gap-2 w-full">
+        <div className="flex-1 max-w-md relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-[#AFA097]" />
+          <Input
+            type="text"
+            placeholder="Search by unit, area, or status…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-9 pl-9 pr-9 text-sm rounded-lg border border-[#DDD6D0]
+                       bg-[#F8F5F2] text-[#1C1A18] placeholder:text-[#C8BDB6]
+                       outline-none transition-colors
+                       focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#AFA097] hover:text-[#3D1414] transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleExportReport}
+            className="border-[#DDD6D0] text-[#1C1A18] bg-white hover:bg-[#F8F5F2] hover:text-[#3D1414]"
+          >
+            <Download className="w-3 h-3" />
+            <span className="hidden sm:inline ml-1.5">Export</span>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setDialogOpen(true)}
+            className="hover:opacity-90"
+            style={{ background: "#3D1414", color: "#F0DADA" }}
+          >
+            <PlusIcon className="w-3 h-3" />
+            <span className="hidden sm:inline ml-1.5">Add Reading</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/submeter")}
+            className="border-[#DDD6D0] text-[#1C1A18] bg-white hover:bg-[#F8F5F2] hover:text-[#3D1414]"
+          >
+            <Settings className="w-3 h-3" />
+            <span className="hidden sm:inline ml-1.5">Submeters</span>
+          </Button>
+        </div>
+      </div>
+    ),
+    [searchQuery, handleExportReport, navigate]
+  );
 
   const handleSaveReadings = useCallback(async () => {
     const validRows = newRows.filter(
@@ -309,8 +346,7 @@ export default function ElectricityPage() {
   return (
     <div className="min-h-screen pb-8" style={{ background: "#F8F5F2" }}>
       <form onSubmit={(e) => e.preventDefault()}>
-        <div className="space-y-4 pt-5">
-          {/* 1. Page Title + Actions */}
+        <div className="space-y-4 pt-5 px-4 sm:px-5">
           <ElectricityHeader
             onExportReport={handleExportReport}
             onAddReading={addNewRow}
@@ -324,10 +360,27 @@ export default function ElectricityPage() {
             setDialogOpen={setDialogOpen}
           />
 
-          {/* 2. KPI Cards */}
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-2xl font-bold text-[#1C1A18] tracking-tight">
+                Electricity Dashboard
+              </h1>
+              <p className="text-sm text-[#948472] mt-1">
+                Monitor consumption, track billing, and manage meter readings across all properties
+              </p>
+            </div>
+            {periodLabel && (
+              <div className="bg-white rounded-lg border border-[#E8E4E0] px-4 py-2 shadow-sm">
+                <p className="text-xs text-[#948472] font-medium uppercase tracking-wide">
+                  Current Period
+                </p>
+                <p className="text-base font-bold text-[#1C1A18] mt-0.5">{periodLabel}</p>
+              </div>
+            )}
+          </div>
+
           <ElectricityKpiCards grouped={grouped} summary={summary} />
 
-          {/* 3. Filters */}
           <ElectricityFilters
             filterValues={filterValues}
             onChange={handleFilterChange}
@@ -336,13 +389,29 @@ export default function ElectricityPage() {
             periodLabel={periodLabel}
           />
 
-          {/* 4. Consumption Breakdown */}
           <ElectricitySummaryCards grouped={grouped} summary={summary} />
 
-          {/* 5. Insight Widgets */}
           <ElectricityInsights grouped={grouped} />
 
-          {/* 6. Readings Table */}
+          {searchQuery && (
+            <div className="bg-white rounded-lg border border-[#E8E4E0] px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-[#948472]" />
+                <p className="text-sm text-[#1C1A18]">
+                  Found <span className="font-bold">{readings.length}</span> result
+                  {readings.length !== 1 ? "s" : ""} for{" "}
+                  <span className="font-semibold text-[#3D1414]">"{searchQuery}"</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setSearchQuery("")}
+                className="text-xs text-[#948472] hover:text-[#3D1414] underline underline-offset-2 transition-colors"
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+
           <ElectricityTable
             loading={loading}
             readings={readings}

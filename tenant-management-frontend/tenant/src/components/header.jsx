@@ -172,28 +172,73 @@ export function GlobalSearch() {
   }, []);
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); setLoading(false); return; }
+    if (!query || query.trim().length < 2) { 
+      setResults([]); 
+      setLoading(false); 
+      return; 
+    }
+    
     setLoading(true);
     clearTimeout(debounceRef.current);
+    
     debounceRef.current = setTimeout(async () => {
       try {
-        const { data } = await api.get("/api/search", { params: { q: query } });
-        setResults(data.results || []);
-      } catch { setResults([]); }
-      finally { setLoading(false); }
+        const { data } = await api.get("/api/search", { 
+          params: { q: query.trim(), limit: 10 } 
+        });
+        
+        console.log("[Header] Search API response:", data);
+        console.log("[Header] Results:", data?.results);
+        console.log("[Header] Is array?", Array.isArray(data?.results));
+        console.log("[Header] First result structure:", data?.results?.[0]);
+        
+        if (data.success && Array.isArray(data.results)) {
+          console.log("[Header] Setting results count:", data.results.length);
+          console.log("[Header] Setting results:", JSON.stringify(data.results, null, 2));
+          setResults(data.results);
+        } else {
+          console.log("[Header] No valid results, data:", data);
+          setResults([]);
+        }
+      } catch (err) { 
+        console.error("[Header] Search error:", err);
+        setResults([]); 
+      } finally { 
+        setLoading(false); 
+      }
     }, 300);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
   }, [query]);
 
-  const handleSelect = (item) => {
+  const handleSelect = useCallback((item) => {
+    if (!item || !item.url) return;
+    
     setOpen(false);
-    const updated = [item, ...recent.filter(r => r.id !== item.id)].slice(0, 5);
-    setRecent(updated);
-    localStorage.setItem("recent-searches", JSON.stringify(updated));
-    const routes = { tenant: `/tenants/${item.id}`, rent: `/rent-payment/${item.id}`, ledger: `/accounting/${item.id}` };
-    if (routes[item.type]) navigate(routes[item.type]);
-  };
+    setQuery("");
+    
+    try {
+      const updated = [item, ...recent.filter(r => (r._id || r.id) !== (item._id || item.id))].slice(0, 5);
+      setRecent(updated);
+      localStorage.setItem("recent-searches", JSON.stringify(updated));
+    } catch (err) {
+      console.error("Failed to save recent search:", err);
+    }
+    
+    navigate(item.url);
+  }, [navigate, recent]);
 
   const TypeIcon = (type) => TYPE_ICON[type] ?? Bell;
+
+  // Debug logging
+  console.log("[Header] Render - query:", query, "loading:", loading, "results.length:", results.length);
+  if (results.length > 0) {
+    console.log("[Header] Render - first result:", results[0]);
+  }
 
   return (
     <>
@@ -219,7 +264,7 @@ export function GlobalSearch() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="p-0 gap-0 overflow-hidden max-w-lg border-[#DDD6D0]">
-          <Command className="border-none">
+          <Command className="border-none" shouldFilter={false}>
             <div className="flex items-center border-b px-3" style={{ borderColor: "#EEE9E5" }}>
               <Search className="w-4 h-4 mr-2 shrink-0" style={{ color: "#AFA097" }} />
               <CommandInput
@@ -251,7 +296,7 @@ export function GlobalSearch() {
                     const Icon = TypeIcon(item.type);
                     return (
                       <CommandItem
-                        key={item.id}
+                        key={item._id || item.id}
                         onSelect={() => handleSelect(item)}
                         className="flex items-center gap-3 px-3 py-2.5 cursor-pointer
                                    aria-selected:bg-[#F8F5F2]"
@@ -260,12 +305,18 @@ export function GlobalSearch() {
                           <Icon className="w-3.5 h-3.5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate" style={{ color: "#1C1A18" }}>{item.name}</p>
-                          {item.sub && <p className="text-xs truncate" style={{ color: "#948472" }}>{item.sub}</p>}
+                          <p className="text-sm font-medium truncate" style={{ color: "#1C1A18" }}>
+                            {item.label || item.name}
+                          </p>
+                          {(item.sublabel || item.sub) && (
+                            <p className="text-xs truncate" style={{ color: "#948472" }}>
+                              {item.sublabel || item.sub}
+                            </p>
+                          )}
                         </div>
-                        {item.status && (
+                        {(item.badge || item.status) && (
                           <span className="flex items-center gap-1.5 shrink-0">
-                            <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[item.status] ?? "bg-[#948472]"}`} />
+                            <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[item.badge || item.status] ?? "bg-[#948472]"}`} />
                           </span>
                         )}
                       </CommandItem>
@@ -280,12 +331,21 @@ export function GlobalSearch() {
                       const Icon = TypeIcon(item.type);
                       return (
                         <CommandItem
-                          key={item.id}
+                          key={item._id || item.id}
                           onSelect={() => handleSelect(item)}
                           className="flex items-center gap-3 px-3 py-2 cursor-pointer aria-selected:bg-[#F8F5F2]"
                         >
                           <Icon className="w-4 h-4 shrink-0" style={{ color: "#AFA097" }} />
-                          <span className="text-sm truncate" style={{ color: "#413D38" }}>{item.name}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm truncate block" style={{ color: "#413D38" }}>
+                              {item.label || item.name}
+                            </span>
+                            {(item.sublabel || item.sub) && (
+                              <span className="text-xs truncate block" style={{ color: "#948472" }}>
+                                {item.sublabel || item.sub}
+                              </span>
+                            )}
+                          </div>
                         </CommandItem>
                       );
                     })}
@@ -458,88 +518,88 @@ export default function Header() {
   };
 
   return (
-    <header className="flex items-start w-full gap-3 p-2">
+    <header className="w-full p-2">
+      <div className="flex items-start w-full gap-2">
 
-      {/* Search or page-injected slot — items-start on parent so 2-row
-          mobile slot is never clipped by vertical centering */}
-      <div className="flex-1 min-w-0 pt-0.5">
-        <HeaderSlot fallback={<GlobalSearch />} />
-      </div>
+        {/* Search or page-injected slot — items-start on parent so 2-row
+            mobile slot is never clipped by vertical centering */}
+        <div className="flex-1 min-w-0">
+          <HeaderSlot fallback={<GlobalSearch />} />
+        </div>
 
+        {/* ── Notifications ─────────────────────────────────────────────────── */}
+        <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+          <SheetTrigger asChild>
+            <button
+              className="relative w-9 h-9 rounded-lg flex items-center justify-center
+                         border transition-all duration-150 hover:bg-[#F8F5F2] shrink-0
+                         focus:outline-none focus:ring-2 focus:ring-[#3D1414]/20"
+              style={{ borderColor: "#DDD6D0", background: "white" }}
+            >
+              <Bell className="w-4 h-4" style={{ color: hasUnread ? "#3D1414" : "#AFA097" }} />
+              {hasUnread && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full
+                             flex items-center justify-center text-[10px] font-bold px-1"
+                  style={{ background: "#B02020", color: "white" }}
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+          </SheetTrigger>
 
-
-      {/* ── Notifications ─────────────────────────────────────────────────── */}
-      <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-        <SheetTrigger asChild>
-          <button
-            className="relative w-9 h-9 rounded-lg flex items-center justify-center
-                       border transition-all duration-150 hover:bg-[#F8F5F2] shrink-0
-                       focus:outline-none focus:ring-2 focus:ring-[#3D1414]/20 mt-0.5"
-            style={{ borderColor: "#DDD6D0", background: "white" }}
-          >
-            <Bell className="w-4 h-4" style={{ color: hasUnread ? "#3D1414" : "#AFA097" }} />
-            {hasUnread && (
-              <span
-                className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full
-                           flex items-center justify-center text-[10px] font-bold px-1"
-                style={{ background: "#B02020", color: "white" }}
-              >
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
-          </button>
-        </SheetTrigger>
-
-        <SheetContent className="flex flex-col p-0 gap-0 w-full sm:max-w-md border-l border-[#DDD6D0]">
-          <SheetHeader className="px-5 pt-5 pb-4 border-b" style={{ borderColor: "#EEE9E5" }}>
-            <div className="flex items-center justify-between">
-              <div>
-                <SheetTitle className="text-base font-semibold" style={{ color: "#1C1A18" }}>
-                  Notifications
-                </SheetTitle>
+          <SheetContent className="flex flex-col p-0 gap-0 w-full sm:max-w-md border-l border-[#DDD6D0]">
+            <SheetHeader className="px-5 pt-5 pb-4 border-b" style={{ borderColor: "#EEE9E5" }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <SheetTitle className="text-base font-semibold" style={{ color: "#1C1A18" }}>
+                    Notifications
+                  </SheetTitle>
+                  {hasUnread && (
+                    <p className="text-xs mt-0.5" style={{ color: "#948472" }}>
+                      {unreadCount} unread
+                    </p>
+                  )}
+                </div>
                 {hasUnread && (
-                  <p className="text-xs mt-0.5" style={{ color: "#948472" }}>
-                    {unreadCount} unread
-                  </p>
+                  <button
+                    onClick={markAllAsRead}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
+                             rounded-lg border transition-colors hover:bg-[#F8F5F2]"
+                    style={{ color: "#3D1414", borderColor: "#DDD6D0" }}
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    Mark all read
+                  </button>
                 )}
               </div>
-              {hasUnread && (
-                <button
-                  onClick={markAllAsRead}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
-                             rounded-lg border transition-colors hover:bg-[#F8F5F2]"
-                  style={{ color: "#3D1414", borderColor: "#DDD6D0" }}
-                >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  Mark all read
-                </button>
+            </SheetHeader>
+
+            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
+              style={{ background: "#F8F5F2" }}>
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+                    style={{ background: "#EEE9E5" }}>
+                    <Bell className="w-5 h-5" style={{ color: "#C8BDB6" }} />
+                  </div>
+                  <p className="text-sm font-medium" style={{ color: "#756F67" }}>All caught up</p>
+                  <p className="text-xs mt-1" style={{ color: "#AFA097" }}>No new notifications</p>
+                </div>
+              ) : (
+                notifications.map(n => (
+                  <NotificationItem
+                    key={n._id || n.id}
+                    notification={n}
+                    onMarkRead={markAsRead}
+                  />
+                ))
               )}
             </div>
-          </SheetHeader>
-
-          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
-            style={{ background: "#F8F5F2" }}>
-            {notifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
-                  style={{ background: "#EEE9E5" }}>
-                  <Bell className="w-5 h-5" style={{ color: "#C8BDB6" }} />
-                </div>
-                <p className="text-sm font-medium" style={{ color: "#756F67" }}>All caught up</p>
-                <p className="text-xs mt-1" style={{ color: "#AFA097" }}>No new notifications</p>
-              </div>
-            ) : (
-              notifications.map(n => (
-                <NotificationItem
-                  key={n._id || n.id}
-                  notification={n}
-                  onMarkRead={markAsRead}
-                />
-              ))
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+          </SheetContent>
+        </Sheet>
+      </div>
 
     </header>
   );

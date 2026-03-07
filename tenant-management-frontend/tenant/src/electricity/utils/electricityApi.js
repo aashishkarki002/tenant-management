@@ -6,7 +6,7 @@ import api from "../../../plugins/axios";
 
 /**
  * GET /api/electricity/get-readings
- * @param {Object} params - Query: propertyId, unitId, tenantId, nepaliYear, nepaliMonth, status, startDate, endDate
+ * @param {Object} params - Query: propertyId, unitId, tenantId, nepaliYear, nepaliMonth, status, startDate, endDate, meterType, searchQuery
  * @returns {Promise<{ readings: Array, summary: Object }>}
  */
 export async function getReadings(params = {}) {
@@ -17,6 +17,7 @@ export async function getReadings(params = {}) {
         params.nepaliYear != null ? String(params.nepaliYear) : undefined,
       nepaliMonth:
         params.nepaliMonth != null ? String(params.nepaliMonth) : undefined,
+      searchQuery: params.searchQuery?.trim() || undefined,
     },
   });
   const result = response.data;

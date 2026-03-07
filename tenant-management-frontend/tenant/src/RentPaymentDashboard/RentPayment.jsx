@@ -11,7 +11,39 @@ import { RentFilter } from "./components/RentFilter";
 import { AdminRentAction } from "./components/AdminRentAction";
 import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDate";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
-import { Search } from "lucide-react";
+import { Search, SlidersHorizontal, MoreVertical } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+
+// ── Inline SVG icons ──────────────────────────────────────────────────────────
+const RefreshIcon = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" className={className}
+      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+          d="M4 4v5h.582M20 20v-5h-.582M4.582 9A8 8 0 0119.418 15M19.418 15A8 8 0 014.582 9" />
+  </svg>
+);
+
+const MailIcon = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" className={className}
+      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+  </svg>
+);
 
 /**
  * SearchInput — plain <input> so we fully own every style token.
@@ -19,7 +51,7 @@ import { Search } from "lucide-react";
  * --ring / --background CSS variables that Tailwind classes can't beat
  * without !important gymnastics.
  */
-const SearchInput = ({ placeholder }) => (
+const SearchInput = ({ placeholder, value, onChange }) => (
   <div className="relative w-full">
     <Search
       className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
@@ -28,8 +60,10 @@ const SearchInput = ({ placeholder }) => (
     <input
       type="text"
       placeholder={placeholder}
+      value={value}
+      onChange={onChange}
       style={{ background: "#F8F5F2", borderColor: "#DDD6D0", color: "#1C1A18" }}
-      className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors
+      className="w-full h-8 sm:h-9 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors
                  placeholder:text-[#C8BDB6] focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
     />
   </div>
@@ -51,16 +85,40 @@ const RentPayment = () => {
   const [activeTab, setActiveTab] = useState("rent");
   const [datePickerResetKey, setDatePickerResetKey] = useState(0);
   const [frequencyView, setFrequencyView] = useState("monthly");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
   const frequencyFilteredRents = useMemo(
     () => rents.filter((r) => (r.rentFrequency || "monthly") === frequencyView),
     [rents, frequencyView],
   );
 
+  // Search filtering
+  const searchFilteredRents = useMemo(() => {
+    if (!searchQuery.trim()) return frequencyFilteredRents;
+    const query = searchQuery.toLowerCase();
+    return frequencyFilteredRents.filter((rent) => {
+      const tenantName = rent.tenantId?.name?.toLowerCase() || "";
+      const propertyName = rent.propertyId?.name?.toLowerCase() || "";
+      const unitNumber = rent.unitId?.unitNumber?.toLowerCase() || "";
+      return tenantName.includes(query) || propertyName.includes(query) || unitNumber.includes(query);
+    });
+  }, [frequencyFilteredRents, searchQuery]);
+
   const overdueCount = useMemo(
     () => rents.filter((r) => (r.status || "").toLowerCase() === "overdue").length,
     [rents],
   );
+
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filterStatus !== "all") count++;
+    if (filterPropertyId) count++;
+    if (defaultRentMonth != null && filterRentMonth !== defaultRentMonth) count++;
+    if (defaultRentYear != null && filterRentYear !== defaultRentYear) count++;
+    return count;
+  }, [filterStatus, filterPropertyId, filterRentMonth, filterRentYear, defaultRentMonth, defaultRentYear]);
 
   const { frequencyTotalDue, frequencyTotalCollected } = useMemo(() => {
     return frequencyFilteredRents.reduce(
@@ -108,107 +166,173 @@ const RentPayment = () => {
 
   const currentMonthName = filterRentMonth != null ? NEPALI_MONTH_NAMES[filterRentMonth - 1] : "";
 
+  // Handle admin actions
+  const { processMonthlyRents, sendRentReminders, processingRents, sendingEmails } = {
+    processMonthlyRents: () => console.log("Process rents"),
+    sendRentReminders: () => console.log("Send reminders"),
+    processingRents: false,
+    sendingEmails: false,
+  };
+
   // ── Header slot ───────────────────────────────────────────────────────────
-  // Inline tab nav + CTAs live here — the page body is pure content.
-  // activeTab is a dep so the active state re-renders in the header.
+  // Mobile-first responsive layout with filter drawer pattern
   useHeaderSlot(
     () => (
-      /**
-       * Responsive layout
-       * ─────────────────
-       * Mobile (<sm) — 2 rows:
-       *   Row 1: [Tabs]  ················  [Actions — icon-only]
-       *   Row 2: [Search ──────────────────────────────────────]
-       *
-       * Desktop (sm+) — 1 row:
-       *   [Brand · | · Tabs] [Search ──────] ··· [Actions — full labels]
-       *
-       * Fix notes:
-       * - Search is constrained inside the slot div, never bleeds outside
-       * - Actions on mobile shrink to icon-only via AdminRentAction's
-       *   `compact` prop (add that prop to AdminRentAction if not present)
-       * - Row 2 search uses `w-full` with no min-width so it can never overflow
-       */
-      <div className="flex flex-col sm:flex-row sm:items-center gap-y-1.5 gap-x-3 w-full overflow-hidden">
+      <div className="flex flex-col gap-y-2 w-full">
 
-        {/* ── Row 1 ── */}
-        <div className="flex items-center gap-x-1.5 w-full min-w-0 overflow-hidden">
+        {/* ── Row 1: Tabs + Actions ── */}
+        <div className="flex items-center justify-between gap-x-2 w-full">
 
-          {/* Brand — desktop only */}
-          <div className="hidden sm:flex items-center gap-2 shrink-0">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#1C1A18" }} />
-            <span className="text-sm font-semibold whitespace-nowrap" style={{ color: "#1C1A18" }}>
-              Rent Management
-            </span>
+          {/* Left: Brand + Tabs (Desktop) / Tabs only (Mobile) */}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            
+            {/* Brand — desktop only */}
+            <div className="hidden sm:flex items-center gap-2 shrink-0">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#1C1A18" }} />
+              <span className="text-sm font-semibold whitespace-nowrap" style={{ color: "#1C1A18" }}>
+                Rent Management
+              </span>
+            </div>
+
+            {/* Divider — desktop only */}
+            <div className="hidden sm:block h-4 w-px shrink-0" style={{ background: "#DDD6D0" }} />
+
+            {/* Tab nav */}
+            <nav className="flex items-center gap-0.5 shrink-0">
+              {[
+                { id: "rent", label: "Rent" },
+                { id: "payments", label: "Payments" },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTab(t.id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold
+                             whitespace-nowrap transition-colors"
+                  style={
+                    activeTab === t.id
+                      ? { background: "#EEE9E5", color: "#1C1A18" }
+                      : { color: "#948472" }
+                  }
+                  onMouseEnter={(e) => {
+                    if (activeTab !== t.id) {
+                      e.currentTarget.style.background = "#EEE9E5";
+                      e.currentTarget.style.color = "#1C1A18";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== t.id) {
+                      e.currentTarget.style.background = "";
+                      e.currentTarget.style.color = "#948472";
+                    }
+                  }}
+                >
+                  {t.label}
+                  {t.id === "rent" && overdueCount > 0 && (
+                    <span
+                      className="inline-flex items-center justify-center h-4 min-w-[16px] px-1
+                                 rounded-full text-white text-[9px] font-bold leading-none"
+                      style={{ background: "#B02020" }}
+                    >
+                      {overdueCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            {/* Desktop: Search (inline after tabs) */}
+            <div className="hidden sm:block flex-1 min-w-0 max-w-[280px] ml-3">
+              <SearchInput 
+                placeholder="Search tenants, properties…" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
 
-          {/* Divider — desktop only */}
-          <div className="hidden sm:block h-4 w-px shrink-0" style={{ background: "#DDD6D0" }} />
-
-          {/* Tab nav */}
-          <nav className="flex items-center gap-0.5 shrink-0">
-            {[
-              { id: "rent", label: "Rent" },
-              { id: "payments", label: "Payments" },
-            ].map((t) => (
+          {/* Right: Filter + Menu (Mobile) / Admin Actions (Desktop) */}
+          <div className="flex items-center gap-2 shrink-0">
+            
+            {/* Mobile: Filters button (only on rent tab) */}
+            {activeTab === "rent" && (
               <button
-                key={t.id}
                 type="button"
-                onClick={() => setActiveTab(t.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold
-                           whitespace-nowrap transition-colors"
-                style={
-                  activeTab === t.id
-                    ? { background: "#EEE9E5", color: "#1C1A18" }
-                    : { color: "#948472" }
-                }
-                onMouseEnter={(e) => {
-                  if (activeTab !== t.id) {
-                    e.currentTarget.style.background = "#EEE9E5";
-                    e.currentTarget.style.color = "#1C1A18";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== t.id) {
-                    e.currentTarget.style.background = "";
-                    e.currentTarget.style.color = "#948472";
-                  }
+                onClick={() => setIsFilterDrawerOpen(true)}
+                className="sm:hidden flex items-center gap-1.5 h-9 px-3 rounded-lg border 
+                           text-xs font-semibold transition-colors"
+                style={{ 
+                  background: activeFilterCount > 0 ? "#1C1A18" : "#F8F5F2", 
+                  borderColor: activeFilterCount > 0 ? "#1C1A18" : "#DDD6D0",
+                  color: activeFilterCount > 0 ? "#F0DADA" : "#948472"
                 }}
               >
-                {t.label}
-                {t.id === "rent" && overdueCount > 0 && (
-                  <span
-                    className="inline-flex items-center justify-center h-4 min-w-[16px] px-1
-                               rounded-full text-white text-[9px] font-bold leading-none"
-                    style={{ background: "#B02020" }}
-                  >
-                    {overdueCount}
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span className="hidden xs:inline">Filters</span>
+                {activeFilterCount > 0 && (
+                  <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1
+                                   rounded-full text-[#1C1A18] text-[9px] font-bold leading-none"
+                        style={{ background: "#F0DADA" }}>
+                    {activeFilterCount}
                   </span>
                 )}
               </button>
-            ))}
-          </nav>
+            )}
 
-          {/* Search — desktop only, grows to fill gap */}
-          <div className="hidden sm:block flex-1 min-w-0 max-w-[240px]">
-            <SearchInput placeholder="Search…" />
-          </div>
+            {/* Mobile: Menu dropdown for admin actions */}
+            <div className="sm:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center justify-center h-9 w-9 rounded-lg border 
+                               transition-colors"
+                    style={{ background: "#F8F5F2", borderColor: "#DDD6D0", color: "#948472" }}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem 
+                    onClick={() => getRents()}
+                    disabled={processingRents}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshIcon className="h-4 w-4" />
+                    <span>Process Monthly Rents</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => getRents()}
+                    disabled={sendingEmails}
+                    className="flex items-center gap-2"
+                  >
+                    <MailIcon className="h-4 w-4" />
+                    <span>Send Rent Reminders</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
-          {/* Actions — pinned right; compact on mobile */}
-          <div className="flex items-center gap-2 ml-auto shrink-0">
-            <AdminRentAction onProcessSuccess={getRents} />
+            {/* Desktop: Admin action buttons */}
+            <div className="hidden sm:flex items-center gap-2">
+              <AdminRentAction onProcessSuccess={getRents} />
+            </div>
           </div>
         </div>
 
-        {/* ── Row 2 — mobile search, strictly full width, no overflow ── */}
+        {/* ── Row 2: Mobile search (full-width) ── */}
         <div className="sm:hidden w-full">
-          <SearchInput placeholder="Search rent payments…" />
+          <SearchInput 
+            placeholder="Search tenants, properties, units…" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
 
       </div>
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeTab, overdueCount, currentMonthName, filterRentYear, getRents],
+    [activeTab, overdueCount, searchQuery, activeFilterCount, getRents, processingRents, sendingEmails],
   );
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
@@ -251,8 +375,8 @@ const RentPayment = () => {
             </div>
           )}
 
-          {/* Filters — scopes the KPIs below */}
-          <div className="rounded-xl border border-slate-200 bg-white px-4 sm:px-5 py-3.5">
+          {/* Filters — scopes the KPIs below — Desktop only */}
+          <div className="hidden sm:block rounded-xl border border-slate-200 bg-white px-4 sm:px-5 py-3.5">
             <RentFilter
               month={filterRentMonth}
               year={filterRentYear}
@@ -284,12 +408,12 @@ const RentPayment = () => {
           <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
             <div className="flex items-center px-4 sm:px-5 py-3 border-b border-slate-100">
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide tabular-nums">
-                {frequencyFilteredRents.length} record{frequencyFilteredRents.length !== 1 ? "s" : ""}
+                {searchFilteredRents.length} record{searchFilteredRents.length !== 1 ? "s" : ""}
               </span>
             </div>
             <div className="px-4 sm:px-5 pt-2 pb-4">
               <RentTable
-                rents={frequencyFilteredRents}
+                rents={searchFilteredRents}
                 cams={cams}
                 bankAccounts={bankAccounts}
                 formik={paymentForm.formik}
@@ -348,6 +472,79 @@ const RentPayment = () => {
           </div>
         </div>
       )}
+
+      {/* ══ MOBILE FILTER DRAWER ═════════════════════════════════════════════ */}
+      <Sheet open={isFilterDrawerOpen} onOpenChange={setIsFilterDrawerOpen}>
+        <SheetContent side="bottom" className="h-[85vh] p-0">
+          <div className="flex flex-col h-full">
+            
+            {/* Header */}
+            <SheetHeader className="px-5 pt-5 pb-4 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <SheetTitle className="text-lg font-semibold" style={{ color: "#1C1A18" }}>
+                    Filters
+                  </SheetTitle>
+                  {activeFilterCount > 0 && (
+                    <p className="text-xs mt-1" style={{ color: "#948472" }}>
+                      {activeFilterCount} filter{activeFilterCount !== 1 ? "s" : ""} applied
+                    </p>
+                  )}
+                </div>
+              </div>
+            </SheetHeader>
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <RentFilter
+                month={filterRentMonth}
+                year={filterRentYear}
+                status={filterStatus}
+                propertyId={filterPropertyId}
+                properties={properties}
+                defaultMonth={defaultRentMonth}
+                defaultYear={defaultRentYear}
+                onMonthChange={setFilterRentMonth}
+                onYearChange={setFilterRentYear}
+                onStatusChange={setFilterStatus}
+                onPropertyChange={setFilterPropertyId}
+                onReset={handleClearRentFilters}
+                frequencyView={frequencyView}
+                onFrequencyChange={setFrequencyView}
+              />
+            </div>
+
+            {/* Footer with actions */}
+            <SheetFooter className="px-5 py-4 border-t border-slate-100 flex-row gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClearRentFilters}
+                disabled={!activeFilterCount}
+                className="flex-1 h-11 text-sm font-semibold"
+                style={{
+                  borderColor: "#DDD6D0",
+                  color: "#948472",
+                }}
+              >
+                Clear All
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setIsFilterDrawerOpen(false)}
+                className="flex-1 h-11 text-sm font-semibold"
+                style={{
+                  background: "#1C1A18",
+                  color: "#F0DADA",
+                }}
+              >
+                Apply Filters
+              </Button>
+            </SheetFooter>
+
+          </div>
+        </SheetContent>
+      </Sheet>
     </form>
   );
 };

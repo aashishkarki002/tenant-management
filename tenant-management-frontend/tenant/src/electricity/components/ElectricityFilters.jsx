@@ -27,19 +27,20 @@ export function ElectricityFilters({
   }, [currentYear]);
 
   return (
-    <div className="bg-white rounded-xl border border-[#E8E4E0] px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+    <div className="bg-white rounded-xl border border-[#E8E4E0] px-4 py-3.5 shadow-sm">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         {/* Billing Period */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <Calendar className="w-4 h-4 text-[#948472] shrink-0" />
-          <span className="text-xs font-semibold text-[#948472] uppercase tracking-wide whitespace-nowrap">
+          <span className="text-xs font-bold text-[#948472] uppercase tracking-wider whitespace-nowrap">
             Period
           </span>
           <Select
             value={String(month ?? currentMonth)}
             onValueChange={(value) => onChange?.("month", Number(value))}
           >
-            <SelectTrigger className="w-[120px] h-8 text-sm bg-[#F8F5F2] border-[#E8E4E0]">
+            <SelectTrigger className="w-[130px] h-9 text-sm bg-[#F8F5F2] border-[#DDD6D0] 
+              hover:border-[#AFA097] transition-colors">
               <SelectValue placeholder="Month" />
             </SelectTrigger>
             <SelectContent>
@@ -54,7 +55,8 @@ export function ElectricityFilters({
             value={String(year ?? currentYear)}
             onValueChange={(value) => onChange?.("year", Number(value))}
           >
-            <SelectTrigger className="w-[80px] h-8 text-sm bg-[#F8F5F2] border-[#E8E4E0]">
+            <SelectTrigger className="w-[90px] h-9 text-sm bg-[#F8F5F2] border-[#DDD6D0]
+              hover:border-[#AFA097] transition-colors">
               <SelectValue placeholder="Year" />
             </SelectTrigger>
             <SelectContent>
@@ -67,12 +69,12 @@ export function ElectricityFilters({
           </Select>
         </div>
 
-        <div className="w-px h-6 bg-[#E8E4E0] hidden sm:block" />
+        <div className="w-px h-7 bg-[#E8E4E0] hidden sm:block" />
 
         {/* Building */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <Building2 className="w-4 h-4 text-[#948472] shrink-0" />
-          <span className="text-xs font-semibold text-[#948472] uppercase tracking-wide whitespace-nowrap">
+          <span className="text-xs font-bold text-[#948472] uppercase tracking-wider whitespace-nowrap">
             Building
           </span>
           <Select
@@ -82,7 +84,8 @@ export function ElectricityFilters({
               onChange?.("innerBlockId", "");
             }}
           >
-            <SelectTrigger className="w-[140px] h-8 text-sm bg-[#F8F5F2] border-[#E8E4E0]">
+            <SelectTrigger className="w-[150px] h-9 text-sm bg-[#F8F5F2] border-[#DDD6D0]
+              hover:border-[#AFA097] transition-colors">
               <SelectValue placeholder="Select building" />
             </SelectTrigger>
             <SelectContent>
@@ -105,16 +108,17 @@ export function ElectricityFilters({
         {/* Inner Block — conditional */}
         {blockId && blockId !== "all" && (
           <>
-            <div className="w-px h-6 bg-[#E8E4E0] hidden sm:block" />
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-[#948472] uppercase tracking-wide whitespace-nowrap">
+            <div className="w-px h-7 bg-[#E8E4E0] hidden sm:block" />
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-bold text-[#948472] uppercase tracking-wider whitespace-nowrap">
                 Floor
               </span>
               <Select
                 value={innerBlockId ?? ""}
                 onValueChange={(value) => onChange?.("innerBlockId", value)}
               >
-                <SelectTrigger className="w-[120px] h-8 text-sm bg-[#F8F5F2] border-[#E8E4E0]">
+                <SelectTrigger className="w-[130px] h-9 text-sm bg-[#F8F5F2] border-[#DDD6D0]
+                  hover:border-[#AFA097] transition-colors">
                   <SelectValue placeholder="Select floor" />
                 </SelectTrigger>
                 <SelectContent>
@@ -137,11 +141,9 @@ export function ElectricityFilters({
 
         {/* Period summary — pushed to the right */}
         {periodLabel && (
-          <div className="ml-auto hidden md:block">
-            <p className="text-xs text-[#948472]">
-              Showing:{" "}
-              <span className="font-semibold text-[#1C1A18]">{periodLabel}</span>
-            </p>
+          <div className="ml-auto hidden lg:flex items-center gap-2 px-3 py-1.5 bg-[#F8F5F2] rounded-lg border border-[#E8E4E0]">
+            <span className="text-xs text-[#948472] font-medium">Viewing:</span>
+            <span className="text-sm font-bold text-[#3D1414]">{periodLabel}</span>
           </div>
         )}
       </div>

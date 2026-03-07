@@ -5,12 +5,15 @@ import {
     RefreshCwIcon, PrinterIcon, DownloadIcon, FileTextIcon,
     ShareIcon, XIcon, BuildingIcon, ArrowUpRightIcon,
     ArrowDownRightIcon, PlusIcon, TrendingUpIcon, TrendingDownIcon,
-    MinusIcon,
+    MinusIcon, FilterIcon, MoreVerticalIcon,
 } from "lucide-react";
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
     DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+    Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
+} from "@/components/ui/sheet";
 import {
     AreaChart, Area, BarChart, Bar, XAxis, YAxis,
     CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend,
@@ -19,6 +22,7 @@ import {
 import { useHeaderSlot } from "../../context/HeaderSlotContext";
 import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
 import { useMonthlyChart, QUARTER_LABELS } from "../hooks/useMonthlyChart";
+import { useIsMobile } from "@/hooks/use-mobile";
 import DualCalendarTailwind from "../../components/dualDate";
 import LedgerTable from "./LedgerTable";
 import RevenueBreakDown from "./RevenueBreakDown";
@@ -347,9 +351,9 @@ function CashFlowArea({ data = [], loading }) {
 function CompareStatStrip({ stats, labelA, labelB, loading }) {
     if (loading) {
         return (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
-                {[0, 1, 2].map(i => <Skeleton key={i} h={72} />)}
-            </div>
+                <div style={{ display: "grid", gridTemplateColumns: window.innerWidth < 640 ? "1fr" : "repeat(3,1fr)", gap: 12 }}>
+                    {[0, 1, 2].map(i => <Skeleton key={i} h={72} />)}
+                </div>
         );
     }
     if (!stats) return null;
@@ -375,7 +379,11 @@ function CompareStatStrip({ stats, labelA, labelB, loading }) {
                         <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>
                             {label}
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <div style={{
+                            display: "grid",
+                            gridTemplateColumns: window.innerWidth < 640 ? "1fr" : "1fr 1fr",
+                            gap: 6,
+                        }}>
                             <div>
                                 <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>{labelA}</div>
                                 <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>₹{fmtK(s.a ?? 0)}</div>
@@ -629,6 +637,10 @@ function ExportBtn({ summary, filterLabel }) {
  * Injected into the global header via useHeaderSlot.
  * Replaces GlobalSearch for the duration AccountingPage is mounted.
  * All state is owned by AccountingPage; this is a pure controlled renderer.
+ * 
+ * MOBILE-FIRST RESPONSIVE DESIGN:
+ * - < 640px: Filter drawer pattern with essential CTAs only
+ * - ≥ 640px: Inline filter pills with full action bar
  */
 function AccountingHeaderSlot({
     selectedQuarter, onQuarterChange,
@@ -638,53 +650,331 @@ function AccountingHeaderSlot({
     onAddRevenue, onAddExpense, onRefresh,
     summary, filterLabel, bankAccounts,
 }) {
+    const isMobile = useIsMobile();
     const [showCustom, setShowCustom] = useState(false);
+    const [showMobileFilters, setShowMobileFilters] = useState(false);
 
     const handleApplyCustom = () => {
         onQuarterChange("custom");
         setShowCustom(false);
     };
 
+    const activeFilterCount = useMemo(() => {
+        let count = 0;
+        if (selectedQuarter !== null) count++;
+        if (compareMode) count++;
+        return count;
+    }, [selectedQuarter, compareMode]);
+
     const QPill = ({ label, value }) => (
         <button onClick={() => onQuarterChange(value)} style={{
-            padding: "4px 11px", borderRadius: 7,
+            padding: "6px 14px", borderRadius: 8, minHeight: 44,
             border: `1px solid ${selectedQuarter === value ? C.forest : C.border}`,
             background: selectedQuarter === value ? C.forest : "transparent",
             color: selectedQuarter === value ? "#fff" : C.textMid,
-            fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .12s",
-            lineHeight: "20px",
+            fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .12s",
         }}>{label}</button>
     );
 
-    return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {/* Row 1: filters + actions */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {/* Quarter pills */}
-                <div style={{ display: "flex", gap: 3 }}>
-                    {QUARTERS.map(q => <QPill key={q.label} label={q.label} value={q.value} />)}
+    // ─── MOBILE LAYOUT (< 640px) ──────────────────────────────────────────────
+    // Simplified with clear hierarchy: Primary action → Filters → More
+    if (isMobile) {
+        return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Primary action row - Focus on essential actions */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* Hero CTA: Add Revenue */}
+                    <button onClick={onAddRevenue} style={{
+                        flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                        padding: "10px 16px", borderRadius: 11, border: "none",
+                        background: C.forestLight, color: "#fff",
+                        fontSize: 14, fontWeight: 700, cursor: "pointer", minHeight: 46,
+                        boxShadow: "0 2px 12px rgba(26,43,26,0.2)",
+                    }}>
+                        <PlusIcon size={17} strokeWidth={2.5} />
+                        Add Revenue
+                    </button>
+
+                    {/* Filter drawer trigger */}
+                    <Sheet open={showMobileFilters} onOpenChange={setShowMobileFilters}>
+                        <SheetTrigger asChild>
+                            <button style={{
+                                display: "flex", alignItems: "center", justifyContent: "center", gap: 6, 
+                                padding: "10px 14px", borderRadius: 11, minHeight: 46,
+                                border: `1.5px solid ${activeFilterCount > 0 ? C.forest : C.border}`,
+                                background: activeFilterCount > 0 ? C.forest + "10" : C.surface,
+                                color: activeFilterCount > 0 ? C.forest : C.textMid,
+                                fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                position: "relative",
+                            }}>
+                                <FilterIcon size={17} strokeWidth={2.2} />
+                                {activeFilterCount > 0 && (
+                                    <span style={{
+                                        position: "absolute", top: -4, right: -4,
+                                        background: C.forest, color: "#fff",
+                                        fontSize: 10, fontWeight: 700, borderRadius: "50%",
+                                        width: 18, height: 18, display: "flex", alignItems: "center",
+                                        justifyContent: "center", border: `2px solid ${C.bg}`,
+                                    }}>{activeFilterCount}</span>
+                                )}
+                            </button>
+                        </SheetTrigger>
+                        <SheetContent side="bottom" style={{
+                            borderTopLeftRadius: 20, borderTopRightRadius: 20,
+                            maxHeight: "85vh", overflow: "auto",
+                        }}>
+                            <SheetHeader>
+                                <SheetTitle style={{ fontSize: 18, fontWeight: 700, color: C.forest }}>
+                                    Filter & Compare
+                                </SheetTitle>
+                            </SheetHeader>
+                            <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 24 }}>
+                                {/* Period Selection */}
+                                <div>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>
+                                        Period
+                                    </div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                                        {QUARTERS.map(q => <QPill key={q.label} label={q.label} value={q.value} />)}
+                                    </div>
+                                    
+                                    {/* Custom date range */}
+                                    <div style={{ marginTop: 16, padding: 16, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>
+                                            Custom Range
+                                        </div>
+                                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                            <div>
+                                                <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 6 }}>Start Date</div>
+                                                <DualCalendarTailwind value={customStart} onChange={v => onCustomStartChange(v ?? "")} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 6 }}>End Date</div>
+                                                <DualCalendarTailwind value={customEnd} onChange={v => onCustomEndChange(v ?? "")} />
+                                            </div>
+                                        </div>
+                                        <button
+                                            disabled={!customStart || !customEnd}
+                                            onClick={() => { handleApplyCustom(); setShowMobileFilters(false); }}
+                                            style={{
+                                                marginTop: 12, width: "100%", padding: "10px 0", borderRadius: 10,
+                                                border: "none", background: C.forest, color: "#fff",
+                                                fontSize: 14, fontWeight: 700, cursor: "pointer", minHeight: 44,
+                                                opacity: (!customStart || !customEnd) ? .4 : 1,
+                                            }}>
+                                            Apply Custom Range
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Compare Mode */}
+                                <div>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>
+                                        Comparison
+                                    </div>
+                                    <button onClick={onCompareModeToggle} style={{
+                                        width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                                        padding: "12px 16px", borderRadius: 11, minHeight: 46,
+                                        border: `1.5px solid ${compareMode ? C.forest : C.border}`,
+                                        background: compareMode ? C.forest : C.surface,
+                                        color: compareMode ? "#fff" : C.textMid,
+                                        fontSize: 14, fontWeight: 600, cursor: "pointer",
+                                    }}>
+                                        <GitCompareArrowsIcon size={17} strokeWidth={2.2} />
+                                        {compareMode ? "Comparing Active" : "Enable Compare"}
+                                    </button>
+
+                                    {compareMode && (
+                                        <div style={{ marginTop: 16 }}>
+                                            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>
+                                                Compare Against
+                                            </div>
+                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                                {QUARTERS.filter(q => q.value !== null).map(q => (
+                                                    <button key={q.value} onClick={() => onCompareQuarterChange(q.value)} style={{
+                                                        padding: "10px 12px", borderRadius: 10, minHeight: 46,
+                                                        border: `1.5px solid ${compareQuarter === q.value ? C.amber : C.border}`,
+                                                        background: compareQuarter === q.value ? C.amberBg : C.surface,
+                                                        color: compareQuarter === q.value ? C.amber : C.textMid,
+                                                        fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                                        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                                                    }}>
+                                                        <span style={{ fontWeight: 700 }}>{q.label}</span>
+                                                        <span style={{ fontSize: 9, opacity: .7, marginTop: 3 }}>
+                                                            {QUARTER_MONTHS[q.value]}
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Apply button */}
+                                <button onClick={() => setShowMobileFilters(false)} style={{
+                                    width: "100%", padding: "14px 16px", borderRadius: 12, minHeight: 48,
+                                    border: "none", background: C.forest, color: "#fff",
+                                    fontSize: 15, fontWeight: 700, cursor: "pointer",
+                                }}>
+                                    Apply Filters
+                                </button>
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+
+                    {/* More actions menu */}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button style={{
+                                padding: "10px 12px", borderRadius: 11, minHeight: 46,
+                                border: `1px solid ${C.border}`, background: C.surface,
+                                cursor: "pointer", display: "flex", alignItems: "center",
+                            }}>
+                                <MoreVerticalIcon size={19} color={C.textMid} strokeWidth={2.2} />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" style={{ borderRadius: 12, minWidth: 200 }}>
+                            <DropdownMenuItem onClick={onAddExpense} style={{ gap: 10, cursor: "pointer", padding: "12px 16px" }}>
+                                <PlusIcon size={16} color={C.amber} />
+                                <span style={{ fontSize: 14, fontWeight: 600 }}>Add Expense</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={onRefresh} style={{ gap: 10, cursor: "pointer", padding: "12px 16px" }}>
+                                <RefreshCwIcon size={16} />
+                                Refresh Data
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => window.print()} style={{ gap: 10, cursor: "pointer", padding: "12px 16px" }}>
+                                <PrinterIcon size={16} />
+                                Print Report
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem style={{ gap: 10, cursor: "pointer", padding: "12px 16px" }} onClick={() => {
+                                const t = summary?.totals ?? {};
+                                const rows = [
+                                    ["Metric", "Value"],
+                                    ["Revenue", t.totalRevenue ?? 0],
+                                    ["Expenses", t.totalExpenses ?? 0],
+                                    ["Liabilities", t.totalLiabilities ?? 0],
+                                    ["Net Cash Flow", t.netCashFlow ?? 0],
+                                    ["Period", filterLabel],
+                                ];
+                                const b = new Blob([rows.map(r => r.join(",")).join("\n")], { type: "text/csv" });
+                                const u = URL.createObjectURL(b);
+                                Object.assign(document.createElement("a"), { href: u, download: `accounts-${Date.now()}.csv` }).click();
+                                URL.revokeObjectURL(u);
+                            }}>
+                                <DownloadIcon size={16} />
+                                Export CSV
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
 
-                {/* Custom range picker */}
-                <DropdownMenu open={showCustom} onOpenChange={setShowCustom}>
-                    <DropdownMenuTrigger asChild>
-                        <button style={{
-                            display: "flex", alignItems: "center", gap: 4, padding: "4px 11px", borderRadius: 7,
-                            border: `1px solid ${selectedQuarter === "custom" ? C.forest : C.border}`,
-                            background: selectedQuarter === "custom" ? C.forest : "transparent",
-                            color: selectedQuarter === "custom" ? "#fff" : C.textMid,
-                            fontSize: 12, fontWeight: 600, cursor: "pointer", lineHeight: "20px",
-                        }}>
-                            <CalendarIcon size={11} />
-                            {selectedQuarter === "custom" ? `${toBSShort(customStart)}–${toBSShort(customEnd)}` : "Custom"}
-                            <ChevronDownIcon size={10} style={{ opacity: .4 }} />
-                        </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" style={{ padding: 16, borderRadius: 14, minWidth: 340 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>
-                            Custom Date Range
+                {/* Active filter chip - Shows current selection */}
+                {(selectedQuarter !== null || compareMode) && (
+                    <div style={{
+                        padding: "10px 14px", borderRadius: 10, 
+                        background: `linear-gradient(135deg, ${C.forestLight}10 0%, ${C.surface} 100%)`,
+                        border: `1px solid ${C.forest}20`,
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        gap: 10,
+                    }}>
+                        <div style={{ fontSize: 12, color: C.textMid, flex: 1 }}>
+                            <span style={{ fontWeight: 700, color: C.forest }}>{filterLabel}</span>
+                            {compareMode && (
+                                <span style={{ marginLeft: 6, fontSize: 11, color: C.amber, fontWeight: 600 }}>
+                                    · vs Q{compareQuarter}
+                                </span>
+                            )}
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <button onClick={() => { 
+                            onQuarterChange(null); 
+                            onCustomStartChange(""); 
+                            onCustomEndChange(""); 
+                            if (compareMode) onCompareModeToggle();
+                        }} style={{
+                            display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600,
+                            color: C.textMuted, background: C.surface, border: `1px solid ${C.border}`,
+                            cursor: "pointer", padding: "4px 10px", borderRadius: 6,
+                        }}>
+                            <XIcon size={13} />
+                            Clear
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // ─── DESKTOP LAYOUT (≥ 640px) ─────────────────────────────────────────────
+    // Cleaner, more focused design with progressive disclosure
+    return (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {/* LEFT: Primary Action (Hero CTA) */}
+            <button onClick={onAddRevenue} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "7px 18px",
+                borderRadius: 10, border: "none", background: C.forestLight, 
+                color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(26,43,26,0.15)",
+                transition: "all .2s",
+            }} onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
+               onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}>
+                <PlusIcon size={15} strokeWidth={2.5} />
+                Add Revenue
+            </button>
+
+            <div style={{ width: 1, height: 28, background: C.border, margin: "0 4px" }} />
+
+            {/* CENTER: Period Filter (Consolidated) */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <button style={{
+                        display: "flex", alignItems: "center", gap: 7, padding: "7px 14px",
+                        borderRadius: 9, border: `1.5px solid ${selectedQuarter !== null ? C.forest : C.border}`,
+                        background: selectedQuarter !== null ? C.forest + "08" : "transparent",
+                        color: selectedQuarter !== null ? C.forest : C.textMid,
+                        fontSize: 13, fontWeight: 600, cursor: "pointer",
+                        transition: "all .15s",
+                    }}>
+                        <CalendarIcon size={14} strokeWidth={2.2} />
+                        <span>{selectedQuarter === "custom" ? `${toBSShort(customStart)}–${toBSShort(customEnd)}` : selectedQuarter ? `Q${selectedQuarter}` : "All Periods"}</span>
+                        <ChevronDownIcon size={13} style={{ opacity: .5 }} />
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" style={{ padding: 20, borderRadius: 14, minWidth: 280 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 14 }}>
+                        Select Period
+                    </div>
+                    
+                    {/* Quarter pills in dropdown */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+                        {QUARTERS.map(q => (
+                            <button key={q.label} onClick={() => { onQuarterChange(q.value); }} style={{
+                                padding: "10px 8px", borderRadius: 8,
+                                border: `1px solid ${selectedQuarter === q.value ? C.forest : C.border}`,
+                                background: selectedQuarter === q.value ? C.forest : "transparent",
+                                color: selectedQuarter === q.value ? "#fff" : C.textMid,
+                                fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s",
+                                textAlign: "center",
+                            }}>
+                                {q.label}
+                                {q.value && (
+                                    <div style={{ fontSize: 9, marginTop: 2, opacity: .7 }}>
+                                        {QUARTER_MONTHS[q.value]?.split("–")[0]}
+                                    </div>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+
+                    <DropdownMenuSeparator />
+
+                    {/* Custom range */}
+                    <div style={{ marginTop: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>
+                            Custom Range
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
                             <div>
                                 <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, marginBottom: 5 }}>Start</div>
                                 <DualCalendarTailwind value={customStart} onChange={v => onCustomStartChange(v ?? "")} />
@@ -698,105 +988,160 @@ function AccountingHeaderSlot({
                             disabled={!customStart || !customEnd}
                             onClick={handleApplyCustom}
                             style={{
-                                marginTop: 12, width: "100%", padding: "8px 0", borderRadius: 9,
+                                width: "100%", padding: "9px 0", borderRadius: 9,
                                 border: "none", background: C.forest, color: "#fff",
                                 fontSize: 13, fontWeight: 700, cursor: "pointer",
                                 opacity: (!customStart || !customEnd) ? .4 : 1,
                             }}>
-                            Apply Range
+                            Apply Custom Range
                         </button>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Clear filter */}
-                {selectedQuarter !== null && (
-                    <button onClick={() => { onQuarterChange(null); onCustomStartChange(""); onCustomEndChange(""); }}
-                        style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 600, color: C.textMuted, background: "none", border: "none", cursor: "pointer", padding: "4px 6px" }}>
-                        <XIcon size={11} />Clear
-                    </button>
-                )}
-
-                <div style={{ width: 1, height: 20, background: C.border, margin: "0 2px" }} />
-
-                {/* Quick add */}
-                <button onClick={onAddRevenue} style={{
-                    display: "flex", alignItems: "center", gap: 4, padding: "4px 12px",
-                    borderRadius: 8, border: "none", background: C.forestLight, color: "#fff",
-                    fontSize: 12, fontWeight: 600, cursor: "pointer", lineHeight: "20px",
-                }}>
-                    <PlusIcon size={12} />Revenue
-                </button>
-                <button onClick={onAddExpense} style={{
-                    display: "flex", alignItems: "center", gap: 4, padding: "4px 12px",
-                    borderRadius: 8, border: "none", background: C.amber, color: "#fff",
-                    fontSize: 12, fontWeight: 600, cursor: "pointer", lineHeight: "20px",
-                }}>
-                    <PlusIcon size={12} />Expense
-                </button>
-
-                <div style={{ width: 1, height: 20, background: C.border, margin: "0 2px" }} />
-
-                {/* Compare toggle */}
-                <button onClick={onCompareModeToggle} style={{
-                    display: "flex", alignItems: "center", gap: 4, padding: "4px 12px",
-                    borderRadius: 8,
-                    border: `1px solid ${compareMode ? C.forest : C.border}`,
-                    background: compareMode ? C.forest : "transparent",
-                    color: compareMode ? "#fff" : C.textMid,
-                    fontSize: 12, fontWeight: 600, cursor: "pointer", lineHeight: "20px",
-                }}>
-                    <GitCompareArrowsIcon size={12} />
-                    {compareMode ? "Exit Compare" : "Compare"}
-                </button>
-
-                {/* Refresh */}
-                <button onClick={onRefresh} style={{
-                    padding: "4px 8px", borderRadius: 8, border: `1px solid ${C.border}`,
-                    background: "transparent", cursor: "pointer", display: "flex", alignItems: "center",
-                }}>
-                    <RefreshCwIcon size={13} color={C.textMuted} />
-                </button>
-
-                {/* Export */}
-                <ExportBtn summary={summary} filterLabel={filterLabel} />
-
-                {/* Bank chip */}
-                {bankAccounts[0] && (
-                    <div style={{
-                        display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
-                        borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface,
-                    }}>
-                        <BuildingIcon size={11} color={C.textMuted} />
-                        <div>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>{bankAccounts[0].bankName}</div>
-                            <div style={{ fontSize: 10, color: C.textMuted }}>₹{bankAccounts[0].balance?.toLocaleString()}</div>
-                        </div>
                     </div>
-                )}
-            </div>
 
-            {/* Row 2: Compare quarter picker (only when compare mode active) */}
-            {compareMode && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".07em" }}>Compare vs</span>
-                    <div style={{ display: "flex", gap: 3 }}>
-                        {QUARTERS.filter(q => q.value !== null).map(q => (
-                            <button key={q.value} onClick={() => onCompareQuarterChange(q.value)} style={{
-                                padding: "3px 10px", borderRadius: 7, lineHeight: "18px",
-                                border: `1px solid ${compareQuarter === q.value ? C.amber : C.border}`,
-                                background: compareQuarter === q.value ? C.amberBg : "transparent",
-                                color: compareQuarter === q.value ? C.amber : C.textMid,
-                                fontSize: 11, fontWeight: 600, cursor: "pointer",
-                            }}>
-                                {q.label}
-                                <span style={{ fontSize: 10, color: "inherit", opacity: .7, marginLeft: 4 }}>
-                                    {QUARTER_MONTHS[q.value]}
-                                </span>
+                    {selectedQuarter !== null && (
+                        <>
+                            <DropdownMenuSeparator />
+                            <button onClick={() => { onQuarterChange(null); onCustomStartChange(""); onCustomEndChange(""); }}
+                                style={{ 
+                                    width: "100%", display: "flex", alignItems: "center", justifyContent: "center", 
+                                    gap: 5, fontSize: 12, fontWeight: 600, color: C.textMuted, 
+                                    background: "none", border: "none", cursor: "pointer", padding: "8px 0" 
+                                }}>
+                                <XIcon size={13} />
+                                Clear Filter
                             </button>
-                        ))}
-                    </div>
-                </div>
+                        </>
+                    )}
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Compare Mode Toggle */}
+            <button onClick={onCompareModeToggle} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "7px 14px",
+                borderRadius: 9,
+                border: `1.5px solid ${compareMode ? C.forest : C.border}`,
+                background: compareMode ? C.forest : "transparent",
+                color: compareMode ? "#fff" : C.textMid,
+                fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s",
+            }}>
+                <GitCompareArrowsIcon size={14} strokeWidth={2.2} />
+                {compareMode ? "Comparing" : "Compare"}
+            </button>
+
+            {/* Compare quarter selector (inline when active) */}
+            {compareMode && (
+                <>
+                    <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>vs</div>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button style={{
+                                display: "flex", alignItems: "center", gap: 6, padding: "7px 12px",
+                                borderRadius: 9, border: `1.5px solid ${C.amber}`,
+                                background: C.amberBg, color: C.amber,
+                                fontSize: 13, fontWeight: 600, cursor: "pointer",
+                            }}>
+                                Q{compareQuarter}
+                                <ChevronDownIcon size={12} style={{ opacity: .6 }} />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" style={{ padding: 16, borderRadius: 12, minWidth: 200 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>
+                                Compare Against
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {QUARTERS.filter(q => q.value !== null).map(q => (
+                                    <button key={q.value} onClick={() => onCompareQuarterChange(q.value)} style={{
+                                        padding: "10px 12px", borderRadius: 8, textAlign: "left",
+                                        border: `1px solid ${compareQuarter === q.value ? C.amber : C.border}`,
+                                        background: compareQuarter === q.value ? C.amberBg : "transparent",
+                                        color: compareQuarter === q.value ? C.amber : C.textMid,
+                                        fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                                    }}>
+                                        <span>{q.label}</span>
+                                        <span style={{ fontSize: 10, opacity: .7 }}>
+                                            {QUARTER_MONTHS[q.value]}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </>
             )}
+
+            <div style={{ flex: 1, minWidth: 20 }} />
+
+            {/* RIGHT: Secondary Actions (Consolidated) */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <button style={{
+                        display: "flex", alignItems: "center", gap: 5, padding: "7px 14px",
+                        borderRadius: 9, border: `1px solid ${C.border}`,
+                        background: C.surface, color: C.textMid,
+                        fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    }}>
+                        <MoreVerticalIcon size={15} />
+                        More
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" style={{ borderRadius: 12, minWidth: 200 }}>
+                    <DropdownMenuItem onClick={onAddExpense} style={{ gap: 10, cursor: "pointer", padding: "10px 14px" }}>
+                        <PlusIcon size={15} color={C.amber} />
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>Add Expense</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={onRefresh} style={{ gap: 10, cursor: "pointer", padding: "10px 14px" }}>
+                        <RefreshCwIcon size={15} />
+                        Refresh Data
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => window.print()} style={{ gap: 10, cursor: "pointer", padding: "10px 14px" }}>
+                        <PrinterIcon size={15} />
+                        Print Report
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem style={{ gap: 10, cursor: "pointer", padding: "10px 14px" }} onClick={() => {
+                        const t = summary?.totals ?? {};
+                        const rows = [
+                            ["Metric", "Value"],
+                            ["Revenue", t.totalRevenue ?? 0],
+                            ["Expenses", t.totalExpenses ?? 0],
+                            ["Liabilities", t.totalLiabilities ?? 0],
+                            ["Net Cash Flow", t.netCashFlow ?? 0],
+                            ["Period", filterLabel],
+                        ];
+                        const b = new Blob([rows.map(r => r.join(",")).join("\n")], { type: "text/csv" });
+                        const u = URL.createObjectURL(b);
+                        Object.assign(document.createElement("a"), { href: u, download: `accounts-${Date.now()}.csv` }).click();
+                        URL.revokeObjectURL(u);
+                    }}>
+                        <DownloadIcon size={15} />
+                        Export CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem style={{ gap: 10, cursor: "pointer", padding: "10px 14px" }} onClick={() => {
+                        const b = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
+                        const u = URL.createObjectURL(b);
+                        Object.assign(document.createElement("a"), { href: u, download: `accounts-${Date.now()}.json` }).click();
+                        URL.revokeObjectURL(u);
+                    }}>
+                        <FileTextIcon size={15} />
+                        Export JSON
+                    </DropdownMenuItem>
+                    {bankAccounts[0] && (
+                        <>
+                            <DropdownMenuSeparator />
+                            <div style={{ padding: "10px 14px", pointerEvents: "none" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <BuildingIcon size={14} color={C.textMuted} />
+                                    <div>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{bankAccounts[0].bankName}</div>
+                                        <div style={{ fontSize: 10, color: C.textMuted }}>Balance: ₹{bankAccounts[0].balance?.toLocaleString()}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </DropdownMenuContent>
+            </DropdownMenu>
         </div>
     );
 }
@@ -910,7 +1255,11 @@ export default function AccountingPage() {
         <div className="ap" style={{ minHeight: "100vh", background: C.bg }}>
             {shouldInject && <style>{FONTS}</style>}
 
-            <div className="no-print" style={{ padding: "8px 28px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div className="no-print" style={{
+                padding: window.innerWidth < 640 ? "8px 16px 0" : "8px 28px 0",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                flexWrap: "wrap", gap: 10,
+            }}>
                 <div style={{ display: "flex", gap: 3, background: C.surfaceAlt, borderRadius: 11, padding: 3 }}>
                     {[
                         { id: "overview", l: "Overview" },
@@ -937,10 +1286,17 @@ export default function AccountingPage() {
             </div>
 
             {/* ── PAGE BODY ──────────────────────────────────────────────────── */}
-            <div style={{ padding: "16px 28px 32px", display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{
+                padding: window.innerWidth < 640 ? "12px 16px 24px" : "16px 28px 32px",
+                display: "flex", flexDirection: "column", gap: 18,
+            }}>
 
                 {/* ── HERO KPI CARDS ──────────────────────────────────────────── */}
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(260px,auto) 1fr 1fr 1fr", gap: 14 }}>
+                <div style={{
+                    display: "grid",
+                    gridTemplateColumns: window.innerWidth < 768 ? "1fr" : window.innerWidth < 1024 ? "1fr 1fr" : "minmax(260px,auto) 1fr 1fr 1fr",
+                    gap: 14,
+                }}>
 
                     {/* Net Cash Position — dark hero card */}
                     <DarkCard delay={0} style={{ padding: "22px 26px", minWidth: 260 }}>
@@ -1059,7 +1415,11 @@ export default function AccountingPage() {
                         )}
 
                         {/* Normal cash flow trend + scorecard row */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 290px", gap: 16 }}>
+                        <div style={{
+                            display: "grid",
+                            gridTemplateColumns: window.innerWidth < 768 ? "1fr" : "1fr 290px",
+                            gap: 16,
+                        }}>
                             <Card delay={compareMode ? 2 : 0}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                                     <div>
@@ -1086,7 +1446,11 @@ export default function AccountingPage() {
                         </div>
 
                         {/* Cash position + revenue streams */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                        <div style={{
+                            display: "grid",
+                            gridTemplateColumns: window.innerWidth < 768 ? "1fr" : "1fr 1fr",
+                            gap: 16,
+                        }}>
                             <Card delay={compareMode ? 4 : 2}>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                                     <div>
@@ -1131,41 +1495,163 @@ export default function AccountingPage() {
 
                 {/* ── REVENUE TAB ─────────────────────────────────────────────── */}
                 {activeTab === "revenue" && (
-                    <RevenueBreakDown
-                        onRevenueAdded={refetch}
-                        {...filterProps}
-                        openDialog={pendingAction === "revenue"}
-                        onDialogOpenHandled={() => setPendingAction(null)}
-                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        {/* Context indicator showing relationship to total KPIs */}
+                        <Card delay={0} style={{ 
+                            padding: "14px 20px", 
+                            background: `linear-gradient(135deg, ${C.positiveBg} 0%, ${C.surface} 100%)`,
+                            borderLeft: `4px solid ${C.forestLight}`,
+                        }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <div style={{
+                                        width: 36, height: 36, borderRadius: "50%",
+                                        background: C.forestLight, display: "flex", alignItems: "center", justifyContent: "center",
+                                    }}>
+                                        <TrendingUpIcon size={18} color="#fff" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                                            Revenue Detail View
+                                        </div>
+                                        <div style={{ fontSize: 13, color: C.textMid, marginTop: 2 }}>
+                                            Analyzing revenue streams for <span style={{ fontWeight: 700, color: C.text }}>{filterLabel}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ 
+                                    padding: "8px 16px", 
+                                    borderRadius: 10, 
+                                    background: C.surface,
+                                    border: `1px solid ${C.border}`,
+                                }}>
+                                    <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>Total Revenue (from KPIs above)</div>
+                                    <div style={{ fontSize: 18, fontWeight: 700, color: C.forestLight }}>₹{fmtN(totals.totalRevenue)}</div>
+                                </div>
+                            </div>
+                        </Card>
+                        <RevenueBreakDown
+                            onRevenueAdded={refetch}
+                            {...filterProps}
+                            openDialog={pendingAction === "revenue"}
+                            onDialogOpenHandled={() => setPendingAction(null)}
+                        />
+                    </div>
                 )}
 
                 {/* ── EXPENSES TAB ────────────────────────────────────────────── */}
                 {activeTab === "expenses" && (
-                    <ExpenseBreakDown
-                        onExpenseAdded={refetch}
-                        {...filterProps}
-                        openDialog={pendingAction === "expense"}
-                        onDialogOpenHandled={() => setPendingAction(null)}
-                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        {/* Context indicator showing relationship to total KPIs */}
+                        <Card delay={0} style={{ 
+                            padding: "14px 20px", 
+                            background: `linear-gradient(135deg, ${C.amberBg} 0%, ${C.surface} 100%)`,
+                            borderLeft: `4px solid ${C.amber}`,
+                        }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <div style={{
+                                        width: 36, height: 36, borderRadius: "50%",
+                                        background: C.amber, display: "flex", alignItems: "center", justifyContent: "center",
+                                    }}>
+                                        <TrendingDownIcon size={18} color="#fff" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                                            Expense Detail View
+                                        </div>
+                                        <div style={{ fontSize: 13, color: C.textMid, marginTop: 2 }}>
+                                            Analyzing expense categories for <span style={{ fontWeight: 700, color: C.text }}>{filterLabel}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ 
+                                    padding: "8px 16px", 
+                                    borderRadius: 10, 
+                                    background: C.surface,
+                                    border: `1px solid ${C.border}`,
+                                }}>
+                                    <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>Total Expenses (from KPIs above)</div>
+                                    <div style={{ fontSize: 18, fontWeight: 700, color: C.amber }}>₹{fmtN(totals.totalExpenses)}</div>
+                                </div>
+                            </div>
+                        </Card>
+                        <ExpenseBreakDown
+                            onExpenseAdded={refetch}
+                            {...filterProps}
+                            openDialog={pendingAction === "expense"}
+                            onDialogOpenHandled={() => setPendingAction(null)}
+                        />
+                    </div>
                 )}
 
                 {/* ── LEDGER TAB ──────────────────────────────────────────────── */}
                 {activeTab === "ledger" && (
-                    <Card delay={0} style={{ padding: 0 }}>
-                        <div style={{ padding: "16px 22px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>General Ledger</div>
-                                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{filterLabel}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        {/* Context indicator showing relationship to total KPIs */}
+                        <Card delay={0} style={{ 
+                            padding: "14px 20px", 
+                            background: `linear-gradient(135deg, ${C.blueBg} 0%, ${C.surface} 100%)`,
+                            borderLeft: `4px solid ${C.blue}`,
+                        }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <div style={{
+                                        width: 36, height: 36, borderRadius: "50%",
+                                        background: C.blue, display: "flex", alignItems: "center", justifyContent: "center",
+                                    }}>
+                                        <FileTextIcon size={18} color="#fff" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                                            Ledger Detail View
+                                        </div>
+                                        <div style={{ fontSize: 13, color: C.textMid, marginTop: 2 }}>
+                                            All transactions for <span style={{ fontWeight: 700, color: C.text }}>{filterLabel}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ 
+                                    display: "flex",
+                                    gap: 12,
+                                }}>
+                                    <div style={{ 
+                                        padding: "8px 14px", 
+                                        borderRadius: 10, 
+                                        background: C.positiveBg,
+                                        border: `1px solid ${C.positive}30`,
+                                    }}>
+                                        <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Credits</div>
+                                        <div style={{ fontSize: 16, fontWeight: 700, color: C.positive }}>₹{fmtK(totals.totalRevenue)}</div>
+                                    </div>
+                                    <div style={{ 
+                                        padding: "8px 14px", 
+                                        borderRadius: 10, 
+                                        background: C.negativeBg,
+                                        border: `1px solid ${C.negative}30`,
+                                    }}>
+                                        <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Debits</div>
+                                        <div style={{ fontSize: 16, fontWeight: 700, color: C.negative }}>₹{fmtK(totals.totalExpenses)}</div>
+                                    </div>
+                                </div>
                             </div>
-                            <button onClick={() => window.print()} style={{
-                                display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 9,
-                                border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.textMid, cursor: "pointer",
-                            }}>
-                                <PrinterIcon size={13} />Print
-                            </button>
-                        </div>
-                        <LedgerTable entries={ledgerEntries} loading={loadingLedger} itemsPerPage={20} />
-                    </Card>
+                        </Card>
+                        <Card delay={0} style={{ padding: 0 }}>
+                            <div style={{ padding: "16px 22px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>General Ledger</div>
+                                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{filterLabel}</div>
+                                </div>
+                                <button onClick={() => window.print()} style={{
+                                    display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 9,
+                                    border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.textMid, cursor: "pointer",
+                                }}>
+                                    <PrinterIcon size={13} />Print
+                                </button>
+                            </div>
+                            <LedgerTable entries={ledgerEntries} loading={loadingLedger} itemsPerPage={20} />
+                        </Card>
+                    </div>
                 )}
             </div>
         </div>

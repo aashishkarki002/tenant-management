@@ -64,7 +64,8 @@ export function ElectricityInsights({ grouped = {} }) {
       id: "highest",
       icon: TrendingUp,
       iconBg: "bg-red-50",
-      iconColor: "text-red-500",
+      iconColor: "text-red-600",
+      borderColor: "border-red-200",
       label: "Highest Consumption",
       value: `${fmt.kwh(highest.consumption)} kWh`,
       detail: highest.name,
@@ -73,7 +74,8 @@ export function ElectricityInsights({ grouped = {} }) {
       id: "lowest",
       icon: TrendingDown,
       iconBg: "bg-green-50",
-      iconColor: "text-green-500",
+      iconColor: "text-green-600",
+      borderColor: "border-green-200",
       label: "Lowest Consumption",
       value: `${fmt.kwh(lowest.consumption)} kWh`,
       detail: lowest.name,
@@ -82,7 +84,8 @@ export function ElectricityInsights({ grouped = {} }) {
       id: "unpaid",
       icon: AlertCircle,
       iconBg: "bg-orange-50",
-      iconColor: "text-orange-500",
+      iconColor: "text-orange-600",
+      borderColor: "border-orange-200",
       label: "Unpaid Electricity Total",
       value: fmt.rs(unpaidTotal),
       detail: `Across ${unpaidCount} tenant${unpaidCount !== 1 ? "s" : ""}`,
@@ -93,22 +96,26 @@ export function ElectricityInsights({ grouped = {} }) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {cards.map((card) => {
+      {cards.map((card, index) => {
         const Icon = card.icon;
         return (
           <div
             key={card.id}
-            className="flex items-center gap-3 bg-white rounded-xl border border-[#E8E4E0] px-4 py-3"
+            className={`group flex items-center gap-3 bg-white rounded-xl border ${card.borderColor ?? "border-[#E8E4E0]"} 
+              px-4 py-3.5 transition-all duration-200 hover:shadow-md hover:scale-[1.02]
+              animate-in fade-in slide-in-from-left-2`}
+            style={{ animationDelay: `${index * 75}ms` }}
           >
-            <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${card.iconBg} shrink-0`}>
-              <Icon className={`w-4 h-4 ${card.iconColor}`} />
+            <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${card.iconBg} shrink-0
+              transition-transform duration-200 group-hover:scale-110 shadow-sm`}>
+              <Icon className={`w-5 h-5 ${card.iconColor}`} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold tracking-wide uppercase text-[#948472]">
+              <p className="text-[10px] font-bold tracking-wider uppercase text-[#948472] mb-0.5">
                 {card.label}
               </p>
-              <p className="text-sm font-bold text-[#1C1A18] truncate">{card.value}</p>
-              <p className="text-xs text-[#948472] truncate">{card.detail}</p>
+              <p className="text-base font-bold text-[#1C1A18] truncate leading-tight">{card.value}</p>
+              <p className="text-xs text-[#948472] truncate mt-1">{card.detail}</p>
             </div>
           </div>
         );
