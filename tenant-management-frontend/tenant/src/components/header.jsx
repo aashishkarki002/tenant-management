@@ -7,8 +7,8 @@ import {
 } from "@/components/ui/command";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
-  Bell, BellOff, Search, X, CheckCheck, Wrench, CreditCard,
-  AlertCircle, Clock, Share, ChevronRight, PlusCircle,
+  Bell, Search, X, CheckCheck, Wrench, CreditCard,
+  AlertCircle, Clock, ChevronRight, PlusCircle,
   Users, Receipt, BookOpen, UserPlus, FileText,
 } from "lucide-react";
 import {
@@ -21,9 +21,9 @@ import { useAuth } from "../context/AuthContext";
 import api from "../../plugins/axios";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { usePushNotifications } from "../hooks/usePushNotification";
 import { useAppBadge } from "../hooks/useBadge";
 import { HeaderSlot } from "../context/HeaderSlotContext";
+import PushNotificationBanner from "./PushNotificationBanner";
 
 // ─── Notification config — re-mapped to brand palette ────────────────────────
 const NOTIFICATION_CONFIG = {
@@ -71,83 +71,6 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString();
 }
 
-// ─── Push Notification Banner — on-brand ─────────────────────────────────────
-export function PushNotificationBanner({ user }) {
-  const { permissionState, isReady, isSubscribed, isIOS, isStandalone, requestPermissionAndSubscribe } =
-    usePushNotifications(user);
-  const [dismissed, setDismissed] = useState(() => {
-    if (!user) return true;
-    return localStorage.getItem(`pushDismissed_${user._id || user.id}`) === "true";
-  });
-  const dismiss = () => {
-    if (user) localStorage.setItem(`pushDismissed_${user._id || user.id}`, "true");
-    setDismissed(true);
-  };
-
-  if (dismissed || !user || !isReady || isSubscribed || permissionState === "granted") return null;
-
-  if (isIOS && !isStandalone) {
-    return (
-      <div className="flex items-start gap-3 rounded-xl px-4 py-3 mx-4 mb-2 border"
-        style={{ background: "#D4E4F5", borderColor: "rgba(46,90,140,0.25)" }}>
-        <Share className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#2E5A8C" }} />
-        <div className="flex-1 text-sm">
-          <p className="font-semibold" style={{ color: "#1A2E4A" }}>Add to Home Screen for notifications</p>
-          <p className="mt-0.5 text-xs" style={{ color: "#2E5A8C" }}>
-            Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then open the app and allow notifications.
-          </p>
-        </div>
-        <button onClick={dismiss} className="transition-colors" style={{ color: "#2E5A8C" }}>
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-    );
-  }
-
-  if (permissionState === "denied") {
-    return (
-      <div className="flex items-start gap-3 rounded-xl px-4 py-3 mx-4 mb-2 border"
-        style={{ background: "#F5D5D5", borderColor: "rgba(176,32,32,0.25)" }}>
-        <BellOff className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#B02020" }} />
-        <div className="flex-1 text-sm">
-          <p className="font-semibold" style={{ color: "#5C1414" }}>Notifications blocked</p>
-          <p className="mt-0.5 text-xs" style={{ color: "#B02020" }}>
-            Go to <strong>Site Settings → Notifications</strong> and allow <strong>app.sallyanhouse.com</strong>
-          </p>
-        </div>
-        <button onClick={dismiss} className="transition-colors" style={{ color: "#C47272" }}>
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 mx-4 mb-2 border"
-      style={{ background: "#EEE9E5", borderColor: "#DDD6D0" }}>
-      <Bell className="w-4 h-4 shrink-0" style={{ color: "#3D1414" }} />
-      <div className="flex-1 text-sm">
-        <p className="font-semibold text-[13px]" style={{ color: "#3D1414" }}>
-          Stay on top of payments &amp; maintenance
-        </p>
-        <p className="text-xs mt-0.5" style={{ color: "#948472" }}>
-          Enable notifications to get alerts even when this tab is closed.
-        </p>
-      </div>
-      <button
-        onClick={requestPermissionAndSubscribe}
-        className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all
-                   hover:opacity-90 active:scale-95"
-        style={{ background: "#3D1414", color: "#F0DADA" }}
-      >
-        Enable
-      </button>
-      <button onClick={dismiss} className="transition-colors" style={{ color: "#C8BDB6" }}>
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-}
 
 // ─── Global Search ────────────────────────────────────────────────────────────
 export function GlobalSearch() {
@@ -172,26 +95,26 @@ export function GlobalSearch() {
   }, []);
 
   useEffect(() => {
-    if (!query || query.trim().length < 2) { 
-      setResults([]); 
-      setLoading(false); 
-      return; 
+    if (!query || query.trim().length < 2) {
+      setResults([]);
+      setLoading(false);
+      return;
     }
-    
+
     setLoading(true);
     clearTimeout(debounceRef.current);
-    
+
     debounceRef.current = setTimeout(async () => {
       try {
-        const { data } = await api.get("/api/search", { 
-          params: { q: query.trim(), limit: 10 } 
+        const { data } = await api.get("/api/search", {
+          params: { q: query.trim(), limit: 10 }
         });
-        
+
         console.log("[Header] Search API response:", data);
         console.log("[Header] Results:", data?.results);
         console.log("[Header] Is array?", Array.isArray(data?.results));
         console.log("[Header] First result structure:", data?.results?.[0]);
-        
+
         if (data.success && Array.isArray(data.results)) {
           console.log("[Header] Setting results count:", data.results.length);
           console.log("[Header] Setting results:", JSON.stringify(data.results, null, 2));
@@ -200,11 +123,11 @@ export function GlobalSearch() {
           console.log("[Header] No valid results, data:", data);
           setResults([]);
         }
-      } catch (err) { 
+      } catch (err) {
         console.error("[Header] Search error:", err);
-        setResults([]); 
-      } finally { 
-        setLoading(false); 
+        setResults([]);
+      } finally {
+        setLoading(false);
       }
     }, 300);
 
@@ -217,10 +140,10 @@ export function GlobalSearch() {
 
   const handleSelect = useCallback((item) => {
     if (!item || !item.url) return;
-    
+
     setOpen(false);
     setQuery("");
-    
+
     try {
       const updated = [item, ...recent.filter(r => (r._id || r.id) !== (item._id || item.id))].slice(0, 5);
       setRecent(updated);
@@ -228,7 +151,7 @@ export function GlobalSearch() {
     } catch (err) {
       console.error("Failed to save recent search:", err);
     }
-    
+
     navigate(item.url);
   }, [navigate, recent]);
 
@@ -518,89 +441,92 @@ export default function Header() {
   };
 
   return (
-    <header className="w-full p-2">
-      <div className="flex items-start w-full gap-2">
+    <>
+      <PushNotificationBanner />
+      <header className="w-full p-2">
+        <div className="flex items-start w-full gap-2">
 
-        {/* Search or page-injected slot — items-start on parent so 2-row
+          {/* Search or page-injected slot — items-start on parent so 2-row
             mobile slot is never clipped by vertical centering */}
-        <div className="flex-1 min-w-0">
-          <HeaderSlot fallback={<GlobalSearch />} />
-        </div>
+          <div className="flex-1 min-w-0">
+            <HeaderSlot fallback={<GlobalSearch />} />
+          </div>
 
-        {/* ── Notifications ─────────────────────────────────────────────────── */}
-        <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-          <SheetTrigger asChild>
-            <button
-              className="relative w-9 h-9 rounded-lg flex items-center justify-center
+          {/* ── Notifications ─────────────────────────────────────────────────── */}
+          <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+            <SheetTrigger asChild>
+              <button
+                className="relative w-9 h-9 rounded-lg flex items-center justify-center
                          border transition-all duration-150 hover:bg-[#F8F5F2] shrink-0
                          focus:outline-none focus:ring-2 focus:ring-[#3D1414]/20"
-              style={{ borderColor: "#DDD6D0", background: "white" }}
-            >
-              <Bell className="w-4 h-4" style={{ color: hasUnread ? "#3D1414" : "#AFA097" }} />
-              {hasUnread && (
-                <span
-                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full
+                style={{ borderColor: "#DDD6D0", background: "white" }}
+              >
+                <Bell className="w-4 h-4" style={{ color: hasUnread ? "#3D1414" : "#AFA097" }} />
+                {hasUnread && (
+                  <span
+                    className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full
                              flex items-center justify-center text-[10px] font-bold px-1"
-                  style={{ background: "#B02020", color: "white" }}
-                >
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </button>
-          </SheetTrigger>
+                    style={{ background: "#B02020", color: "white" }}
+                  >
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            </SheetTrigger>
 
-          <SheetContent className="flex flex-col p-0 gap-0 w-full sm:max-w-md border-l border-[#DDD6D0]">
-            <SheetHeader className="px-5 pt-5 pb-4 border-b" style={{ borderColor: "#EEE9E5" }}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <SheetTitle className="text-base font-semibold" style={{ color: "#1C1A18" }}>
-                    Notifications
-                  </SheetTitle>
+            <SheetContent className="flex flex-col p-0 gap-0 w-full sm:max-w-md border-l border-[#DDD6D0]">
+              <SheetHeader className="px-5 pt-5 pb-4 border-b" style={{ borderColor: "#EEE9E5" }}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <SheetTitle className="text-base font-semibold" style={{ color: "#1C1A18" }}>
+                      Notifications
+                    </SheetTitle>
+                    {hasUnread && (
+                      <p className="text-xs mt-0.5" style={{ color: "#948472" }}>
+                        {unreadCount} unread
+                      </p>
+                    )}
+                  </div>
                   {hasUnread && (
-                    <p className="text-xs mt-0.5" style={{ color: "#948472" }}>
-                      {unreadCount} unread
-                    </p>
+                    <button
+                      onClick={markAllAsRead}
+                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
+                             rounded-lg border transition-colors hover:bg-[#F8F5F2]"
+                      style={{ color: "#3D1414", borderColor: "#DDD6D0" }}
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      Mark all read
+                    </button>
                   )}
                 </div>
-                {hasUnread && (
-                  <button
-                    onClick={markAllAsRead}
-                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
-                             rounded-lg border transition-colors hover:bg-[#F8F5F2]"
-                    style={{ color: "#3D1414", borderColor: "#DDD6D0" }}
-                  >
-                    <CheckCheck className="w-3.5 h-3.5" />
-                    Mark all read
-                  </button>
+              </SheetHeader>
+
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
+                style={{ background: "#F8F5F2" }}>
+                {notifications.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+                      style={{ background: "#EEE9E5" }}>
+                      <Bell className="w-5 h-5" style={{ color: "#C8BDB6" }} />
+                    </div>
+                    <p className="text-sm font-medium" style={{ color: "#756F67" }}>All caught up</p>
+                    <p className="text-xs mt-1" style={{ color: "#AFA097" }}>No new notifications</p>
+                  </div>
+                ) : (
+                  notifications.map(n => (
+                    <NotificationItem
+                      key={n._id || n.id}
+                      notification={n}
+                      onMarkRead={markAsRead}
+                    />
+                  ))
                 )}
               </div>
-            </SheetHeader>
+            </SheetContent>
+          </Sheet>
+        </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
-              style={{ background: "#F8F5F2" }}>
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
-                    style={{ background: "#EEE9E5" }}>
-                    <Bell className="w-5 h-5" style={{ color: "#C8BDB6" }} />
-                  </div>
-                  <p className="text-sm font-medium" style={{ color: "#756F67" }}>All caught up</p>
-                  <p className="text-xs mt-1" style={{ color: "#AFA097" }}>No new notifications</p>
-                </div>
-              ) : (
-                notifications.map(n => (
-                  <NotificationItem
-                    key={n._id || n.id}
-                    notification={n}
-                    onMarkRead={markAsRead}
-                  />
-                ))
-              )}
-            </div>
-          </SheetContent>
-        </Sheet>
-      </div>
-
-    </header>
+      </header>
+    </>
   );
 }

@@ -41,14 +41,15 @@ function Avatar({ name }) {
 }
 
 export const PAYMENT_BADGE = {
-  paid:     { label: "Paid",     className: "bg-green-50 text-green-700 border-green-200" },
+  paid: { label: "Paid", className: "bg-green-50 text-green-700 border-green-200" },
   due_soon: { label: "Due Soon", className: "bg-amber-50 text-amber-700 border-amber-200" },
-  overdue:  { label: "Overdue",  className: "bg-red-50 text-red-700 border-red-200" },
+  overdue: { label: "Overdue", className: "bg-red-50 text-red-700 border-red-200" },
 };
 
 export function getPaymentStatus(tenant) {
-  if (tenant?.paymentStatus) return tenant.paymentStatus;
-  return "paid";
+  if (!tenant) return "paid";
+  if (!tenant.paymentStatus) return "paid";
+  return tenant.paymentStatus;
 }
 
 export function needsAttention(tenant) {
@@ -71,9 +72,15 @@ export function getTenantLocationLabel(tenant) {
   );
 }
 
+// AFTER
+const fmt = (val) =>
+  val != null && val > 0
+    ? `Rs. ${Number(val).toLocaleString("en-IN")}`
+    : "N/A";
+
 export function getTenantRentDisplay(tenant) {
-  if (tenant?.rentPaymentFrequency === "monthly") return tenant?.totalRentFormatted ?? "N/A";
-  if (tenant?.rentPaymentFrequency === "quarterly") return tenant?.quarterlyRentAmountFormatted ?? "N/A";
+  if (tenant?.rentPaymentFrequency === "monthly") return fmt(tenant?.totalRent);
+  if (tenant?.rentPaymentFrequency === "quarterly") return fmt(tenant?.quarterlyRentAmount);
   return "N/A";
 }
 
@@ -174,8 +181,8 @@ export default function TenantCard({ tenant, onTenantMutated }) {
         </div>
 
         <div className="flex items-center gap-3 text-[11px] text-gray-400 mb-2">
-          {tenant?.lastPaymentDate && (
-            <span>Paid: {new Date(tenant.lastPaymentDate).toLocaleDateString()}</span>
+          {tenant?.rentAmountFormatted && (
+            <span>Paid: {tenant.rentAmountFormatted}</span>
           )}
           <span className="flex items-center gap-1">
             <Calendar className="w-3 h-3" />

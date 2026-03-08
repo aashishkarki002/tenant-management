@@ -25,14 +25,9 @@ export function ElectricityHeader({
             className="text-[11px] font-semibold tracking-[0.16em] uppercase mb-1"
             style={{ color: "#AFA097" }}
           >
-            Building &bull; {fiscalYearLabel}
+            Sallyan House &bull; {fiscalYearLabel}
           </p>
-          <h1
-            className="text-2xl font-bold leading-none tracking-tight"
-            style={{ color: "#1C1A18" }}
-          >
-            Electricity Monitoring
-          </h1>
+
         </div>
 
         {/* Actions — visible on the page (redundant with header slot for mobile) */}

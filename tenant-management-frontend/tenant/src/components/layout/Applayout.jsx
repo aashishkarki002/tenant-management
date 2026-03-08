@@ -4,7 +4,6 @@ import {
 } from "../ui/sidebar";
 import AppSidebar from "../app-sidebar";
 import StaffSidebar from "../staff-sidebar";
-import { PushNotificationBanner } from "../header";
 import Header from "../header";
 import { useAuth } from "../../context/AuthContext";
 import { HeaderSlotProvider } from "../../context/HeaderSlotContext";
@@ -41,9 +40,6 @@ export default function AppLayout({ children }) {
 
             <Header />
           </header>
-
-          {/* ── Push notification banner — below header, above content ─── */}
-          <PushNotificationBanner user={user} />
 
           {/* ── Page content ─────────────────────────────────────────────── */}
           <main className="flex-1 overflow-x-hidden">

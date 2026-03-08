@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import AddStaffDialog from './AddStaffDialog'
 import api from '../../../plugins/axios'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
 import { Phone } from 'lucide-react'
 function StaffDetail({ staff }) {
@@ -84,6 +84,7 @@ function StaffDetail({ staff }) {
                                 {/* Left: Avatar + Name */}
                                 <div className="flex items-center gap-4">
                                     <Avatar className="w-10 h-10 bg-accent/20 text-black font-semibold">
+                                        <AvatarImage src={member?.profilePicture} alt={member?.name} width={40} height={40} />
                                         <AvatarFallback className="text-black">
                                             {getInitials(member?.name)}
                                         </AvatarFallback>

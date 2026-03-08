@@ -1,6 +1,6 @@
 // src/components/PushNotificationBanner.jsx
-// Drop this anywhere in your layout — it handles all states automatically.
-// Recommended: just above or below your <Header /> component.
+// Single source of truth for the push notification opt-in banner.
+// Rendered inside <Header /> — do NOT render this anywhere else.
 
 import { useState } from "react";
 import { Bell, BellOff, Share, X } from "lucide-react";
@@ -18,64 +18,81 @@ export default function PushNotificationBanner() {
         requestPermissionAndSubscribe,
     } = usePushNotifications(user);
 
-    const [dismissed, setDismissed] = useState(false);
+    const [dismissed, setDismissed] = useState(() => {
+        if (!user) return true;
+        return localStorage.getItem(`pushDismissed_${user._id || user.id}`) === "true";
+    });
 
-    if (dismissed || !user) return null;
+    const dismiss = () => {
+        if (user) localStorage.setItem(`pushDismissed_${user._id || user.id}`, "true");
+        setDismissed(true);
+    };
 
-    // ── iOS, not installed as PWA yet ─────────────────────────────────────────
+    // Never show if: dismissed, no user, hook not ready, already subscribed/granted
+    if (dismissed || !user || !isReady || isSubscribed || permissionState === "granted") return null;
+
+    // ── iOS: not installed as PWA yet ─────────────────────────────────────────
     if (isIOS && !isStandalone) {
         return (
-            <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mx-4 mt-3">
-                <Share className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-3 rounded-xl px-4 py-3 mx-4 mb-2 border"
+                style={{ background: "#D4E4F5", borderColor: "rgba(46,90,140,0.25)" }}>
+                <Share className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#2E5A8C" }} />
                 <div className="flex-1 text-sm">
-                    <p className="font-semibold text-blue-800">Enable push notifications</p>
-
-                </div>
-                <button onClick={() => setDismissed(true)} className="text-blue-400 hover:text-blue-600">
-                    <X className="w-4 h-4" />
-                </button>
-            </div>
-        );
-    }
-
-    // ── Already subscribed ─────────────────────────────────────────────────────
-    if (isSubscribed || permissionState === "granted") return null;
-
-    // ── Permission denied ──────────────────────────────────────────────────────
-    if (permissionState === "denied") {
-        return (
-            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mx-4 mt-3">
-                <BellOff className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
-                <div className="flex-1 text-sm">
-                    <p className="font-semibold text-red-700">Notifications blocked</p>
-                    <p className="text-red-500 mt-0.5">
-                        Go to your browser settings → Site Settings → Notifications → allow <strong>app.sallyanhouse.com</strong>
+                    <p className="font-semibold" style={{ color: "#1A2E4A" }}>
+                        Add to Home Screen for notifications
+                    </p>
+                    <p className="mt-0.5 text-xs" style={{ color: "#2E5A8C" }}>
+                        Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then open the app and allow notifications.
                     </p>
                 </div>
-                <button onClick={() => setDismissed(true)} className="text-red-300 hover:text-red-500">
+                <button onClick={dismiss} className="transition-colors" style={{ color: "#2E5A8C" }}>
                     <X className="w-4 h-4" />
                 </button>
             </div>
         );
     }
 
-    // ── Not yet asked — show enable button ────────────────────────────────────
-    if (!isReady) return null;
+    // ── Permission explicitly denied ──────────────────────────────────────────
+    if (permissionState === "denied") {
+        return (
+            <div className="flex items-start gap-3 rounded-xl px-4 py-3 mx-4 mb-2 border"
+                style={{ background: "#F5D5D5", borderColor: "rgba(176,32,32,0.25)" }}>
+                <BellOff className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#B02020" }} />
+                <div className="flex-1 text-sm">
+                    <p className="font-semibold" style={{ color: "#5C1414" }}>Notifications blocked</p>
+                    <p className="mt-0.5 text-xs" style={{ color: "#B02020" }}>
+                        Go to <strong>Site Settings → Notifications</strong> and allow <strong>app.sallyanhouse.com</strong>
+                    </p>
+                </div>
+                <button onClick={dismiss} className="transition-colors" style={{ color: "#C47272" }}>
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+        );
+    }
 
+    // ── Default: prompt user to enable ───────────────────────────────────────
     return (
-        <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 mx-4 mt-3">
-            <Bell className="w-5 h-5 text-indigo-500 shrink-0" />
+        <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 mx-4 mb-2 border"
+            style={{ background: "#EEE9E5", borderColor: "#DDD6D0" }}>
+            <Bell className="w-4 h-4 shrink-0" style={{ color: "#3D1414" }} />
             <div className="flex-1 text-sm">
-                <p className="font-semibold text-indigo-800">Enable push notifications</p>
-                <p className="text-indigo-500 mt-0.5">Get fuel alerts and payment notifications even when this tab is closed.</p>
+                <p className="font-semibold text-[13px]" style={{ color: "#3D1414" }}>
+                    Stay on top of payments &amp; maintenance
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: "#948472" }}>
+                    Enable notifications to get alerts even when this tab is closed.
+                </p>
             </div>
             <button
                 onClick={requestPermissionAndSubscribe}
-                className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all
+                           hover:opacity-90 active:scale-95"
+                style={{ background: "#3D1414", color: "#F0DADA" }}
             >
                 Enable
             </button>
-            <button onClick={() => setDismissed(true)} className="text-indigo-300 hover:text-indigo-500">
+            <button onClick={dismiss} className="transition-colors" style={{ color: "#C8BDB6" }}>
                 <X className="w-4 h-4" />
             </button>
         </div>

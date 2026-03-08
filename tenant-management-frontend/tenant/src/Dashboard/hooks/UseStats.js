@@ -82,8 +82,8 @@ function normalizeDashboardStats(raw) {
   // tenantCoverageRate: % of active tenants fully paid up (0–100).
   //
   // Note: overdueRents from the backend is a top-3 sample, not the full list.
-  // We use attention.overdueCount (full count) for the number, but we can still
-  // show the coverage rate using activeTenants as the denominator.
+  // We use overdueRents.length as the displayed overdue count (floor value).
+  // Coverage rate uses activeTenants as the denominator.
   const activeTenants = raw.activeTenants ?? 0;
   const overdueRentsList = Array.isArray(raw.overdueRents)
     ? raw.overdueRents
@@ -230,11 +230,11 @@ function normalizeDashboardStats(raw) {
       }))
     : [];
 
-  const overdueAmount = overdueRents.reduce((sum, r) => {
-    if (r.remainingPaisa != null) return sum + r.remainingPaisa / 100;
-    if (r.remaining != null) return sum + Number(r.remaining);
-    return sum;
-  }, 0);
+  // Total outstanding from the authoritative all-time collection summary.
+  // Do NOT sum overdueRents[].remainingPaisa — that is a top-3 sample and
+  // would undercount the real total.
+  const overdueAmount =
+    (raw.collectionSummary?.allTime?.totalOutstandingPaisa ?? 0) / 100;
 
   const firstMaintenance = openMaintenance[0] || maintenanceList[0];
 
@@ -312,8 +312,13 @@ function normalizeDashboardStats(raw) {
 
     attention: {
       urgentCount:
-        kpi.tenantsWithBalance + (openMaintenance.length > 0 ? 1 : 0),
-      overdueCount: kpi.tenantsWithBalance, // full count, not the top-3 sample
+        (overdueRents.length > 0 ? 1 : 0) +
+        (openMaintenance.length > 0 ? 1 : 0),
+      // overdueCount: how many tenants are overdue.
+      // The backend top-3 sample gives us a floor; if allTime outstanding > 0
+      // we know at least that many are unpaid. kpi.tenantsWithBalance is a
+      // billing estimate — not reliable enough for the attention panel count.
+      overdueCount: overdueRents.length,
       overdueAmount,
       overduePayments: overdueRents.length,
       overdueTotal: overdueAmount,

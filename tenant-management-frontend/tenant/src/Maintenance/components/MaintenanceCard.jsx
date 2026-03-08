@@ -12,6 +12,7 @@ import api from '../../../plugins/axios';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import CompletionDialog from './CompletionDialog';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export default function MaintenanceCard({
   maintenanceItem,
@@ -80,8 +81,8 @@ export default function MaintenanceCard({
     maintenanceItem.assignedTo?._id ?? maintenanceItem.assignedTo ?? '';
   const assignedStaffName = assignedStaffId
     ? staffs.find((s) => s._id === assignedStaffId)?.name ??
-      maintenanceItem.assignedTo?.name ??
-      'Assigned'
+    maintenanceItem.assignedTo?.name ??
+    'Assigned'
     : null;
 
   const statusColour =
@@ -117,6 +118,16 @@ export default function MaintenanceCard({
       overpaid: 'bg-amber-100 text-amber-800',
     }[maintenanceItem.paymentStatus] ?? 'bg-gray-100 text-gray-500';
 
+  const getInitials = (name) => {
+    if (!name || typeof name !== 'string') return '?'
+    return name
+      .trim()
+      .split(/\s+/)
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
+  }
   return (
     <>
       <CompletionDialog
@@ -200,8 +211,15 @@ export default function MaintenanceCard({
           {/* ── Row 3: Assignment + Quick Actions ── */}
           <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <User className="h-3.5 w-3.5 text-gray-400" />
-              <span>{assignedStaffName || 'Unassigned'}</span>
+              <div className="flex items-center gap-1">
+                <Avatar className="w-4 h-4 bg-accent/20 text-black font-semibold">
+                  <AvatarImage src={maintenanceItem.assignedTo?.profilePicture} alt={maintenanceItem.assignedTo?.name} width={16} height={16} />
+                  <AvatarFallback className="text-black">
+                    {getInitials(maintenanceItem.assignedTo?.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <span>{assignedStaffName || 'Unassigned'}</span>
+              </div>
             </div>
             <div className="flex items-center gap-1">
               {!showAssignSelect && (
@@ -255,7 +273,7 @@ export default function MaintenanceCard({
                   <SelectValue placeholder="Select staff">
                     {assignedStaffId
                       ? staffs.find((s) => s._id === assignedStaffId)?.name ??
-                        'Assigned'
+                      'Assigned'
                       : 'Unassigned'}
                   </SelectValue>
                 </SelectTrigger>

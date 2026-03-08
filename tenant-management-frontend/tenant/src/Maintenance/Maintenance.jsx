@@ -556,14 +556,15 @@ export default function Maintenance() {
               />
             )
           ) : (
-            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/50 gap-4">
+            <div className="flex flex-col items-center justify-center text-center gap-4">
               <Empty>
                 <EmptyTitle className="text-gray-500">
                   {maintenance.length === 0
-                    ? 'No maintenance tasks yet'
-                    : 'No tasks match the current filters'}
+                    ? "No maintenance tasks yet"
+                    : "No tasks match the current filters"}
                 </EmptyTitle>
               </Empty>
+
               {maintenance.length === 0 && (
                 <AddTaskDialog
                   formik={formik}

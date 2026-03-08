@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import qs from "qs";
 import { Button } from "@/components/ui/button";
 import {
   Search, Plus, ArrowDown,
@@ -245,7 +246,7 @@ function FilterGroupButton({ group, selectedValues, onToggle }) {
 //
 function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
   const [open, setOpen] = useState(false);
-  
+
   const advancedActiveCount = ADVANCED_FILTERS.reduce(
     (count, group) => count + (filters[group.key]?.length ?? 0),
     0
@@ -283,7 +284,7 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
         <>
           {/* Backdrop */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          
+
           {/* Popover Panel */}
           <div className="absolute top-11 right-0 z-50 bg-white rounded-xl border border-gray-200
                           shadow-xl w-72 overflow-hidden">
@@ -304,7 +305,7 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
               {ADVANCED_FILTERS.map(group => {
                 const Icon = group.icon;
                 const selectedValues = filters[group.key] ?? [];
-                
+
                 return (
                   <div key={group.key}>
                     <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-2 px-1">
@@ -368,11 +369,11 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
 // Mobile-first design pattern: consolidate all filters into a single drawer
 // to prevent horizontal overflow and improve touch interaction.
 //
-function MobileFilterDrawer({ 
-  isOpen, 
-  onClose, 
-  filters, 
-  allBlocks, 
+function MobileFilterDrawer({
+  isOpen,
+  onClose,
+  filters,
+  allBlocks,
   onBlockChange,
   onFilterToggle,
   onClearAll,
@@ -384,7 +385,7 @@ function MobileFilterDrawer({
     ib => ib._id === filters.innerBlock
   ) ?? null;
 
-  const activeFilterCount = 
+  const activeFilterCount =
     (filters.block ? 1 : 0) +
     (filters.status?.length ?? 0) +
     (filters.paymentStatus?.length ?? 0) +
@@ -394,16 +395,16 @@ function MobileFilterDrawer({
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-black/40 z-50 sm:hidden"
         onClick={onClose}
       />
-      
+
       {/* Drawer */}
       <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl 
                       max-h-[85vh] overflow-hidden flex flex-col sm:hidden
                       animate-in slide-in-from-bottom duration-300">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
@@ -414,7 +415,7 @@ function MobileFilterDrawer({
               </p>
             )}
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center
                        hover:bg-gray-200 transition-colors"
@@ -425,7 +426,7 @@ function MobileFilterDrawer({
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-5">
-          
+
           {/* Block Selection */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
@@ -441,7 +442,7 @@ function MobileFilterDrawer({
               >
                 <span className="text-sm font-medium">All Blocks</span>
               </button>
-              
+
               {allBlocks.map(block => (
                 <div key={block._id}>
                   <button
@@ -453,7 +454,7 @@ function MobileFilterDrawer({
                   >
                     <span className="text-sm font-medium">{block.name}</span>
                   </button>
-                  
+
                   {/* Inner blocks */}
                   {Array.isArray(block.innerBlocks) && block.innerBlocks.length > 0 && (
                     <div className="ml-4 mt-1.5 space-y-1.5">
@@ -480,7 +481,7 @@ function MobileFilterDrawer({
           {FILTER_GROUPS.map(group => {
             const Icon = group.icon;
             const selectedValues = filters[group.key] ?? [];
-            
+
             return (
               <div key={group.key}>
                 <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
@@ -571,7 +572,7 @@ function TenantHeaderSlot({
     : "All Blocks";
 
   // Count active filters for mobile badge
-  const mobileActiveFilterCount = 
+  const mobileActiveFilterCount =
     (filters.block ? 1 : 0) +
     (filters.status?.length ?? 0) +
     (filters.paymentStatus?.length ?? 0) +
@@ -591,7 +592,7 @@ function TenantHeaderSlot({
       />
 
       <div className="flex items-center gap-2 w-full">
-        
+
         {/* ── Mobile Layout ────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2 w-full sm:hidden">
           {/* Search - primary action, takes most space */}
@@ -722,16 +723,7 @@ function TenantHeaderSlot({
           <div className="w-px h-5 bg-[#DDD6D0] shrink-0" />
 
           {/* CTAs */}
-          <Button
-            variant="outline"
-            onClick={onNavigate.toMessage}
-            className="h-9 px-3 text-xs font-semibold
-                       border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] hover:bg-[#EEE9E5]
-                       shrink-0 flex items-center gap-1.5"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            Import
-          </Button>
+
 
           <Button
             onClick={onNavigate.toAdd}
@@ -741,6 +733,16 @@ function TenantHeaderSlot({
           >
             <Plus className="w-3.5 h-3.5" />
             Add Tenant
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onNavigate.toMessage}
+            className="h-9 px-3 text-xs font-semibold
+                       border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] hover:bg-[#EEE9E5]
+                       shrink-0 flex items-center gap-1.5"
+          >
+            <Bell className="w-3.5 h-3.5" />
+            Send Message
           </Button>
         </div>
 
@@ -851,7 +853,10 @@ export default function Tenants() {
       if (currentFilters.frequency.length) params.frequency = currentFilters.frequency;
       if (currentFilters.lease.length) params.lease = currentFilters.lease;
 
-      const res = await api.get("/api/tenant/search-tenants", { params });
+      const res = await api.get("/api/tenant/search-tenants", {
+        params,
+        paramsSerializer: (p) => qs.stringify(p, { arrayFormat: "repeat" }),
+      });
       setTenants(res.data.tenants || []);
     } catch {
       toast.error("Failed to filter tenants");
@@ -1023,7 +1028,7 @@ export default function Tenants() {
           />
           <StatCard
             icon={DollarSign}
-            label="Outstanding Rent"
+            label="Outstanding Rent and CAM"
             value={outstandingRent > 0 ? `Rs ${outstandingRent.toLocaleString()}` : "Rs 0"}
             description="Unpaid balances"
             iconBg="bg-red-50"
