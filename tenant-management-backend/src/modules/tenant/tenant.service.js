@@ -129,27 +129,12 @@ export async function createTenant(body, files, adminId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getTenants() {
-  const tenants = await Tenant.find({ isDeleted: false })
-    .populate({
-      path: "property",
-      match: { isDeleted: false },
-      select: "name address",
-    })
-    .populate({ path: "block", match: { isDeleted: false }, select: "name" })
-    .populate({
-      path: "innerBlock",
-      match: { isDeleted: false },
-      select: "name",
-    })
-    .populate({
-      path: "units",
-      match: { isDeleted: false },
-      select: "unitNumber sqft price",
-    });
-
-  return tenants
-    .filter((t) => Array.isArray(t.units) && t.units.length > 0)
-    .map((t) => t.toJSON());
+  // Use the same aggregation as searchTenants (no filter stage) so that
+  // paymentStatus is always computed from live Rent/CAM records.
+  // A plain Tenant.find() has no access to Rent/CAM data and would leave
+  // paymentStatus undefined, causing every card to show Paid on the
+  // unfiltered list.
+  return searchTenants({});
 }
 
 export async function getTenantById(id) {
@@ -161,7 +146,11 @@ export async function getTenantById(id) {
       })
       .populate({ path: "block", select: "name property createdAt updatedAt" })
       .populate({ path: "innerBlock", select: "name block property" })
-      .populate({ path: "units", match: { isDeleted: false }, select: "-__v" });
+      .populate({
+        path: "units",
+        match: { isDeleted: false },
+        select: "name unitNumber sqft price -__v",
+      });
 
     if (!tenant) return null;
 
@@ -436,15 +425,8 @@ export async function restoreTenant(tenantId) {
  * @returns {Promise<Array>} Filtered tenant list with computed payment status
  */
 export async function searchTenants(query) {
-  const {
-    search,
-    block,
-    innerBlock,
-    status,
-    paymentStatus,
-    frequency,
-    lease,
-  } = query;
+  const { search, block, innerBlock, status, paymentStatus, frequency, lease } =
+    query;
 
   // ─────────────────────────────────────────────────────────────────────────
   // STAGE 1: Build MongoDB aggregation pipeline
@@ -514,7 +496,10 @@ export async function searchTenants(query) {
   // ── Text search ─────────────────────────────────────────────────────────────
   // Search across: tenant name, email, phone, AND unit numbers
   if (search && search.trim()) {
-    const escaped = String(search.trim()).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escaped = String(search.trim()).replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
     const searchRegex = new RegExp(escaped, "i");
     matchStage.$or = [
       { name: searchRegex },
@@ -541,7 +526,7 @@ export async function searchTenants(query) {
               $expr: { $eq: ["$tenant", "$$tenantId"] },
             },
           },
-          { $sort: { dueDate: -1 } },
+          { $sort: { englishDueDate: -1 } },
           { $limit: 2 }, // Get latest 2 records for better accuracy
         ],
         as: "rentRecords",
@@ -559,7 +544,7 @@ export async function searchTenants(query) {
               $expr: { $eq: ["$tenant", "$$tenantId"] },
             },
           },
-          { $sort: { dueDate: -1 } },
+          { $sort: { englishDueDate: -1 } },
           { $limit: 2 },
         ],
         as: "camRecords",
@@ -591,7 +576,7 @@ export async function searchTenants(query) {
                             ["pending", "partially_paid", "overdue"],
                           ],
                         },
-                        { $lt: ["$$latestRent.dueDate", "$$now"] },
+                        { $lt: ["$$latestRent.englishDueDate", "$$now"] },
                       ],
                     },
                     {
@@ -603,7 +588,7 @@ export async function searchTenants(query) {
                             ["pending", "partially_paid", "overdue"],
                           ],
                         },
-                        { $lt: ["$$latestCam.dueDate", "$$now"] },
+                        { $lt: ["$$latestCam.englishDueDate", "$$now"] },
                       ],
                     },
                   ],
@@ -611,7 +596,7 @@ export async function searchTenants(query) {
                 "overdue",
                 {
                   $cond: [
-                    // DUE SOON: Payment due within 7 days
+                    // DUE SOON: unpaid and due within 7 days
                     {
                       $or: [
                         {
@@ -623,8 +608,13 @@ export async function searchTenants(query) {
                                 ["pending", "partially_paid"],
                               ],
                             },
-                            { $gte: ["$$latestRent.dueDate", "$$now"] },
-                            { $lte: ["$$latestRent.dueDate", "$$sevenDaysFromNow"] },
+                            { $gte: ["$$latestRent.englishDueDate", "$$now"] },
+                            {
+                              $lte: [
+                                "$$latestRent.englishDueDate",
+                                "$$sevenDaysFromNow",
+                              ],
+                            },
                           ],
                         },
                         {
@@ -636,14 +626,56 @@ export async function searchTenants(query) {
                                 ["pending", "partially_paid"],
                               ],
                             },
-                            { $gte: ["$$latestCam.dueDate", "$$now"] },
-                            { $lte: ["$$latestCam.dueDate", "$$sevenDaysFromNow"] },
+                            { $gte: ["$$latestCam.englishDueDate", "$$now"] },
+                            {
+                              $lte: [
+                                "$$latestCam.englishDueDate",
+                                "$$sevenDaysFromNow",
+                              ],
+                            },
                           ],
                         },
                       ],
                     },
                     "due_soon",
-                    "paid", // Default: everything is paid
+                    // UPCOMING: unpaid but due is still far away (e.g. quarterly
+                    // rent collected 3 months in advance). This is NOT "paid" —
+                    // the debt exists, payment is just not urgent yet.
+                    // Show as "due_soon" so the badge is honest.
+                    // Only fall through to "paid" when there are genuinely no
+                    // unpaid records at all.
+                    {
+                      $cond: [
+                        {
+                          $or: [
+                            {
+                              $and: [
+                                { $ne: ["$$latestRent", null] },
+                                {
+                                  $in: [
+                                    "$$latestRent.status",
+                                    ["pending", "partially_paid"],
+                                  ],
+                                },
+                              ],
+                            },
+                            {
+                              $and: [
+                                { $ne: ["$$latestCam", null] },
+                                {
+                                  $in: [
+                                    "$$latestCam.status",
+                                    ["pending", "partially_paid"],
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                        "due_soon", // unpaid + future due date > 7 days → still due_soon
+                        "paid", // everything is genuinely paid
+                      ],
+                    },
                   ],
                 },
               ],
@@ -713,7 +745,7 @@ export async function searchTenants(query) {
           ],
         },
       },
-    }
+    },
   );
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -726,7 +758,7 @@ export async function searchTenants(query) {
       : [paymentStatus];
     const validPaymentStatuses = ["paid", "due_soon", "overdue"];
     const sanitized = paymentArr.filter((p) =>
-      validPaymentStatuses.includes(p)
+      validPaymentStatuses.includes(p),
     );
 
     if (sanitized.length > 0) {
@@ -787,6 +819,7 @@ export async function searchTenants(query) {
           {
             $project: {
               unitNumber: 1,
+              name: 1,
               sqft: 1,
               price: 1,
             },
@@ -805,7 +838,7 @@ export async function searchTenants(query) {
     },
 
     // Sort by name for consistent results
-    { $sort: { name: 1 } }
+    { $sort: { name: 1 } },
   );
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -816,7 +849,7 @@ export async function searchTenants(query) {
 
   // Filter out tenants with no units (defensive)
   const validResults = results.filter(
-    (t) => Array.isArray(t.units) && t.units.length > 0
+    (t) => Array.isArray(t.units) && t.units.length > 0,
   );
 
   // Convert paisa to rupees for frontend consumption

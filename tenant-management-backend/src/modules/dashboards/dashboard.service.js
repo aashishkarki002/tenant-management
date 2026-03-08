@@ -120,11 +120,11 @@ async function buildBuildingPerformance({ npYear, npMonth, nepaliTodayDate }) {
       // 4. Overdue balance per block.
       //    nepaliTodayDate is nepaliToday.getDateObject() from getNepaliMonthDates().
       //    This is a plain JS Date — the correct format for MongoDB $lt comparisons.
-      //    Hits { nepaliDueDate: 1 } index.
+      //    Hits { englishDueDate: 1 } index.
       Rent.aggregate([
         {
           $match: {
-            nepaliDueDate: { $lt: nepaliTodayDate },
+            englishDueDate: { $lt: nepaliTodayDate },
             $expr: {
               $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
             },
@@ -461,13 +461,13 @@ export async function getDashboardStatsData() {
   const overdueRents = await Rent.aggregate([
     {
       $match: {
-        nepaliDueDate: { $lt: nepaliTodayDate },
+        englishDueDate: { $lt: nepaliTodayDate },
         $expr: {
           $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
         },
       },
     },
-    { $sort: { nepaliDueDate: 1 } },
+    { $sort: { englishDueDate: 1 } },
     { $limit: 3 },
     {
       $lookup: {
@@ -546,6 +546,7 @@ export async function getDashboardStatsData() {
         paidAmountPaisa: 1,
         tdsAmountPaisa: 1,
         nepaliDueDate: 1,
+        englishDueDate: 1,
         status: 1, // raw DB value (kept for audit)
         displayStatus: 1, // computed correct status — use this in the UI
         remainingPaisa: 1,
@@ -602,13 +603,13 @@ export async function getDashboardStatsData() {
   const upcomingRents = await Rent.aggregate([
     {
       $match: {
-        nepaliDueDate: { $gte: nepaliTodayDate, $lte: upcomingEndDate },
+        englishDueDate: { $gte: nepaliTodayDate, $lte: upcomingEndDate },
         $expr: {
           $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
         },
       },
     },
-    { $sort: { nepaliDueDate: 1 } },
+    { $sort: { englishDueDate: 1 } },
     { $limit: 3 },
     {
       $lookup: {
@@ -684,6 +685,7 @@ export async function getDashboardStatsData() {
         paidAmountPaisa: 1,
         tdsAmountPaisa: 1,
         nepaliDueDate: 1,
+        englishDueDate: 1,
         status: 1, // raw DB value (kept for audit)
         displayStatus: 1, // computed correct status — use this in the UI
         remainingPaisa: 1,
@@ -1062,7 +1064,7 @@ export async function getUpcomingRents(req, res) {
     const startDate = nepaliToday.getDateObject();
     const endDate = addNepaliDays(nepaliToday, days).getDateObject();
 
-    const upcomingRents = await Rent.getRentsDueWithinPeriod(
+    const upcomingRents = await Rent.getRentsDueWithinEnglishPeriod(
       startDate,
       endDate,
       limit,

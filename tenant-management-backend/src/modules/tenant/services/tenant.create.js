@@ -456,6 +456,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
       year: englishYear,
       month: englishMonth,
       nepaliDueDate: rentCycleData.dueDate.english,
+      englishDueDate: rentCycleData.dueDate.english,
     },
     adminId,
     session,

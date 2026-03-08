@@ -3,7 +3,7 @@ export const getStaffsService = async () => {
   try {
     const staffs = await adminModel
       .find({ role: "staff" })
-      .select("name email phone role");
+      .select("name email phone role profilePicture");
     return {
       success: true,
       message: "Staffs fetched successfully",

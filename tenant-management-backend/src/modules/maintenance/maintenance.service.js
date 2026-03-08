@@ -125,7 +125,7 @@ export async function getAllMaintenance() {
       .populate("property")
       .populate("block")
       .populate("createdBy")
-      .populate("assignedTo", "name email phone");
+      .populate("assignedTo", "name email phone profilePicture");
 
     return {
       success: true,
@@ -145,7 +145,7 @@ export async function getMaintenanceById(id) {
       .populate("property")
       .populate("block")
       .populate("createdBy")
-      .populate("assignedTo", "name email phone");
+      .populate("assignedTo", "name email phone profilePicture");
 
     if (!maintenance) {
       return {
@@ -441,7 +441,7 @@ export async function updateMaintenanceAssignedTo(id, assignedTo) {
     { $set: { assignedTo: assignedTo || null } },
     { new: true },
   )
-    .populate("assignedTo", "name email phone")
+    .populate("assignedTo", "name email phone profilePicture")
     .populate("tenant")
     .populate("unit", "name")
     .populate("property", "name")
