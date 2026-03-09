@@ -414,7 +414,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
     englishYear: isQuarterly
       ? rentCycleData.chargeDate.english.getFullYear()
       : englishYear,
-    nepaliDueDate: rentCycleData.dueDate.english,
+    nepaliDueDate: rentCycleData.dueDate.nepali,
     englishDueDate: rentCycleData.dueDate.english,
     lateFee: 0,
     useUnitBreakdown: true,

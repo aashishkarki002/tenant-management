@@ -1,3 +1,24 @@
-import { getNepaliMonthDates } from "./utils/nepaliDateHelper.js";
+const users = [
+  {
+    id: 1,
+    name: "John Doe",
+    age: 25,
+    email: "john@example.com",
+  },
+  {
+    id: 2,
+    name: "Jane Smith",
+    age: 30,
+    email: "jane@example.com",
+  },
+  {
+    id: 3,
+    name: "Mike Johnson",
+    age: 28,
+    email: "mike@example.com",
+  },
+];
 
-console.log("nepaliToday", getNepaliMonthDates().nepaliToday);
+console.log(users);
+const { id, name, age, email } = users[0];
+console.log(id, name, age, email);

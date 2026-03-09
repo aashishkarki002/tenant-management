@@ -149,7 +149,7 @@ export async function getTenantById(id) {
       .populate({
         path: "units",
         match: { isDeleted: false },
-        select: "name unitNumber sqft price -__v",
+        select: "name unitNumber sqft price",
       });
 
     if (!tenant) return null;
@@ -357,23 +357,82 @@ export async function updateTenant(tenantId, body, files) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function deleteTenant(tenantId) {
-  const softDeleted = await Tenant.findByIdAndUpdate(
-    tenantId,
-    { isDeleted: true },
-    { new: true },
-  );
-  if (!softDeleted)
-    return { success: false, statusCode: 404, message: "Tenant not found" };
-  await Unit.updateMany(
-    { _id: { $in: softDeleted.units } },
-    { $set: { isOccupied: false } },
-  );
-  return {
-    success: true,
-    statusCode: 200,
-    message: "Tenant deleted successfully",
-    tenant: softDeleted,
-  };
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    // 1. Fetch tenant first — we need lease data before soft-deleting
+    const tenant = await Tenant.findById(tenantId).session(session);
+    if (!tenant) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 404, message: "Tenant not found" };
+    }
+
+    // 2. Soft-delete the tenant
+    tenant.isDeleted = true;
+    tenant.status = "vacated";
+    tenant.isActive = false;
+    await tenant.save({ session });
+
+    // 3. For each occupied unit — record occupancy history, clear lease
+    const units = await Unit.find({
+      _id: { $in: tenant.units },
+      isOccupied: true,
+    }).session(session);
+
+    for (const unit of units) {
+      const lease = unit.currentLease;
+
+      unit.occupancyHistory.push({
+        tenant: tenant._id,
+        startDate: lease?.leaseStartDate ?? tenant.leaseStartDate,
+        endDate: lease?.leaseEndDate ?? tenant.leaseEndDate,
+        vacatedDate: new Date(),
+        monthlyRent:
+          lease?.monthlyRent ?? paisaToRupees(tenant.totalRentPaisa) ?? 0,
+        monthlyCam:
+          lease?.monthlyCam ?? paisaToRupees(tenant.camChargesPaisa) ?? 0,
+        reason: "tenant_vacated",
+        notes: `Auto-recorded on tenant deletion (${tenant.name})`,
+      });
+
+      unit.currentLease = undefined;
+      unit.isOccupied = false;
+
+      await unit.save({ session });
+    }
+
+    // 4. Catch any non-occupied units (edge case — just clear the flag)
+    await Unit.updateMany(
+      {
+        _id: { $in: tenant.units },
+        isOccupied: false, // already-vacant units, no history needed
+      },
+      { $set: { isOccupied: false } },
+      { session },
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: "Tenant deleted successfully",
+      tenant,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Delete tenant error:", error);
+    return {
+      success: false,
+      statusCode: 500,
+      message: "Tenant deletion failed",
+      error: error.message,
+    };
+  }
 }
 
 export async function restoreTenant(tenantId) {

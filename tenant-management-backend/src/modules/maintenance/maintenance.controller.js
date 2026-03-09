@@ -5,6 +5,7 @@ import {
   updateMaintenanceStatus,
   updateMaintenanceAssignedTo,
   getMaintenanceByTenantId,
+  getMaintenanceByAssignedStaff,
 } from "./maintenance.service.js";
 
 export async function createMaintenanceController(req, res) {
@@ -140,6 +141,24 @@ export async function getMaintenanceByTenantIdController(req, res) {
   try {
     const tenantId = req.params.id;
     const result = await getMaintenanceByTenantId(tenantId);
+    return res.status(200).json({
+      success: result.success,
+      message: result.message,
+      maintenance: result.data,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+// ─── ADD THIS CONTROLLER to maintenance.controller.js ────────────────────────
+//
+// GET /api/maintenance/my-tasks
+// Auth: protect middleware — staffId is always taken from the verified JWT,
+
+export async function getMyMaintenanceTasksController(req, res) {
+  try {
+    const staffId = req.admin.id; // set by the protect middleware — trusted
+    const result = await getMaintenanceByAssignedStaff(staffId);
     return res.status(200).json({
       success: result.success,
       message: result.message,

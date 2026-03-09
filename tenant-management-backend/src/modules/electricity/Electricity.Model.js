@@ -456,5 +456,39 @@ electricitySchema.index({
 electricitySchema.index({ status: 1, readingDate: -1 });
 electricitySchema.index({ property: 1, status: 1 });
 
+// ── Duplicate-reading prevention (DB-level safety net) ────────────────────────
+//
+// Industry standard: enforce business constraints at BOTH the service layer
+// (clear error messages) AND the DB layer (prevents race conditions).
+//
+// partial + unique: only enforce uniqueness among non-cancelled readings.
+// This lets admins cancel + re-record a reading in the same month if needed.
+//
+// Unit readings: one non-cancelled reading per unit per nepali month/year.
+electricitySchema.index(
+  { unit: 1, nepaliYear: 1, nepaliMonth: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      unit: { $type: "objectId" },
+      status: { $ne: "cancelled" },
+    },
+    name: "unique_unit_reading_per_month",
+  },
+);
+
+// Sub-meter readings: one non-cancelled reading per subMeter per nepali month/year.
+electricitySchema.index(
+  { subMeter: 1, nepaliYear: 1, nepaliMonth: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      subMeter: { $type: "objectId" },
+      status: { $ne: "cancelled" },
+    },
+    name: "unique_submeter_reading_per_month",
+  },
+);
+
 // ─── Export ───────────────────────────────────────────────────────────────────
 export const Electricity = mongoose.model("Electricity", electricitySchema);

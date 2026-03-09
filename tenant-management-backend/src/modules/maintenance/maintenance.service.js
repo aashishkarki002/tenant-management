@@ -482,3 +482,30 @@ export async function getMaintenanceByTenantId(tenantId) {
     data: maintenance,
   };
 }
+// ─── ADD THIS FUNCTION to maintenance.service.js ─────────────────────────────
+//
+// Replaces the client-side filter in useStaffStats.
+// Fetches only the tasks assigned to a given staffId, with a compact
+// field projection — the dashboard card doesn't need populated sub-documents
+// like createdBy or block, so we skip them here for performance.
+//
+// Usage: import { getMaintenanceByAssignedStaff } from "./maintenance.service.js"
+
+export async function getMaintenanceByAssignedStaff(staffId) {
+  try {
+    const tasks = await Maintenance.find({ assignedTo: staffId })
+      .populate("property", "name")
+      .populate("unit", "name")
+      .populate("tenant", "name")
+      .populate("block", "name")
+      .sort({ scheduledDate: 1 }); // earliest scheduled first — natural work-queue order
+
+    return {
+      success: true,
+      message: "Staff maintenance tasks fetched successfully",
+      data: tasks,
+    };
+  } catch (error) {
+    throw new Error(error.message || "Failed to fetch staff maintenance tasks");
+  }
+}
