@@ -179,7 +179,7 @@ function ViewDetail({ tabs: tabsProp }) {
   return (
     <div className="px-2 sm:px-4 md:px-6">
       <Breadcrumb tenantName={tenant?.name} />
-      <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
+      <Card className="border border-border shadow-sm rounded-xl bg-background">
         <CardHeader className="space-y-4 p-4 sm:p-6">
           {/* Header Row */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -197,13 +197,13 @@ function ViewDetail({ tabs: tabsProp }) {
                   </CardTitle>
                   <Badge
                     variant="outline"
-                    className="border-green-600 text-green-700 bg-green-50 text-xs"
+                    className="border-green-600 text-green-700 bg-success-bg text-xs"
                   >
                     {tenant?.status}
                   </Badge>
                   <Badge
                     variant="outline"
-                    className="border-yellow-600 text-yellow-700 bg-yellow-50 text-xs"
+                    className="border-yellow-600 text-yellow-700 bg-warning-bg text-xs"
                   >
                     {tenant?.rentPaymentFrequency === "monthly"
                       ? "Monthly Rent"
@@ -221,7 +221,7 @@ function ViewDetail({ tabs: tabsProp }) {
               <div className="w-full sm:w-auto sm:min-w-[200px]">
                 <Progress
                   value={progress}
-                  className="h-2.5 mb-2 [&>div]:bg-blue-600"
+                  className="h-2.5 mb-2 [&>div]:bg-accent"
                 />
                 <p className="text-xs text-muted-foreground">
                   {remainingMonths === 0

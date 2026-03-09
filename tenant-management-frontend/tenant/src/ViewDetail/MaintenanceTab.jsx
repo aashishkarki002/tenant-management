@@ -18,10 +18,10 @@ import { Badge } from "@/components/ui/badge";
 
 export function MaintenanceTab({ tenantMaintenance = [] }) {
   return (
-    <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
+    <Card className="border border-border shadow-sm rounded-xl bg-background">
       <CardHeader className="p-4 sm:p-6">
         <div className="flex items-center gap-2">
-          <Wrench className="w-5 h-5 text-muted-foreground" />
+          <Wrench className="w-5 h-5 text-text-sub" />
           <CardTitle className="text-lg sm:text-xl">Maintenance</CardTitle>
         </div>
         <CardDescription className="text-xs sm:text-sm">
@@ -51,7 +51,7 @@ export function MaintenanceTab({ tenantMaintenance = [] }) {
                         <p className="font-medium">{task.title}</p>
                         {task.description && (
                           <p
-                            className="text-muted-foreground truncate max-w-[180px]"
+                            className="text-text-sub truncate max-w-[180px]"
                             title={task.description}
                           >
                             {task.description}
@@ -65,12 +65,12 @@ export function MaintenanceTab({ tenantMaintenance = [] }) {
                         variant="outline"
                         className={
                           task.priority === "Urgent"
-                            ? "border-red-600 text-red-700 bg-red-50"
+                            ? "border-danger-border text-danger bg-danger-bg"
                             : task.priority === "High"
-                              ? "border-orange-600 text-orange-700 bg-orange-50"
+                              ? "border-warning-border text-warning bg-warning-bg"
                               : task.priority === "Medium"
-                                ? "border-amber-600 text-amber-700 bg-amber-50"
-                                : "border-gray-500 text-gray-600 bg-gray-50"
+                                ? "border-info-border text-info bg-info-bg"
+                                : "border-border text-text-sub bg-surface"
                         }
                       >
                         {task.priority ?? "—"}
@@ -81,12 +81,12 @@ export function MaintenanceTab({ tenantMaintenance = [] }) {
                         variant="outline"
                         className={
                           task.status === "COMPLETED"
-                            ? "border-green-600 text-green-700 bg-green-50"
+                            ? "border-success-border text-success bg-success-bg"
                             : task.status === "IN_PROGRESS"
-                              ? "border-blue-600 text-blue-700 bg-blue-50"
+                              ? "border-accent-border text-accent bg-accent-bg"
                               : task.status === "CANCELLED"
-                                ? "border-gray-500 text-gray-600 bg-gray-50"
-                                : "border-amber-600 text-amber-700 bg-amber-50"
+                                ? "border-border text-text-sub bg-surface"
+                                : "border-warning-border text-warning bg-warning-bg"
                         }
                       >
                         {task.status?.replace("_", " ") ?? "—"}
@@ -95,10 +95,10 @@ export function MaintenanceTab({ tenantMaintenance = [] }) {
                     <TableCell>
                       {task.scheduledDate
                         ? new Date(task.scheduledDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
                         : "—"}
                     </TableCell>
                     <TableCell>
@@ -117,7 +117,7 @@ export function MaintenanceTab({ tenantMaintenance = [] }) {
             </Table>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <div className="flex flex-col items-center justify-center py-12 text-text-sub">
             <Wrench className="w-12 h-12 mb-3 opacity-50" />
             <p className="text-sm font-medium">No maintenance records</p>
             <p className="text-xs mt-1">

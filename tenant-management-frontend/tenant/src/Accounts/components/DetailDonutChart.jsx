@@ -12,15 +12,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 
 
+// Petrol theme palette — accent + semantic colors for chart segments
 const DEFAULT_COLORS = [
-    "#3b82f6",
-    "#10b981",
-    "#f59e0b",
-    "#ef4444",
-    "#8b5cf6",
-    "#ec4899",
-    "#14b8a6",
-    "#f97316",
+    "#1A5276", // --color-accent (petrol)
+    "#166534", // --color-success
+    "#92400E", // --color-warning
+    "#991B1B", // --color-danger
+    "#2E86C1", // lighter petrol
+    "#6D28D9", // violet
+    "#0E7490", // teal
+    "#1E40AF", // --color-info
 ];
 
 export default function DetailDonutChart({

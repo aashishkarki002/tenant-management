@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import api from "../plugins/axios";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -63,7 +63,7 @@ const getActivityLabel = (activityType) => {
     case "EMAILED":
       return "Email Receipt Sent";
     case "LINK_COPIED":
-      return "Payment Link Copied";
+      return "Receipt Link Copied";
     case "EXPORTED_PDF":
       return "Page Exported as PDF";
     default:
@@ -261,6 +261,14 @@ export default function payments() {
 
   return (
     <>
+  {/* Breadcrumb */}
+  <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2 px-2 sm:px-4 lg:px-0 pt-2">
+    <Link to="/rent-payment" className="hover:text-foreground transition-colors">Rent &amp; Payments</Link>
+    <span>›</span>
+    <Link to="/rent-payment" className="hover:text-foreground transition-colors">Payments</Link>
+    <span>›</span>
+    <span className="text-foreground font-medium">{payment?.rent?.tenant?.name || "Receipt"}</span>
+  </nav>
   <div className="flex flex-col lg:flex-row gap-4 px-2 sm:px-4 lg:px-0">
 
   <div id="payment-details-container" ref={printRef} className="w-full lg:flex-2">
@@ -294,7 +302,7 @@ export default function payments() {
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full">
                     <Building2Icon className="w-8 h-8 sm:w-10 sm:h-10 text-white bg-blue-200 rounded-md p-2 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-xl sm:text-2xl font-bold break-words">
+                      <CardTitle className="text-xl sm:text-2xl font-bold break-words" style={{ textTransform: 'capitalize' }}>
                         {payment?.rent?.property?.name}{" "}
                       </CardTitle>
                       <p className="text-xs sm:text-sm text-muted-foreground mt-2">
@@ -319,10 +327,10 @@ export default function payments() {
                       <div className="flex-1">
                         <p className="text-gray-500 text-xs sm:text-sm mt-2">Full Name:</p>
                         <p className="text-sm sm:text-base break-words">{payment?.rent?.tenant?.name}</p>
-                        <p className="text-gray-500 text-xs sm:text-sm mt-2">
-                          Phone Number:{" "}
+                        <p className="text-gray-500 text-xs sm:text-sm mt-2">Phone Number:</p>
+                        <p className="text-sm sm:text-base">
+                          {payment?.rent?.tenant?.phoneNumber || <span className="text-muted-foreground">—</span>}
                         </p>
-                        <p className="text-sm sm:text-base">{payment?.rent?.tenant?.phoneNumber}</p>
                       </div>
                       <div className="flex-1">
                         <p className="text-gray-500 text-xs sm:text-sm mt-2">
@@ -338,21 +346,28 @@ export default function payments() {
                     <p className="text-sm sm:text-base font-semibold">TRANSACTION DETAILS</p>
                     <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 mt-2">
                       <div className="flex-1">
-                        <p className="text-gray-500 text-xs sm:text-sm mt-2">Date AD :</p>
+                        <p className="text-gray-500 text-xs sm:text-sm mt-2">Date (AD):</p>
                         <p className="text-sm sm:text-base">
                           {new Date(payment?.paymentDate).toLocaleDateString()}
                         </p>
-                        <p className="text-gray-500 text-xs sm:text-sm mt-2">
-                          BankName_Type:{" "}
-                        </p>
-                        <p className="text-sm sm:text-base break-words">{payment?.bankAccount?.bankName}</p>
+                        <p className="text-gray-500 text-xs sm:text-sm mt-2">Bank:</p>
+                        <p className="text-sm sm:text-base break-words">{payment?.bankAccount?.bankName || <span className="text-muted-foreground">—</span>}</p>
                       </div>
                       <div className="flex-1">
-                        <p className="text-gray-500 text-xs sm:text-sm mt-2">Date BS :</p>
+                        <p className="text-gray-500 text-xs sm:text-sm mt-2">Date (BS):</p>
                         <p className="text-sm sm:text-base">
-                          {" "}
-                          {new Date(payment?.nepaliDate).toLocaleDateString()}
+                          {payment?.nepaliDate
+                            ? new Date(payment.nepaliDate).toLocaleDateString()
+                            : <span className="text-muted-foreground">—</span>}
                         </p>
+                        {(payment?.billingPeriod || payment?.billingYear) && (
+                          <>
+                            <p className="text-gray-500 text-xs sm:text-sm mt-2">Billing Period:</p>
+                            <p className="text-sm sm:text-base">
+                              {payment?.billingPeriod} {payment?.billingYear}
+                            </p>
+                          </>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -493,7 +508,8 @@ export default function payments() {
 
               {/* History Section */}
               <div>
-                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">HISTORY</h3>
+                <h3 className="text-base sm:text-lg font-semibold mb-1">HISTORY</h3>
+                <p className="text-xs text-muted-foreground mb-3 sm:mb-4">Downloads, emails, and edits for this receipt</p>
                 <div className="space-y-3 sm:space-y-4">
                   {activities.length > 0 ? (
                     activities.slice(0, 5).map((activity) => {

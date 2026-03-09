@@ -40,9 +40,9 @@ const ESSENTIAL_FILTERS = [
     label: "Status",
     icon: CheckCircle2,
     options: [
-      { value: "active", label: "Active", dot: "bg-green-500" },
-      { value: "inactive", label: "Inactive", dot: "bg-gray-400" },
-      { value: "vacated", label: "Vacated", dot: "bg-red-400" },
+      { value: "active", label: "Active", dot: "bg-[var(--color-success)]" },
+      { value: "inactive", label: "Inactive", dot: "bg-[var(--color-muted-fill)]" },
+      { value: "vacated", label: "Vacated", dot: "bg-[var(--color-danger)]" },
     ],
   },
   {
@@ -50,9 +50,9 @@ const ESSENTIAL_FILTERS = [
     label: "Payment",
     icon: DollarSign,
     options: [
-      { value: "paid", label: "Paid", dot: "bg-green-500" },
-      { value: "due_soon", label: "Due Soon", dot: "bg-amber-400" },
-      { value: "overdue", label: "Overdue", dot: "bg-red-500" },
+      { value: "paid", label: "Paid", dot: "bg-[var(--color-success)]" },
+      { value: "due_soon", label: "Due Soon", dot: "bg-[var(--color-warning)]" },
+      { value: "overdue", label: "Overdue", dot: "bg-[var(--color-danger)]" },
     ],
   },
 ];
@@ -118,18 +118,34 @@ function hasActiveFilters(f) {
 }
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, description, iconBg, iconColor, highlight }) {
+function StatCard({ icon: Icon, label, value, description, highlight, iconBg, iconColor }) {
   return (
-    <div className={`bg-white rounded-xl border shadow-sm px-4 py-3 flex items-center gap-3
-                     ${highlight ? "border-red-200 bg-red-50/30" : "border-gray-100"}`}>
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
-        <Icon className={`w-[18px] h-[18px] ${iconColor}`} />
+    <div
+      className="rounded-xl border shadow-[var(--shadow-card)] px-4 py-3 flex items-center gap-3"
+      style={{
+        background: highlight ? "var(--color-danger-bg)" : "var(--color-surface)",
+        borderColor: highlight ? "var(--color-danger-border)" : "var(--color-border)",
+      }}
+    >
+      <div
+        className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+        style={{ background: iconBg ?? "var(--color-surface-raised)" }}
+      >
+        <Icon
+          className="w-[18px] h-[18px]"
+          style={{ color: highlight ? "var(--color-danger)" : (iconColor ?? "var(--color-text-sub)") }}
+        />
       </div>
       <div className="min-w-0">
-        <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">{label}</p>
-        <p className="text-xl font-bold text-gray-900 leading-tight">{value}</p>
+        <p className="text-[11px] text-text-sub font-medium uppercase tracking-widest font-sans">{label}</p>
+        <p
+          className="text-xl font-bold leading-tight font-mono tabular-nums"
+          style={{ color: "var(--color-text-strong)" }}
+        >
+          {value}
+        </p>
         {description && (
-          <p className="text-[10px] text-gray-400 mt-0.5 truncate">{description}</p>
+          <p className="text-[10px] text-text-sub mt-0.5 truncate">{description}</p>
         )}
       </div>
     </div>
@@ -139,22 +155,25 @@ function StatCard({ icon: Icon, label, value, description, iconBg, iconColor, hi
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 function TenantCardSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 space-y-2.5 animate-pulse">
+    <div
+      className="rounded-xl border border-border shadow-[var(--shadow-card)] p-3 space-y-2.5 animate-pulse"
+      style={{ background: "var(--color-surface)" }}
+    >
       <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-gray-200 rounded-full" />
+        <div className="w-8 h-8 rounded-full" style={{ background: "var(--color-muted-fill)" }} />
         <div className="flex-1 space-y-1.5">
-          <div className="h-3 bg-gray-200 rounded w-2/3" />
-          <div className="h-2.5 bg-gray-200 rounded w-1/3" />
+          <div className="h-3 rounded w-2/3" style={{ background: "var(--color-muted-fill)" }} />
+          <div className="h-2.5 rounded w-1/3" style={{ background: "var(--color-muted-fill)" }} />
         </div>
       </div>
       <div className="flex justify-between items-center">
-        <div className="h-4 bg-gray-200 rounded w-24" />
-        <div className="h-5 w-14 bg-gray-200 rounded-full" />
+        <div className="h-4 rounded w-24" style={{ background: "var(--color-muted-fill)" }} />
+        <div className="h-5 w-14 rounded-full" style={{ background: "var(--color-muted-fill)" }} />
       </div>
-      <div className="h-2.5 bg-gray-200 rounded w-3/4" />
-      <div className="border-t border-gray-100 pt-2 flex gap-1.5">
-        <div className="h-7 bg-gray-200 rounded-lg flex-1" />
-        <div className="h-7 bg-gray-200 rounded-lg flex-1" />
+      <div className="h-2.5 rounded w-3/4" style={{ background: "var(--color-muted-fill)" }} />
+      <div className="border-t border-border pt-2 flex gap-1.5">
+        <div className="h-7 rounded-lg flex-1" style={{ background: "var(--color-muted-fill)" }} />
+        <div className="h-7 rounded-lg flex-1" style={{ background: "var(--color-muted-fill)" }} />
       </div>
     </div>
   );
@@ -163,13 +182,19 @@ function TenantCardSkeleton() {
 // ─── Filter Chip ──────────────────────────────────────────────────────────────
 function FilterChip({ label, dot, onRemove }) {
   return (
-    <span className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-full
-                     bg-[#3D1414]/10 text-[#3D1414] text-xs font-medium border border-[#3D1414]/20">
+    <span
+      className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-full text-xs font-medium border"
+      style={{
+        background: "var(--color-accent-light)",
+        borderColor: "var(--color-accent-mid)",
+        color: "var(--color-accent)",
+      }}
+    >
       {dot && <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />}
       {label}
       <button
         onClick={onRemove}
-        className="ml-0.5 rounded-full hover:bg-[#3D1414]/20 p-0.5 transition-colors"
+        className="ml-0.5 rounded-full p-0.5 transition-colors hover:opacity-70"
       >
         <X className="w-3 h-3" />
       </button>
@@ -192,11 +217,16 @@ function FilterGroupButton({ group, selectedValues, onToggle }) {
     <div className="relative">
       <button
         onClick={() => setOpen(v => !v)}
-        className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-sm font-medium
-                   transition-colors shrink-0
-                   ${activeCount > 0
-            ? "bg-[#3D1414] text-white border-[#3D1414]"
-            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"}`}
+        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-sm font-medium transition-colors shrink-0"
+        style={activeCount > 0 ? {
+          background: "var(--color-accent)",
+          color: "#ffffff",
+          borderColor: "var(--color-accent)",
+        } : {
+          background: "var(--color-surface)",
+          color: "var(--color-text-body)",
+          borderColor: "var(--color-border)",
+        }}
       >
         <Icon className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">{group.label}</span>
@@ -211,24 +241,30 @@ function FilterGroupButton({ group, selectedValues, onToggle }) {
 
       {open && (
         <>
-          {/* Backdrop to close */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-11 left-0 z-50 bg-white rounded-xl border border-gray-200
-                          shadow-lg p-1 min-w-[168px]">
+          <div
+            className="absolute top-11 left-0 z-50 rounded-xl border shadow-[var(--shadow-modal)] p-1 min-w-[168px]"
+            style={{ background: "var(--color-surface-raised)", borderColor: "var(--color-border)" }}
+          >
             {group.options.map(opt => (
               <button
                 key={opt.value}
                 onClick={() => onToggle(group.key, opt.value)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm
-                           text-left transition-colors
-                           ${selectedValues.includes(opt.value)
-                    ? "bg-[#3D1414]/10 text-[#3D1414] font-medium"
-                    : "text-gray-700 hover:bg-gray-50"}`}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors"
+                style={selectedValues.includes(opt.value) ? {
+                  background: "var(--color-accent-light)",
+                  color: "var(--color-accent)",
+                  fontWeight: 500,
+                } : {
+                  color: "var(--color-text-body)",
+                }}
+                onMouseEnter={e => { if (!selectedValues.includes(opt.value)) e.currentTarget.style.background = "var(--color-surface)"; }}
+                onMouseLeave={e => { if (!selectedValues.includes(opt.value)) e.currentTarget.style.background = ""; }}
               >
                 {opt.dot && <span className={`w-2 h-2 rounded-full ${opt.dot}`} />}
                 {opt.label}
                 {selectedValues.includes(opt.value) && (
-                  <span className="ml-auto text-[#3D1414] text-xs">✓</span>
+                  <span className="ml-auto text-xs" style={{ color: "var(--color-accent)" }}>✓</span>
                 )}
               </button>
             ))}
@@ -264,11 +300,16 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
     <div className="relative">
       <button
         onClick={handleToggle}
-        className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-sm font-medium
-                   transition-colors shrink-0
-                   ${advancedActiveCount > 0
-            ? "bg-[#3D1414] text-white border-[#3D1414]"
-            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"}`}
+        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-sm font-medium transition-colors shrink-0"
+        style={advancedActiveCount > 0 ? {
+          background: "var(--color-accent)",
+          color: "#ffffff",
+          borderColor: "var(--color-accent)",
+        } : {
+          background: "var(--color-surface)",
+          color: "var(--color-text-body)",
+          borderColor: "var(--color-border)",
+        }}
       >
         <SlidersHorizontal className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">More Filters</span>
@@ -282,21 +323,23 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
 
       {open && (
         <>
-          {/* Backdrop */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
 
-          {/* Popover Panel */}
-          <div className="absolute top-11 right-0 z-50 bg-white rounded-xl border border-gray-200
-                          shadow-xl w-72 overflow-hidden">
+          <div
+            className="absolute top-11 right-0 z-50 rounded-xl border shadow-[var(--shadow-modal)] w-72 overflow-hidden"
+            style={{ background: "var(--color-surface-raised)", borderColor: "var(--color-border)" }}
+          >
             {/* Header */}
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">Advanced Filters</h3>
+            <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: "var(--color-border)" }}>
+              <h3 className="text-sm font-semibold" style={{ color: "var(--color-text-strong)" }}>Advanced Filters</h3>
               <button
                 onClick={() => setOpen(false)}
-                className="w-6 h-6 rounded-lg hover:bg-gray-100 flex items-center justify-center
-                           transition-colors"
+                className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors"
+                style={{ color: "var(--color-text-sub)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface)"}
+                onMouseLeave={e => e.currentTarget.style.background = ""}
               >
-                <X className="w-3.5 h-3.5 text-gray-500" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
 
@@ -308,7 +351,10 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
 
                 return (
                   <div key={group.key}>
-                    <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-2 px-1">
+                    <label
+                      className="flex items-center gap-2 text-xs font-semibold mb-2 px-1 uppercase tracking-wide"
+                      style={{ color: "var(--color-text-sub)" }}
+                    >
                       <Icon className="w-3.5 h-3.5" />
                       {group.label}
                     </label>
@@ -319,16 +365,22 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
                           <button
                             key={opt.value}
                             onClick={() => handleFilterToggle(group.key, opt.value)}
-                            className={`w-full text-left px-3 py-2 rounded-lg border transition-all
-                                       flex items-center gap-2
-                                       ${isSelected
-                                ? "bg-[#3D1414]/10 text-[#3D1414] border-[#3D1414]/30 font-medium"
-                                : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"}`}
+                            className="w-full text-left px-3 py-2 rounded-lg border transition-all flex items-center gap-2"
+                            style={isSelected ? {
+                              background: "var(--color-accent-light)",
+                              color: "var(--color-accent)",
+                              borderColor: "var(--color-accent-mid)",
+                              fontWeight: 500,
+                            } : {
+                              background: "var(--color-surface-raised)",
+                              color: "var(--color-text-body)",
+                              borderColor: "var(--color-border)",
+                            }}
                           >
                             {opt.dot && <span className={`w-2 h-2 rounded-full ${opt.dot}`} />}
                             <span className="text-sm flex-1">{opt.label}</span>
                             {isSelected && (
-                              <span className="text-[#3D1414] text-sm">✓</span>
+                              <span className="text-sm" style={{ color: "var(--color-accent)" }}>✓</span>
                             )}
                           </button>
                         );
@@ -339,9 +391,9 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
               })}
             </div>
 
-            {/* Footer - only show if filters are active */}
+            {/* Footer */}
             {advancedActiveCount > 0 && (
-              <div className="px-3 py-2.5 border-t border-gray-100">
+              <div className="px-3 py-2.5 border-t" style={{ borderColor: "var(--color-border)" }}>
                 <button
                   onClick={() => {
                     ADVANCED_FILTERS.forEach(group => {
@@ -350,8 +402,10 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
                       });
                     });
                   }}
-                  className="w-full text-xs text-gray-500 hover:text-gray-700 font-medium
-                             py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="w-full text-xs font-medium py-1.5 rounded-lg transition-colors"
+                  style={{ color: "var(--color-text-sub)" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface)"}
+                  onMouseLeave={e => e.currentTarget.style.background = ""}
                 >
                   Clear advanced filters
                 </button>
@@ -401,26 +455,29 @@ function MobileFilterDrawer({
       />
 
       {/* Drawer */}
-      <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl 
-                      max-h-[85vh] overflow-hidden flex flex-col sm:hidden
-                      animate-in slide-in-from-bottom duration-300">
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl shadow-[var(--shadow-modal)]
+                   max-h-[85vh] overflow-hidden flex flex-col sm:hidden
+                   animate-in slide-in-from-bottom duration-300"
+        style={{ background: "var(--color-surface-raised)" }}
+      >
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--color-border)" }}>
           <div>
-            <h3 className="text-base font-bold text-gray-900">Filters</h3>
+            <h3 className="text-base font-bold font-sans" style={{ color: "var(--color-text-strong)" }}>Filters</h3>
             {activeFilterCount > 0 && (
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs mt-0.5" style={{ color: "var(--color-text-sub)" }}>
                 {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} applied
               </p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center
-                       hover:bg-gray-200 transition-colors"
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            style={{ background: "var(--color-surface)", color: "var(--color-text-sub)" }}
           >
-            <X className="w-4 h-4 text-gray-600" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -429,16 +486,25 @@ function MobileFilterDrawer({
 
           {/* Block Selection */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+            <label
+              className="block text-xs font-semibold mb-2 uppercase tracking-widest"
+              style={{ color: "var(--color-text-sub)" }}
+            >
               Location
             </label>
             <div className="space-y-1.5">
               <button
                 onClick={() => onBlockChange(null, null)}
-                className={`w-full text-left px-4 py-3 rounded-xl border transition-all
-                           ${!filters.block
-                    ? "bg-[#3D1414] text-white border-[#3D1414] shadow-sm"
-                    : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"}`}
+                className="w-full text-left px-4 py-3 rounded-xl border transition-all"
+                style={!filters.block ? {
+                  background: "var(--color-accent)",
+                  color: "#ffffff",
+                  borderColor: "var(--color-accent)",
+                } : {
+                  background: "var(--color-surface-raised)",
+                  color: "var(--color-text-body)",
+                  borderColor: "var(--color-border)",
+                }}
               >
                 <span className="text-sm font-medium">All Blocks</span>
               </button>
@@ -447,10 +513,16 @@ function MobileFilterDrawer({
                 <div key={block._id}>
                   <button
                     onClick={() => onBlockChange(block, null)}
-                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all
-                               ${filters.block === block._id && !filters.innerBlock
-                        ? "bg-[#3D1414] text-white border-[#3D1414] shadow-sm"
-                        : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"}`}
+                    className="w-full text-left px-4 py-3 rounded-xl border transition-all"
+                    style={filters.block === block._id && !filters.innerBlock ? {
+                      background: "var(--color-accent)",
+                      color: "#ffffff",
+                      borderColor: "var(--color-accent)",
+                    } : {
+                      background: "var(--color-surface-raised)",
+                      color: "var(--color-text-body)",
+                      borderColor: "var(--color-border)",
+                    }}
                   >
                     <span className="text-sm font-medium">{block.name}</span>
                   </button>
@@ -462,10 +534,17 @@ function MobileFilterDrawer({
                         <button
                           key={inner._id}
                           onClick={() => onBlockChange(block, inner)}
-                          className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm
-                                     ${filters.innerBlock === inner._id
-                              ? "bg-[#3D1414]/10 text-[#3D1414] border-[#3D1414]/30 font-medium"
-                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"}`}
+                          className="w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm"
+                          style={filters.innerBlock === inner._id ? {
+                            background: "var(--color-accent-light)",
+                            color: "var(--color-accent)",
+                            borderColor: "var(--color-accent-mid)",
+                            fontWeight: 500,
+                          } : {
+                            background: "var(--color-surface-raised)",
+                            color: "var(--color-text-sub)",
+                            borderColor: "var(--color-border)",
+                          }}
                         >
                           {inner.name}
                         </button>
@@ -484,7 +563,10 @@ function MobileFilterDrawer({
 
             return (
               <div key={group.key}>
-                <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                <label
+                  className="flex items-center gap-2 text-xs font-semibold mb-2 uppercase tracking-widest"
+                  style={{ color: "var(--color-text-sub)" }}
+                >
                   <Icon className="w-3.5 h-3.5" />
                   {group.label}
                 </label>
@@ -495,16 +577,22 @@ function MobileFilterDrawer({
                       <button
                         key={opt.value}
                         onClick={() => onFilterToggle(group.key, opt.value)}
-                        className={`w-full text-left px-4 py-3 rounded-xl border transition-all
-                                   flex items-center gap-2.5
-                                   ${isSelected
-                            ? "bg-[#3D1414]/10 text-[#3D1414] border-[#3D1414]/30 font-medium"
-                            : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"}`}
+                        className="w-full text-left px-4 py-3 rounded-xl border transition-all flex items-center gap-2.5"
+                        style={isSelected ? {
+                          background: "var(--color-accent-light)",
+                          color: "var(--color-accent)",
+                          borderColor: "var(--color-accent-mid)",
+                          fontWeight: 500,
+                        } : {
+                          background: "var(--color-surface-raised)",
+                          color: "var(--color-text-body)",
+                          borderColor: "var(--color-border)",
+                        }}
                       >
                         {opt.dot && <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />}
                         <span className="text-sm flex-1">{opt.label}</span>
                         {isSelected && (
-                          <span className="text-[#3D1414] text-base">✓</span>
+                          <span className="text-base" style={{ color: "var(--color-accent)" }}>✓</span>
                         )}
                       </button>
                     );
@@ -516,19 +604,20 @@ function MobileFilterDrawer({
         </div>
 
         {/* Footer Actions */}
-        <div className="border-t border-gray-100 px-5 py-4 flex gap-3">
+        <div className="border-t px-5 py-4 flex gap-3" style={{ borderColor: "var(--color-border)" }}>
           <Button
             variant="outline"
             onClick={onClearAll}
             disabled={activeFilterCount === 0}
-            className="flex-1 h-11 text-sm font-semibold border-gray-200 hover:bg-gray-50
-                       disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 h-11 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ borderColor: "var(--color-border)", color: "var(--color-text-body)" }}
           >
             Clear All
           </Button>
           <Button
             onClick={onClose}
-            className="flex-1 h-11 text-sm font-semibold bg-[#3D1414] hover:bg-[#3D1414]/90 text-white"
+            className="flex-1 h-11 text-sm font-semibold text-white"
+            style={{ background: "var(--color-accent)" }}
           >
             Apply Filters
           </Button>
@@ -595,35 +684,47 @@ function TenantHeaderSlot({
 
         {/* ── Mobile Layout ────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2 w-full sm:hidden">
-          {/* Search - primary action, takes most space */}
+          {/* Search */}
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-[#AFA097]" />
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+              style={{ color: "var(--color-text-weak)" }}
+            />
             <input
               type="text"
               placeholder="Search tenants…"
               value={filters.search}
               onChange={e => onSearchChange(e.target.value)}
-              className="w-full h-11 pl-10 pr-3 text-sm rounded-xl border border-[#DDD6D0]
-                         bg-[#F8F5F2] text-[#1C1A18] placeholder:text-[#C8BDB6]
-                         outline-none transition-colors
-                         focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
+              className="w-full h-11 pl-10 pr-3 text-sm rounded-xl border outline-none transition-colors font-sans"
+              style={{
+                background: "var(--color-surface)",
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-strong)",
+              }}
             />
           </div>
 
-          {/* Filters button with active count badge */}
+          {/* Filters button */}
           <button
             onClick={() => setMobileDrawerOpen(true)}
-            className={`relative h-11 px-4 rounded-xl border font-medium text-sm
-                       transition-all shrink-0 flex items-center gap-2
-                       ${mobileActiveFilterCount > 0
-                ? "bg-[#3D1414] text-white border-[#3D1414]"
-                : "bg-[#F8F5F2] text-gray-700 border-[#DDD6D0]"}`}
+            className="relative h-11 px-4 rounded-xl border font-medium text-sm transition-all shrink-0 flex items-center gap-2"
+            style={mobileActiveFilterCount > 0 ? {
+              background: "var(--color-accent)",
+              color: "#ffffff",
+              borderColor: "var(--color-accent)",
+            } : {
+              background: "var(--color-surface)",
+              color: "var(--color-text-body)",
+              borderColor: "var(--color-border)",
+            }}
           >
             <SlidersHorizontal className="w-4 h-4" />
             {mobileActiveFilterCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full 
-                               bg-red-500 text-white text-[10px] font-bold
-                               flex items-center justify-center border-2 border-white">
+              <span
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white text-[10px] font-bold
+                           flex items-center justify-center border-2"
+                style={{ background: "var(--color-danger)", borderColor: "var(--color-surface-raised)" }}
+              >
                 {mobileActiveFilterCount}
               </span>
             )}
@@ -632,8 +733,8 @@ function TenantHeaderSlot({
           {/* Add tenant - primary CTA */}
           <Button
             onClick={onNavigate.toAdd}
-            className="h-11 w-11 p-0 bg-[#3D1414] hover:bg-[#3D1414]/90 text-white shrink-0
-                       flex items-center justify-center rounded-xl"
+            className="h-11 w-11 p-0 text-white shrink-0 flex items-center justify-center rounded-xl"
+            style={{ background: "var(--color-accent)" }}
           >
             <Plus className="w-5 h-5" />
           </Button>
@@ -643,16 +744,21 @@ function TenantHeaderSlot({
         <div className="hidden sm:flex items-center gap-2 w-full">
           {/* Search */}
           <div className="relative w-56 shrink-0">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none text-[#AFA097]" />
+            <Search
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+              style={{ color: "var(--color-text-weak)" }}
+            />
             <input
               type="text"
               placeholder="Search tenant, phone, or unit…"
               value={filters.search}
               onChange={e => onSearchChange(e.target.value)}
-              className="w-full h-9 pl-8 pr-3 text-xs rounded-lg border border-[#DDD6D0]
-                         bg-[#F8F5F2] text-[#1C1A18] placeholder:text-[#C8BDB6]
-                         outline-none transition-colors
-                         focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
+              className="w-full h-9 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors font-sans"
+              style={{
+                background: "var(--color-surface)",
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-strong)",
+              }}
             />
           </div>
 
@@ -661,8 +767,12 @@ function TenantHeaderSlot({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                className="h-9 text-xs shrink-0 max-w-[148px] justify-between gap-1
-                           border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] hover:bg-[#EEE9E5]"
+                className="h-9 text-xs shrink-0 max-w-[148px] justify-between gap-1"
+                style={{
+                  background: "var(--color-surface)",
+                  borderColor: "var(--color-border)",
+                  color: "var(--color-text-body)",
+                }}
               >
                 <span className="truncate">{blockLabel}</span>
                 <ArrowDown className="w-3 h-3 shrink-0" />
@@ -720,16 +830,13 @@ function TenantHeaderSlot({
           <div className="flex-1 min-w-0" />
 
           {/* Divider */}
-          <div className="w-px h-5 bg-[#DDD6D0] shrink-0" />
+          <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
 
           {/* CTAs */}
-
-
           <Button
             onClick={onNavigate.toAdd}
-            className="h-9 px-3 text-xs font-semibold
-                       bg-[#3D1414] hover:bg-[#3D1414]/90 text-white shrink-0
-                       flex items-center gap-1.5"
+            className="h-9 px-3 text-xs font-semibold text-white shrink-0 flex items-center gap-1.5"
+            style={{ background: "var(--color-accent)" }}
           >
             <Plus className="w-3.5 h-3.5" />
             Add Tenant
@@ -737,9 +844,12 @@ function TenantHeaderSlot({
           <Button
             variant="outline"
             onClick={onNavigate.toMessage}
-            className="h-9 px-3 text-xs font-semibold
-                       border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] hover:bg-[#EEE9E5]
-                       shrink-0 flex items-center gap-1.5"
+            className="h-9 px-3 text-xs font-semibold shrink-0 flex items-center gap-1.5"
+            style={{
+              background: "var(--color-surface)",
+              borderColor: "var(--color-border)",
+              color: "var(--color-text-body)",
+            }}
           >
             <Bell className="w-3.5 h-3.5" />
             Send Message
@@ -968,7 +1078,7 @@ export default function Tenants() {
   const showingFiltered = hasActiveFilters(filters);
 
   return (
-    <div className="min-h-screen px-4 sm:px-5 font-sans">
+    <div className="min-h-screen px-4 sm:px-5 font-sans" style={{ color: "var(--color-text-body)" }}>
 
       {/* ── Filter chip bar ─────────────────────────────────────────────────────
           Industry pattern: secondary sticky bar below header that shows
@@ -976,10 +1086,15 @@ export default function Tenants() {
           Matches Linear / Notion / Jira behavior.
       ────────────────────────────────────────────────────────────────────────── */}
       {appliedChips.length > 0 && (
-        <div className="sticky top-14 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-2
-                        bg-white/90 backdrop-blur-sm border-b border-gray-100
-                        flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-400 flex items-center gap-1 shrink-0">
+        <div
+          className="sticky top-14 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-2
+                     backdrop-blur-sm border-b flex items-center gap-2 flex-wrap"
+          style={{
+            background: "color-mix(in srgb, var(--color-surface-raised) 92%, transparent)",
+            borderColor: "var(--color-border)",
+          }}
+        >
+          <span className="text-xs flex items-center gap-1 shrink-0" style={{ color: "var(--color-text-weak)" }}>
             <Filter className="w-3 h-3" /> Filters:
           </span>
           {appliedChips.map(chip => (
@@ -992,7 +1107,8 @@ export default function Tenants() {
           ))}
           <button
             onClick={clearAllFilters}
-            className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 ml-1"
+            className="text-xs underline underline-offset-2 ml-1 transition-opacity hover:opacity-70"
+            style={{ color: "var(--color-text-sub)" }}
           >
             Clear all
           </button>
@@ -1001,9 +1117,9 @@ export default function Tenants() {
 
       <div className="py-4">
         {/* Page title */}
-        <div className="mb-4">
-          <h1 className="text-xl font-bold text-gray-900">Tenants</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
+        <div className="mb-5">
+          <h1 className="text-xl font-bold font-sans" style={{ color: "var(--color-text-strong)" }}>Tenants</h1>
+          <p className="text-xs mt-0.5" style={{ color: "var(--color-text-sub)" }}>
             Manage your residents, leases, and rent collection
           </p>
         </div>
@@ -1015,32 +1131,32 @@ export default function Tenants() {
             label="Total Tenants"
             value={totalCount ?? tenants.length}
             description="All registered tenants"
-            iconBg="bg-gray-100"
-            iconColor="text-gray-600"
+            iconBg="var(--color-surface-raised)"
+            iconColor="var(--color-text-sub)"
           />
           <StatCard
             icon={CheckCircle2}
             label="Active"
             value={activeTenants}
             description="Currently occupying"
-            iconBg="bg-green-50"
-            iconColor="text-green-600"
+            iconBg="var(--color-success-bg)"
+            iconColor="var(--color-success)"
           />
           <StatCard
             icon={DollarSign}
-            label="Outstanding Rent and CAM"
+            label="Outstanding Rent"
             value={outstandingRent > 0 ? `Rs ${outstandingRent.toLocaleString()}` : "Rs 0"}
             description="Unpaid balances"
-            iconBg="bg-red-50"
-            iconColor="text-red-600"
+            iconBg="var(--color-danger-bg)"
+            iconColor="var(--color-danger)"
           />
           <StatCard
             icon={AlertTriangle}
             label="Attention Needed"
             value={attentionCount}
             description="Overdue or lease expiring"
-            iconBg="bg-amber-50"
-            iconColor="text-amber-600"
+            iconBg="var(--color-warning-bg)"
+            iconColor="var(--color-warning)"
             highlight={attentionCount > 0}
           />
         </div>
@@ -1049,28 +1165,33 @@ export default function Tenants() {
         <div className="flex items-center justify-between mb-3">
           <div>
             {showingFiltered && !loading && (
-              <p className="text-xs text-gray-400">
-                Showing <span className="font-semibold text-gray-700">{tenants.length}</span>
+              <p className="text-xs" style={{ color: "var(--color-text-sub)" }}>
+                Showing{" "}
+                <span className="font-semibold" style={{ color: "var(--color-text-body)" }}>{tenants.length}</span>
                 {totalCount != null && ` of ${totalCount}`} tenants
               </p>
             )}
           </div>
-          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+          <div className="flex items-center rounded-lg p-0.5" style={{ background: "var(--color-surface)" }}>
             <button
               onClick={() => setViewMode("grid")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors
-                         ${viewMode === "grid"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+              style={viewMode === "grid" ? {
+                background: "var(--color-surface-raised)",
+                color: "var(--color-text-strong)",
+                boxShadow: "var(--shadow-card)",
+              } : { color: "var(--color-text-sub)" }}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Grid
             </button>
             <button
               onClick={() => setViewMode("table")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors
-                         ${viewMode === "table"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+              style={viewMode === "table" ? {
+                background: "var(--color-surface-raised)",
+                color: "var(--color-text-strong)",
+                boxShadow: "var(--shadow-card)",
+              } : { color: "var(--color-text-sub)" }}
             >
               <List className="w-3.5 h-3.5" /> Table
             </button>
@@ -1084,15 +1205,18 @@ export default function Tenants() {
               {[...Array(8)].map((_, i) => <TenantCardSkeleton key={i} />)}
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8">
+            <div
+              className="rounded-xl border shadow-[var(--shadow-card)] p-8"
+              style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+            >
               <div className="space-y-3 animate-pulse">
                 {[...Array(6)].map((_, i) => (
                   <div key={i} className="flex gap-4 items-center">
-                    <div className="w-8 h-8 bg-gray-200 rounded-full" />
-                    <div className="h-3 bg-gray-200 rounded flex-1" />
-                    <div className="h-3 bg-gray-200 rounded w-20" />
-                    <div className="h-3 bg-gray-200 rounded w-16" />
-                    <div className="h-3 bg-gray-200 rounded w-24" />
+                    <div className="w-8 h-8 rounded-full" style={{ background: "var(--color-muted-fill)" }} />
+                    <div className="h-3 rounded flex-1" style={{ background: "var(--color-muted-fill)" }} />
+                    <div className="h-3 rounded w-20" style={{ background: "var(--color-muted-fill)" }} />
+                    <div className="h-3 rounded w-16" style={{ background: "var(--color-muted-fill)" }} />
+                    <div className="h-3 rounded w-24" style={{ background: "var(--color-muted-fill)" }} />
                   </div>
                 ))}
               </div>
@@ -1100,14 +1224,15 @@ export default function Tenants() {
           )
         ) : tenants.length === 0 ? (
           <div className="text-center py-16">
-            <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-400 text-sm">
+            <Users className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--color-muted-fill)" }} />
+            <p className="text-sm" style={{ color: "var(--color-text-weak)" }}>
               {showingFiltered ? "No tenants match the current filters" : "No tenants found"}
             </p>
             {showingFiltered && (
               <button
                 onClick={clearAllFilters}
-                className="mt-2 text-xs text-[#3D1414] underline underline-offset-2"
+                className="mt-2 text-xs underline underline-offset-2 transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-accent)" }}
               >
                 Clear filters
               </button>
@@ -1126,17 +1251,20 @@ export default function Tenants() {
           </div>
         ) : (
           /* ── Table View ────────────────────────────────────────────── */
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div
+            className="rounded-xl border overflow-hidden shadow-[var(--shadow-card)]"
+            style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+          >
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50/80">
-                  <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide pl-4">Tenant</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Unit</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Rent</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Status</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Payment</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Lease End</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide text-right pr-4">Actions</TableHead>
+                <TableRow style={{ background: "var(--color-surface-raised)" }}>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest pl-4" style={{ color: "var(--color-text-sub)" }}>Tenant</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Unit</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Rent</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Status</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Payment</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Lease End</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest text-right pr-4" style={{ color: "var(--color-text-sub)" }}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1152,29 +1280,44 @@ export default function Tenants() {
                   return (
                     <TableRow
                       key={tenant._id}
-                      className="cursor-pointer hover:bg-gray-50/80"
+                      className="cursor-pointer transition-colors"
+                      style={{ borderColor: "var(--color-border)" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface-raised)"}
+                      onMouseLeave={e => e.currentTarget.style.background = ""}
                       onClick={() => navigate(`/tenant/viewDetail/${tenant._id}`)}
                     >
                       <TableCell className="pl-4">
                         <div className="flex items-center gap-2.5">
-                          {attention && <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                          {attention && (
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-danger)" }} />
+                          )}
                           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 ${getAvatarColor(tenant?.name)}`}>
                             {initials}
                           </div>
-                          <span className="text-sm font-medium text-gray-900 truncate max-w-[160px]">
+                          <span className="text-sm font-medium truncate max-w-[160px]" style={{ color: "var(--color-text-strong)" }}>
                             {tenant?.name || "—"}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs text-gray-500">{getTenantLocationLabel(tenant)}</span>
+                        <span className="text-xs" style={{ color: "var(--color-text-sub)" }}>{getTenantLocationLabel(tenant)}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm font-semibold text-gray-900">{getTenantRentDisplay(tenant)}</span>
+                        <span className="text-sm font-semibold font-mono tabular-nums" style={{ color: "var(--color-text-strong)" }}>
+                          {getTenantRentDisplay(tenant)}
+                        </span>
                       </TableCell>
                       <TableCell>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full
-                          ${isActive ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        <span
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                          style={isActive ? {
+                            background: "var(--color-success-bg)",
+                            color: "var(--color-success)",
+                          } : {
+                            background: "var(--color-surface-raised)",
+                            color: "var(--color-text-weak)",
+                          }}
+                        >
                           {isActive ? "Active" : tenant?.status ?? "Inactive"}
                         </span>
                       </TableCell>
@@ -1184,21 +1327,27 @@ export default function Tenants() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs text-gray-500">{tenant?.leaseEndDateNepali || "—"}</span>
+                        <span className="text-xs font-mono" style={{ color: "var(--color-text-sub)" }}>
+                          {tenant?.leaseEndDateNepali || "—"}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right pr-4">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400
-                                       hover:bg-green-50 hover:text-green-600 transition-colors"
+                            className="w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+                            style={{ color: "var(--color-text-weak)" }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "var(--color-success-bg)"; e.currentTarget.style.color = "var(--color-success)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = ""; e.currentTarget.style.color = "var(--color-text-weak)"; }}
                             onClick={e => { e.stopPropagation(); if (tenant?.phone) window.location.href = `tel:${tenant.phone}`; }}
                             title="Call"
                           >
                             <Phone className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400
-                                       hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            className="w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+                            style={{ color: "var(--color-text-weak)" }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "var(--color-accent-light)"; e.currentTarget.style.color = "var(--color-accent)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = ""; e.currentTarget.style.color = "var(--color-text-weak)"; }}
                             onClick={e => { e.stopPropagation(); if (tenant?.email) window.location.href = `mailto:${tenant.email}`; }}
                             title="Email"
                           >
@@ -1207,8 +1356,10 @@ export default function Tenants() {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
-                                className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400
-                                           hover:bg-gray-100 transition-colors"
+                                className="w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+                                style={{ color: "var(--color-text-weak)" }}
+                                onMouseEnter={e => { e.currentTarget.style.background = "var(--color-surface-raised)"; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = ""; }}
                                 onClick={e => e.stopPropagation()}
                               >
                                 <MoreVertical className="w-3.5 h-3.5" />
@@ -1231,7 +1382,7 @@ export default function Tenants() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                className="text-red-500 focus:text-red-500"
+                                style={{ color: "var(--color-danger)" }}
                                 onClick={async () => {
                                   try {
                                     const res = await api.patch(`/api/tenant/delete-tenant/${tenant._id}`);

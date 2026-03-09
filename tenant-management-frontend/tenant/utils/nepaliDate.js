@@ -34,6 +34,9 @@ export const NEPALI_MONTH_NAMES = [
   "Chaitra", // 12
 ];
 
+/** 3-character abbreviations, index 0–11 */
+export const NEPALI_MONTH_SHORT = NEPALI_MONTH_NAMES.map((n) => n.slice(0, 3));
+
 /** Nepali month names in Devanagari script indexed 0–11 */
 export const NEPALI_MONTH_NAMES_NP = [
   "बैशाख",
@@ -182,9 +185,9 @@ export function getNepaliMonthInfo(year, month) {
  * Build an array of month options for a <select> or dropdown.
  * Returns all 12 months or only those within a given quarter.
  *
- * @param {object}  [opts]
- * @param {number}  [opts.quarter]         - Filter to this quarter (1–4)
- * @param {'en'|'np'} [opts.lang='en']     - Label language
+ * @param {object}    [opts]
+ * @param {number}    [opts.quarter]         - Filter to this quarter (1–4)
+ * @param {'en'|'np'} [opts.lang='en']       - Label language
  * @returns {{ value: number, label: string }[]}   value is 1-based month
  */
 export function getNepaliMonthOptions({ quarter, lang = "en" } = {}) {
@@ -306,6 +309,125 @@ export function buildQuarterFilter(year, quarter) {
     months,
     label: `Q${quarter} ${year} (${names})`,
   };
+}
+
+// ============================================================================
+// FISCAL YEAR HELPERS
+// ============================================================================
+//
+// Nepal's fiscal year runs Shrawan 1 (month 4) → Ashadh end (month 3, next year).
+// FY 2081  =  Shrawan 2081  →  Ashadh 2082
+//
+// FY month order (fyIndex 1–12):
+//   fyIndex  1  2  3  4  5  6  7  8  9  10  11  12
+//   month    4  5  6  7  8  9  10 11  12   1   2   3
+//   BS year  Y  Y  Y  Y  Y  Y   Y  Y   Y  Y+1 Y+1 Y+1
+//
+// Q1 = Shrawan–Ashwin   (fyIndex 1–3,  months 4–6)
+// Q2 = Kartik–Poush     (fyIndex 4–6,  months 7–9)
+// Q3 = Magh–Chaitra     (fyIndex 7–9,  months 10–12)
+// Q4 = Baisakh–Ashadh   (fyIndex 10–12, months 1–3)
+
+/** Month order within a fiscal year (1-based BS calendar months) */
+const FY_MONTH_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+
+/**
+ * Returns the starting BS year of the fiscal year that contains `bsDate`.
+ *   month >= 4 (Shrawan onward) → FY starts this year
+ *   month <= 3 (Baisakh–Ashadh) → FY started the previous year
+ *
+ * @param {{ year: number, month: number }} [bsDate]  defaults to today
+ * @returns {number}  FY start year
+ */
+export function getFYStartYear(bsDate) {
+  const { year, month } = bsDate ?? getTodayNepali();
+  return month >= 4 ? year : year - 1;
+}
+
+/**
+ * "FY 2081–82" display label for a given FY start year.
+ *
+ * @param {number} fyYear  FY start year (e.g. 2081)
+ * @returns {string}
+ */
+export function getFYLabel(fyYear) {
+  return `FY ${fyYear}–${String(fyYear + 1).slice(-2)}`;
+}
+
+/**
+ * Returns full fiscal-year metadata for a given BS date (defaults to today).
+ *
+ * Each entry in `months` describes one of the 12 FY months in order:
+ *   fyIndex    1-based position within the FY (1 = Shrawan, 12 = Ashadh)
+ *   month      BS calendar month number (1–12)
+ *   bsYear     which BS year this month belongs to
+ *   name       full English name  e.g. "Shrawan"
+ *   short      3-char abbrev      e.g. "Shr"
+ *   quarter    1–4 within the FY
+ *   isPast     true if this month is before today's BS month/year
+ *   isCurrent  true if this is today's BS month
+ *   isFuture   true if this month hasn't arrived yet
+ *
+ * @param {{ year: number, month: number, day?: number }} [bsDate]  defaults to today
+ * @returns {{
+ *   fy:           number,
+ *   fyLabel:      string,
+ *   currentMonth: number,
+ *   currentYear:  number,
+ *   months:       Array<{
+ *     fyIndex: number, month: number, bsYear: number,
+ *     name: string, short: string, quarter: number,
+ *     isPast: boolean, isCurrent: boolean, isFuture: boolean
+ *   }>
+ * }}
+ */
+export function getCurrentFYMonths(bsDate) {
+  const today = bsDate ?? getTodayNepali();
+  const fy = getFYStartYear(today);
+
+  const months = FY_MONTH_ORDER.map((m, idx) => {
+    // Months 4–12 belong to `fy`; months 1–3 belong to `fy + 1`
+    const bsYear = m >= 4 ? fy : fy + 1;
+    const isCurrent = m === today.month && bsYear === today.year;
+    const isPast =
+      bsYear < today.year || (bsYear === today.year && m < today.month);
+
+    return {
+      fyIndex: idx + 1,
+      month: m,
+      bsYear,
+      name: NEPALI_MONTH_NAMES[m - 1],
+      short: NEPALI_MONTH_SHORT[m - 1],
+      quarter: Math.floor(idx / 3) + 1,
+      isPast,
+      isCurrent,
+      isFuture: !isCurrent && !isPast,
+    };
+  });
+
+  return {
+    fy,
+    fyLabel: getFYLabel(fy),
+    currentMonth: today.month,
+    currentYear: today.year,
+    months,
+  };
+}
+
+/**
+ * Returns the current FY quarter number (1–4) based on today.
+ * Note: FY quarters differ from calendar quarters —
+ *   Q1 = Shrawan–Ashwin, Q2 = Kartik–Poush,
+ *   Q3 = Magh–Chaitra,   Q4 = Baisakh–Ashadh.
+ *
+ * @returns {number}
+ */
+export function getCurrentFYQuarter() {
+  const { months, currentMonth, currentYear } = getCurrentFYMonths();
+  return (
+    months.find((m) => m.month === currentMonth && m.bsYear === currentYear)
+      ?.quarter ?? 1
+  );
 }
 
 // ============================================================================

@@ -5,38 +5,36 @@ import {
     ResponsiveContainer, Cell, LabelList, ReferenceArea,
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { NEPALI_MONTH_NAMES, getCurrentNepaliMonth } from '../../../utils/nepaliDate';
+import {
+    NEPALI_MONTH_NAMES,
+    NEPALI_MONTH_SHORT,
+    getCurrentNepaliMonth,
+    getCurrentNepaliYear,
+    getCurrentFYMonths,
+    getFYLabel,
+} from '../../../utils/nepaliDate';
 
-// ─── Palette ──────────────────────────────────────────────────────────────────
+// ─── Palette — petrol design tokens ──────────────────────────────────────────
+// Hex values are required for SVG presentation attributes (fill/stroke);
+// CSS variables are not resolved by the browser in SVG attrs via Recharts.
 
 const COLOR = {
-    barHighlight: '#3D1414',
-    barRecorded: '#A07070',
-    barEmpty: '#F0EBE8',
-    trendLine: '#C4721A',
-    up: '#2E7A4A',
-    down: '#B02020',
-    flat: '#7A6858',
-    gridLine: '#EEE9E5',
-    axisText: '#B0A090',
-    axisHighlight: '#3D1414',
+    barHighlight: '#1A5276',   // --color-accent       current/highlighted month
+    barRecorded: '#AED6F1',   // --color-accent-mid   past recorded months
+    barEmpty: '#E7E5E0',   // --color-border       no-data placeholder
+
+    trendLine: '#92400E',      // --color-warning
+
+    up: '#166534',           // --color-success
+    down: '#991B1B',           // --color-danger
+    flat: '#78716C',           // --color-text-sub
+
+    gridLine: '#E7E5E0',
+    axisText: '#78716C',
+    axisHighlight: '#1C1917',
 };
 
-const MONTH_SHORT = NEPALI_MONTH_NAMES.map((n) => n.slice(0, 3));
-
-const QUARTERS = [
-    { label: 'Q1', months: [1, 2, 3] },
-    { label: 'Q2', months: [4, 5, 6] },
-    { label: 'Q3', months: [7, 8, 9] },
-    { label: 'Q4', months: [10, 11, 12] },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getApproxNepaliYear() {
-    const now = new Date();
-    return now.getMonth() >= 3 ? now.getFullYear() + 56 : now.getFullYear() + 57;
-}
 
 function fmtCompact(n) {
     if (n == null) return '—';
@@ -51,11 +49,6 @@ function fmtFull(n) {
 }
 
 // ─── Trend / analytics ────────────────────────────────────────────────────────
-//
-// calcTrend: least-squares linear regression over recorded months.
-//   direction 'up'   = slope > 1.5% of mean revenue (meaningful growth)
-//   direction 'down' = slope < -1.5% of mean (meaningful decline)
-//   direction 'flat' = within noise band
 
 function calcTrend(recorded) {
     if (recorded.length < 2) return { slope: 0, direction: 'flat' };
@@ -73,9 +66,6 @@ function calcTrend(recorded) {
     return { slope, direction };
 }
 
-// rollingAvg: 3-month centered average, null for empty months.
-// Smooths single-month noise (vacancy gaps, lump payments).
-
 function rollingAvg(data, window = 3) {
     return data.map((d, i) => {
         if (d.isEmpty) return null;
@@ -88,36 +78,34 @@ function rollingAvg(data, window = 3) {
 }
 
 // ─── Data builder ─────────────────────────────────────────────────────────────
+//
+// fyMonths: the ordered array from getCurrentFYMonths().months — Shrawan first.
+// items: API response array, each with { month: number, total|revenue: number }.
 
-function buildChartData(items, currentMonth, highlightCurrent) {
-    if (!Array.isArray(items) || items.length === 0) return [];
+function buildChartData(items, fyMonths, currentMonth, highlightCurrent) {
+    if (!Array.isArray(fyMonths) || fyMonths.length === 0) return [];
 
-    const hasMonthField = items.some((it) => it.month != null);
-    let base;
+    // Build a lookup by BS calendar month number
+    const lookup = new Map(
+        (Array.isArray(items) ? items : []).map((it) => [Number(it.month), it])
+    );
 
-    if (hasMonthField) {
-        const lookup = new Map(items.map((it) => [it.month, it]));
-        base = MONTH_SHORT.map((shortName, i) => {
-            const monthNum = i + 1;
-            const item = lookup.get(monthNum);
-            const revenue = Number(item?.total ?? item?.revenue ?? 0) || 0;
-            return {
-                name: shortName, month: monthNum, revenue,
-                isEmpty: revenue === 0,
-                isHighlighted: highlightCurrent && monthNum === currentMonth,
-            };
-        });
-    } else {
-        base = items.map((item) => {
-            const revenue = Number(item.revenue ?? item.value ?? item.total ?? 0) || 0;
-            return {
-                name: item.name ?? item.label ?? '',
-                month: item.month ?? null,
-                revenue, isEmpty: revenue === 0,
-                isHighlighted: highlightCurrent ? item.month === currentMonth : Boolean(item.isHighlighted),
-            };
-        });
-    }
+    const base = fyMonths.map((fm) => {
+        const item = lookup.get(fm.month);
+        const revenue = Number(item?.total ?? item?.revenue ?? 0) || 0;
+        return {
+            name: fm.short,
+            month: fm.month,
+            bsYear: fm.bsYear,
+            fyIndex: fm.fyIndex,
+            quarter: fm.quarter,
+            fullName: fm.name,
+            revenue,
+            isEmpty: revenue === 0,
+            isHighlighted: highlightCurrent && fm.isCurrent,
+            isFuture: fm.isFuture,
+        };
+    });
 
     // Month-over-month vs last non-empty month
     const withMom = base.map((item, idx) => {
@@ -130,28 +118,21 @@ function buildChartData(items, currentMonth, highlightCurrent) {
         return { ...item, momChange };
     });
 
-    // Attach rolling average as `trend` for the Line series
     const avgs = rollingAvg(withMom, 3);
     return withMom.map((d, i) => ({ ...d, trend: avgs[i] }));
 }
 
 // ─── Verdict computation ──────────────────────────────────────────────────────
-//
-// Answers the owner's core question: "Is my revenue growing or declining?"
-// Pure function — all logic here, zero logic in components.
 
 function computeVerdict(monthlyData) {
     const recorded = monthlyData.filter((d) => !d.isEmpty);
     if (recorded.length < 2) return null;
 
     const { direction } = calcTrend(recorded);
-
-    // Recent momentum: trend of just the last 3 recorded months
     const { direction: recentDir } = calcTrend(recorded.slice(-3));
 
     const ytdTotal = recorded.reduce((s, d) => s + d.revenue, 0);
 
-    // First-half vs second-half average (period-over-period change)
     const half = Math.floor(recorded.length / 2);
     const firstAvg = recorded.slice(0, half).reduce((s, d) => s + d.revenue, 0) / (half || 1);
     const secondAvg = recorded.slice(half).reduce((s, d) => s + d.revenue, 0) / (recorded.length - half || 1);
@@ -165,10 +146,25 @@ function computeVerdict(monthlyData) {
     return { direction, recentDir, ytdTotal, popChange, peak, trough, recorded };
 }
 
-// ─── VerdictBadge ─────────────────────────────────────────────────────────────
+// ─── Quarter bands (derived from FY month order) ──────────────────────────────
 //
-// The first thing the owner reads — directly answers the question.
-// Sits ABOVE the chart so it's visible before the bars.
+// Q1 = Shrawan–Ashwin (fyIndex 1–3), Q2 = Kartik–Poush (4–6),
+// Q3 = Magh–Falgun+Chaitra (7–9), Q4 = Baisakh–Ashadh (10–12)
+
+function buildQBands(fyMonths) {
+    const quarters = [1, 2, 3, 4].map((q) => {
+        const qMonths = fyMonths.filter((m) => m.quarter === q);
+        return {
+            label: `Q${q}`,
+            x1: qMonths[0]?.short,
+            x2: qMonths[qMonths.length - 1]?.short,
+            fill: q % 2 === 1 ? 'rgba(231,229,224,0.18)' : 'rgba(0,0,0,0)',
+        };
+    });
+    return quarters.filter((q) => q.x1 && q.x2);
+}
+
+// ─── VerdictBadge ─────────────────────────────────────────────────────────────
 
 function VerdictBadge({ verdict }) {
     if (!verdict) return null;
@@ -179,10 +175,19 @@ function VerdictBadge({ verdict }) {
     const Icon = isUp ? ArrowUpRight : isDown ? ArrowDownRight : Minus;
 
     const theme = isUp
-        ? { bg: '#F0FAF3', border: '#C3E8CF', iconBg: '#2E7A4A', text: '#1A5C34', sub: '#2E7A4A' }
+        ? {
+            bg: 'var(--color-success-bg)', border: 'var(--color-success-border)',
+            iconBg: 'var(--color-success)', text: 'var(--color-text-strong)', sub: 'var(--color-success)'
+        }
         : isDown
-            ? { bg: '#FDF2F2', border: '#F0CBCB', iconBg: '#B02020', text: '#8A1515', sub: '#B02020' }
-            : { bg: '#F8F5F2', border: '#E8E0D8', iconBg: '#7A6858', text: '#3D2A20', sub: '#7A6858' };
+            ? {
+                bg: 'var(--color-danger-bg)', border: 'var(--color-danger-border)',
+                iconBg: 'var(--color-danger)', text: 'var(--color-text-strong)', sub: 'var(--color-danger)'
+            }
+            : {
+                bg: 'var(--color-surface)', border: 'var(--color-border)',
+                iconBg: 'var(--color-text-weak)', text: 'var(--color-text-body)', sub: 'var(--color-text-sub)'
+            };
 
     const label = isUp ? 'Growing' : isDown ? 'Declining' : 'Stable';
     const recentLabel = recentDir === 'up' ? 'Accelerating ↑'
@@ -220,7 +225,6 @@ function VerdictBadge({ verdict }) {
                 )}
             </div>
 
-            {/* Trend line legend swatch */}
             <div className="flex items-center gap-1.5 shrink-0">
                 <svg width="22" height="10" viewBox="0 0 22 10">
                     <path d="M1 9 C5 9 7 1 11 1 C15 1 17 6 21 4"
@@ -241,27 +245,31 @@ function VerdictBadge({ verdict }) {
 function CustomTooltip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     const d = payload[0]?.payload ?? {};
-    const monthName = d.month != null ? NEPALI_MONTH_NAMES[d.month - 1] : label;
+    const monthName = d.fullName ?? (d.month != null ? NEPALI_MONTH_NAMES[d.month - 1] : label);
     const trendVal = payload.find((p) => p.dataKey === 'trend')?.value;
 
     return (
         <div className="rounded-xl border shadow-lg px-3 py-2.5 text-xs min-w-[150px]"
-            style={{ background: '#FDFCFA', borderColor: '#DDD6D0' }}>
-            <p className="font-bold mb-2" style={{ color: '#1C1A18' }}>{monthName}</p>
+            style={{ background: 'var(--color-surface-raised)', borderColor: 'var(--color-border)' }}>
+            <p className="font-bold mb-2" style={{ color: 'var(--color-text-strong)' }}>
+                {monthName} {d.bsYear}
+            </p>
 
             {d.isEmpty ? (
-                <p style={{ color: '#B0A090' }} className="italic">No data recorded</p>
+                <p style={{ color: COLOR.axisText }} className="italic">
+                    {d.isFuture ? 'Upcoming month' : 'No data recorded'}
+                </p>
             ) : (
                 <>
                     <div className="flex items-center justify-between gap-4 mb-1">
-                        <span style={{ color: '#7A6858' }}>Revenue</span>
+                        <span style={{ color: COLOR.axisText }}>Revenue</span>
                         <span className="font-bold tabular-nums" style={{ color: COLOR.barHighlight }}>
                             {fmtFull(d.revenue)}
                         </span>
                     </div>
                     {trendVal != null && (
                         <div className="flex items-center justify-between gap-4 mb-1">
-                            <span style={{ color: '#7A6858' }}>3-mo avg</span>
+                            <span style={{ color: COLOR.axisText }}>3-mo avg</span>
                             <span className="font-semibold tabular-nums" style={{ color: COLOR.trendLine }}>
                                 {fmtFull(Math.round(trendVal))}
                             </span>
@@ -269,8 +277,8 @@ function CustomTooltip({ active, payload, label }) {
                     )}
                     {d.momChange != null && (
                         <div className="flex items-center justify-between gap-4 pt-1 border-t"
-                            style={{ borderColor: '#EEE9E5' }}>
-                            <span style={{ color: '#7A6858' }}>vs prev month</span>
+                            style={{ borderColor: COLOR.gridLine }}>
+                            <span style={{ color: COLOR.axisText }}>vs prev month</span>
                             <span className="font-bold tabular-nums"
                                 style={{ color: d.momChange > 0 ? COLOR.up : d.momChange < 0 ? COLOR.down : COLOR.flat }}>
                                 {d.momChange > 0 ? '+' : ''}{d.momChange}%
@@ -283,7 +291,7 @@ function CustomTooltip({ active, payload, label }) {
     );
 }
 
-// ─── X-Axis tick ─────────────────────────────────────────────────────────────
+// ─── X-Axis tick ──────────────────────────────────────────────────────────────
 
 function XAxisTick({ x, y, payload, monthlyData }) {
     const point = monthlyData.find((d) => d.name === payload.value);
@@ -293,18 +301,18 @@ function XAxisTick({ x, y, payload, monthlyData }) {
         <g transform={`translate(${x},${y})`}>
             {isHighlight && (
                 <rect x={-9} y={4} width={18} height={14} rx={4}
-                    fill={COLOR.barHighlight} opacity={0.1} />
+                    fill={COLOR.barHighlight} opacity={0.12} />
             )}
             <text x={0} y={0} dy={14} textAnchor="middle" fontSize={9}
                 fontWeight={isHighlight ? 700 : 400}
-                fill={isHighlight ? COLOR.axisHighlight : isEmpty ? '#DDD6D0' : COLOR.axisText}>
+                fill={isHighlight ? COLOR.axisHighlight : isEmpty ? COLOR.gridLine : COLOR.axisText}>
                 {payload.value}
             </text>
         </g>
     );
 }
 
-// ─── MoM label above bar ─────────────────────────────────────────────────────
+// ─── MoM label above bar ──────────────────────────────────────────────────────
 
 function MoMLabel({ x, y, width, index, monthlyData }) {
     if (!monthlyData) return null;
@@ -324,18 +332,20 @@ function MoMLabel({ x, y, width, index, monthlyData }) {
 
 // ─── Current month callout ────────────────────────────────────────────────────
 
-function CurrentMonthCallout({ data, currentMonth, nepaliYear }) {
-    const point = data.find((d) => d.month === currentMonth);
+function CurrentMonthCallout({ data, currentMonth, currentYear }) {
+    const point = data.find((d) => d.month === currentMonth && d.bsYear === currentYear);
     const mthName = NEPALI_MONTH_NAMES[currentMonth - 1] ?? '';
 
     if (!point || point.isEmpty) {
         return (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
-                style={{ background: '#F8F5F2', border: '1px solid #EEE9E5' }}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#DDD6D0' }} />
-                <span className="font-semibold" style={{ color: '#7A6858' }}>{mthName} {nepaliYear}</span>
-                <span style={{ color: '#DDD6D0' }}>·</span>
-                <span style={{ color: '#B0A090' }}>No data recorded yet</span>
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: COLOR.gridLine }} />
+                <span className="font-semibold" style={{ color: COLOR.axisText }}>
+                    {mthName} {currentYear}
+                </span>
+                <span style={{ color: COLOR.gridLine }}>·</span>
+                <span style={{ color: COLOR.axisText }}>No data recorded yet</span>
             </div>
         );
     }
@@ -345,17 +355,19 @@ function CurrentMonthCallout({ data, currentMonth, nepaliYear }) {
 
     return (
         <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs"
-            style={{ background: '#FBF7F5', border: '1px solid #EEE9E5' }}>
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ background: COLOR.barHighlight, outline: '2px solid #F0DADA', outlineOffset: '1px' }} />
-            <span className="font-bold" style={{ color: COLOR.barHighlight }}>{mthName} {nepaliYear}</span>
-            <span style={{ color: '#DDD6D0' }}>·</span>
-            <span className="font-bold tabular-nums" style={{ color: '#1C1A18' }}>
+                style={{ background: COLOR.barHighlight, outline: `2px solid ${COLOR.barEmpty}`, outlineOffset: '1px' }} />
+            <span className="font-bold" style={{ color: COLOR.axisHighlight }}>
+                {mthName} {currentYear}
+            </span>
+            <span style={{ color: COLOR.gridLine }}>·</span>
+            <span className="font-bold tabular-nums" style={{ color: 'var(--color-text-strong)' }}>
                 {fmtFull(point.revenue)}
             </span>
             {point.momChange != null && (
                 <>
-                    <span style={{ color: '#DDD6D0' }}>·</span>
+                    <span style={{ color: COLOR.gridLine }}>·</span>
                     <span className="flex items-center gap-0.5 font-semibold tabular-nums"
                         style={{ color: momColor }}>
                         <MomIcon className="w-3 h-3" />
@@ -376,7 +388,7 @@ function SummaryStrip({ data }) {
     const ytdTotal = recorded.reduce((s, d) => s + d.revenue, 0);
     const avg = Math.round(ytdTotal / recorded.length);
     const peak = recorded.reduce((b, d) => d.revenue > b.revenue ? d : b, recorded[0]);
-    const peakName = NEPALI_MONTH_NAMES[peak.month - 1];
+    const peakName = peak.fullName ?? NEPALI_MONTH_NAMES[peak.month - 1];
 
     return (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 pt-2 border-t"
@@ -389,9 +401,9 @@ function SummaryStrip({ data }) {
             ].filter(Boolean).map(({ label, value }) => (
                 <div key={label} className="flex items-center gap-1.5">
                     <span className="text-[10px] font-semibold tracking-widest uppercase"
-                        style={{ color: '#B0A090' }}>{label}</span>
+                        style={{ color: COLOR.axisText }}>{label}</span>
                     <span className="text-[10px] font-bold tabular-nums"
-                        style={{ color: '#3D2A20' }}>{value}</span>
+                        style={{ color: COLOR.axisHighlight }}>{value}</span>
                 </div>
             ))}
         </div>
@@ -405,7 +417,7 @@ function ChartSkeleton() {
         <div className="h-full w-full flex items-end gap-1 px-2">
             {[40, 65, 30, 80, 55, 70, 45, 60, 75, 50, 35, 68].map((h, i) => (
                 <div key={i} className="flex-1 rounded-t animate-pulse"
-                    style={{ height: `${h}%`, minHeight: 6, background: '#EEE9E5' }} />
+                    style={{ height: `${h}%`, minHeight: 6, background: COLOR.barEmpty }} />
             ))}
         </div>
     );
@@ -415,9 +427,9 @@ function EmptyState() {
     return (
         <div className="h-full w-full flex flex-col items-center justify-center gap-2
             rounded-xl border border-dashed text-center px-4"
-            style={{ borderColor: '#DDD6D0' }}>
-            <p className="text-xs font-semibold" style={{ color: '#7A6858' }}>No revenue data yet</p>
-            <p className="text-[10px]" style={{ color: '#B0A090' }}>Record payments to see your trend</p>
+            style={{ borderColor: COLOR.gridLine }}>
+            <p className="text-xs font-semibold" style={{ color: COLOR.axisText }}>No revenue data yet</p>
+            <p className="text-[10px]" style={{ color: COLOR.axisText }}>Record payments to see your trend</p>
         </div>
     );
 }
@@ -425,39 +437,56 @@ function EmptyState() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function BarDiagram({ stats, loading, error, period = 'thisYear' }) {
-    const currentNepaliMonth = getCurrentNepaliMonth();
-    const nepaliYear = getApproxNepaliYear();
+    // ── Derive all date context from the real BS calendar ─────────────────────
+    const todayBs = useMemo(() => {
+        // getCurrentFYMonths is cheap — runs once per render
+        return getCurrentFYMonths();
+    }, []);
 
-    const fyYear = period === 'thisYear' ? nepaliYear : nepaliYear - 1;
-    const fyLabel = `FY ${fyYear}–${String(fyYear + 1).slice(-2)}`;
+    const currentFY = todayBs.fy;                        // e.g. 2081
+    const currentMonth = todayBs.currentMonth;              // 1–12
+    const currentYear = todayBs.currentYear;               // BS year of today
 
+    // For "last year" we shift the FY back by 1
+    const targetFY = period === 'thisYear' ? currentFY : currentFY - 1;
+    const fyLabel = getFYLabel(targetFY);
+
+    // Build the ordered 12-month FY array for the target year.
+    // If period === 'lastYear' we synthesise a fake bsDate pointing to the
+    // last month of that FY (Ashadh of targetFY+1) so getFYMonths works correctly.
+    const fyMonths = useMemo(() => {
+        if (period === 'thisYear') {
+            return todayBs.months;
+        }
+        // Last year: all 12 months in FY order, all marked past
+        const lastYearFakeDate = { year: targetFY + 1, month: 3, day: 30 }; // Chaitra (end of FY)
+        const { months } = getCurrentFYMonths(lastYearFakeDate);
+        return months;
+    }, [period, targetFY, todayBs.months]);
+
+    // Raw API data array
     const rawData = period === 'thisYear'
         ? (stats?.revenueThisYear ?? stats?.revenueByMonth ?? [])
         : (stats?.revenueLastYear ?? stats?.revenueByMonth ?? []);
 
     const monthlyData = useMemo(
-        () => buildChartData(rawData, currentNepaliMonth, period === 'thisYear'),
-        [rawData, currentNepaliMonth, period],
+        () => buildChartData(rawData, fyMonths, currentMonth, period === 'thisYear'),
+        [rawData, fyMonths, currentMonth, period],
     );
 
     const verdict = useMemo(() => computeVerdict(monthlyData), [monthlyData]);
     const hasNoData = monthlyData.length === 0 || monthlyData.every((d) => d.isEmpty);
 
-    const qBands = QUARTERS.map((q) => ({
-        ...q,
-        x1: MONTH_SHORT[q.months[0] - 1],
-        x2: MONTH_SHORT[q.months[q.months.length - 1] - 1],
-        fill: q.months[0] % 2 === 1 ? 'rgba(200,185,175,0.07)' : 'rgba(0,0,0,0)',
-    }));
+    const qBands = useMemo(() => buildQBands(fyMonths), [fyMonths]);
 
     return (
         <Card className="w-full overflow-hidden shadow-none rounded-2xl border-0">
             <CardHeader className="flex flex-row items-start justify-between px-4 pt-4 pb-2 gap-3">
                 <div className="space-y-0.5">
-                    <CardTitle className="text-sm font-bold" style={{ color: '#1C1A18' }}>
+                    <CardTitle className="text-sm font-bold" style={{ color: 'var(--color-text-strong)' }}>
                         Revenue Trend
                     </CardTitle>
-                    <p className="text-[11px] font-semibold tracking-wide" style={{ color: '#B0A090' }}>
+                    <p className="text-[11px] font-medium tracking-wide" style={{ color: COLOR.axisText }}>
                         {loading ? 'Loading…' : fyLabel}
                     </p>
                 </div>
@@ -465,8 +494,8 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                 {!loading && !hasNoData && (
                     <div className="flex items-center gap-3 shrink-0">
                         {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
-                            <span key={q} className="text-[10px] font-semibold tracking-wide"
-                                style={{ color: '#C8BDB6' }}>{q}</span>
+                            <span key={q} className="text-[10px] font-medium tracking-wide"
+                                style={{ color: COLOR.axisText }}>{q}</span>
                         ))}
                     </div>
                 )}
@@ -475,15 +504,16 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
             <CardContent className="px-4 pb-4 space-y-3">
                 {error && <p className="text-xs font-medium" style={{ color: COLOR.down }}>{error}</p>}
 
-                {/* Verdict badge — the direct answer to "growing or declining?" */}
                 {!loading && !hasNoData && verdict && <VerdictBadge verdict={verdict} />}
 
-                {/* Current month callout */}
                 {!loading && !hasNoData && period === 'thisYear' && (
-                    <CurrentMonthCallout data={monthlyData} currentMonth={currentNepaliMonth} nepaliYear={fyYear} />
+                    <CurrentMonthCallout
+                        data={monthlyData}
+                        currentMonth={currentMonth}
+                        currentYear={currentYear}
+                    />
                 )}
 
-                {/* Chart: bars + trend line overlay */}
                 <div className="h-[160px] md:h-[180px] w-full">
                     {loading ? (
                         <ChartSkeleton />
@@ -496,13 +526,12 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                                 margin={{ top: 22, right: 6, left: 0, bottom: 4 }}
                                 barCategoryGap="22%"
                             >
-                                {/* Quarter background shading */}
                                 {qBands.map((q) => (
                                     <ReferenceArea key={q.label}
                                         x1={q.x1} x2={q.x2} fill={q.fill} stroke="none"
                                         label={{
                                             value: q.label, position: 'insideTopLeft',
-                                            fontSize: 8, fontWeight: 600, fill: '#C8BDB6', dx: 2, dy: -16,
+                                            fontSize: 8, fontWeight: 600, fill: '#A8A29E', dx: 2, dy: -16,
                                         }}
                                     />
                                 ))}
@@ -513,9 +542,8 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                                 />
                                 <YAxis hide />
                                 <Tooltip content={<CustomTooltip />}
-                                    cursor={{ fill: 'rgba(200,185,175,0.12)', radius: 4 }} />
+                                    cursor={{ fill: 'rgba(231,229,224,0.2)', radius: 4 }} />
 
-                                {/* Revenue bars */}
                                 <Bar dataKey="revenue" radius={[3, 3, 0, 0]} maxBarSize={28} minPointSize={2}>
                                     {monthlyData.map((entry, index) => (
                                         <Cell key={index}
@@ -524,7 +552,7 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                                                     : entry.isHighlighted ? COLOR.barHighlight
                                                         : COLOR.barRecorded
                                             }
-                                            stroke={entry.isEmpty ? '#DDD6D0' : 'none'}
+                                            stroke={entry.isEmpty ? '#E7E5E0' : 'none'}
                                             strokeWidth={entry.isEmpty ? 1 : 0}
                                             strokeDasharray={entry.isEmpty ? '3 2' : 'none'}
                                         />
@@ -534,19 +562,13 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                                     />
                                 </Bar>
 
-                                {/*
-                                  Trend line — 3-month rolling average.
-                                  Drawn on top of bars. Orange so it contrasts the burgundy/rose bars.
-                                  connectNulls keeps it continuous across future empty months.
-                                  dot={false} for a clean read; activeDot appears only on hover.
-                                */}
                                 <Line
                                     dataKey="trend"
                                     type="monotone"
                                     stroke={COLOR.trendLine}
                                     strokeWidth={2}
                                     dot={false}
-                                    activeDot={{ r: 4, fill: COLOR.trendLine, stroke: '#FDFCFA', strokeWidth: 2 }}
+                                    activeDot={{ r: 4, fill: COLOR.trendLine, stroke: '#FFFFFF', strokeWidth: 2 }}
                                     connectNulls
                                 />
                             </ComposedChart>
@@ -554,7 +576,6 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                     )}
                 </div>
 
-                {/* Summary strip */}
                 {!loading && !hasNoData && <SummaryStrip data={monthlyData} />}
             </CardContent>
         </Card>

@@ -157,18 +157,18 @@ export function PaymentHistoryTab({ tenantId }) {
   };
 
   return (
-    <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
+    <Card className="border border-border shadow-sm rounded-xl bg-background">
       <CardHeader className="space-y-4 p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
+            <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-text-sub" />
             <CardTitle className="text-lg sm:text-xl">
               Payment History Ledger
             </CardTitle>
           </div>
           <button
             onClick={handleDownloadLedger}
-            className="flex items-center justify-center gap-2 text-blue-600 hover:text-blue-800 transition-colors text-sm sm:text-base px-3 py-2 rounded-md hover:bg-blue-50"
+            className="flex items-center justify-center gap-2 text-accent hover:text-accent-hover transition-colors text-sm sm:text-base px-3 py-2 rounded-md hover:bg-accent-light"
           >
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Download Ledger</span>
@@ -179,13 +179,13 @@ export function PaymentHistoryTab({ tenantId }) {
       <CardContent className="p-4 sm:p-6 pt-0">
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <div className="text-sm sm:text-base text-muted-foreground">
+            <div className="text-sm sm:text-base text-text-sub">
               Loading payment history...
             </div>
           </div>
         ) : error ? (
           <div className="flex items-center justify-center py-8">
-            <div className="text-sm sm:text-base text-red-600">{error}</div>
+            <div className="text-sm sm:text-base text-danger">{error}</div>
           </div>
         ) : (
           <>
@@ -193,7 +193,7 @@ export function PaymentHistoryTab({ tenantId }) {
               <div className="min-w-full inline-block align-middle">
                 <div className="block sm:hidden space-y-3">
                   {payments.length === 0 ? (
-                    <div className="text-center text-muted-foreground py-8">
+                    <div className="text-center text-text-sub py-8">
                       No payment history found
                     </div>
                   ) : (
@@ -201,7 +201,7 @@ export function PaymentHistoryTab({ tenantId }) {
                       <Card key={payment._id} className="p-4">
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-text-sub">
                               Date
                             </span>
                             <span className="text-sm font-medium">
@@ -209,7 +209,7 @@ export function PaymentHistoryTab({ tenantId }) {
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-text-sub">
                               Amount (रु)
                             </span>
                             <span className="text-sm font-semibold">
@@ -217,7 +217,7 @@ export function PaymentHistoryTab({ tenantId }) {
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-text-sub">
                               Method
                             </span>
                             <span className="text-sm">
@@ -225,7 +225,7 @@ export function PaymentHistoryTab({ tenantId }) {
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-text-sub">
                               Status
                             </span>
                             {getStatusBadge(payment.paymentStatus)}
@@ -236,7 +236,7 @@ export function PaymentHistoryTab({ tenantId }) {
                                 onClick={() =>
                                   setSelectedReceipt(payment.receipt.url)
                                 }
-                                className="w-full text-center text-blue-600 hover:text-blue-800 transition-colors text-sm py-1"
+                                className="w-full text-center text-accent hover:text-accent-hover transition-colors text-sm py-1"
                               >
                                 View Receipt
                               </button>
@@ -248,7 +248,7 @@ export function PaymentHistoryTab({ tenantId }) {
                   )}
                 </div>
 
-                <Table className="hidden sm:table">
+                <Table className="hidden sm:table bg-surface">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-xs sm:text-sm">DATE</TableHead>
@@ -264,12 +264,12 @@ export function PaymentHistoryTab({ tenantId }) {
                       <TableHead className="text-xs sm:text-sm"></TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
+                  <TableBody className="bg-surface">
                     {payments.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={5}
-                          className="text-center text-muted-foreground py-8"
+                          className="text-center text-text-sub py-8"
                         >
                           No payment history found
                         </TableCell>
@@ -295,12 +295,12 @@ export function PaymentHistoryTab({ tenantId }) {
                                 onClick={() =>
                                   setSelectedReceipt(payment.receipt.url)
                                 }
-                                className="text-blue-600 hover:text-blue-800 transition-colors text-xs sm:text-sm"
+                                className="text-accent hover:text-accent-hover transition-colors text-xs sm:text-sm"
                               >
                                 View Receipt
                               </button>
                             ) : (
-                              <span className="text-muted-foreground text-xs sm:text-sm">
+                              <span className="text-text-sub text-xs sm:text-sm">
                                 N/A
                               </span>
                             )}
@@ -315,7 +315,7 @@ export function PaymentHistoryTab({ tenantId }) {
 
             {pagination.totalPages > 1 && (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t">
-                <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
+                <div className="text-xs sm:text-sm text-text-sub text-center sm:text-left">
                   Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
                   {Math.min(
                     pagination.page * pagination.limit,

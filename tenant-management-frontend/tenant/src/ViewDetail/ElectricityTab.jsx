@@ -35,14 +35,14 @@ export function ElectricityTab({ tenantId }) {
   }
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
+      <div className="flex items-center justify-center py-12 text-text-sub">
         Loading electricity data…
       </div>
     );
   }
   if (allReadings.length === 0) {
     return (
-      <div className="text-sm text-muted-foreground py-4">
+      <div className="text-sm text-text-sub py-4">
         No electricity readings for this tenant.
       </div>
     );
@@ -51,27 +51,27 @@ export function ElectricityTab({ tenantId }) {
   return (
     <div className="space-y-4">
 
-      <Card className="rounded-lg shadow bg-white">
-        <CardContent className="p-5">
+      <Card className="rounded-lg shadow bg-background">
+        <CardContent className="p-5 bg-surface">
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="bg-surface">
               <TableHeader>
-                <TableRow className="border-b border-gray-200">
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Name</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Type</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Building</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Block</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Prev (kWh)</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Curr (kWh)</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Consumption</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Bill</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Status</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Action</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Receipt</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-600 uppercase">Reading Date</TableHead>
+                <TableRow className="border-b border-border">
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Name</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Type</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Building</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Block</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Prev (kWh)</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Curr (kWh)</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Consumption</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Bill</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Status</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Action</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Receipt</TableHead>
+                  <TableHead className="text-xs font-semibold text-text-sub uppercase">Reading Date</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className="bg-surface">
                 {allReadings.map((record, index) => (
                   <ElectricityTableRow
                     key={record._id ?? index}

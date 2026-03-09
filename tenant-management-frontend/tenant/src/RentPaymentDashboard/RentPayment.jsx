@@ -31,17 +31,17 @@ import { Button } from "@/components/ui/button";
 // ── Inline SVG icons ──────────────────────────────────────────────────────────
 const RefreshIcon = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className}
-      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path strokeLinecap="round" strokeLinejoin="round"
-          d="M4 4v5h.582M20 20v-5h-.582M4.582 9A8 8 0 0119.418 15M19.418 15A8 8 0 014.582 9" />
+    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M4 4v5h.582M20 20v-5h-.582M4.582 9A8 8 0 0119.418 15M19.418 15A8 8 0 014.582 9" />
   </svg>
 );
 
 const MailIcon = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className}
-      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path strokeLinecap="round" strokeLinejoin="round"
-          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
   </svg>
 );
 
@@ -55,16 +55,16 @@ const SearchInput = ({ placeholder, value, onChange }) => (
   <div className="relative w-full">
     <Search
       className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
-      style={{ color: "#AFA097" }}
+      style={{ color: "var(--color-text-sub)" }}
     />
     <input
       type="text"
       placeholder={placeholder}
       value={value}
       onChange={onChange}
-      style={{ background: "#F8F5F2", borderColor: "#DDD6D0", color: "#1C1A18" }}
       className="w-full h-8 sm:h-9 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors
-                 placeholder:text-[#C8BDB6] focus:border-[#AFA097] focus:ring-2 focus:ring-[#3D1414]/10"
+                 placeholder:text-text-sub focus:border-accent focus:ring-2 focus:ring-accent/30"
+      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-strong)" }}
     />
   </div>
 );
@@ -185,17 +185,17 @@ const RentPayment = () => {
 
           {/* Left: Brand + Tabs (Desktop) / Tabs only (Mobile) */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            
+
             {/* Brand — desktop only */}
             <div className="hidden sm:flex items-center gap-2 shrink-0">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#1C1A18" }} />
-              <span className="text-sm font-semibold whitespace-nowrap" style={{ color: "#1C1A18" }}>
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              <span className="text-sm font-semibold whitespace-nowrap text-text-strong">
                 Rent Management
               </span>
             </div>
 
             {/* Divider — desktop only */}
-            <div className="hidden sm:block h-4 w-px shrink-0" style={{ background: "#DDD6D0" }} />
+            <div className="hidden sm:block h-4 w-px shrink-0 border-border" />
 
             {/* Tab nav */}
             <nav className="flex items-center gap-0.5 shrink-0">
@@ -211,19 +211,19 @@ const RentPayment = () => {
                              whitespace-nowrap transition-colors"
                   style={
                     activeTab === t.id
-                      ? { background: "#EEE9E5", color: "#1C1A18" }
-                      : { color: "#948472" }
+                      ? { background: "var(--color-surface)", color: "var(--color-text-strong)" }
+                      : { color: "var(--color-text-sub)" }
                   }
                   onMouseEnter={(e) => {
                     if (activeTab !== t.id) {
-                      e.currentTarget.style.background = "#EEE9E5";
-                      e.currentTarget.style.color = "#1C1A18";
+                      e.currentTarget.style.background = "var(--color-surface)";
+                      e.currentTarget.style.color = "var(--color-text-strong)";
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (activeTab !== t.id) {
                       e.currentTarget.style.background = "";
-                      e.currentTarget.style.color = "#948472";
+                      e.currentTarget.style.color = "var(--color-text-sub)";
                     }
                   }}
                 >
@@ -232,7 +232,7 @@ const RentPayment = () => {
                     <span
                       className="inline-flex items-center justify-center h-4 min-w-[16px] px-1
                                  rounded-full text-white text-[9px] font-bold leading-none"
-                      style={{ background: "#B02020" }}
+                      style={{ background: "var(--color-danger)" }}
                     >
                       {overdueCount}
                     </span>
@@ -243,8 +243,8 @@ const RentPayment = () => {
 
             {/* Desktop: Search (inline after tabs) */}
             <div className="hidden sm:block flex-1 min-w-0 max-w-[280px] ml-3">
-              <SearchInput 
-                placeholder="Search tenants, properties…" 
+              <SearchInput
+                placeholder="Search tenants, properties…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -253,7 +253,7 @@ const RentPayment = () => {
 
           {/* Right: Filter + Menu (Mobile) / Admin Actions (Desktop) */}
           <div className="flex items-center gap-2 shrink-0">
-            
+
             {/* Mobile: Filters button (only on rent tab) */}
             {activeTab === "rent" && (
               <button
@@ -261,18 +261,18 @@ const RentPayment = () => {
                 onClick={() => setIsFilterDrawerOpen(true)}
                 className="sm:hidden flex items-center gap-1.5 h-9 px-3 rounded-lg border 
                            text-xs font-semibold transition-colors"
-                style={{ 
-                  background: activeFilterCount > 0 ? "#1C1A18" : "#F8F5F2", 
-                  borderColor: activeFilterCount > 0 ? "#1C1A18" : "#DDD6D0",
-                  color: activeFilterCount > 0 ? "#F0DADA" : "#948472"
+                style={{
+                  background: activeFilterCount > 0 ? "var(--color-text-strong)" : "var(--color-surface)",
+                  borderColor: activeFilterCount > 0 ? "var(--color-text-strong)" : "var(--color-border)",
+                  color: activeFilterCount > 0 ? "var(--color-accent-light)" : "var(--color-text-sub)"
                 }}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 <span className="hidden xs:inline">Filters</span>
                 {activeFilterCount > 0 && (
                   <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1
-                                   rounded-full text-[#1C1A18] text-[9px] font-bold leading-none"
-                        style={{ background: "#F0DADA" }}>
+                                    rounded-full text-text-strong text-[9px] font-bold leading-none"
+                    style={{ background: "var(--color-accent-light)" }}>
                     {activeFilterCount}
                   </span>
                 )}
@@ -287,13 +287,13 @@ const RentPayment = () => {
                     type="button"
                     className="flex items-center justify-center h-9 w-9 rounded-lg border 
                                transition-colors"
-                    style={{ background: "#F8F5F2", borderColor: "#DDD6D0", color: "#948472" }}
+
                   >
                     <MoreVertical className="h-4 w-4" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     onClick={() => getRents()}
                     disabled={processingRents}
                     className="flex items-center gap-2"
@@ -301,7 +301,7 @@ const RentPayment = () => {
                     <RefreshIcon className="h-4 w-4" />
                     <span>Process Monthly Rents</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     onClick={() => getRents()}
                     disabled={sendingEmails}
                     className="flex items-center gap-2"
@@ -321,15 +321,15 @@ const RentPayment = () => {
         </div>
 
         {/* ── Row 2: Mobile search (full-width) ── */}
-        <div className="sm:hidden w-full">
-          <SearchInput 
-            placeholder="Search tenants, properties, units…" 
+        < div className="sm:hidden w-full" >
+          <SearchInput
+            placeholder="Search tenants, properties, units…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-        </div>
+        </div >
 
-      </div>
+      </div >
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeTab, overdueCount, searchQuery, activeFilterCount, getRents, processingRents, sendingEmails],
@@ -339,9 +339,9 @@ const RentPayment = () => {
   if (loading) {
     return (
       <div className="animate-pulse space-y-4">
-        <div className="h-9 bg-slate-100 rounded-xl w-full" />
-        <div className="h-24 bg-slate-100 rounded-xl w-full" />
-        <div className="h-64 bg-slate-100 rounded-xl w-full" />
+        <div className="h-9 bg-surface rounded-xl w-full" />
+        <div className="h-24 bg-surface rounded-xl w-full" />
+        <div className="h-64 bg-surface rounded-xl w-full" />
       </div>
     );
   }
@@ -355,20 +355,20 @@ const RentPayment = () => {
 
           {/* Overdue nudge banner */}
           {overdueCount > 0 && filterStatus !== "overdue" && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-danger-border bg-danger-bg px-4 py-2.5">
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className="h-2 w-2 rounded-full bg-red-500 shrink-0 animate-pulse" />
-                <p className="text-xs font-semibold text-red-700 whitespace-nowrap">
+                <span className="h-2 w-2 rounded-full bg-danger shrink-0 animate-pulse" />
+                <p className="text-xs font-semibold text-danger whitespace-nowrap">
                   {overdueCount} overdue rent{overdueCount !== 1 ? "s" : ""} need attention
                 </p>
-                <span className="hidden sm:inline text-xs text-red-400">
+                <span className="hidden sm:inline text-xs text-danger-sub">
                   · {currentMonthName} {filterRentYear}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setFilterStatus("overdue")}
-                className="shrink-0 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                className="shrink-0 rounded-md border border-danger-border bg-surface px-2.5 py-1 text-xs font-semibold text-danger hover:bg-danger-light transition-colors"
               >
                 Show overdue
               </button>
@@ -376,7 +376,7 @@ const RentPayment = () => {
           )}
 
           {/* Filters — scopes the KPIs below — Desktop only */}
-          <div className="hidden sm:block rounded-xl border border-slate-200 bg-white px-4 sm:px-5 py-3.5">
+          <div className="hidden sm:block rounded-xl border border-border bg-surface px-4 sm:px-5 py-3.5">
             <RentFilter
               month={filterRentMonth}
               year={filterRentYear}
@@ -405,9 +405,9 @@ const RentPayment = () => {
           />
 
           {/* Rent table */}
-          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="flex items-center px-4 sm:px-5 py-3 border-b border-slate-100">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide tabular-nums">
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="flex items-center px-4 sm:px-5 py-3 border-b border-border">
+              <span className="text-[11px] font-semibold text-text-sub uppercase tracking-wide tabular-nums">
                 {searchFilteredRents.length} record{searchFilteredRents.length !== 1 ? "s" : ""}
               </span>
             </div>
@@ -439,13 +439,35 @@ const RentPayment = () => {
       {activeTab === "payments" && (
         <div className="space-y-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Payment History</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <h2 className="text-base font-semibold text-text-strong">Payment History</h2>
+            <p className="text-xs text-text-sub mt-0.5">
               All recorded payments across tenants and billing periods
             </p>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white px-4 sm:px-5 py-4">
+          {/* KPI summary strip */}
+          {!paymentsLoading && payments.length > 0 && (() => {
+            const totalCollected = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+            return (
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Total Collected", value: `₹${totalCollected.toLocaleString()}` },
+                  { label: "Payments Count", value: payments.length },
+                  { label: "Records Shown", value: payments.length },
+                ].map((kpi) => (
+                  <div
+                    key={kpi.label}
+                    className="rounded-xl border border-border bg-surface px-4 py-3"
+                  >
+                    <p className="text-[11px] font-semibold text-text-sub uppercase tracking-wide">{kpi.label}</p>
+                    <p className="text-lg font-bold text-text-strong mt-0.5">{kpi.value}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          <div className="rounded-xl border border-border bg-surface px-4 sm:px-5 py-4">
             <PaymentFilters
               filterStartDate={filterStartDate}
               filterEndDate={filterEndDate}
@@ -461,7 +483,7 @@ const RentPayment = () => {
                 {[...Array(5)].map((_, i) => (
                   <div
                     key={i}
-                    className="h-12 bg-slate-100 rounded-lg animate-pulse"
+                    className="h-12 bg-surface rounded-lg animate-pulse"
                     style={{ opacity: 1 - i * 0.15 }}
                   />
                 ))}
@@ -477,16 +499,16 @@ const RentPayment = () => {
       <Sheet open={isFilterDrawerOpen} onOpenChange={setIsFilterDrawerOpen}>
         <SheetContent side="bottom" className="h-[85vh] p-0">
           <div className="flex flex-col h-full">
-            
+
             {/* Header */}
-            <SheetHeader className="px-5 pt-5 pb-4 border-b border-slate-100">
+            <SheetHeader className="px-5 pt-5 pb-4 border-b border-border">
               <div className="flex items-center justify-between">
                 <div>
-                  <SheetTitle className="text-lg font-semibold" style={{ color: "#1C1A18" }}>
+                  <SheetTitle className="text-lg font-semibold text-text-strong">
                     Filters
                   </SheetTitle>
                   {activeFilterCount > 0 && (
-                    <p className="text-xs mt-1" style={{ color: "#948472" }}>
+                    <p className="text-xs mt-1 text-text-sub">
                       {activeFilterCount} filter{activeFilterCount !== 1 ? "s" : ""} applied
                     </p>
                   )}
@@ -515,17 +537,14 @@ const RentPayment = () => {
             </div>
 
             {/* Footer with actions */}
-            <SheetFooter className="px-5 py-4 border-t border-slate-100 flex-row gap-3">
+            <SheetFooter className="px-5 py-4 border-t border-border flex-row gap-3">
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleClearRentFilters}
                 disabled={!activeFilterCount}
                 className="flex-1 h-11 text-sm font-semibold"
-                style={{
-                  borderColor: "#DDD6D0",
-                  color: "#948472",
-                }}
+
               >
                 Clear All
               </Button>
@@ -533,10 +552,7 @@ const RentPayment = () => {
                 type="button"
                 onClick={() => setIsFilterDrawerOpen(false)}
                 className="flex-1 h-11 text-sm font-semibold"
-                style={{
-                  background: "#1C1A18",
-                  color: "#F0DADA",
-                }}
+
               >
                 Apply Filters
               </Button>
@@ -544,8 +560,8 @@ const RentPayment = () => {
 
           </div>
         </SheetContent>
-      </Sheet>
-    </form>
+      </Sheet >
+    </form >
   );
 };
 

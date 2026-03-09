@@ -1,22 +1,3 @@
-// src/pages/component/KpiStrip.jsx
-//
-// DISPLAY-ONLY — zero calculations live here.
-// All numbers come pre-computed from stats.kpi (set by normalizeDashboardStats
-// in UseStats.js). This component's only job is to render what it receives.
-//
-// STACKED BAR (Collected tile):
-//   The bar represents 100% of totalBilled (rent + CAM combined).
-//   Two fills animate in sequence:
-//     1. Rent segment  — primary burgundy — animates first (CSS transition)
-//     2. CAM segment   — lighter rose/blush — animates after a 300ms delay
-//   Together they show how much of the total billing has been collected,
-//   and visually split the collection between rent and CAM.
-//
-//   Example: totalBilled=100, rentCollected=70, camCollected=10
-//     → rentPct=70  → bar fills 70% in dark burgundy
-//     → camPct=10   → bar continues to 80% in light rose
-//     → remaining 20% is the empty track
-
 import React, { useEffect, useRef, useState } from "react";
 import {
     Wallet, Building2, AlertCircle, CheckCircle2, ChevronRight,
@@ -42,118 +23,122 @@ function fmtFull(val) {
 
 // ─── Stacked animated bar ─────────────────────────────────────────────────────
 //
-// Renders two CSS-transitioned fills in a single track.
-// Both start at 0 on mount; after a single rAF tick they transition to their
-// target widths. CAM fill is delayed by 300ms so rent animates first.
+// Single element, single width transition. The rent/CAM colour split lives
+// inside a linear-gradient so both colours travel together as the bar grows.
+// No seam, no two-bar effect, no stagger.
+//
+// Gradient maths:
+//   totalPct  = rentPct + camPct        (filled width as % of track)
+//   rentShare = (rentPct / totalPct) × 100  (rent's portion of the filled bar)
+//
+//   The gradient stop is expressed as % of the element's own width (= filled
+//   width), so the colour boundary stays proportionally correct at every point
+//   during animation — not just at the final value.
+//
+//   A ±1.5% soft blend zone at the boundary replaces a hard colour cut.
+//
+// Easing: cubic-bezier(0.34, 1.56, 0.64, 1) — mild spring, ~3% overshoot.
+// Double-rAF: lets React flush the 0-reset before starting the transition so
+// the browser always sees a 0 → target change and plays the full animation.
 
-function StackedBar({ rentPct = 0, camPct = 0, dark = false }) {
-    const [rentWidth, setRentWidth] = useState(0);
-    const [camWidth, setCamWidth] = useState(0);
+function StackedBar({ rentPct = 0, camPct = 0 }) {
+    const totalPct = Math.min(100, rentPct + camPct);
+    const [displayPct, setDisplayPct] = useState(0);
     const rafRef = useRef(null);
-    const timerRef = useRef(null);
 
     useEffect(() => {
-        // Reset to 0 first so re-renders also animate
-        setRentWidth(0);
-        setCamWidth(0);
+        setDisplayPct(0);
         rafRef.current = requestAnimationFrame(() => {
-            setRentWidth(rentPct);
-            timerRef.current = setTimeout(() => setCamWidth(camPct), 300);
+            rafRef.current = requestAnimationFrame(() => {
+                setDisplayPct(totalPct);
+            });
         });
-        return () => {
-            cancelAnimationFrame(rafRef.current);
-            clearTimeout(timerRef.current);
-        };
-    }, [rentPct, camPct]);
+        return () => cancelAnimationFrame(rafRef.current);
+    }, [totalPct]);
 
-    const track = dark ? "#521C1C" : "#EEE9E5";
-    const rentColor = dark ? "#DDA8A8" : "#3D1414";
-    const camColor = dark ? "rgba(255,195,170,0.5)" : "rgba(180,100,80,0.38)";
+    const hasCam = camPct > 0;
+    const rentShare = totalPct > 0 ? (rentPct / totalPct) * 100 : 100;
+    const blendStart = Math.max(0, rentShare - 1.5);
+    const blendEnd = Math.min(100, rentShare + 1.5);
+
+    const background = hasCam
+        ? `linear-gradient(to right, var(--color-success) ${blendStart}%, var(--color-info) ${blendEnd}%)`
+        : "var(--color-success)";
 
     return (
         <div
-            className="mt-3 h-1.5 rounded-full overflow-hidden relative"
-            style={{ background: track }}
+            className="mt-3 h-1.5 rounded-full overflow-hidden"
+            style={{ backgroundColor: "var(--color-muted)" }}
             title={`Rent: ${rentPct}% · CAM: ${camPct}%`}
         >
-            {/* Rent fill — animates first */}
             <div
-                className="absolute inset-y-0 left-0 rounded-full"
                 style={{
-                    width: `${rentWidth}%`,
-                    background: rentColor,
-                    transition: "width 700ms cubic-bezier(0.4,0,0.2,1)",
-                }}
-            />
-            {/* CAM fill — appended right after rent, animates second */}
-            <div
-                className="absolute inset-y-0 rounded-full"
-                style={{
-                    left: `${rentWidth}%`,
-                    width: `${camWidth}%`,
-                    background: camColor,
-                    transition:
-                        "width 600ms cubic-bezier(0.4,0,0.2,1) 300ms, left 700ms cubic-bezier(0.4,0,0.2,1)",
+                    height: "100%",
+                    width: `${displayPct}%`,
+                    background,
+                    borderRadius: "9999px",
+                    transition: "width 750ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                    willChange: "width",
                 }}
             />
         </div>
     );
 }
 
-// ─── Simple single-fill bar (for other tiles) ─────────────────────────────────
+// ─── Simple single-fill bar ───────────────────────────────────────────────────
 
-function SimpleBar({ pct = 0, color, dark = false }) {
+function SimpleBar({ pct = 0, colorVar }) {
     const [width, setWidth] = useState(0);
     const rafRef = useRef(null);
 
     useEffect(() => {
         setWidth(0);
-        rafRef.current = requestAnimationFrame(() => setWidth(pct));
+        rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = requestAnimationFrame(() => setWidth(pct));
+        });
         return () => cancelAnimationFrame(rafRef.current);
     }, [pct]);
 
     return (
         <div
             className="mt-3 h-1.5 rounded-full overflow-hidden"
-            style={{ background: dark ? "#521C1C" : "#EEE9E5" }}
+            style={{ backgroundColor: "var(--color-muted)" }}
         >
             <div
-                className="h-full rounded-full"
                 style={{
+                    height: "100%",
                     width: `${width}%`,
-                    background: color,
-                    transition: "width 700ms cubic-bezier(0.4,0,0.2,1)",
+                    backgroundColor: colorVar ?? "var(--color-muted)",
+                    borderRadius: "9999px",
+                    transition: "width 750ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                    willChange: "width",
                 }}
             />
         </div>
     );
 }
 
-// ─── Multi-segment bar (Revenue Mix tile) ────────────────────────────────────
-//
-// Renders N proportional segments side by side in a single track.
-
-
-
+// ─── Tile ─────────────────────────────────────────────────────────────────────
 
 function Tile({
-    label, value, sub, icon: Icon, iconBg, iconColor,
-    valueColor, borderColor,
-    bar,       // { type: "stacked", rentPct, camPct } | { type: "simple", pct, color }
+    label, value, sub, icon: Icon,
+    iconBgStyle = { backgroundColor: "var(--color-muted)" },
+    iconColorStyle = { color: "var(--color-text-strong)" },
+    valueStyle = { color: "var(--color-text-strong)" },
+    borderColor = "var(--color-border)",
+    bar,
     dots,
     to,
-    dark = false,
     loading,
 }) {
-    const bg = dark ? "#3D1414" : "#FDFCFA";
-    const border = borderColor ?? (dark ? "#521C1C" : "#DDD6D0");
-
     return (
         <Link
             to={to}
-            className="group rounded-2xl border flex flex-col overflow-hidden
-        transition-all duration-150 hover:shadow-md hover:-translate-y-px"
-            style={{ background: bg, borderColor: border }}
+            className="group rounded-2xl border flex flex-col overflow-hidden transition-all duration-150 hover:shadow-sm"
+            style={{
+                backgroundColor: "var(--color-surface)",
+                borderColor,
+            }}
         >
             {/* Body */}
             <div className="flex items-start justify-between px-4 pt-4 pb-3 gap-3">
@@ -161,19 +146,24 @@ function Tile({
 
                     {/* Label */}
                     <p
-                        className="text-[10px] font-semibold tracking-[0.18em] uppercase mb-2"
-                        style={{ color: dark ? "#8B3030" : "#AFA097" }}
+                        className="text-[10px] font-medium tracking-[0.18em] uppercase mb-2"
+                        style={{ color: "var(--color-text-sub)" }}
                     >
                         {label}
                     </p>
 
                     {/* Hero value */}
                     {loading
-                        ? <div className={`animate-pulse rounded h-7 w-24 ${dark ? "bg-white/10" : "bg-[#EEE9E5]"}`} />
+                        ? (
+                            <div
+                                className="animate-pulse rounded h-7 w-24"
+                                style={{ backgroundColor: "var(--color-muted)" }}
+                            />
+                        )
                         : (
                             <p
-                                className="text-2xl font-bold tabular-nums leading-none"
-                                style={{ color: valueColor ?? (dark ? "white" : "#1C1A18") }}
+                                className="text-base sm:text-xl lg:text-2xl font-bold tabular-nums leading-none truncate"
+                                style={valueStyle}
                             >
                                 {value}
                             </p>
@@ -183,8 +173,8 @@ function Tile({
                     {/* Sub-label */}
                     {!loading && sub && (
                         <p
-                            className="text-[11px] mt-1.5 leading-tight"
-                            style={{ color: dark ? "#C47272" : "#948472" }}
+                            className="text-[11px] mt-1.5 leading-tight font-medium"
+                            style={{ color: "var(--color-text-sub)" }}
                         >
                             {sub}
                         </p>
@@ -193,8 +183,8 @@ function Tile({
                     {/* Bar */}
                     {!loading && bar && (
                         bar.type === "stacked"
-                            ? <StackedBar rentPct={bar.rentPct} camPct={bar.camPct} dark={dark} />
-                            : <SimpleBar pct={bar.pct} color={bar.color} dark={dark} />
+                            ? <StackedBar rentPct={bar.rentPct} camPct={bar.camPct} />
+                            : <SimpleBar pct={bar.pct} colorVar={bar.colorVar} />
                     )}
 
                     {/* Dots */}
@@ -212,25 +202,25 @@ function Tile({
                 </div>
 
                 {/* Icon badge */}
-                <div className="rounded-xl p-2 shrink-0" style={{ background: iconBg }}>
-                    <Icon className="w-4 h-4" style={{ color: iconColor }} />
+                <div className="rounded-xl p-2 shrink-0" style={iconBgStyle}>
+                    <Icon className="w-4 h-4" style={iconColorStyle} />
                 </div>
             </div>
 
             {/* Footer */}
             <div
                 className="flex items-center justify-between px-4 py-2 border-t mt-auto"
-                style={{ borderColor: dark ? "#521C1C" : "#EEE9E5" }}
+                style={{ borderColor: "var(--color-border)" }}
             >
                 <span
-                    className="text-[10px] font-semibold uppercase tracking-wide"
-                    style={{ color: dark ? "#C47272" : "#948472" }}
+                    className="text-[10px] font-medium uppercase tracking-wide"
+                    style={{ color: "var(--color-text-sub)" }}
                 >
                     View details
                 </span>
                 <ChevronRight
-                    className="w-3 h-3 group-hover:translate-x-0.5 transition-transform"
-                    style={{ color: dark ? "#C47272" : "#C8BDB6" }}
+                    className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5"
+                    style={{ color: "var(--color-text-sub)" }}
                 />
             </div>
         </Link>
@@ -238,15 +228,12 @@ function Tile({
 }
 
 // ─── KpiStrip ─────────────────────────────────────────────────────────────────
-//
-// DISPLAY ONLY — reads exclusively from stats.kpi.
-// No arithmetic, no fallbacks, no derived values here.
 
 export default function KpiStrip({ stats, loading }) {
     const kpi = stats?.kpi ?? {};
-    const attention = stats?.attention ?? {};  // still needed for tile 2 overdueCount
+    const attention = stats?.attention ?? {};
 
-    // ── Tile 1: Collected ──────────────────────────────────────────────────────
+    // ── Tile 1: Collected
     const rentPct = kpi.rentPct ?? 0;
     const camPct = kpi.camPct ?? 0;
     const hasCam = (kpi.camBilled ?? 0) > 0;
@@ -257,78 +244,132 @@ export default function KpiStrip({ stats, loading }) {
             : `${kpi.collectionRate ?? 0}% of ${fmt(kpi.totalBilled)} target`
         : "This month";
 
-    // ── Tile 2: Outstanding / Collection Coverage ─────────────────────────────
-    //
-    // Two distinct states depending on whether there are outstanding dues:
-    //
-    //   HAS DUES  → show outstanding amount + overdue tenant count
-    //               bar = how much of total billed has been collected (progress)
-    //
-    //   ALL CLEAR → flip to "Collection Coverage": X/Y tenants paid this month
-    //               bar = tenant coverage rate (how many tenants fully paid)
-    //               This answers "are we actually done collecting?" not just "is balance 0?"
-    //
-    // This keeps the tile useful in both states — it always answers a real question.
+    // ── Tile 2: Outstanding — 4-phase aware
     const allClear = kpi.allClear ?? false;
     const outstanding = kpi.totalRemaining ?? null;
-    const overdueCount = attention.overdueCount ?? 0;
     const collectedPct = kpi.collectionRate ?? 0;
     const tenantsPaid = kpi.tenantsPaid ?? 0;
     const activeTenants = kpi.activeTenants ?? 0;
     const tenantCoverageRate = kpi.tenantCoverageRate ?? 0;
     const tenantsWithBalance = kpi.tenantsWithBalance ?? 0;
+    const collectionPhase = kpi.collectionPhase ?? "overdue";
+    const daysUntilDue = kpi.daysUntilDue ?? null;
+    const trulyOverdueCount = kpi.trulyOverdueCount ?? attention.overdueCount ?? 0;
     const tenantsPending = activeTenants > 0 ? activeTenants - tenantsPaid : tenantsWithBalance;
 
-    const outstandingTileProps = allClear
-        ? {
-            // ── All clear: show tenant coverage ──────────────────────────────
-            label: 'Collection Coverage',
-            value: activeTenants > 0 ? `${tenantsPaid}/${activeTenants}` : '—',
-            valueColor: tenantCoverageRate >= 100 ? '#2E7A4A'
-                : tenantCoverageRate >= 80 ? '#1C1A18'
-                    : '#C4721A',
-            sub: tenantCoverageRate >= 100
-                ? 'All tenants paid this month'
-                : `${tenantsPending} tenant${tenantsPending !== 1 ? 's' : ''} pending this month`,
-            bar: {
-                type: 'simple',
-                pct: tenantCoverageRate,
-                color: tenantCoverageRate >= 100 ? '#2E7A4A'
-                    : tenantCoverageRate >= 80 ? '#C4721A'
-                        : '#B02020',
-            },
-            icon: tenantCoverageRate >= 100 ? CheckCircle2 : Users,
-            iconBg: tenantCoverageRate >= 100 ? '#D4EDE0' : '#EEE9E5',
-            iconColor: tenantCoverageRate >= 100 ? '#2E7A4A' : '#3D1414',
-            borderColor: '#DDD6D0',
-        }
-        : {
-            // ── Has dues: show outstanding balance ────────────────────────────
-            label: 'Outstanding',
-            value: outstanding != null ? fmtFull(outstanding) : '—',
-            valueColor: '#B02020',
-            sub: `${overdueCount} tenant${overdueCount !== 1 ? 's' : ''} overdue`,
-            bar: {
-                type: 'simple',
-                pct: collectedPct,
-                color: collectedPct >= 80 ? '#2E7A4A' : collectedPct >= 50 ? '#C4721A' : '#B02020',
-            },
-            icon: AlertCircle,
-            iconBg: '#F5D5D5',
-            iconColor: '#B02020',
-            borderColor: 'rgba(176,32,32,0.3)',
-        };
+    // Billing frequency counts — sub-label copy only, never hero numbers
+    const pendingMonthly = kpi.pendingMonthly ?? 0;
+    const pendingQuarterly = kpi.pendingQuarterly ?? 0;
+    const overdueMonthly = kpi.overdueMonthly ?? 0;
+    const overdueQuarterly = kpi.overdueQuarterly ?? 0;
 
-    // ── Tile 3: Vacancy (replaces plain Occupancy %) ──────────────────────────
-    //
-    // DUAL STATE:
-    //   HAS VACANCIES  → show vacant unit count + estimated monthly revenue gap.
-    //                    "3 units vacant · ₹45k/mo not collecting"
-    //                    Bar = occupancy rate, colored by severity.
-    //   FULLY OCCUPIED → flip to a positive signal. "Full occupancy" with the
-    //                    occupied/total count. Bar is solid green.
-    //
-    // Why: "87% occupied" is data. "3 units vacant, losing ₹45k/mo" is insight.
+    // Only show the split when both types coexist — one type alone is noise
+    function freqTag(monthly, quarterly) {
+        if (monthly > 0 && quarterly > 0) {
+            return ` · ${monthly} monthly · ${quarterly} quarterly`;
+        }
+        return "";
+    }
+
+    const tilePhase = allClear ? "all_clear" : collectionPhase;
+
+    const outstandingTileProps = (() => {
+        switch (tilePhase) {
+
+            case "all_clear":
+                return {
+                    label: "Collection Coverage",
+                    value: activeTenants > 0 ? `${tenantsPaid}/${activeTenants}` : "—",
+                    valueStyle: tenantCoverageRate >= 100
+                        ? { color: "var(--color-success)" }
+                        : tenantCoverageRate >= 80
+                            ? { color: "var(--color-text-strong)" }
+                            : { color: "var(--color-warning)" },
+                    sub: tenantCoverageRate >= 100
+                        ? "All tenants paid this month"
+                        : `${tenantsPending} tenant${tenantsPending !== 1 ? "s" : ""} pending this month`,
+                    bar: {
+                        type: "simple",
+                        pct: tenantCoverageRate,
+                        colorVar: tenantCoverageRate >= 100
+                            ? "var(--color-success)"
+                            : tenantCoverageRate >= 80
+                                ? "var(--color-warning)"
+                                : "var(--color-danger)",
+                    },
+                    icon: tenantCoverageRate >= 100 ? CheckCircle2 : Users,
+                    iconBgStyle: tenantCoverageRate >= 100
+                        ? { backgroundColor: "var(--color-success-bg)" }
+                        : { backgroundColor: "var(--color-muted)" },
+                    iconColorStyle: tenantCoverageRate >= 100
+                        ? { color: "var(--color-success)" }
+                        : { color: "var(--color-text-strong)" },
+                    borderColor: "var(--color-border)",
+                };
+
+            case "pending":
+                return {
+                    label: "Pending Collection",
+                    value: outstanding != null ? fmtFull(outstanding) : "—",
+                    valueStyle: { color: "var(--color-text-strong)" },
+                    sub: daysUntilDue != null && daysUntilDue > 0
+                        ? `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}${freqTag(pendingMonthly, pendingQuarterly)}`
+                        : `${activeTenants} tenant${activeTenants !== 1 ? "s" : ""} billed${freqTag(pendingMonthly, pendingQuarterly)}`,
+                    bar: {
+                        type: "simple",
+                        pct: collectedPct,
+                        colorVar: collectedPct >= 80 ? "var(--color-success)" : "var(--color-info)",
+                    },
+                    icon: Receipt,
+                    iconBgStyle: { backgroundColor: "var(--color-muted)" },
+                    iconColorStyle: { color: "var(--color-text-sub)" },
+                    borderColor: "var(--color-border)",
+                };
+
+            case "due_soon":
+                return {
+                    label: "Collection Due Soon",
+                    value: outstanding != null ? fmtFull(outstanding) : "—",
+                    valueStyle: { color: "var(--color-warning)" },
+                    sub: daysUntilDue != null && daysUntilDue > 0
+                        ? `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}${freqTag(pendingMonthly, pendingQuarterly)} yet to pay`
+                        : `Due today${freqTag(pendingMonthly, pendingQuarterly)} yet to pay`,
+                    bar: {
+                        type: "simple",
+                        pct: collectedPct,
+                        colorVar: collectedPct >= 60 ? "var(--color-warning)" : "var(--color-danger)",
+                    },
+                    icon: AlertCircle,
+                    iconBgStyle: { backgroundColor: "var(--color-warning-bg)" },
+                    iconColorStyle: { color: "var(--color-warning)" },
+                    borderColor: "var(--color-warning-border)",
+                };
+
+            case "overdue":
+            default:
+                return {
+                    label: "Outstanding",
+                    value: outstanding != null ? fmtFull(outstanding) : "—",
+                    valueStyle: { color: "var(--color-danger)" },
+                    sub: `${trulyOverdueCount} overdue${freqTag(overdueMonthly, overdueQuarterly)}`,
+                    bar: {
+                        type: "simple",
+                        pct: collectedPct,
+                        colorVar: collectedPct >= 80
+                            ? "var(--color-success)"
+                            : collectedPct >= 50
+                                ? "var(--color-warning)"
+                                : "var(--color-danger)",
+                    },
+                    icon: AlertCircle,
+                    iconBgStyle: { backgroundColor: "var(--color-danger-bg)" },
+                    iconColorStyle: { color: "var(--color-danger)" },
+                    borderColor: "var(--color-danger-border)",
+                };
+        }
+    })();
+
+    // ── Tile 3: Vacancy
     const vacantUnits = kpi.vacantUnits ?? 0;
     const fullyOccupied = kpi.fullyOccupied ?? false;
     const occupancyRate = kpi.occupancyRate ?? 0;
@@ -336,58 +377,47 @@ export default function KpiStrip({ stats, loading }) {
     const occupiedUnits = kpi.occupiedUnits ?? 0;
     const vacancyRevenueLost = kpi.vacancyRevenueLost ?? 0;
 
-    const occBarColor = occupancyRate >= 95 ? "#2E7A4A"
-        : occupancyRate >= 80 ? "#C4721A"
-            : "#B02020";
+    const occBarColorVar = occupancyRate >= 95 ? "var(--color-success)" : "var(--color-warning)";
 
     const vacancyTileProps = fullyOccupied
         ? {
             label: "Occupancy",
             value: `${occupiedUnits}/${totalUnits}`,
-            valueColor: "#2E7A4A",
+            valueStyle: { color: "var(--color-success)" },
             sub: "All units occupied",
-            bar: { type: "simple", pct: 100, color: "#2E7A4A" },
+            bar: { type: "simple", pct: 100, colorVar: "var(--color-success)" },
             icon: Building2,
-            iconBg: "#D4EDE0",
-            iconColor: "#2E7A4A",
-            borderColor: "#DDD6D0",
+            iconBgStyle: { backgroundColor: "var(--color-success-bg)" },
+            iconColorStyle: { color: "var(--color-success)" },
+            borderColor: "var(--color-border)",
             to: "/dashboard/units",
         }
         : {
             label: "Vacancy",
             value: `${vacantUnits} unit${vacantUnits !== 1 ? "s" : ""} vacant`,
-            valueColor: vacantUnits === 0 ? "#2E7A4A" : occupancyRate >= 80 ? "#1C1A18" : "#B02020",
+            valueStyle: vacantUnits === 0
+                ? { color: "var(--color-success)" }
+                : occupancyRate >= 80
+                    ? { color: "var(--color-text-strong)" }
+                    : { color: "var(--color-warning)" },
             sub: vacancyRevenueLost > 0
                 ? `~${fmt(vacancyRevenueLost)}/mo not collecting`
                 : `${occupancyRate}% occupied · ${occupiedUnits}/${totalUnits} units`,
-            bar: { type: "simple", pct: occupancyRate, color: occBarColor },
+            bar: { type: "simple", pct: occupancyRate, colorVar: occBarColorVar },
             icon: Building2,
-            iconBg: occupancyRate >= 80 ? "#EEE9E5" : "#F5D5D5",
-            iconColor: occupancyRate >= 80 ? "#3D1414" : "#B02020",
-            borderColor: occupancyRate < 80 ? "rgba(176,32,32,0.25)" : "#DDD6D0",
+            iconBgStyle: occupancyRate >= 80
+                ? { backgroundColor: "var(--color-muted)" }
+                : { backgroundColor: "var(--color-warning-bg)" },
+            iconColorStyle: occupancyRate >= 80
+                ? { color: "var(--color-text-strong)" }
+                : { color: "var(--color-warning)" },
+            borderColor: occupancyRate < 80 ? "var(--color-warning-border)" : "var(--color-border)",
             to: "/dashboard/units",
         };
 
-    // ── Tile 4: Late Fees ──────────────────────────────────────────────────────
-    //
-    // The late fee engine runs daily and accrues penalties on overdue tenants,
-    // but this data has never appeared on the dashboard. This tile fixes that.
-    //
-    // TWO STATES:
-    //   HAS ACTIVE FEES → outstanding late fee amount + tenants being charged.
-    //     "₹12,400 outstanding · 4 tenants charged"
-    //     Bar = fee collection rate (what % of accrued fees have been paid).
-    //     Low bar = fees growing faster than they're being cleared → escalating risk.
-    //     This is a different signal from Outstanding (principal) — a tenant can
-    //     have paid their rent but still owe late fees from a prior late payment.
-    //
-    //   NO ACTIVE FEES → positive confirmation: "No late fees this month"
-    //     This is genuinely meaningful. It means tenants are paying on time.
-    //     Completely different from Outstanding=0 (which just means balances cleared).
-    //
+    // ── Tile 4: Late Fees
     const hasActiveFees = kpi.hasActiveFees ?? false;
     const lateFeeOutstanding = kpi.lateFeeOutstanding ?? 0;
-    const lateFeeAccrued = kpi.lateFeeAccrued ?? 0;
     const lateFeeTenantsCharged = kpi.lateFeeTenantsCharged ?? 0;
     const feeCollectionRate = kpi.feeCollectionRate ?? 0;
 
@@ -395,40 +425,48 @@ export default function KpiStrip({ stats, loading }) {
         ? {
             label: "Late Fees",
             value: fmt(lateFeeOutstanding),
-            valueColor: lateFeeOutstanding > 0 ? "#B02020" : "#2E7A4A",
+            valueStyle: lateFeeOutstanding > 0
+                ? { color: "var(--color-danger)" }
+                : { color: "var(--color-success)" },
             sub: `${lateFeeTenantsCharged} tenant${lateFeeTenantsCharged !== 1 ? "s" : ""} being charged · ${feeCollectionRate}% cleared`,
             bar: {
                 type: "simple",
                 pct: feeCollectionRate,
-                color: feeCollectionRate >= 80 ? "#2E7A4A"
-                    : feeCollectionRate >= 40 ? "#C4721A"
-                        : "#B02020",
+                colorVar: feeCollectionRate >= 80
+                    ? "var(--color-success)"
+                    : feeCollectionRate >= 40
+                        ? "var(--color-warning)"
+                        : "var(--color-danger)",
             },
             icon: Receipt,
-            iconBg: "#F5D5D5",
-            iconColor: "#B02020",
-            borderColor: "rgba(176,32,32,0.25)",
+            iconBgStyle: { backgroundColor: "var(--color-danger-bg)" },
+            iconColorStyle: { color: "var(--color-danger)" },
+            borderColor: "var(--color-danger-border)",
         }
         : {
             label: "Late Fees",
             value: "None",
-            valueColor: "#2E7A4A",
+            valueStyle: { color: "var(--color-success)" },
             sub: "All tenants paying on time",
-            bar: { type: "simple", pct: 100, color: "#2E7A4A" },
+            bar: { type: "simple", pct: 100, colorVar: "var(--color-success)" },
             icon: Receipt,
-            iconBg: "#D4EDE0",
-            iconColor: "#2E7A4A",
-            borderColor: "#DDD6D0",
+            iconBgStyle: { backgroundColor: "var(--color-success-bg)" },
+            iconColorStyle: { color: "var(--color-success)" },
+            borderColor: "var(--color-border)",
         };
 
     return (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-
             {/* 1 — Collected */}
-            <Tile dark loading={loading} label="Collected"
-                value={fmtFull(kpi.totalReceived)} sub={collectedSub}
+            <Tile
+                loading={loading}
+                label="Collected"
+                value={fmtFull(kpi.totalReceived)}
+                sub={collectedSub}
                 bar={{ type: "stacked", rentPct, camPct }}
-                icon={Wallet} iconBg="rgba(255,255,255,0.08)" iconColor="#DDA8A8"
+                icon={Wallet}
+                iconBgStyle={{ backgroundColor: "var(--color-muted)" }}
+                iconColorStyle={{ color: "var(--color-text-strong)" }}
                 to="/rent-payment"
             />
 
@@ -438,9 +476,8 @@ export default function KpiStrip({ stats, loading }) {
             {/* 3 — Vacancy */}
             <Tile loading={loading} {...vacancyTileProps} />
 
-            {/* 4 — Late Fees: the only tile that surfaces penalty data */}
+            {/* 4 — Late Fees */}
             <Tile loading={loading} to="/rent-payment" {...lateFeeTileProps} />
-
         </div>
     );
 }

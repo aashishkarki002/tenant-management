@@ -3,6 +3,7 @@ import { TableRow, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import { useNavigate } from "react-router-dom";
 import { formatNepaliDueDate } from "../utils/dateUtils";
 import { getPaymentAmounts, normalizeStatus } from "../utils/paymentUtil";
 import { statusStyles } from "../constants/paymentConstants";
@@ -12,6 +13,7 @@ import { statusStyles } from "../constants/paymentConstants";
  * Shows late fee column when a late fee has been charged on the rent.
  */
 export const RentTableRow = ({ rent, cams, onOpenPaymentDialog }) => {
+  const navigate = useNavigate();
   const { rentAmount, camAmount, totalDue, lateFeeAmount, hasLateFee } =
     getPaymentAmounts(rent, cams);
 
@@ -81,23 +83,38 @@ export const RentTableRow = ({ rent, cams, onOpenPaymentDialog }) => {
         </Badge>
       </TableCell>
       <TableCell className="whitespace-nowrap">
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isFullySettled}
-              className="bg-blue-600 text-white hover:bg-blue-700 hover:text-white text-xs sm:text-sm"
-              onClick={() => onOpenPaymentDialog(rent)}
-            >
-              {isFullySettled
-                ? "Paid"
-                : rent.status === "paid" && hasOutstandingLateFee
+        {isFullySettled ? (
+          <div className="flex items-center gap-2">
+            {rent.latestPaymentId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-blue-600 hover:text-blue-700 px-2"
+                onClick={() => navigate(`/rent-payment/payments/${rent.latestPaymentId}`)}
+              >
+                View Receipt
+              </Button>
+            )}
+            <Badge className="capitalize border bg-green-50 text-green-700 border-green-300">
+              Paid
+            </Badge>
+          </div>
+        ) : (
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-blue-600 text-white hover:bg-blue-700 hover:text-white text-xs sm:text-sm"
+                onClick={() => onOpenPaymentDialog(rent)}
+              >
+                {rent.status === "paid" && hasOutstandingLateFee
                   ? "Pay Late Fee"
                   : "Record Payment"}
-            </Button>
-          </DialogTrigger>
-        </Dialog>
+              </Button>
+            </DialogTrigger>
+          </Dialog>
+        )}
       </TableCell>
     </TableRow>
   );

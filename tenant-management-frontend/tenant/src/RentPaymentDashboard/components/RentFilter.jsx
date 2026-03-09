@@ -11,27 +11,9 @@ import {
     NEPALI_MONTH_NAMES,
     getNepaliYearOptions,
 } from "../../../utils/nepaliDate";
+import { Toggle } from "@/components/ui/toggle";
 
-/**
- * RentFilter — v4  (mobile-first rewrite)
- *
- * Mobile layout  (<sm):
- *   Row 1 — [Period badge] ················· [Reset]
- *   Row 2 — [Monthly|Quarterly]  [Month ▾]  [Year ▾]
- *   Row 3 — [All][Pending][Overdue][Partial][Paid]  ← sideways-scroll strip
- *   Row 4 — [All Properties ▾]   (only when properties exist)
- *
- * Desktop layout (sm+):
- *   Row 1 — [Period badge] [active chips] ········ [Reset]
- *   Row 2 — [Freq] | [Month] [Year] | [status chips] | [Property]
- *
- * Key fixes vs v3:
- * - Controls split into explicit rows instead of one `flex-wrap` soup
- * - Status chips live in an `overflow-x-auto` strip — never wrap on mobile
- * - All selects + toggles use the app's warm neutral palette (#F8F5F2 / #DDD6D0)
- *   instead of generic `bg-white / border-slate-200`
- * - Property select is full-width on mobile, auto-width on desktop
- */
+
 export const RentFilter = ({
     month,
     year,
@@ -55,11 +37,14 @@ export const RentFilter = ({
 
     const yearOptions = getNepaliYearOptions(2078).reverse();
 
+    // ── Correct active-filter detection ─────────────────────────────────────
+    // A filter is "active" if it differs from the default/neutral state.
     const hasActiveFilters =
         status !== "all" ||
         propertyId !== "" ||
         (defaultMonth != null && month !== defaultMonth) ||
-        (defaultYear != null && year !== defaultYear);
+        (defaultYear != null && year !== defaultYear) ||
+        frequencyView !== "monthly";
 
     const currentMonthName = month != null ? NEPALI_MONTH_NAMES[month - 1] : "—";
 
@@ -73,37 +58,73 @@ export const RentFilter = ({
 
     const activeStatusChip = statusChips.find((c) => c.value === status);
 
-    // Shared Select trigger class — warm palette, no shadcn white override
+    // ── Shared Select trigger style — petrol palette, no shadcn white clash ─
     const triggerCls =
-        "h-8 text-xs border-[#DDD6D0] bg-[#F8F5F2] text-[#1C1A18] " +
-        "focus:ring-[#3D1414]/10 focus:border-[#AFA097]";
+        "h-8 text-xs border-[var(--color-border)] bg-[var(--color-surface)] " +
+        "text-[var(--color-text-strong)] focus:ring-[var(--color-accent)]/20 " +
+        "focus:border-[var(--color-accent-mid)]";
 
     return (
         <div className="space-y-2.5">
 
-            {/* ── Row 1: period badge + active chips + reset ─────────────────── */}
+            {/* ── Row 1: period badge + active filter chips + reset ──────────── */}
             <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
 
-                    {/* Period badge */}
+                    {/* Period badge — petrol accent palette */}
                     <div
                         className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
                                    text-[11px] font-semibold tracking-wide shrink-0"
-                        style={{ background: "#1C1A18", color: "#F0DADA" }}
+                        style={{
+                            background: "var(--color-accent-light)",
+                            color: "var(--color-accent)",
+                            border: "1px solid var(--color-accent-mid)",
+                        }}
                     >
-                        <span style={{ opacity: 0.5 }}>Period</span>
+                        <span style={{ opacity: 0.55 }}>Period</span>
                         <span>{currentMonthName} {year}</span>
                     </div>
 
-                    {/* Active status chip — desktop only (visible inline in strip on mobile) */}
+                    {/* Frequency chip — shown when quarterly is active */}
+                    {frequencyView === "quarterly" && (
+                        <span
+                            className="hidden sm:inline-flex items-center gap-1 rounded-md border
+                                       px-2 py-0.5 text-[11px] font-semibold"
+                            style={{
+                                background: "var(--color-accent-light)",
+                                borderColor: "var(--color-accent-mid)",
+                                color: "var(--color-accent)",
+                            }}
+                        >
+                            Quarterly
+                            <button
+                                type="button"
+                                onClick={() => onFrequencyChange?.("monthly")}
+                                className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
+                                aria-label="Switch back to monthly"
+                            >×</button>
+                        </span>
+                    )}
+
+                    {/* Active status chip — desktop only */}
                     {status !== "all" && activeStatusChip && (
-                        <span className={[
-                            "hidden sm:inline-flex items-center gap-1 rounded-md border px-2 py-0.5",
-                            "text-[11px] font-semibold",
-                            activeStatusChip.danger
-                                ? "bg-red-50 text-red-700 border-red-200"
-                                : "bg-[#F8F5F2] text-[#1C1A18] border-[#DDD6D0]",
-                        ].join(" ")}>
+                        <span
+                            className="hidden sm:inline-flex items-center gap-1 rounded-md border
+                                       px-2 py-0.5 text-[11px] font-semibold"
+                            style={
+                                activeStatusChip.danger
+                                    ? {
+                                        background: "var(--color-danger-bg)",
+                                        borderColor: "var(--color-danger-border)",
+                                        color: "var(--color-danger)",
+                                    }
+                                    : {
+                                        background: "var(--color-surface)",
+                                        borderColor: "var(--color-border)",
+                                        color: "var(--color-text-strong)",
+                                    }
+                            }
+                        >
                             {activeStatusChip.label}
                             <button
                                 type="button"
@@ -116,9 +137,15 @@ export const RentFilter = ({
 
                     {/* Active property chip — desktop only */}
                     {propertyId && (
-                        <span className="hidden sm:inline-flex items-center gap-1 rounded-md border
-                                         bg-[#F8F5F2] px-2 py-0.5 text-[11px] font-semibold
-                                         text-[#1C1A18] border-[#DDD6D0]">
+                        <span
+                            className="hidden sm:inline-flex items-center gap-1 rounded-md border
+                                       px-2 py-0.5 text-[11px] font-semibold"
+                            style={{
+                                background: "var(--color-surface)",
+                                borderColor: "var(--color-border)",
+                                color: "var(--color-text-strong)",
+                            }}
+                        >
                             {properties.find((p) => p._id === propertyId)?.name ?? "Property"}
                             <button
                                 type="button"
@@ -130,47 +157,64 @@ export const RentFilter = ({
                     )}
                 </div>
 
+                {/* Reset — only enabled when filters differ from default */}
                 <button
                     type="button"
                     onClick={onReset}
                     disabled={!hasActiveFilters}
                     className="shrink-0 text-[11px] font-semibold transition-colors whitespace-nowrap
                                disabled:opacity-30 disabled:cursor-not-allowed"
-                    style={{ color: "#AFA097" }}
-                    onMouseEnter={(e) => { if (hasActiveFilters) e.currentTarget.style.color = "#1C1A18"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = "#AFA097"; }}
+                    style={{ color: "var(--color-text-sub)" }}
                 >
                     Reset to current period
                 </button>
             </div>
 
-            {/* ── Row 2: Frequency toggle + Month + Year ───────────────────────── */}
+            {/* ── Row 2: Frequency toggle + Month + Year + Property (desktop) ── */}
             <div className="flex items-center gap-2">
 
-                {/* Frequency toggle */}
-                <div
-                    className="inline-flex rounded-md border p-0.5 gap-0.5 shrink-0"
-                    style={{ borderColor: "#DDD6D0", background: "#F8F5F2" }}
-                >
-                    {["monthly", "quarterly"].map((freq) => (
-                        <button
-                            key={freq}
-                            type="button"
-                            onClick={() => onFrequencyChange?.(freq)}
-                            className="px-3 py-1 text-[11px] font-semibold rounded transition-colors capitalize"
-                            style={
-                                frequencyView === freq
-                                    ? { background: "#1C1A18", color: "#F0DADA" }
-                                    : { color: "#948472" }
-                            }
-                        >
-                            {freq}
-                        </button>
-                    ))}
+                {/* Frequency toggle — drives frequencyView prop, no local state */}
+                <div className="shrink-0">
+                    <div
+                        className="inline-flex items-center rounded-md p-0.5 gap-0.5"
+                        style={{
+                            border: "1px solid var(--color-border)",
+                            background: "color-mix(in srgb, var(--color-surface) 40%, transparent)",
+                        }}
+                    >
+                        {["monthly", "quarterly"].map((freq) => (
+                            <Toggle
+                                key={freq}
+                                size="sm"
+                                pressed={frequencyView === freq}
+                                onPressedChange={(pressed) => {
+                                    // Only fire when toggling ON to avoid double-fire
+                                    if (pressed) onFrequencyChange?.(freq);
+                                }}
+                                className="
+                                    px-3 py-1 text-[11px] font-semibold capitalize rounded-sm
+                                    transition-all duration-150
+
+                                    text-[var(--color-text-sub)]
+                                    hover:bg-[var(--color-surface)]
+                                    hover:text-[var(--color-text-strong)]
+
+                                    data-[state=on]:bg-[var(--color-surface)]
+                                    data-[state=on]:text-[var(--color-text-strong)]
+                                    data-[state=on]:shadow-sm
+                                "
+                            >
+                                {freq}
+                            </Toggle>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Vertical divider — desktop only */}
-                <div className="hidden sm:block h-5 w-px shrink-0" style={{ background: "#DDD6D0" }} />
+                <div
+                    className="hidden sm:block h-5 w-px shrink-0"
+                    style={{ background: "var(--color-border)" }}
+                />
 
                 {/* Month select */}
                 <Select
@@ -209,7 +253,10 @@ export const RentFilter = ({
                 {/* Property — inline on desktop only */}
                 {properties.length > 0 && (
                     <>
-                        <div className="hidden sm:block h-5 w-px shrink-0" style={{ background: "#DDD6D0" }} />
+                        <div
+                            className="hidden sm:block h-5 w-px shrink-0"
+                            style={{ background: "var(--color-border)" }}
+                        />
                         <div className="hidden sm:block">
                             <Select
                                 value={propertyId || "all"}
@@ -232,7 +279,7 @@ export const RentFilter = ({
                 )}
             </div>
 
-            {/* ── Row 3: Status chips — horizontally scrollable on mobile ─────── */}
+            {/* ── Row 3: Status chips — scrollable on mobile ──────────────────── */}
             <div
                 className="flex items-center gap-1.5 overflow-x-auto"
                 style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
@@ -248,18 +295,36 @@ export const RentFilter = ({
                                        text-[11px] font-semibold transition-colors shrink-0"
                             style={
                                 isActive && danger
-                                    ? { background: "#B02020", borderColor: "#B02020", color: "white" }
+                                    ? {
+                                        background: "var(--color-danger)",
+                                        borderColor: "var(--color-danger)",
+                                        color: "#ffffff",
+                                    }
                                     : isActive
-                                        ? { background: "#1C1A18", borderColor: "#1C1A18", color: "#F0DADA" }
+                                        ? {
+                                            background: "var(--color-accent)",
+                                            borderColor: "var(--color-accent)",
+                                            color: "#ffffff",
+                                        }
                                         : danger
-                                            ? { background: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
-                                            : { background: "#F8F5F2", borderColor: "#DDD6D0", color: "#948472" }
+                                            ? {
+                                                background: "var(--color-danger-bg)",
+                                                borderColor: "var(--color-danger-border)",
+                                                color: "var(--color-danger)",
+                                            }
+                                            : {
+                                                background: "var(--color-surface)",
+                                                borderColor: "var(--color-border)",
+                                                color: "var(--color-text-sub)",
+                                            }
                             }
                         >
                             {danger && (
                                 <span
                                     className="h-1.5 w-1.5 rounded-full shrink-0"
-                                    style={{ background: isActive ? "white" : "#EF4444" }}
+                                    style={{
+                                        background: isActive ? "#ffffff" : "var(--color-danger)",
+                                    }}
                                 />
                             )}
                             {label}

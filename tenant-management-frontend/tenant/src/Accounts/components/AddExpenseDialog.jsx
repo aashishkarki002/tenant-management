@@ -293,7 +293,7 @@ export function AddExpenseDialog({
           </div>
           {/* Payment Method — must match backend: cash | bank_transfer | cheque | mobile_wallet */}
           <div className="space-y-2">
-            <label htmlFor="payment-method" className="text-sm font-medium text-slate-900">
+            <label htmlFor="payment-method" className="text-sm font-medium text-foreground">
               Payment Method
             </label>
             <Select
@@ -326,7 +326,7 @@ export function AddExpenseDialog({
           {(formik.values?.paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
             formik.values?.paymentMethod === PAYMENT_METHODS.CHEQUE) && (
               <div className="space-y-3">
-                <label className="text-sm font-medium text-slate-900">Deposit To</label>
+                <label className="text-sm font-medium text-foreground">Deposit To</label>
                 <div className="grid gap-3">
                   {Array.isArray(bankAccounts) &&
                     bankAccounts.map((bank) => (
@@ -338,27 +338,27 @@ export function AddExpenseDialog({
                           formik.setFieldValue("bankAccountId", bank._id);
                         }}
                         className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
-                          ? "border-slate-900 bg-slate-900/[0.03]"
-                          : "border-slate-200 hover:border-slate-300 bg-white"
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-muted-foreground bg-background"
                           }`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
-                            <p className="font-semibold text-slate-900">{bank.bankName}</p>
-                            <p className="text-xs text-slate-500">
+                            <p className="font-semibold text-foreground">{bank.bankName}</p>
+                            <p className="text-xs text-muted-foreground">
                               **** **** {bank.accountNumber?.slice(-4) || "****"}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
+                            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
                               Balance
                             </p>
-                            <p className="font-semibold text-slate-900 text-sm">
+                            <p className="font-semibold text-foreground text-sm">
                               ₹{bank.balance?.toLocaleString() || "0"}
                             </p>
                           </div>
                           {selectedBankAccountId === bank._id && (
-                            <div className="ml-3 text-slate-900">
+                            <div className="ml-3 text-primary">
                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                                 <path
                                   fillRule="evenodd"
@@ -397,7 +397,7 @@ export function AddExpenseDialog({
             <Button
               type="submit"
               disabled={submitting}
-              className="bg-neutral-900 text-white hover:bg-neutral-800 focus-visible:ring-neutral-900"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {submitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

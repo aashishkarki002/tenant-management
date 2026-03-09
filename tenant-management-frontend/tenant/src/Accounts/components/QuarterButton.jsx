@@ -32,11 +32,11 @@ export default function QuarterButton({
             onHoverEnd={() => setHovered(false)}
             animate={{
                 width,
-                backgroundColor: isSelected ? "#000000" : hovered ? "#374151" : "#f3f4f6",
-                color: isSelected ? "#ffffff" : hovered ? "#ffffff" : "#111827",
+                backgroundColor: isSelected ? "#1A5276" : hovered ? "#154360" : "#F5F4F0",
+                color: isSelected ? "#ffffff" : hovered ? "#ffffff" : "#1C1917",
             }}
             transition={{ stiffness: 300, damping: 20 }}
-            className="h-10 rounded-md text-white text-sm font-medium whitespace-nowrap"
+            className="h-10 rounded-md text-sm font-medium whitespace-nowrap"
         >
             {displayText}
         </motion.button>

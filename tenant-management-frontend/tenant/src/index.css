@@ -1,9 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-serif: "Lora", Georgia, serif;
+  --font-mono: "Fira Code", ui-monospace, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -41,171 +43,208 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* ─────────────────────────────────────────────
-   OKLCH REFERENCE — Sallyan House Brand Colors
-   ─────────────────────────────────────────────
-   Burgundy 950  #1A0A0A → oklch(0.11 0.04  19)
-   Burgundy 900  #2C0F0F → oklch(0.16 0.06  19)
-   Burgundy 800  #3D1414 → oklch(0.22 0.08  19)  ← Primary
-   Burgundy 700  #521C1C → oklch(0.28 0.08  19)
-   Burgundy 600  #6B2424 → oklch(0.35 0.09  19)
-   Burgundy 500  #8B3030 → oklch(0.43 0.10  19)
-   Burgundy 400  #A84848 → oklch(0.52 0.10  19)
-   Burgundy 300  #C47272 → oklch(0.63 0.09  19)
-   Burgundy 200  #DDA8A8 → oklch(0.76 0.06  19)
-   Burgundy 100  #F0DADA → oklch(0.90 0.03  19)
-   Burgundy 50   #FAF0F0 → oklch(0.96 0.01  19)
-
-   Taupe 900  #3A3228 → oklch(0.26 0.02  58)
-   Taupe 800  #4E4538 → oklch(0.33 0.03  58)  ← Logo bar
-   Taupe 700  #625848 → oklch(0.40 0.03  58)
-   Taupe 600  #7A6E5C → oklch(0.49 0.03  58)
-   Taupe 500  #948472 → oklch(0.58 0.04  58)  ← Secondary
-   Taupe 400  #AFA097 → oklch(0.69 0.03  58)
-   Taupe 300  #C8BDB6 → oklch(0.79 0.02  58)
-   Taupe 200  #DDD6D0 → oklch(0.87 0.01  58)
-   Taupe 100  #EEE9E5 → oklch(0.93 0.01  58)
-   Taupe 50   #F8F5F2 → oklch(0.97 0.01  58)
-
-   Neutral 900  #1C1A18 → oklch(0.17 0.01  58)
-   Neutral 800  #2E2B27 → oklch(0.24 0.01  58)
-   Neutral 700  #413D38 → oklch(0.31 0.01  58)
-   Neutral 600  #5A554E → oklch(0.41 0.01  58)
-   Neutral 500  #756F67 → oklch(0.52 0.01  58)
-   Neutral 400  #928C84 → oklch(0.63 0.01  58)
-   Neutral 300  #B0AAA3 → oklch(0.73 0.01  58)
-   Neutral 200  #CEC9C3 → oklch(0.82 0.01  58)
-   Neutral 100  #E8E4DF → oklch(0.91 0.01  58)
-   Neutral 50   #F5F3F0 → oklch(0.96 0.01  58)
-   White        #FDFCFA → oklch(0.99 0.00  58)
-
-   Success 700  #1D4A2E → oklch(0.31 0.07 152)
-   Success 500  #2E7A4A → oklch(0.48 0.10 152)
-   Success 100  #D4EDE0 → oklch(0.91 0.04 152)
-
-   Warning 700  #5C3A10 → oklch(0.34 0.07  55)
-   Warning 500  #C4721A → oklch(0.60 0.13  55)
-   Warning 100  #FAEBD3 → oklch(0.94 0.04  75)
-
-   Error 700    #5C1414 → oklch(0.28 0.08  19)
-   Error 500    #B02020 → oklch(0.45 0.14  19)
-   Error 100    #F5D5D5 → oklch(0.91 0.04  19)
-
-   Info 700     #1A2E4A → oklch(0.24 0.05 245)
-   Info 500     #2E5A8C → oklch(0.43 0.09 245)
-   Info 100     #D4E4F5 → oklch(0.91 0.04 245)
-───────────────────────────────────────────── */
-
+/* ═══════════════════════════════════════════════════════════════
+   EasyManage — Petrol Theme Design Tokens
+   Single source of truth for all color, radius, shadow values.
+   Components use var(--color-*) in inline styles or via shadcn
+   token mappings below.
+   ═══════════════════════════════════════════════════════════════ */
 :root {
   --radius: 0.625rem;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-serif: "Lora", Georgia, serif;
+  --font-mono: "Fira Code", ui-monospace, monospace;
 
-  /* Base */
-  --background: oklch(0.97 0.01 58); /* Taupe 50   #F8F5F2 */
-  --foreground: oklch(0.17 0.01 58); /* Neutral 900 #1C1A18 */
+  /* ── Surfaces ── */
+  --color-bg: #fafaf8; /* Page canvas — warm stone-50 */
+  --color-surface: #f5f4f0; /* Cards, panels, sidebar */
+  --color-surface-raised: #ffffff; /* Modals, dropdowns (elevated) */
+  --color-border: #e7e5e0; /* All borders, dividers */
+  --color-muted-fill: #d6d3cc; /* Progress fills, skeleton loaders */
 
-  /* Card */
-  --card: oklch(0.99 0 58); /* White Warm #FDFCFA */
-  --card-foreground: oklch(0.17 0.01 58); /* Neutral 900 */
+  /* ── Text Hierarchy (4 levels — use strictly) ── */
+  --color-text-strong: #1c1917; /* Page titles, KPI values, headings */
+  --color-text-body: #44403c; /* Body copy, labels, descriptions */
+  --color-text-sub: #78716c; /* Metadata, timestamps, secondary info */
+  --color-text-weak: #a8a29e; /* Placeholders, disabled, captions */
 
-  /* Popover */
-  --popover: oklch(0.99 0 58);
-  --popover-foreground: oklch(0.17 0.01 58);
+  /* ── Brand Accent: Petrol ── */
+  --color-accent: #1a5276; /* CTAs, active nav, links, focus rings */
+  --color-accent-mid: #aed6f1; /* Borders on accent backgrounds */
+  --color-accent-light: #ebf5fb; /* Active state bg, tags, selected rows */
+  --color-accent-hover: #154360; /* Hover state for accent buttons */
 
-  /* Primary — Sallyan Burgundy 800 */
-  --primary: oklch(0.22 0.08 19); /* #3D1414 */
-  --primary-foreground: oklch(0.9 0.03 19); /* Burgundy 100 #F0DADA */
+  /* ── Semantic: Success (paid, occupied, on-time) ── */
+  --color-success: #166534;
+  --color-success-bg: #dcfce7;
+  --color-success-border: #bbf7d0;
 
-  /* Secondary — Taupe 100 surface */
-  --secondary: oklch(0.93 0.01 58); /* Taupe 100 #EEE9E5 */
-  --secondary-foreground: oklch(0.31 0.01 58); /* Neutral 700 #413D38 */
+  /* ── Semantic: Warning (vacant, approaching due) ── */
+  --color-warning: #92400e;
+  --color-warning-bg: #fef9c3;
+  --color-warning-border: #fde68a;
 
-  /* Muted */
-  --muted: oklch(0.96 0.01 58); /* Neutral 50 #F5F3F0 */
-  --muted-foreground: oklch(0.52 0.01 58); /* Neutral 500 #756F67 */
+  /* ── Semantic: Danger (overdue, unpaid, critical) ── */
+  --color-danger: #991b1b;
+  --color-danger-bg: #fee2e2;
+  --color-danger-border: #fecaca;
 
-  /* Accent — Taupe 500 */
-  --accent: oklch(0.58 0.04 58); /* #948472 */
-  --accent-foreground: oklch(0.99 0 0); /* White */
+  /* ── Semantic: Info (neutral notices) ── */
+  --color-info: #1e40af;
+  --color-info-bg: #dbeafe;
+  --color-info-border: #bfdbfe;
 
-  /* Destructive — Error 500 */
-  --destructive: oklch(0.45 0.14 19); /* #B02020 */
+  /* ── Shadows ── */
+  --shadow-card:
+    0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-modal: 0 10px 40px rgba(28, 25, 23, 0.12);
 
-  /* Borders & Inputs */
-  --border: oklch(0.87 0.01 58); /* Taupe 200 #DDD6D0 */
-  --input: oklch(0.87 0.01 58);
-  --ring: oklch(0.22 0.08 19); /* Burgundy 800 */
+  /* ── Radius ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
 
-  /* Charts — brand-harmonious set */
-  --chart-1: oklch(0.22 0.08 19); /* Burgundy 800  */
-  --chart-2: oklch(0.58 0.04 58); /* Taupe 500     */
-  --chart-3: oklch(0.48 0.1 152); /* Success 500   */
-  --chart-4: oklch(0.6 0.13 55); /* Warning 500   */
-  --chart-5: oklch(0.43 0.09 245); /* Info 500      */
+  /* ══════════════════════════════════════════════════════════════
+     shadcn/ui token mapping — maps shadcn CSS variables to the
+     petrol design tokens above. shadcn <Button>, <Input>,
+     <Badge>, <Card>, <Select>, <Dialog>, <Tabs> etc. all inherit
+     the petrol theme automatically through this block.
+     ══════════════════════════════════════════════════════════════ */
+  --background: var(--color-bg);
+  --foreground: var(--color-text-strong);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text-body);
+  --popover: var(--color-surface-raised);
+  --popover-foreground: var(--color-text-body);
+  --primary: var(--color-accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-surface);
+  --secondary-foreground: var(--color-text-body);
+  --muted: var(--color-surface);
+  --muted-foreground: var(--color-text-sub);
+  --accent: var(--color-accent-light);
+  --accent-foreground: var(--color-accent);
+  --destructive: var(--color-danger);
+  --success: var(--color-success);
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-accent);
 
-  /* Sidebar */
-  --sidebar: oklch(0.22 0.08 19); /* Burgundy 800 — dark nav */
-  --sidebar-foreground: oklch(0.9 0.03 19); /* Burgundy 100 */
-  --sidebar-primary: oklch(0.9 0.03 19); /* Burgundy 100 — active label */
-  --sidebar-primary-foreground: oklch(0.22 0.08 19);
-  --sidebar-accent: oklch(0.28 0.08 19); /* Burgundy 700 — hover */
-  --sidebar-accent-foreground: oklch(0.9 0.03 19);
-  --sidebar-border: oklch(0.16 0.06 19); /* Burgundy 900 */
-  --sidebar-ring: oklch(0.58 0.04 58); /* Taupe 500 */
+  /* ── Chart colors — petrol palette ── */
+  --chart-1: var(
+    --color-accent
+  ); /* Petrol blue   — primary series, CTAs, collected rent  */
+  --chart-2: var(
+    --color-info
+  ); /* Medium blue   — secondary series, comparison data     */
+  --chart-3: var(
+    --color-success
+  ); /* Green         — paid, occupied, positive metrics      */
+  --chart-4: var(
+    --color-warning
+  ); /* Amber         — pending, vacant, approaching-due      */
+  --chart-5: var(
+    --color-danger
+  ); /* Red           — overdue, unpaid, critical              */
+
+  /* ── Sidebar tokens → petrol ── */
+  --sidebar: var(--color-surface);
+  --sidebar-foreground: var(--color-text-body);
+  --sidebar-primary: var(--color-accent-light);
+  --sidebar-primary-foreground: var(--color-accent);
+  --sidebar-accent: var(--color-bg);
+  --sidebar-accent-foreground: var(--color-text-sub);
+  --sidebar-border: var(--color-border);
+  --sidebar-ring: var(--color-accent);
+
+  /* ── shadcn input override helper ── */
+  .shadcn-input-override {
+    --background: var(--color-surface);
+    --border: var(--color-border);
+    --ring: var(--color-accent);
+    --foreground: var(--color-text-body);
+  }
 }
-
+/* ═══════════════════════════════════════════════════════════════
+   EasyManage — Dark Mode Tokens
+   Applied when <html class="dark"> is set by ThemeContext.
+   Mirrors the petrol palette structure; surfaces flip to deep
+   charcoal-slate, text hierarchy inverts, accent stays petrol.
+   ═══════════════════════════════════════════════════════════════ */
 .dark {
-  /* Base */
-  --background: oklch(0.16 0.01 58); /* Near Neutral 900 */
-  --foreground: oklch(0.96 0.01 58); /* Taupe 50 */
+  /* ── Surfaces ── */
+  --color-bg: #0f1117; /* Page canvas — deep near-black */
+  --color-surface: #171b24; /* Cards, panels, sidebar */
+  --color-surface-raised: #1e2330; /* Modals, dropdowns (elevated) */
+  --color-border: #2a2f3d; /* Borders, dividers */
+  --color-muted-fill: #333848; /* Progress fills, skeleton loaders */
 
-  /* Card */
-  --card: oklch(0.22 0.01 58); /* Neutral 800 */
-  --card-foreground: oklch(0.96 0.01 58);
+  /* ── Text Hierarchy ── */
+  --color-text-strong: #f0eee9; /* Page titles, KPI values */
+  --color-text-body: #c5c0b8; /* Body copy, labels */
+  --color-text-sub: #8a8480; /* Metadata, timestamps */
+  --color-text-weak: #5c5852; /* Placeholders, disabled */
 
-  /* Popover */
-  --popover: oklch(0.22 0.01 58);
-  --popover-foreground: oklch(0.96 0.01 58);
+  /* ── Brand Accent: Petrol (stays recognisable) ── */
+  --color-accent: #4a90c4; /* Lightened for dark bg contrast */
+  --color-accent-mid: #2c5f80; /* Borders on accent backgrounds */
+  --color-accent-light: #1a2e3d; /* Active state bg, selected rows */
+  --color-accent-hover: #5ba3d9; /* Hover — slightly lighter */
 
-  /* Primary — lighter Burgundy for dark surfaces */
-  --primary: oklch(0.76 0.06 19); /* Burgundy 200 #DDA8A8 */
-  --primary-foreground: oklch(0.16 0.06 19); /* Burgundy 900 */
+  /* ── Semantic: Success ── */
+  --color-success: #4ade80;
+  --color-success-bg: #052e16;
+  --color-success-border: #14532d;
 
-  /* Secondary */
-  --secondary: oklch(0.31 0.01 58); /* Neutral 700 */
-  --secondary-foreground: oklch(0.91 0.01 58); /* Neutral 100 */
+  /* ── Semantic: Warning ── */
+  --color-warning: #fcd34d;
+  --color-warning-bg: #1c1400;
+  --color-warning-border: #3d2e00;
 
-  /* Muted */
-  --muted: oklch(0.28 0.01 58); /* Neutral 800ish */
-  --muted-foreground: oklch(0.63 0.01 58); /* Neutral 400 */
+  /* ── Semantic: Danger ── */
+  --color-danger: #f87171;
+  --color-danger-bg: #2d0a0a;
+  --color-danger-border: #5c1414;
 
-  /* Accent — lighter Taupe */
-  --accent: oklch(0.69 0.03 58); /* Taupe 400 #AFA097 */
-  --accent-foreground: oklch(0.17 0.01 58);
+  /* ── Semantic: Info ── */
+  --color-info: #60a5fa;
+  --color-info-bg: #0d1b2e;
+  --color-info-border: #1e3a5f;
 
-  /* Destructive */
-  --destructive: oklch(0.63 0.09 19); /* Burgundy 300 — softer on dark */
+  /* ── Shadows ── */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 10px 40px rgba(0, 0, 0, 0.6);
 
-  /* Borders */
-  --border: oklch(0.99 0 0 / 10%);
-  --input: oklch(0.99 0 0 / 15%);
-  --ring: oklch(0.76 0.06 19); /* Burgundy 200 */
+  /* ── shadcn token re-mappings ── */
+  --background: var(--color-bg);
+  --foreground: var(--color-text-strong);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text-body);
+  --popover: var(--color-surface-raised);
+  --popover-foreground: var(--color-text-body);
+  --primary: var(--color-accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-surface);
+  --secondary-foreground: var(--color-text-body);
+  --muted: var(--color-surface);
+  --muted-foreground: var(--color-text-sub);
+  --accent: var(--color-accent-light);
+  --accent-foreground: var(--color-accent);
+  --destructive: var(--color-danger);
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-accent);
 
-  /* Charts */
-  --chart-1: oklch(0.76 0.06 19); /* Burgundy 200  */
-  --chart-2: oklch(0.69 0.03 58); /* Taupe 400     */
-  --chart-3: oklch(0.91 0.04 152); /* Success 100   */
-  --chart-4: oklch(0.94 0.04 75); /* Warning 100   */
-  --chart-5: oklch(0.91 0.04 245); /* Info 100      */
-
-  /* Sidebar — deep Burgundy */
-  --sidebar: oklch(0.11 0.04 19); /* Burgundy 950 #1A0A0A */
-  --sidebar-foreground: oklch(0.9 0.03 19); /* Burgundy 100 */
-  --sidebar-primary: oklch(0.76 0.06 19); /* Burgundy 200 */
-  --sidebar-primary-foreground: oklch(0.16 0.06 19);
-  --sidebar-accent: oklch(0.22 0.08 19); /* Burgundy 800 */
-  --sidebar-accent-foreground: oklch(0.9 0.03 19);
-  --sidebar-border: oklch(0.99 0 0 / 10%);
-  --sidebar-ring: oklch(0.69 0.03 58); /* Taupe 400 */
+  /* ── Sidebar ── */
+  --sidebar: var(--color-surface);
+  --sidebar-foreground: var(--color-text-body);
+  --sidebar-primary: var(--color-accent-light);
+  --sidebar-primary-foreground: var(--color-accent);
+  --sidebar-accent: var(--color-bg);
+  --sidebar-accent-foreground: var(--color-text-sub);
+  --sidebar-border: var(--color-border);
+  --sidebar-ring: var(--color-accent);
 }
 
 @layer base {
@@ -213,6 +252,47 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+/* ── AccountingPage shared utilities ─────────────────────────────────────── */
+@keyframes ap-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes ap-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.ap {
+  font-family: var(--font-sans);
+  color: var(--color-text-strong);
+}
+.ap-serif {
+  font-family: var(--font-serif);
+}
+.ap-card {
+  animation: ap-up 0.3s ease both;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  @page {
+    margin: 18mm;
   }
 }

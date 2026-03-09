@@ -169,6 +169,69 @@ function normalizeDashboardStats(raw) {
       ? Math.min(100, Math.round((lateFeeCollected / lateFeeAccrued) * 100))
       : 0;
 
+  // ── Collection phase ──────────────────────────────────────────────────────────
+  //
+  // Uses the real englishDueDate from the backend (earliestDueDate = the earliest
+  // unpaid rent's due date for this Nepali month). Compared against today's JS
+  // Date so no Nepali calendar math is needed here.
+  //
+  // Three phases:
+  //   pending   → today is more than DUE_SOON_WINDOW days before the due date
+  //               → neutral tone, nobody is late yet, money is simply expected
+  //   due_soon  → today is within DUE_SOON_WINDOW days of the due date
+  //               → amber nudge, prepare to collect
+  //   overdue   → today is past the due date AND trulyOverdueCount > 0
+  //               → red alert, real unpaid rents exist past their due date
+  //
+  // DUE_SOON_WINDOW: 2 days. Gives the manager just enough warning without
+  // triggering false urgency at the start of every month.
+  const DUE_SOON_WINDOW = 2;
+
+  const oc = raw.outstandingContext ?? {};
+  const trulyOverdueCount = oc.trulyOverdueCount ?? 0;
+  const trulyOverdueAmount = (oc.trulyOverdueAmountPaisa ?? 0) / 100;
+
+  // Frequency splits — monthly vs quarterly pending/overdue counts
+  // Used only for sub-label copy; never the hero number.
+  const pendingMonthly = oc.pendingMonthly ?? 0;
+  const pendingQuarterly = oc.pendingQuarterly ?? 0;
+  const overdueMonthly = oc.overdueMonthly ?? 0;
+  const overdueQuarterly = oc.overdueQuarterly ?? 0;
+  const hasMixedBilling =
+    (pendingMonthly > 0 && pendingQuarterly > 0) ||
+    (overdueMonthly > 0 && overdueQuarterly > 0);
+
+  // Parse earliestDueDate safely — backend sends a JS Date (serialised as ISO
+  // string over JSON). null means no unpaid rents exist this month (all clear).
+  const earliestDueDateRaw = oc.earliestDueDate ?? null;
+  const earliestDueDate = earliestDueDateRaw
+    ? new Date(earliestDueDateRaw)
+    : null;
+
+  // Today at midnight — strip time so day-difference arithmetic is exact.
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+
+  // daysUntilDue: how many whole days until the earliest unpaid rent is due.
+  //   Negative = already past due.
+  //   null = no unpaid rents (shouldn't reach phase logic in that case).
+  const daysUntilDue =
+    earliestDueDate != null
+      ? Math.ceil(
+          (earliestDueDate.getTime() - todayMidnight.getTime()) /
+            (1000 * 60 * 60 * 24),
+        )
+      : null;
+
+  const collectionPhase =
+    daysUntilDue === null
+      ? "all_clear" // no unpaid rents at all
+      : daysUntilDue < 0 && trulyOverdueCount > 0
+        ? "overdue" // past due, real defaulters
+        : daysUntilDue <= DUE_SOON_WINDOW
+          ? "due_soon" // within 2 days of due date
+          : "pending"; // early in cycle, calm state
+
   const kpi = {
     // Raw numbers (rupees)
     rentBilled,
@@ -200,7 +263,6 @@ function normalizeDashboardStats(raw) {
     occupancyRate: raw.occupancyRate ?? 0,
 
     // Late Fees — 4th KPI tile
-    // Surfaces the late fee engine on the dashboard for the first time.
     lateFeeAccrued,
     lateFeeCollected,
     lateFeeOutstanding,
@@ -212,6 +274,20 @@ function normalizeDashboardStats(raw) {
     // Derived booleans
     allClear: totalRemaining <= 0,
     fullyOccupied: vacantUnits === 0 && totalUnitsRaw > 0,
+
+    // ── Collection phase — resolves the "1st of month looks alarming" UX bug ──
+    collectionPhase, // "pending" | "due_soon" | "overdue" | "all_clear"
+    daysUntilDue, // number (can be negative) | null
+    earliestDueDate, // Date | null — the actual englishDueDate from the rent record
+    trulyOverdueCount, // real overdue headcount, not the capped top-3 sample
+    trulyOverdueAmount, // total outstanding on overdue rents (rupees)
+
+    // Billing frequency splits — for sub-label copy only, never hero numbers
+    pendingMonthly, // unpaid monthly tenants this cycle
+    pendingQuarterly, // unpaid quarterly tenants this cycle
+    overdueMonthly, // overdue monthly tenants
+    overdueQuarterly, // overdue quarterly tenants
+    hasMixedBilling, // true when both billing types are present
   };
 
   const maintenanceList = Array.isArray(raw.maintenance) ? raw.maintenance : [];

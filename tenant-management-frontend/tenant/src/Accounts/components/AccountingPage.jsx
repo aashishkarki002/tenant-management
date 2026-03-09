@@ -67,33 +67,33 @@ function toBSMonthYear(isoOrDate) {
     } catch { return "—"; }
 }
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
+// ─── Design tokens — petrol theme ─────────────────────────────────────────────
 const C = {
-    bg: "#F7F7F4",
-    surface: "#FFFFFF",
-    surfaceAlt: "#F2F2EE",
-    surfaceHover: "#EEEEE9",
-    forest: "#1A2B1A",
-    forestMid: "#2D4A2D",
-    forestLight: "#4A7A4A",
-    amber: "#B5701A",
-    amberBg: "#FDF1E0",
-    amberLight: "#F0A84A",
-    red: "#B91C1C",
-    redBg: "#FEF2F2",
-    blue: "#1D4ED8",
-    blueBg: "#EFF6FF",
+    bg: "#FAFAF8",           // --color-bg
+    surface: "#FFFFFF",      // --color-surface-raised
+    surfaceAlt: "#F5F4F0",   // --color-surface
+    surfaceHover: "#FAFAF8", // --color-bg
+    forest: "#1A5276",       // --color-accent (petrol)
+    forestMid: "#154360",    // --color-accent-hover
+    forestLight: "#2E86C1",  // lighter petrol, chart accent
+    amber: "#92400E",        // --color-warning
+    amberBg: "#FEF9C3",      // --color-warning-bg
+    amberLight: "#FDE68A",   // --color-warning-border
+    red: "#991B1B",          // --color-danger
+    redBg: "#FEE2E2",        // --color-danger-bg
+    blue: "#1E40AF",         // --color-info
+    blueBg: "#DBEAFE",       // --color-info-bg
     violet: "#6D28D9",
-    border: "#E4E4DF",
-    borderStrong: "#CACAC4",
-    text: "#18181A",
-    textMid: "#48484A",
-    textMuted: "#86868A",
-    positive: "#166534",
-    positiveBg: "#DCFCE7",
-    negative: "#B91C1C",
-    negativeBg: "#FEE2E2",
-    neutral: "#44444A",
+    border: "#E7E5E0",       // --color-border
+    borderStrong: "#D6D3CC", // --color-muted
+    text: "#1C1917",         // --color-text-strong
+    textMid: "#44403C",      // --color-text-body
+    textMuted: "#78716C",    // --color-text-sub
+    positive: "#166534",     // --color-success
+    positiveBg: "#DCFCE7",   // --color-success-bg
+    negative: "#991B1B",     // --color-danger
+    negativeBg: "#FEE2E2",   // --color-danger-bg
+    neutral: "#44403C",      // --color-text-body
 };
 
 const QUARTERS = [
@@ -119,18 +119,6 @@ const fmtK = (v) => {
     if (a >= 1_000) return `${s}${(a / 1_000).toFixed(0)}K`;
     return `${s}${a}`;
 };
-
-// ─── Font injection (once per page load) ─────────────────────────────────────
-let _fontsInjected = false;
-const FONTS = `
-  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-  .ap{font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:${C.text}}
-  .ap-serif{font-family:'Instrument Serif',Georgia,serif}
-  @keyframes ap-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes ap-pulse{0%,100%{opacity:.45}50%{opacity:.8}}
-  .ap-card{animation:ap-up .3s ease both}
-  @media print{.no-print{display:none!important}@page{margin:18mm}}
-`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── PURE DISPLAY PRIMITIVES ──────────────────────────────────────────────────
@@ -1240,10 +1228,6 @@ export default function AccountingPage() {
         ],
     );
 
-    // ── Font injection ────────────────────────────────────────────────────────
-    const shouldInject = !_fontsInjected;
-    if (shouldInject) _fontsInjected = true;
-
     // ── Shared filter props passed to breakdown sub-pages ─────────────────────
     const filterProps = {
         selectedQuarter, compareMode, compareQuarter,
@@ -1253,8 +1237,6 @@ export default function AccountingPage() {
     // ─────────────────────────────────────────────────────────────────────────
     return (
         <div className="ap" style={{ minHeight: "100vh", background: C.bg }}>
-            {shouldInject && <style>{FONTS}</style>}
-
             <div className="no-print" style={{
                 padding: window.innerWidth < 640 ? "8px 16px 0" : "8px 28px 0",
                 display: "flex", alignItems: "center", justifyContent: "space-between",

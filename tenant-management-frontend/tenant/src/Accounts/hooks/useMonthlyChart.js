@@ -1,130 +1,34 @@
-// hooks/useMonthlyChart.js
-import { useState, useEffect } from "react";
-import NepaliDate from "nepali-datetime";
+import { useState, useEffect, useCallback } from "react";
 import api from "../../../plugins/axios";
 
-export const NEPALI_MONTH_NAMES = [
-  "Baisakh",
-  "Jestha",
-  "Ashadh",
-  "Shrawan",
-  "Bhadra",
-  "Ashwin",
-  "Kartik",
-  "Mangsir",
-  "Poush",
-  "Magh",
-  "Falgun",
-  "Chaitra",
-];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Nepal fiscal year quarters (Shrawan-based):
- *   Q1 → Shrawan(3),  Bhadra(4),   Ashwin(5)
- *   Q2 → Kartik(6),   Mangsir(7),  Poush(8)
- *   Q3 → Magh(9),     Falgun(10),  Chaitra(11)
- *   Q4 → Baisakh(0),  Jestha(1),   Ashadh(2)
- */
-export const FISCAL_QUARTER_MONTHS = {
-  1: [3, 4, 5],
-  2: [6, 7, 8],
-  3: [9, 10, 11],
-  4: [0, 1, 2],
-};
-
-export const QUARTER_LABELS = {
-  1: "Q1 (Shrawan–Ashwin)",
-  2: "Q2 (Kartik–Poush)",
-  3: "Q3 (Magh–Chaitra)",
-  4: "Q4 (Baisakh–Ashadh)",
-};
-
-// ─── Internal helpers ─────────────────────────────────────────────────────────
-
-function getNepaliMonthRange(year, month0) {
-  const firstNp = new NepaliDate(year, month0, 1);
-  const lastDay = NepaliDate.getDaysOfMonth(year, month0);
-  const lastNp = new NepaliDate(year, month0, lastDay);
-  const toISO = (d) => d.getDateObject().toISOString().split("T")[0];
-  return {
-    startDate: toISO(firstNp),
-    endDate: toISO(lastNp),
-    label: NEPALI_MONTH_NAMES[month0],
-  };
-}
-
-function getLastNMonths(n = 5) {
-  const now = new NepaliDate();
-  const months = [];
-  for (let i = n - 1; i >= 0; i--) {
-    let month0 = now.getMonth() - i;
-    let year = now.getYear();
-    while (month0 < 0) {
-      month0 += 12;
-      year -= 1;
-    }
-    months.push({ year, month0 });
-  }
-  return months;
-}
-
-function getQuarterMonthList(quarter, fiscalYear) {
-  const now = new NepaliDate();
-  const year = fiscalYear ?? now.getYear();
-  return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({ year, month0 }));
-}
-
-async function fetchMonthSummary(year, month0) {
-  const { startDate, endDate, label } = getNepaliMonthRange(year, month0);
-  try {
-    const res = await api.get("/api/accounting/summary", {
-      params: { startDate, endDate },
-    });
-    const data = res.data?.data;
-    return {
-      label,
-      revenue: data?.totals?.totalRevenue ?? 0,
-      expenses: data?.totals?.totalExpenses ?? 0,
-      liabilities: data?.totals?.totalLiabilities ?? 0,
-    };
-  } catch {
-    return { label, revenue: 0, expenses: 0, liabilities: 0 };
-  }
-}
-
-async function fetchPeriod(quarter, fiscalYear) {
-  const months =
-    quarter && quarter !== "custom"
-      ? getQuarterMonthList(quarter, fiscalYear)
-      : getLastNMonths(5);
-  return Promise.all(
-    months.map(({ year, month0 }) => fetchMonthSummary(year, month0)),
-  );
-}
-
-/** Returns % change; null when base is 0 to avoid divide-by-zero */
 function pctChange(base, next) {
   if (!base) return null;
-  return ((next - base) / base) * 100;
+  return +(((next - base) / base) * 100).toFixed(2);
+}
+
+function sum(arr, key) {
+  return arr.reduce((s, x) => s + (x[key] ?? 0), 0);
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 /**
- * useMonthlyChart
+ * Fetches monthly chart data from /api/accounting/monthly-chart.
  *
- * Normal mode  → chartData: [{ label, revenue, expenses, liabilities }]
- * Compare mode → compareData: [{ label, labelA, labelB, revenueA, revenueB, expensesA, expensesB }]
- *             → comparisonStats: { revenue, expenses, netCashFlow } each: { a, b, pct }
+ * Industry standard: one HTTP request → all data.
+ * Previously this made N requests (one per month) from the client — that logic
+ * now lives entirely in accounting.service.js::getMonthlyChartData().
  *
- * @param {number|string|null} selectedQuarter  Primary period (null = last 5 months)
- * @param {number|string|null} compareQuarter   Secondary period (null = compare off)
- * @param {number}             [fiscalYear]     Override Nepali year
+ * @param selectedQuarter  Primary period  (null = last 5 months)
+ * @param compareQuarter   Secondary period (null = compare off)
+ * @param fiscalYear       BS year override
  */
 export function useMonthlyChart(
   selectedQuarter,
   compareQuarter = null,
-  fiscalYear,
+  fiscalYear = null,
 ) {
   const [chartData, setChartData] = useState([]);
   const [compareData, setCompareData] = useState([]);
@@ -133,22 +37,30 @@ export function useMonthlyChart(
 
   const isCompare = compareQuarter !== null;
 
-  useEffect(() => {
-    let cancelled = false;
+  const buildParams = (quarter) => {
+    const params = {};
+    if (quarter) params.quarter = quarter;
+    if (fiscalYear) params.fiscalYear = fiscalYear;
+    return params;
+  };
 
-    const load = async () => {
-      setLoadingChart(true);
-
+  const load = useCallback(async () => {
+    setLoadingChart(true);
+    try {
       if (isCompare) {
-        // Fetch both periods in parallel — standard pattern for comparison dashboards
-        const [periodA, periodB] = await Promise.all([
-          fetchPeriod(selectedQuarter, fiscalYear),
-          fetchPeriod(compareQuarter, fiscalYear),
+        // Two parallel requests — still just 2 HTTP calls (vs N before)
+        const [resA, resB] = await Promise.all([
+          api.get("/api/accounting/monthly-chart", {
+            params: buildParams(selectedQuarter),
+          }),
+          api.get("/api/accounting/monthly-chart", {
+            params: buildParams(compareQuarter),
+          }),
         ]);
 
-        if (cancelled) return;
+        const periodA = resA.data.data ?? [];
+        const periodB = resB.data.data ?? [];
 
-        // Merge positionally: Month 1 of A paired with Month 1 of B
         const merged = periodA.map((a, i) => ({
           label: `${a.label} / ${periodB[i]?.label ?? "–"}`,
           labelA: a.label,
@@ -159,8 +71,6 @@ export function useMonthlyChart(
           expensesB: periodB[i]?.expenses ?? 0,
         }));
 
-        // Aggregate totals for comparison stat cards
-        const sum = (arr, key) => arr.reduce((s, x) => s + (x[key] ?? 0), 0);
         const totalARevenue = sum(periodA, "revenue");
         const totalBRevenue = sum(periodB, "revenue");
         const totalAExpenses = sum(periodA, "expenses");
@@ -188,22 +98,44 @@ export function useMonthlyChart(
         });
         setChartData([]);
       } else {
-        const results = await fetchPeriod(selectedQuarter, fiscalYear);
-        if (!cancelled) {
-          setChartData(results);
-          setCompareData([]);
-          setComparisonStats(null);
-        }
+        const res = await api.get("/api/accounting/monthly-chart", {
+          params: buildParams(selectedQuarter),
+        });
+        setChartData(res.data.data ?? []);
+        setCompareData([]);
+        setComparisonStats(null);
       }
+    } catch (err) {
+      console.error("[useMonthlyChart] fetch failed", err);
+    } finally {
+      setLoadingChart(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedQuarter, compareQuarter, fiscalYear]);
 
-      if (!cancelled) setLoadingChart(false);
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoadingChart(true);
+      try {
+        await load();
+      } finally {
+        if (!cancelled) setLoadingChart(false);
+      }
     };
-
-    load();
+    run();
     return () => {
       cancelled = true;
     };
-  }, [selectedQuarter, compareQuarter, fiscalYear]);
+  }, [load]);
 
   return { chartData, compareData, comparisonStats, loadingChart };
 }
+
+// ─── Quarter label constants (re-exported for use in AccountingPage) ──────────
+export const QUARTER_LABELS = {
+  1: "Q1 (Shrawan–Ashwin)",
+  2: "Q2 (Kartik–Poush)",
+  3: "Q3 (Magh–Chaitra)",
+  4: "Q4 (Baisakh–Ashadh)",
+};

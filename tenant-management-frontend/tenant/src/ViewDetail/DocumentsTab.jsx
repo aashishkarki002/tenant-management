@@ -111,26 +111,26 @@ function Lightbox({ files, currentIndex, onClose, onPrev, onNext }) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-black/60 text-white shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 bg-background/60 text-text-strong shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <FileIcon isPdf={file.isPdf} isImage={file.isImage} />
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{file.fileName}</p>
-            <p className="text-xs text-white/60">{file.docLabel}</p>
+            <p className="text-xs text-text-sub">{file.docLabel}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <a
             href={file.url}
             download
-            className="p-2 hover:bg-white/10 rounded-md transition-colors"
+            className="p-2 hover:bg-background/10 rounded-md transition-colors"
             title="Download"
           >
             <Download className="w-4 h-4" />
           </a>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-md transition-colors"
+            className="p-2 hover:bg-background/10 rounded-md transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -169,7 +169,7 @@ function Lightbox({ files, currentIndex, onClose, onPrev, onNext }) {
             className="max-w-full max-h-[70vh] rounded-lg shadow-2xl object-contain"
           />
         ) : (
-          <div className="text-white/60 text-center">
+          <div className="text-text-sub text-center">
             <File className="w-16 h-16 mx-auto mb-3 opacity-50" />
             <p>Preview not available</p>
             <a href={file.url} download className="text-blue-400 underline text-sm mt-2 inline-block">
@@ -181,7 +181,7 @@ function Lightbox({ files, currentIndex, onClose, onPrev, onNext }) {
 
       {/* Counter */}
       {files.length > 1 && (
-        <div className="text-center text-white/60 text-xs py-2 shrink-0">
+        <div className="text-center text-text-sub text-xs py-2 shrink-0">
           {currentIndex + 1} / {files.length}
         </div>
       )}
@@ -328,8 +328,8 @@ function SidebarPreviewView({ files, selectedFile, onSelectFile }) {
                   key={file._id}
                   onClick={() => onSelectFile(file)}
                   className={`p-3 rounded-lg border cursor-pointer transition-all hover:bg-accent ${isSelected
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-border bg-background"
+                    ? "border-primary bg-primary/5 shadow-sm"
+                    : "border-border bg-background"
                     }`}
                 >
                   <div className="flex items-start gap-3">
@@ -447,17 +447,17 @@ export function DocumentsTab({ tenant, viewMode, onViewModeChange }) {
 
   return (
     <>
-      <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
+      <Card className="border border-border shadow-sm rounded-xl bg-background">
         <CardHeader className="space-y-4 p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2">
               <FolderOpen className="w-4 h-4 sm:w-5 sm:h-5" />
               <CardTitle className="text-lg sm:text-xl">Documents & Verification</CardTitle>
-              <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5 ml-1">
+              <span className="text-xs text-text-sub bg-muted rounded-full px-2 py-0.5 ml-1">
                 {files.length}
               </span>
             </div>
-            <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
+            <div className="flex items-center gap-1 p-1 bg-surface rounded-lg">
               {[
                 { key: "list", label: "List" },
                 { key: "grid", label: "Grid" },
@@ -467,8 +467,8 @@ export function DocumentsTab({ tenant, viewMode, onViewModeChange }) {
                   key={key}
                   onClick={() => onViewModeChange(key)}
                   className={`px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors font-medium ${viewMode === key
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                    ? "bg-surface text-text-strong shadow-sm"
+                    : "text-text-sub hover:text-text-strong"
                     }`}
                 >
                   {label}

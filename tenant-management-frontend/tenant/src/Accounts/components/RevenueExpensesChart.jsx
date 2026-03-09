@@ -13,14 +13,14 @@ import {
     Tooltip, Legend, ResponsiveContainer, Cell, ReferenceLine,
 } from "recharts";
 
-// ─── Design tokens ─────────────────────────────────────────────────────────────
+// ─── Design tokens — petrol theme ──────────────────────────────────────────────
 const TOKEN = {
-    profit: "#10b981",   // emerald-500 — positive net
-    loss: "#f43f5e",   // rose-500    — negative net
-    revenue: "#10b981",   // emerald-500
-    expenses: "#f43f5e",   // rose-500
-    revenueB: "#06b6d4",   // cyan-500    — period B revenue
-    expensesB: "#f97316",   // orange-500  — period B expenses
+    profit: "#166534",   // --color-success — positive net
+    loss: "#991B1B",     // --color-danger  — negative net
+    revenue: "#1A5276",  // --color-accent (petrol) — revenue bars
+    expenses: "#92400E", // --color-warning — expense bars
+    revenueB: "#2E86C1", // lighter petrol  — period B revenue
+    expensesB: "#FDE68A",// --color-warning-border — period B expenses
     grid: "var(--border)",
     muted: "var(--muted-foreground)",
 };

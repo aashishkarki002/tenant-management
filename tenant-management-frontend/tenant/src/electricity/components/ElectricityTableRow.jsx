@@ -86,13 +86,13 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
 
   return (
     <>
-      <tr className={`hover:bg-[#FAFAF8] transition-colors ${statusConfig.row}`}>
+      <tr className={`hover:bg-surface transition-colors ${statusConfig.row}`}>
         {/* NAME */}
         <td className="py-3 px-4">
-          <div className="font-medium text-sm text-[#1C1A18]">{unitName}</div>
+          <div className="font-medium text-sm text-text-strong">{unitName}</div>
           <div className="flex flex-wrap gap-1 mt-0.5">
             {isGeneratorMeter && (
-              <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200">
+              <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-warning-bg text-warning border border-warning-border">
                 Generator
               </span>
             )}

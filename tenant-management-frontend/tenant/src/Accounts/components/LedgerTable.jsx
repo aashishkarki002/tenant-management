@@ -78,13 +78,19 @@ export default function LedgerTable({
                                     <TableCell>
                                         {entry.description || entry.account?.name || "-"}
                                     </TableCell>
-                                    <TableCell>
-                                        {entry.debit ? `₹${entry.debit.toLocaleString()}` : "-"}
+                                    <TableCell
+                                        style={{ color: entry.debit ? "var(--color-danger)" : undefined }}
+                                        className="font-medium"
+                                    >
+                                        {entry.debit ? `−₹${entry.debit.toLocaleString()}` : "-"}
                                     </TableCell>
-                                    <TableCell>
-                                        {entry.credit ? `₹${entry.credit.toLocaleString()}` : "-"}
+                                    <TableCell
+                                        style={{ color: entry.credit ? "var(--color-success)" : undefined }}
+                                        className="font-medium"
+                                    >
+                                        {entry.credit ? `+₹${entry.credit.toLocaleString()}` : "-"}
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right font-semibold">
                                         {entry.runningBalance !== undefined
                                             ? `₹${entry.runningBalance.toLocaleString()}`
                                             : "-"}

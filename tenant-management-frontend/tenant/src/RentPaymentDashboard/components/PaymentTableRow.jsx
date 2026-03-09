@@ -14,8 +14,12 @@ import { statusStyles } from "../constants/paymentConstants";
 /**
  * Component for rendering a single payment table row
  */
-export const PaymentTableRow = ({ payment }) => {
+export const PaymentTableRow = ({ payment, showBillingPeriod = false }) => {
   const navigate = useNavigate();
+
+  const billingPeriodLabel = [payment.billingPeriod, payment.billingYear]
+    .filter(Boolean)
+    .join(" ") || "—";
 
   return (
     <TableRow key={payment._id}>
@@ -34,17 +38,22 @@ export const PaymentTableRow = ({ payment }) => {
           {formatPaymentStatus(payment.paymentStatus)}
         </Badge>
       </TableCell>
+      {showBillingPeriod && (
+        <TableCell className="whitespace-nowrap text-muted-foreground text-sm">
+          {billingPeriodLabel}
+        </TableCell>
+      )}
       <TableCell className="max-w-[120px] truncate" title={payment.note || ""}>{payment.note || "—"}</TableCell>
       <TableCell className="whitespace-nowrap">
         <Button
           variant="outline"
           size="sm"
-          className="bg-gray-200 text-black hover:bg-gray-200 min-w-[60px]"
+          className="bg-gray-200 text-black hover:bg-gray-200 min-w-[90px]"
           onClick={() => {
             navigate(`/rent-payment/payments/${payment._id}`);
           }}
         >
-          View
+          View Receipt
         </Button>
       </TableCell>
     </TableRow>

@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 
 function InfoCard({ icon: Icon, label, value }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border bg-white p-3 sm:p-4">
+    <div className="flex items-start gap-3 rounded-lg border bg-surface p-3 sm:p-4">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
         <Icon className="h-4 w-4 text-muted-foreground" />
       </div>
@@ -68,7 +68,7 @@ export function OverviewLeaseTab({ tenant }) {
       {/* Left column — Personal Info + Lease Terms */}
       <div className="flex-[2] space-y-4">
         {/* Personal Info */}
-        <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
+        <Card className="border border-border shadow-sm rounded-xl bg-background">
           <CardHeader className="p-4 sm:p-6 pb-3">
             <CardTitle className="text-base sm:text-lg">Personal Info</CardTitle>
           </CardHeader>
@@ -82,7 +82,7 @@ export function OverviewLeaseTab({ tenant }) {
         </Card>
 
         {/* Lease Terms */}
-        <Card className="border border-border shadow-sm rounded-xl bg-gray-50">
+        <Card className="border border-border shadow-sm rounded-xl bg-background">
           <CardHeader className="p-4 sm:p-6 pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -97,7 +97,7 @@ export function OverviewLeaseTab({ tenant }) {
           <CardContent className="p-4 sm:p-6 pt-0 space-y-3">
             {/* Dates grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="rounded-lg border bg-white p-3 sm:p-4 space-y-2">
+              <div className="rounded-lg border bg-surface p-3 sm:p-4 space-y-2">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
                   <CalendarDays className="w-3.5 h-3.5" />
                   <span className="text-xs uppercase tracking-wide font-medium">Start</span>
@@ -107,7 +107,7 @@ export function OverviewLeaseTab({ tenant }) {
                   bsDate={tenant?.leaseStartDateNepali}
                 />
               </div>
-              <div className="rounded-lg border bg-white p-3 sm:p-4 space-y-2">
+              <div className="rounded-lg border bg-surface p-3 sm:p-4 space-y-2">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
                   <CalendarDays className="w-3.5 h-3.5" />
                   <span className="text-xs uppercase tracking-wide font-medium">End</span>
@@ -117,7 +117,7 @@ export function OverviewLeaseTab({ tenant }) {
                   bsDate={tenant?.leaseEndDateNepali}
                 />
               </div>
-              <div className="rounded-lg border bg-white p-3 sm:p-4 space-y-2">
+              <div className="rounded-lg border bg-surface p-3 sm:p-4 space-y-2">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
                   <Key className="w-3.5 h-3.5" />
                   <span className="text-xs uppercase tracking-wide font-medium">Key Handover</span>
@@ -131,21 +131,21 @@ export function OverviewLeaseTab({ tenant }) {
 
             {/* Rent Escalation badge if enabled */}
             {tenant?.rentEscalation?.enabled && (
-              <div className="flex items-center justify-between rounded-lg border bg-amber-50 border-amber-200 px-3 sm:px-4 py-2.5">
+              <div className="flex items-center justify-between rounded-lg border bg-warning-bg border-warning-border px-3 sm:px-4 py-2.5">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-amber-600" />
+                  <TrendingUp className="h-4 w-4 text-warning" />
                   <div>
-                    <span className="text-xs sm:text-sm font-medium text-amber-800">
+                    <span className="text-xs sm:text-sm font-medium text-warning-foreground">
                       Rent Escalation Active
                     </span>
-                    <p className="text-xs text-amber-600 mt-0.5">
+                    <p className="text-xs text-warning mt-0.5">
                       {tenant.rentEscalation.percentageIncrease}% every {tenant.rentEscalation.intervalMonths} months
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-amber-600">Next escalation</p>
-                  <p className="text-xs font-semibold text-amber-800">{tenant.rentEscalation.nextEscalationNepaliDate ?? "—"} BS</p>
+                  <p className="text-xs text-warning">Next escalation</p>
+                  <p className="text-xs font-semibold text-warning-foreground">{tenant.rentEscalation.nextEscalationNepaliDate ?? "—"} BS</p>
                 </div>
               </div>
             )}
@@ -155,7 +155,7 @@ export function OverviewLeaseTab({ tenant }) {
 
       {/* Right column — Financial Snapshot */}
       <div className="flex-1">
-        <Card className="rounded-xl border border-border bg-gray-50 shadow-sm h-full">
+        <Card className="rounded-xl border border-border bg-background shadow-sm h-full">
           <CardHeader className="p-4 sm:p-6 pb-3">
             <CardTitle className="text-base sm:text-lg">Financial Snapshot</CardTitle>
             <CardDescription className="text-xs sm:text-sm">
@@ -164,7 +164,7 @@ export function OverviewLeaseTab({ tenant }) {
           </CardHeader>
           <CardContent className="p-4 sm:p-6 pt-0 space-y-2">
             {/* Step 1–4: Rent derivation */}
-            <div className="rounded-lg border bg-white p-3 sm:p-4">
+            <div className="rounded-lg border bg-surface p-3 sm:p-4">
               <p className="text-xs uppercase tracking-wide font-semibold text-muted-foreground mb-3">Rent Calculation</p>
 
               {/* Row: Price per sqft */}
@@ -207,7 +207,7 @@ export function OverviewLeaseTab({ tenant }) {
             </div>
 
             {/* CAM Charges — additive on top of rent */}
-            <div className="rounded-lg border bg-white p-3 sm:p-4">
+            <div className="rounded-lg border bg-surface p-3 sm:p-4">
               <p className="text-xs uppercase tracking-wide font-semibold text-muted-foreground mb-3">CAM Charges</p>
               <FinancialRow
                 label="CAM Rate per Sqft"
@@ -237,7 +237,7 @@ export function OverviewLeaseTab({ tenant }) {
             <Separator className="my-1" />
 
             {/* Security Deposit — one-time, visually separate */}
-            <div className="rounded-lg border bg-white px-3 sm:px-4 py-3">
+            <div className="rounded-lg border bg-surface px-3 sm:px-4 py-3">
               <p className="text-xs uppercase tracking-wide font-semibold text-muted-foreground mb-1.5">
                 Security Deposit <span className="normal-case font-normal">(one-time)</span>
               </p>

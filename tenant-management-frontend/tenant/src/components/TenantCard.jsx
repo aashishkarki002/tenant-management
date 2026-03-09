@@ -12,6 +12,22 @@ import { useNavigate } from "react-router-dom";
 import api from "../../plugins/axios";
 import { toast } from "sonner";
 
+// ─── Avatar color pool ────────────────────────────────────────────────────────
+//
+// Industry pattern: deterministic color from name hash so the same tenant
+// always gets the same color across sessions — no flickering on re-render.
+// Using design-token-aware inline styles so dark mode flips correctly.
+//
+const AVATAR_PALETTES = [
+  { bg: "var(--color-accent-light)", color: "var(--color-accent)" },
+  { bg: "var(--color-info-bg)", color: "var(--color-info)" },
+  { bg: "var(--color-success-bg)", color: "var(--color-success)" },
+  { bg: "var(--color-danger-bg)", color: "var(--color-danger)" },
+  { bg: "var(--color-warning-bg)", color: "var(--color-warning)" },
+  { bg: "var(--color-muted-fill)", color: "var(--color-text-sub)" },
+];
+
+// Keep the Tailwind class variant exported so tenants.jsx table avatars still work
 const AVATAR_COLORS = [
   "bg-blue-100 text-blue-600",
   "bg-violet-100 text-violet-600",
@@ -29,21 +45,48 @@ export function getAvatarColor(name = "") {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
+function getAvatarPalette(name = "") {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash += name.charCodeAt(i);
+  return AVATAR_PALETTES[hash % AVATAR_PALETTES.length];
+}
+
 function Avatar({ name }) {
   const initials = name
     ? name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
+  const palette = getAvatarPalette(name);
   return (
-    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${getAvatarColor(name)}`}>
+    <div
+      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
+      style={{ background: palette.bg, color: palette.color }}
+    >
       {initials}
     </div>
   );
 }
 
+// ─── Payment badge ─────────────────────────────────────────────────────────────
+//
+// Token-aware badge styles — these will correctly invert in dark mode.
+// The className field kept for backward compat with tenants.jsx table badges.
+//
 export const PAYMENT_BADGE = {
-  paid: { label: "Paid", className: "bg-green-50 text-green-700 border-green-200" },
-  due_soon: { label: "Due Soon", className: "bg-amber-50 text-amber-700 border-amber-200" },
-  overdue: { label: "Overdue", className: "bg-red-50 text-red-700 border-red-200" },
+  paid: {
+    label: "Paid",
+    className: "bg-green-50 text-green-700 border-green-200",
+    style: { background: "var(--color-success-bg)", color: "var(--color-success)", borderColor: "var(--color-success-border)" },
+  },
+  due_soon: {
+    label: "Due Soon",
+    className: "bg-amber-50 text-amber-700 border-amber-200",
+    style: { background: "var(--color-warning-bg)", color: "var(--color-warning)", borderColor: "var(--color-warning-border)" },
+  },
+  overdue: {
+    label: "Overdue",
+    className: "bg-red-50 text-red-700 border-red-200",
+    style: { background: "var(--color-danger-bg)", color: "var(--color-danger)", borderColor: "var(--color-danger-border)" },
+  },
 };
 
 export function getPaymentStatus(tenant) {
@@ -72,7 +115,6 @@ export function getTenantLocationLabel(tenant) {
   );
 }
 
-// AFTER
 const fmt = (val) =>
   val != null && val > 0
     ? `Rs. ${Number(val).toLocaleString("en-IN")}`
@@ -84,6 +126,7 @@ export function getTenantRentDisplay(tenant) {
   return "N/A";
 }
 
+// ─── TenantCard ────────────────────────────────────────────────────────────────
 export default function TenantCard({ tenant, onTenantMutated }) {
   const navigate = useNavigate();
   const attention = needsAttention(tenant);
@@ -92,8 +135,8 @@ export default function TenantCard({ tenant, onTenantMutated }) {
 
   const rentDisplay = getTenantRentDisplay(tenant);
   const frequencyLabel =
-    tenant?.rentPaymentFrequency === "monthly" ? "Monthly"
-      : tenant?.rentPaymentFrequency === "quarterly" ? "Quarterly"
+    tenant?.rentPaymentFrequency === "monthly" ? "/ mo"
+      : tenant?.rentPaymentFrequency === "quarterly" ? "/ qtr"
         : "";
   const locationLabel = getTenantLocationLabel(tenant);
 
@@ -111,26 +154,57 @@ export default function TenantCard({ tenant, onTenantMutated }) {
   return (
     <Card
       onClick={() => navigate(`/tenant/viewDetail/${tenant._id}`)}
-      className="group cursor-pointer bg-white rounded-xl border border-gray-100 shadow-sm
-                 hover:shadow-md hover:border-gray-200 transition-all duration-200 overflow-hidden"
+      className="group cursor-pointer rounded-xl border overflow-hidden transition-all duration-200"
+      style={{
+        background: "var(--color-surface)",
+        borderColor: "var(--color-border)",
+        boxShadow: "var(--shadow-card)",
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = "var(--color-accent-mid)";
+        e.currentTarget.style.boxShadow = "0 4px 12px rgba(28,25,23,0.09)";
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = "var(--color-border)";
+        e.currentTarget.style.boxShadow = "var(--shadow-card)";
+      }}
     >
       <CardContent className="p-3">
+
+        {/* ── Attention banner ─────────────────────────────────────────────────
+            Only renders when overdue or lease expiring — zero noise otherwise.
+        ──────────────────────────────────────────────────────────────────────── */}
         {attention && (
-          <div className="flex items-center gap-1.5 text-red-600 bg-red-50 border border-red-100
-                          rounded-lg px-2.5 py-1 mb-2 text-[11px] font-semibold">
+          <div
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 mb-2.5 text-[11px] font-semibold border"
+            style={{
+              background: "var(--color-danger-bg)",
+              borderColor: "var(--color-danger-border)",
+              color: "var(--color-danger)",
+            }}
+          >
             <AlertTriangle className="w-3 h-3 shrink-0" />
             Attention Needed
           </div>
         )}
 
-        <div className="flex items-start justify-between mb-2">
+        {/* ── Header: Avatar + Name + Menu ─────────────────────────────────── */}
+        <div className="flex items-start justify-between mb-2.5">
           <div className="flex items-center gap-2 min-w-0">
             <Avatar name={tenant?.name} />
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900 leading-tight truncate">
+              <p
+                className="text-sm font-semibold leading-tight truncate font-sans"
+                style={{ color: "var(--color-text-strong)" }}
+              >
                 {tenant?.name || "—"}
               </p>
-              <p className="text-[11px] text-gray-400 truncate">{locationLabel}</p>
+              <p
+                className="text-[11px] truncate mt-0.5"
+                style={{ color: "var(--color-text-sub)" }}
+              >
+                {locationLabel}
+              </p>
             </div>
           </div>
 
@@ -139,8 +213,10 @@ export default function TenantCard({ tenant, onTenantMutated }) {
               <button
                 onClick={e => e.stopPropagation()}
                 className="w-6 h-6 rounded-full flex items-center justify-center
-                           text-gray-400 hover:bg-gray-100 opacity-0 group-hover:opacity-100
-                           transition-all shrink-0"
+                           opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                style={{ color: "var(--color-text-sub)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface-raised)"}
+                onMouseLeave={e => e.currentTarget.style.background = ""}
               >
                 <MoreVertical className="w-3.5 h-3.5" />
               </button>
@@ -161,28 +237,49 @@ export default function TenantCard({ tenant, onTenantMutated }) {
                 <Pencil className="w-3.5 h-3.5 mr-2" /> Edit Tenant
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-500 focus:text-red-500" onClick={deleteTenant}>
+              <DropdownMenuItem
+                style={{ color: "var(--color-danger)" }}
+                onClick={deleteTenant}
+              >
                 <XCircle className="w-3.5 h-3.5 mr-2" /> Terminate Lease
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
+        {/* ── Rent + Payment badge ──────────────────────────────────────────── */}
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-lg font-bold text-gray-900 leading-tight">{rentDisplay}</span>
+          <div className="flex items-baseline gap-1">
+            <span
+              className="text-lg font-bold leading-tight font-mono tabular-nums"
+              style={{ color: "var(--color-text-strong)" }}
+            >
+              {rentDisplay}
+            </span>
             {frequencyLabel && (
-              <span className="text-[10px] font-medium text-gray-400">{frequencyLabel}</span>
+              <span
+                className="text-[10px] font-medium"
+                style={{ color: "var(--color-text-weak)" }}
+              >
+                {frequencyLabel}
+              </span>
             )}
           </div>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badge.className}`}>
+          <span
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full border"
+            style={badge.style}
+          >
             {badge.label}
           </span>
         </div>
 
-        <div className="flex items-center gap-3 text-[11px] text-gray-400 mb-2">
+        {/* ── Metadata row ─────────────────────────────────────────────────── */}
+        <div
+          className="flex items-center gap-3 text-[11px] mb-2.5"
+          style={{ color: "var(--color-text-sub)" }}
+        >
           {tenant?.rentAmountFormatted && (
-            <span>Paid: {tenant.rentAmountFormatted}</span>
+            <span className="font-mono tabular-nums">Paid: {tenant.rentAmountFormatted}</span>
           )}
           <span className="flex items-center gap-1">
             <Calendar className="w-3 h-3" />
@@ -190,11 +287,25 @@ export default function TenantCard({ tenant, onTenantMutated }) {
           </span>
         </div>
 
-        <div className="border-t border-gray-100 pt-2 flex gap-1.5">
+        {/* ── Action buttons ────────────────────────────────────────────────── */}
+        <div
+          className="border-t pt-2 flex gap-1.5"
+          style={{ borderColor: "var(--color-border)" }}
+        >
           <button
-            className="flex-1 flex items-center justify-center gap-1 text-xs text-gray-500
-                       bg-gray-50 hover:bg-green-50 hover:text-green-600 rounded-lg py-1.5
-                       transition-colors font-medium"
+            className="flex-1 flex items-center justify-center gap-1 text-xs rounded-lg py-1.5 transition-colors font-medium"
+            style={{
+              background: "var(--color-surface-raised)",
+              color: "var(--color-text-sub)",
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = "var(--color-success-bg)";
+              e.currentTarget.style.color = "var(--color-success)";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = "var(--color-surface-raised)";
+              e.currentTarget.style.color = "var(--color-text-sub)";
+            }}
             onClick={e => {
               e.stopPropagation();
               if (tenant?.phone) window.location.href = `tel:${tenant.phone}`;
@@ -203,9 +314,19 @@ export default function TenantCard({ tenant, onTenantMutated }) {
             <Phone className="w-3 h-3" /> Call
           </button>
           <button
-            className="flex-1 flex items-center justify-center gap-1 text-xs text-gray-500
-                       bg-gray-50 hover:bg-blue-50 hover:text-blue-600 rounded-lg py-1.5
-                       transition-colors font-medium"
+            className="flex-1 flex items-center justify-center gap-1 text-xs rounded-lg py-1.5 transition-colors font-medium"
+            style={{
+              background: "var(--color-surface-raised)",
+              color: "var(--color-text-sub)",
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = "var(--color-accent-light)";
+              e.currentTarget.style.color = "var(--color-accent)";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = "var(--color-surface-raised)";
+              e.currentTarget.style.color = "var(--color-text-sub)";
+            }}
             onClick={e => {
               e.stopPropagation();
               if (tenant?.email) window.location.href = `mailto:${tenant.email}`;

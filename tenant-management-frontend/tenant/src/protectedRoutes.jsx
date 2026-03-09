@@ -12,7 +12,7 @@ function LoadingFallback() {
       minHeight: "100vh",
       width: "100%",
     }}>
-      <HashLoader color="#FF5733" size={50} />
+      <HashLoader color="var(--color-accent)" size={50} />
     </div>
   );
 }
