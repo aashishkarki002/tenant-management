@@ -1,7 +1,9 @@
 /**
+ * useElectricityData.ts
+ *
  * Fetches electricity readings (grouped by meterType) and summary from the API.
  *
- * Controller response shape (no meterType filter):
+ * Controller response shape:
  * {
  *   grouped: {
  *     unit:        { readings, totalAmount, totalUnits, count }
@@ -11,12 +13,12 @@
  *   },
  *   summary: { totalReadings, grandTotalAmount, grandTotalUnits }
  * }
- *
- * Returns { grouped, summary, loading, refetch }.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { getReadings } from "../utils/electricityApi";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const EMPTY_GROUPED = {
   unit: { readings: [], totalAmount: 0, totalUnits: 0, count: 0 },
@@ -31,6 +33,26 @@ const EMPTY_SUMMARY = {
   grandTotalAmount: 0,
 };
 
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Industry note on the dependency array pattern used here:
+ *
+ * The `useCallback` dep array lists individual primitive values (e.g.
+ * `filters.nepaliYear`) rather than the `filters` object reference. This is
+ * intentional and correct:
+ *
+ *   - The parent memo-ises `apiFilters` so the reference is already stable,
+ *     but listing primitives is a defensive belt-and-suspenders measure.
+ *   - If we listed the whole `filters` object, any new object reference
+ *     (even with identical values) would create a new callback and trigger
+ *     a redundant fetch. Object-level deps are almost always wrong.
+ *   - ALL fields used inside `fetchReadings` must appear in the dep array
+ *     (see eslint-plugin-react-hooks/exhaustive-deps).
+ *
+ * Prefer this pattern over useDeepCompareEffect; shallow primitive tracking
+ * is cheaper and more explicit.
+ */
 export function useElectricityData(filters = {}) {
   const [grouped, setGrouped] = useState(EMPTY_GROUPED);
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
@@ -47,6 +69,7 @@ export function useElectricityData(filters = {}) {
           setGrouped(data.grouped);
           setSummary(data.summary ?? EMPTY_SUMMARY);
         } else if (data?.readings) {
+          // Legacy single-type response — normalise into grouped shape
           const meterType = data.meterType ?? "unit";
           const readings = data.readings ?? [];
           setGrouped({
@@ -54,11 +77,11 @@ export function useElectricityData(filters = {}) {
             [meterType]: {
               readings,
               totalAmount: readings.reduce(
-                (s, r) => s + (r.totalAmount ?? 0),
+                (s, r) => s + (Number(r.totalAmount) || 0),
                 0,
               ),
               totalUnits: readings.reduce(
-                (s, r) => s + (r.unitsConsumed ?? 0),
+                (s, r) => s + (Number(r.unitsConsumed) || 0),
                 0,
               ),
               count: readings.length,
@@ -70,13 +93,15 @@ export function useElectricityData(filters = {}) {
           setSummary(EMPTY_SUMMARY);
         }
       } catch (error) {
-        console.error("Error fetching electricity data:", error);
+        console.error("useElectricityData: fetch failed", error);
         setGrouped(EMPTY_GROUPED);
         setSummary(EMPTY_SUMMARY);
       } finally {
         setLoading(false);
       }
     },
+    // Primitive deps — see note above. Keep this list in sync with all
+    // filters.* properties accessed inside fetchReadings.
     [
       filters.propertyId,
       filters.blockId,

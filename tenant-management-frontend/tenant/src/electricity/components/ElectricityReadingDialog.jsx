@@ -8,7 +8,7 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Home, Building, Car, Zap, Loader2 } from "lucide-react";
+import { Home, Building, Car, Zap, Loader2, CalendarDays } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Select,
@@ -25,6 +25,14 @@ import { useSubMeterOptions, filterSubMeterOptions } from "../utils/useSubMeterO
 import { createReading, getReadings } from "../utils/electricityApi";
 import { getUnitsForInnerBlocks } from "../../Tenant/addTenant/utils/propertyHelper";
 import DualCalendarTailwind from "../../components/dualDate";
+import {
+    getCurrentBillingPeriod,
+    getRecentBillingPeriods,
+    periodKey,
+    parsePeriodKey,
+    labelForPeriod,
+    isBillingPeriodValid,
+} from "../../../utils/nepaliMonthBridge";
 
 const METER_TYPES = [
     { value: "unit", label: "Units", icon: Home },
@@ -104,6 +112,25 @@ export default function ElectricityReadingDialog({
     /** Reading date from dual calendar (AD and BS strings "YYYY-MM-DD") */
     const [readingDateEnglish, setReadingDateEnglish] = useState("");
     const [readingDateNepali, setReadingDateNepali] = useState("");
+
+    /**
+     * Billing period — SEPARATE from the physical reading date.
+     *
+     * Industry distinction:
+     *   readingDate   = when the meter was physically read (drives sort/history)
+     *   billingPeriod = which BS month this charge belongs to (drives billing queries)
+     *
+     * An admin recording a missed Mangsir reading in Falgun must be able to set
+     * nepaliMonth=8, nepaliYear=2082 while readingDate=today. Without this
+     * separation the DB ends up with nepaliMonth=11 (Falgun) for a Mangsir bill.
+     *
+     * Defaults to the current Nepali month via the bridge (single source of truth
+     * for the 0-based → 1-based conversion).
+     */
+    const [billingPeriod, setBillingPeriod] = useState(getCurrentBillingPeriod);
+
+    /** Memoised option list — last 13 months, newest first. */
+    const billingPeriodOptions = useMemo(() => getRecentBillingPeriods(13), []);
 
     const [formData, setFormData] = useState({
         unit: { ...EMPTY_FORM },
@@ -280,12 +307,23 @@ export default function ElectricityReadingDialog({
         }));
 
     const handleClose = () => {
-        if (!saving) onOpenChange(false);
+        if (saving) return;
+        setFormData({
+            unit: { ...EMPTY_FORM },
+            common_area: { ...EMPTY_FORM },
+            parking: { ...EMPTY_FORM },
+            sub_meter: { ...EMPTY_FORM },
+        });
+        setReadingDateEnglish("");
+        setReadingDateNepali("");
+        setBillingPeriod(getCurrentBillingPeriod());
+        onOpenChange(false);
     };
 
     const canSave = Boolean(
         readingDateNepali &&
         readingDateEnglish &&
+        isBillingPeriodValid(billingPeriod) &&
         formData[selectedMeterType].selected &&
         formData[selectedMeterType].reading !== "" &&
         parseFloat(formData[selectedMeterType].reading) >= 0
@@ -296,10 +334,13 @@ export default function ElectricityReadingDialog({
         const data = formData[selectedMeterType];
         const currentReading = parseFloat(data.reading);
 
-        const nepaliParsed = parseNepaliDateString(readingDateNepali);
         const englishParsed = parseEnglishDateString(readingDateEnglish);
-        if (!nepaliParsed || !englishParsed) {
+        if (!readingDateNepali || !englishParsed) {
             toast.error("Please select a reading date (Nepali & English).");
+            return;
+        }
+        if (!isBillingPeriodValid(billingPeriod)) {
+            toast.error("Please select a billing month.");
             return;
         }
         if (!canSave || Number.isNaN(currentReading)) {
@@ -307,7 +348,9 @@ export default function ElectricityReadingDialog({
             return;
         }
 
-        const { year: nepaliYear, month: nepaliMonth } = nepaliParsed;
+        // billingPeriod.nepaliMonth / nepaliYear come from the billing selector —
+        // NOT from the physical reading date. This is the key distinction.
+        const { nepaliYear, nepaliMonth } = billingPeriod;
         const { year: englishYear, month: englishMonth } = englishParsed;
 
         setSaving(true);
@@ -327,21 +370,18 @@ export default function ElectricityReadingDialog({
                     unitId: data.selected,
                     propertyId,
                     currentReading,
-                    // Send previousReading so backend can validate it hasn't regressed
                     ...(previousReading != null && { previousReading }),
+                    // Billing period — which BS month this bill belongs to
                     nepaliMonth,
                     nepaliYear,
+                    // Physical reading date — when the meter was read
                     nepaliDate: readingDateNepali,
                     englishMonth,
                     englishYear,
+                    readingDate: readingDateEnglish,
                     notes: data.notes || undefined,
                 });
             } else {
-                /**
-                 * Sub-meter reading (common_area | parking | sub_meter).
-                 * Rate is resolved server-side from ElectricityRate config —
-                 * never sent from the client (prevents rate tampering).
-                 */
                 await createReading({
                     meterType: selectedMeterType,
                     subMeterId: data.selected,
@@ -353,13 +393,15 @@ export default function ElectricityReadingDialog({
                     nepaliDate: readingDateNepali,
                     englishMonth,
                     englishYear,
+                    readingDate: readingDateEnglish,
                     notes: data.notes || undefined,
                 });
             }
 
             toast.success("Reading saved successfully.");
 
-            // Reset only the active tab's form and reading date
+            // Reset form but keep billing period — admin likely recording
+            // multiple units in the same month sequentially.
             setFormData((prev) => ({
                 ...prev,
                 [selectedMeterType]: { ...EMPTY_FORM },
@@ -367,7 +409,7 @@ export default function ElectricityReadingDialog({
             setReadingDateEnglish("");
             setReadingDateNepali("");
 
-            onSaved?.();       // signal parent to refetch
+            onSaved?.();
             onOpenChange(false);
         } catch (err) {
             toast.error(err?.message || "Failed to save reading.");
@@ -610,6 +652,49 @@ export default function ElectricityReadingDialog({
                             </TabsTrigger>
                         ))}
                     </TabsList>
+
+                    {/* ── Billing Period selector ────────────────────────────────────────
+                        Separate from the physical reading date.
+                        An admin backfilling Mangsir (month 8) in Falgun (month 11) sets
+                        this to "Mangsir 2082" while readingDate = today.
+                        The bridge ensures the value is always 1-based, matching DB storage.
+                    ─────────────────────────────────────────────────────────────────── */}
+                    <div className="flex flex-col gap-1.5 mt-3">
+                        <label className="text-sm font-medium flex items-center gap-1.5">
+                            <CalendarDays className="w-3.5 h-3.5 text-orange-700" />
+                            Billing Month (BS)
+                            {!isBillingPeriodValid(billingPeriod) && (
+                                <span className="text-xs text-red-500 font-normal ml-1">required</span>
+                            )}
+                        </label>
+                        <Select
+                            value={isBillingPeriodValid(billingPeriod) ? periodKey(billingPeriod) : ""}
+                            onValueChange={(val) => {
+                                const parsed = parsePeriodKey(val);
+                                if (parsed) setBillingPeriod(parsed);
+                            }}
+                        >
+                            <SelectTrigger className="h-9 bg-gray-100">
+                                <SelectValue placeholder="Select billing month…">
+                                    {isBillingPeriodValid(billingPeriod)
+                                        ? labelForPeriod(billingPeriod)
+                                        : "Select billing month…"}
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                {billingPeriodOptions.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                            Which BS month does this reading bill for? Defaults to the current
+                            month — change this when backfilling a previous month.
+                        </p>
+                    </div>
+
                     <div className="flex flex-col gap-1.5">
                         <label className="text-sm font-medium">Reading Date</label>
                         <DualCalendarTailwind

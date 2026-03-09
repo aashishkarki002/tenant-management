@@ -7,7 +7,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Calendar, Building2 } from "lucide-react";
-import { useNepaliDate, getMonthOptions } from "../../../plugins/useNepaliDate";
+// ─── Single authoritative Nepali date source ──────────────────────────────────
+// getMonthSelectOptions and getYearSelectOptions are pre-built option arrays
+// that handle the 0-based ↔ 1-based translation internally. No need for inline
+// loop or the plugins/useNepaliDate shim.
+import {
+  getMonthSelectOptions,
+  getYearSelectOptions,
+  getCurrentBillingPeriod,
+} from "../../../utils/nepaliMonthBridge";
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+
 
 export function ElectricityFilters({
   filterValues,
@@ -17,18 +29,18 @@ export function ElectricityFilters({
   periodLabel,
 }) {
   const { blockId, innerBlockId, month, year } = filterValues ?? {};
-  const { year: currentYear, month: currentMonth } = useNepaliDate();
+  const { nepaliYear: currentYear, nepaliMonth: currentMonth } = getCurrentBillingPeriod();
 
-  const monthOptions = useMemo(() => getMonthOptions(), []);
-  const yearOptions = useMemo(() => {
-    const years = [];
-    for (let y = currentYear - 5; y <= currentYear + 1; y++) years.push(y);
-    return years;
-  }, [currentYear]);
+  // Both option arrays come from the bridge — no inline construction needed.
+  // getMonthSelectOptions returns [{ value: 1, label: "Baisakh" }, …, { value: 12, label: "Chaitra" }]
+  // getYearSelectOptions returns descending year options from startYear to current year.
+  const monthOptions = useMemo(() => getMonthSelectOptions(), []);
+  const yearOptions = useMemo(() => getYearSelectOptions(currentYear - 5), [currentYear]);
 
   return (
     <div className="bg-white rounded-xl border border-[#E8E4E0] px-4 py-3.5 shadow-sm">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+
         {/* Billing Period */}
         <div className="flex items-center gap-2.5">
           <Calendar className="w-4 h-4 text-[#948472] shrink-0" />
@@ -39,7 +51,7 @@ export function ElectricityFilters({
             value={String(month ?? currentMonth)}
             onValueChange={(value) => onChange?.("month", Number(value))}
           >
-            <SelectTrigger className="w-[130px] h-9 text-sm bg-[#F8F5F2] border-[#DDD6D0] 
+            <SelectTrigger className="w-[130px] h-9 text-sm bg-[#F8F5F2] border-[#DDD6D0]
               hover:border-[#AFA097] transition-colors">
               <SelectValue placeholder="Month" />
             </SelectTrigger>
@@ -51,6 +63,7 @@ export function ElectricityFilters({
               ))}
             </SelectContent>
           </Select>
+
           <Select
             value={String(year ?? currentYear)}
             onValueChange={(value) => onChange?.("year", Number(value))}
@@ -60,9 +73,9 @@ export function ElectricityFilters({
               <SelectValue placeholder="Year" />
             </SelectTrigger>
             <SelectContent>
-              {yearOptions.map((y) => (
-                <SelectItem key={y} value={String(y)}>
-                  {y}
+              {yearOptions.map((opt) => (
+                <SelectItem key={opt.value} value={String(opt.value)}>
+                  {opt.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -105,7 +118,7 @@ export function ElectricityFilters({
           </Select>
         </div>
 
-        {/* Inner Block — conditional */}
+        {/* Inner Block — shown only when a specific building is selected */}
         {blockId && blockId !== "all" && (
           <>
             <div className="w-px h-7 bg-[#E8E4E0] hidden sm:block" />
@@ -146,6 +159,7 @@ export function ElectricityFilters({
             <span className="text-sm font-bold text-[#3D1414]">{periodLabel}</span>
           </div>
         )}
+
       </div>
     </div>
   );

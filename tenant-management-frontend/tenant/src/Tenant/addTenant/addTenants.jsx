@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ClipboardListIcon } from "lucide-react";
 import { TAB_KEYS } from "./constants/tenant.constant";
@@ -25,6 +26,7 @@ const STEPS = [
 const STEP_KEYS = STEPS.map((s) => s.key);
 
 function AddTenants() {
+  const navigate = useNavigate();
   const { units } = useUnits();
   const { property } = useProperty();
   const { bankAccounts } = useBankAccounts();
@@ -35,8 +37,8 @@ function AddTenants() {
   // and are clickable for back-navigation.
   const [visitedKeys, setVisitedKeys] = useState([STEP_KEYS[0]]);
 
-  const handleSuccess = (data) => {
-    console.log("Tenant created:", data);
+  const handleSuccess = () => {
+    navigate("/tenants");
   };
 
   const { formik, isLoading } = useTenantForm(property, handleSuccess);

@@ -18,32 +18,50 @@ import {
   getTrendPercent,
 } from "./utils/electricityCalculations";
 import { PAGE_SIZE } from "./utils/electricityConstants";
-import { getMonthOptions } from "../../plugins/useNepaliDate";
-import { getCurrentNepaliMonthYear } from "@/constants/nepaliMonths";
+// ─── Single authoritative Nepali date source ──────────────────────────────────
+// All date helpers flow through nepaliMonthBridge. Never import from
+// plugins/useNepaliDate or @/constants/nepaliMonths inside this module tree.
+import {
+  getCurrentBillingPeriod,
+  labelForPeriod,
+} from "../../utils/nepaliMonthBridge";
+// ─────────────────────────────────────────────────────────────────────────────
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PlusIcon, Download, Settings, Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const METER_TYPE_KEYS = ["unit", "common_area", "parking", "sub_meter"];
 
-const buildDefaultFilterValues = () => {
-  const { month, year } = getCurrentNepaliMonthYear();
-  return { blockId: "all", innerBlockId: "", month, year };
-};
+/**
+ * Default filter = current Nepali billing month.
+ * Uses the bridge so there's exactly one place that knows "what is now?".
+ */
+function buildDefaultFilterValues() {
+  const { nepaliYear, nepaliMonth } = getCurrentBillingPeriod();
+  return { blockId: "all", innerBlockId: "", month: nepaliMonth, year: nepaliYear };
+}
 
-const countsFromGrouped = (grouped = {}) => ({
-  unit: grouped.unit?.count ?? 0,
-  common_area: grouped.common_area?.count ?? 0,
-  parking: grouped.parking?.count ?? 0,
-  sub_meter: grouped.sub_meter?.count ?? 0,
-});
+function countsFromGrouped(grouped) {
+  return {
+    unit: grouped.unit?.count ?? 0,
+    common_area: grouped.common_area?.count ?? 0,
+    parking: grouped.parking?.count ?? 0,
+    sub_meter: grouped.sub_meter?.count ?? 0,
+  };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ElectricityPage() {
   const { property } = useProperty();
   const { units } = useUnits({ occupied: true });
   const navigate = useNavigate();
+
   const [tenants, setTenants] = useState([]);
   const [filterValues, setFilterValues] = useState(buildDefaultFilterValues);
   const [activeTab, setActiveTab] = useState("all");
@@ -52,14 +70,17 @@ export default function ElectricityPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // ─── Derived property data ─────────────────────────────────────────────────
+
   const allBlocks = useMemo(() => {
     if (!property || !Array.isArray(property)) return [];
-    return property.flatMap((prop) => prop.blocks || []);
+    return property.flatMap((prop) => prop.blocks ?? []);
   }, [property]);
 
   const selectedBlock = useMemo(
-    () => allBlocks.find((block) => block._id === filterValues.blockId),
-    [allBlocks, filterValues.blockId]
+    () => (allBlocks)
+      .find((b) => b._id === filterValues.blockId),
+    [allBlocks, filterValues.blockId],
   );
 
   const propertyIdFromBlock = useMemo(() => {
@@ -71,9 +92,11 @@ export default function ElectricityPage() {
     return undefined;
   }, [filterValues.blockId, property]);
 
+  // ─── API filter — stable primitive values so the hook dep array is stable ──
+
   const apiFilters = useMemo(
     () => ({
-      propertyId: propertyIdFromBlock || undefined,
+      propertyId: propertyIdFromBlock ?? undefined,
       blockId:
         filterValues.blockId && filterValues.blockId !== "all"
           ? filterValues.blockId
@@ -92,10 +115,12 @@ export default function ElectricityPage() {
       filterValues.month,
       activeTab,
       searchQuery,
-    ]
+    ],
   );
 
   const { grouped, summary, loading, refetch } = useElectricityData(apiFilters);
+
+  // ─── Flatten readings for the table ───────────────────────────────────────
 
   const readings = useMemo(() => {
     if (activeTab === "all") {
@@ -112,11 +137,13 @@ export default function ElectricityPage() {
       units: Array.isArray(units) ? units : [],
     });
 
+  // ─── Tenants (for unitId → tenantId mapping during save) ──────────────────
+
   useEffect(() => {
     const fetchTenants = async () => {
       try {
-        const response = await api.get("/api/tenant/get-tenants");
-        const data = response.data;
+        const res = await api.get("/api/tenant/get-tenants");
+        const data = res.data;
         if (data?.tenants)
           setTenants(Array.isArray(data.tenants) ? data.tenants : []);
       } catch (err) {
@@ -129,21 +156,20 @@ export default function ElectricityPage() {
   const unitIdToTenantId = useMemo(() => {
     const map = {};
     for (const tenant of tenants) {
-      if (Array.isArray(tenant.units)) {
-        for (const u of tenant.units) {
-          const id = u?._id ?? u;
-          if (id) map[id] = tenant._id;
-        }
+      for (const u of tenant.units ?? []) {
+        const id = typeof u === "object" ? u._id : u;
+        if (id) map[id] = tenant._id;
       }
     }
     return map;
   }, [tenants]);
 
   const availableInnerBlocks = useMemo(
-    () =>
-      Array.isArray(selectedBlock?.innerBlocks) ? selectedBlock.innerBlocks : [],
-    [selectedBlock]
+    () => (Array.isArray(selectedBlock?.innerBlocks) ? selectedBlock.innerBlocks : []),
+    [selectedBlock],
   );
+
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const handleFilterChange = useCallback((field, value) => {
     setFilterValues((prev) => ({ ...prev, [field]: value }));
@@ -155,12 +181,16 @@ export default function ElectricityPage() {
     setCurrentPage(1);
   }, []);
 
-  const periodLabel = useMemo(() => {
-    const monthOptions = getMonthOptions();
-    const monthName =
-      monthOptions.find((m) => m.value === filterValues.month)?.label ?? "Month";
-    return `${monthName} ${filterValues.year}`;
-  }, [filterValues.month, filterValues.year]);
+  /**
+   * Human-readable label derived from the bridge — single authoritative source.
+   * e.g. "Mangsir 2081"
+   */
+  const periodLabel = useMemo(
+    () => labelForPeriod({ nepaliYear: filterValues.year, nepaliMonth: filterValues.month }),
+    [filterValues.month, filterValues.year],
+  );
+
+  // ─── Export ───────────────────────────────────────────────────────────────
 
   const handleExportReport = useCallback(() => {
     if (!readings.length) {
@@ -172,20 +202,16 @@ export default function ElectricityPage() {
       if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
       return s;
     };
+
     const rows = [];
     rows.push("Electricity Report", periodLabel, "");
     rows.push("Total Readings,Total Consumption (kWh),Total Amount (Rs)");
     rows.push(
-      [
-        summary.totalReadings ?? 0,
-        summary.grandTotalUnits ?? 0,
-        summary.grandTotalAmount ?? 0,
-      ].join(",")
+      [summary.totalReadings ?? 0, summary.grandTotalUnits ?? 0, summary.grandTotalAmount ?? 0].join(","),
     );
     rows.push("");
-    rows.push(
-      "Meter Type,Unit/Meter Name,Previous (kWh),Current (kWh),Consumption (kWh),Status,Trend (%)"
-    );
+    rows.push("Meter Type,Unit/Meter Name,Previous (kWh),Current (kWh),Consumption (kWh),Status,Trend (%)");
+
     readings.forEach((record, index) => {
       const name =
         record.unit?.name ??
@@ -207,9 +233,10 @@ export default function ElectricityPage() {
           consumption > 0 ? formatConsumption(consumption) : "",
           status,
           prev > 0 ? `${trendSign}${trend}` : "",
-        ].join(",")
+        ].join(","),
       );
     });
+
     const csv = rows.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -220,6 +247,8 @@ export default function ElectricityPage() {
     URL.revokeObjectURL(url);
     toast.success("Report exported.");
   }, [readings, summary, periodLabel]);
+
+  // ─── Header slot ──────────────────────────────────────────────────────────
 
   useHeaderSlot(
     () => (
@@ -238,6 +267,7 @@ export default function ElectricityPage() {
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => setSearchQuery("")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-[#AFA097] hover:text-[#3D1414] transition-colors"
             >
@@ -280,8 +310,10 @@ export default function ElectricityPage() {
         </div>
       </div>
     ),
-    [searchQuery, handleExportReport, navigate]
+    [searchQuery, handleExportReport, navigate],
   );
+
+  // ─── Save inline rows ──────────────────────────────────────────────────────
 
   const handleSaveReadings = useCallback(async () => {
     const validRows = newRows.filter(
@@ -289,18 +321,16 @@ export default function ElectricityPage() {
         row.unitId &&
         row.currentUnit != null &&
         row.currentUnit !== "" &&
-        parseFloat(row.currentUnit) >= parseFloat(row.previousUnit || 0)
+        parseFloat(row.currentUnit) >= parseFloat(row.previousUnit || "0"),
     );
     if (validRows.length === 0) {
-      toast.error(
-        "Add at least one valid reading (unit, previous and current reading)."
-      );
+      toast.error("Add at least one valid reading (unit, previous and current reading).");
       return;
     }
     const tenantIdMissing = validRows.find((row) => !unitIdToTenantId[row.unitId]);
     if (tenantIdMissing) {
       toast.error(
-        "Selected unit has no tenant. Only units assigned to a tenant can have readings."
+        "Selected unit has no tenant. Only units assigned to a tenant can have readings.",
       );
       return;
     }
@@ -314,15 +344,15 @@ export default function ElectricityPage() {
             tenantId: unitIdToTenantId[row.unitId],
             unitId: row.unitId,
             currentReading: parseFloat(row.currentUnit),
-            previousReading: parseFloat(row.previousUnit || 0),
+            previousReading: parseFloat(row.previousUnit || "0"),
             nepaliMonth: filterValues.month,
             nepaliYear: filterValues.year,
-            nepaliDate: `${filterValues.year}-${filterValues.month}`,
+            nepaliDate: `${filterValues.year}-${String(filterValues.month).padStart(2, "0")}`,
             englishMonth: now.getMonth() + 1,
             englishYear: now.getFullYear(),
             readingDate: now.toISOString(),
-          })
-        )
+          }),
+        ),
       );
       toast.success(`${validRows.length} reading(s) saved.`);
       clearNewRows();
@@ -332,103 +362,105 @@ export default function ElectricityPage() {
     } finally {
       setSaving(false);
     }
-  }, [
-    newRows,
-    unitIdToTenantId,
-    filterValues.month,
-    filterValues.year,
-    clearNewRows,
-    refetch,
-  ]);
+  }, [newRows, unitIdToTenantId, filterValues.month, filterValues.year, clearNewRows, refetch]);
 
   const handleOpenAddReading = useCallback(() => setDialogOpen(true), []);
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+  //
+  // Industry note: do NOT wrap a whole page in <form>. <form> is for
+  // discrete submit interactions. Using onSubmit={e => e.preventDefault()}
+  // on a top-level wrapper is a smell — it makes every <button> a potential
+  // accidental submitter and breaks accessibility/screen-reader semantics.
+  // Inline-row saving is handled via an explicit onClick handler.
+
   return (
     <div className="min-h-screen pb-8" style={{ background: "#F8F5F2" }}>
-      <form onSubmit={(e) => e.preventDefault()}>
-        <div className="space-y-4 pt-5 px-4 sm:px-5">
-          <ElectricityHeader
-            onExportReport={handleExportReport}
-            onAddReading={addNewRow}
-            onSaveReadings={handleSaveReadings}
-            onSaved={refetch}
-            hasNewRows={newRows.length > 0}
-            saving={saving}
-            property={property}
-            allBlocks={allBlocks}
-            dialogOpen={dialogOpen}
-            setDialogOpen={setDialogOpen}
-          />
+      <div className="space-y-4 pt-5 px-4 sm:px-5">
 
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-bold text-[#1C1A18] tracking-tight">
-                Electricity Dashboard
-              </h1>
-              <p className="text-sm text-[#948472] mt-1">
-                Monitor consumption, track billing, and manage meter readings across all properties
-              </p>
-            </div>
-            {periodLabel && (
-              <div className="bg-white rounded-lg border border-[#E8E4E0] px-4 py-2 shadow-sm">
-                <p className="text-xs text-[#948472] font-medium uppercase tracking-wide">
-                  Current Period
-                </p>
-                <p className="text-base font-bold text-[#1C1A18] mt-0.5">{periodLabel}</p>
-              </div>
-            )}
+        <ElectricityHeader
+          onExportReport={handleExportReport}
+          onAddReading={addNewRow}
+          onSaveReadings={handleSaveReadings}
+          onSaved={refetch}
+          hasNewRows={newRows.length > 0}
+          saving={saving}
+          property={property}
+          allBlocks={allBlocks}
+          dialogOpen={dialogOpen}
+          setDialogOpen={setDialogOpen}
+        />
+
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold text-[#1C1A18] tracking-tight">
+              Electricity Dashboard
+            </h1>
+            <p className="text-sm text-[#948472] mt-1">
+              Monitor consumption, track billing, and manage meter readings across all properties
+            </p>
           </div>
-
-          <ElectricityKpiCards grouped={grouped} summary={summary} />
-
-          <ElectricityFilters
-            filterValues={filterValues}
-            onChange={handleFilterChange}
-            allBlocks={allBlocks}
-            availableInnerBlocks={availableInnerBlocks}
-            periodLabel={periodLabel}
-          />
-
-          <ElectricitySummaryCards grouped={grouped} summary={summary} />
-
-          <ElectricityInsights grouped={grouped} />
-
-          {searchQuery && (
-            <div className="bg-white rounded-lg border border-[#E8E4E0] px-4 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Search className="w-4 h-4 text-[#948472]" />
-                <p className="text-sm text-[#1C1A18]">
-                  Found <span className="font-bold">{readings.length}</span> result
-                  {readings.length !== 1 ? "s" : ""} for{" "}
-                  <span className="font-semibold text-[#3D1414]">"{searchQuery}"</span>
-                </p>
-              </div>
-              <button
-                onClick={() => setSearchQuery("")}
-                className="text-xs text-[#948472] hover:text-[#3D1414] underline underline-offset-2 transition-colors"
-              >
-                Clear search
-              </button>
+          {periodLabel && (
+            <div className="bg-white rounded-lg border border-[#E8E4E0] px-4 py-2 shadow-sm">
+              <p className="text-xs text-[#948472] font-medium uppercase tracking-wide">
+                Current Period
+              </p>
+              <p className="text-base font-bold text-[#1C1A18] mt-0.5">{periodLabel}</p>
             </div>
           )}
-
-          <ElectricityTable
-            loading={loading}
-            readings={readings}
-            newRows={newRows}
-            units={Array.isArray(units) ? units : []}
-            activeTab={activeTab}
-            onTabChange={handleTabChange}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            onUpdateNewRow={updateNewRow}
-            onRemoveNewRow={removeNewRow}
-            onPaymentRecorded={refetch}
-            countsByType={countsByType}
-            onAddReading={handleOpenAddReading}
-          />
         </div>
-      </form>
+
+        {/* KPIs reflect whatever period the filter is set to */}
+        <ElectricityKpiCards grouped={grouped} summary={summary} periodLabel={periodLabel} />
+
+        <ElectricityFilters
+          filterValues={filterValues}
+          onChange={handleFilterChange}
+          allBlocks={allBlocks}
+          availableInnerBlocks={availableInnerBlocks}
+          periodLabel={periodLabel}
+        />
+
+        <ElectricitySummaryCards grouped={grouped} summary={summary} />
+
+        <ElectricityInsights grouped={grouped} />
+
+        {searchQuery && (
+          <div className="bg-white rounded-lg border border-[#E8E4E0] px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Search className="w-4 h-4 text-[#948472]" />
+              <p className="text-sm text-[#1C1A18]">
+                Found <span className="font-bold">{readings.length}</span> result
+                {readings.length !== 1 ? "s" : ""} for{" "}
+                <span className="font-semibold text-[#3D1414]">"{searchQuery}"</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="text-xs text-[#948472] hover:text-[#3D1414] underline underline-offset-2 transition-colors"
+            >
+              Clear search
+            </button>
+          </div>
+        )}
+
+        <ElectricityTable
+          loading={loading}
+          readings={readings}
+          newRows={newRows}
+          units={Array.isArray(units) ? units : []}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          onUpdateNewRow={updateNewRow}
+          onRemoveNewRow={removeNewRow}
+          onPaymentRecorded={refetch}
+          countsByType={countsByType}
+          onAddReading={handleOpenAddReading}
+        />
+      </div>
     </div>
   );
 }

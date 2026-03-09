@@ -97,14 +97,17 @@ function fmtAmount(n) {
 function normalizeActivities(stats) {
   const raw = stats?.recentActivity ?? stats?.recentActivities ?? stats?.activities;
   if (!Array.isArray(raw) || raw.length === 0) return [];
-  return raw.slice(0, 8).map((item, i) => ({
-    id: item.id ?? i,
-    type: item.type ?? 'default',
-    mainText: item.mainText ?? item.label ?? item.title ?? '—',
-    details: [item.sub, item.time ? formatRelativeTime(item.time) : null].filter(Boolean).join(' · '),
-    amount: item.amount ?? null,
-    isInflow: INFLOW_TYPES.has(item.type ?? ''),
-  }));
+  return [...raw]
+    .sort((a, b) => new Date(b.time ?? 0) - new Date(a.time ?? 0))
+    .slice(0, 8)
+    .map((item, i) => ({
+      id: item.id ?? i,
+      type: item.type ?? 'default',
+      mainText: item.mainText ?? item.label ?? item.title ?? '—',
+      details: [item.sub, item.time ? formatRelativeTime(item.time) : null].filter(Boolean).join(' · '),
+      amount: item.amount ?? null,
+      isInflow: INFLOW_TYPES.has(item.type ?? ''),
+    }));
 }
 
 function normalizeUpcomingRents(stats) {
