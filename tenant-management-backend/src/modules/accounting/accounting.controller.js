@@ -1,33 +1,85 @@
-import { getAccountingSummary } from "./accounting.service.js";
+import {
+  getAccountingSummary,
+  getMonthlyChartData,
+  getRevenueBreakdownSummary,
+  getExpenseBreakdownSummary,
+} from "./accounting.service.js";
 
-/**
- * GET /api/accounting/summary
- * Optional query params:
- * - startDate, endDate (ISO)
- * - nepaliYear (number)
- * - quarter (1-4)
- */
+// ─── Shared query extractor ────────────────────────────────────────────────────
+function extractFilters(query) {
+  const { quarter, startDate, endDate, fiscalYear } = query;
+  return {
+    quarter: quarter ? Number(quarter) : null,
+    startDate: startDate || null,
+    endDate: endDate || null,
+    fiscalYear: fiscalYear ? Number(fiscalYear) : null,
+  };
+}
+
+// ─── Controllers ──────────────────────────────────────────────────────────────
+
 export async function getAccountingSummaryController(req, res) {
   try {
-    const { startDate, endDate, nepaliYear, quarter } = req.query;
-
-    const summary = await getAccountingSummary({
-      startDate,
-      endDate,
-      nepaliYear: nepaliYear ? parseInt(nepaliYear, 10) : undefined,
-      quarter: quarter ? parseInt(quarter, 10) : undefined,
-    });
-
-    res.status(200).json({
-      success: true,
-      data: summary,
-    });
-  } catch (error) {
-    console.error("Error in getAccountingSummaryController:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    const { quarter, startDate, endDate } = extractFilters(req.query);
+    const data = await getAccountingSummary({ quarter, startDate, endDate });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("[accounting] summary error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch accounting summary" });
   }
 }
 
+export async function getMonthlyChartController(req, res) {
+  try {
+    const { quarter, fiscalYear } = extractFilters(req.query);
+    const data = await getMonthlyChartData({ quarter, fiscalYear });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("[accounting] monthly-chart error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch monthly chart data" });
+  }
+}
+
+export async function getRevenueBreakdownController(req, res) {
+  try {
+    const { quarter, startDate, endDate, fiscalYear } = extractFilters(
+      req.query,
+    );
+    const data = await getRevenueBreakdownSummary({
+      quarter,
+      startDate,
+      endDate,
+      fiscalYear,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("[accounting] revenue-summary error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch revenue breakdown" });
+  }
+}
+
+export async function getExpenseBreakdownController(req, res) {
+  try {
+    const { quarter, startDate, endDate, fiscalYear } = extractFilters(
+      req.query,
+    );
+    const data = await getExpenseBreakdownSummary({
+      quarter,
+      startDate,
+      endDate,
+      fiscalYear,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("[accounting] expense-summary error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch expense breakdown" });
+  }
+}

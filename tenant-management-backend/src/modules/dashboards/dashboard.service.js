@@ -453,8 +453,90 @@ export async function getDashboardStatsData() {
   }));
 
   /* ===============================
-     3️⃣ OVERDUE RENTS (TOP 3)
+     3️⃣ OVERDUE RENTS (TOP 3) + OUTSTANDING CONTEXT
   =============================== */
+
+  // ── Outstanding context ───────────────────────────────────────────────────────
+  //
+  // Three parallel aggregates — all hit existing indexes, run concurrently:
+  //
+  //   outstandingContextAgg — earliest unpaid englishDueDate this month, plus
+  //     a frequency breakdown (monthly vs quarterly) of unpaid rents so the
+  //     KPI sub-label can say "6 monthly · 2 quarterly pending" without a
+  //     separate query.
+  //
+  //   overdueCountAgg — rents past their englishDueDate with a balance > 0.
+  //     Authoritative overdue headcount + frequency split + total paisa.
+  //     The overdueRents query below is a top-3 display sample only.
+  //
+  // rentFrequency values from rent.Model.js: "monthly" | "quarterly"
+  const [outstandingContextAgg, overdueCountAgg] = await Promise.all([
+    // Pending this month: unpaid rents in current Nepali month
+    // Returns earliest due date + frequency breakdown in a single pass.
+    Rent.aggregate([
+      {
+        $match: {
+          nepaliYear: npYear,
+          nepaliMonth: npMonth,
+          $expr: {
+            $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          earliestDueDate: { $min: "$englishDueDate" },
+          totalCount: { $sum: 1 },
+          monthlyCount: {
+            $sum: { $cond: [{ $eq: ["$rentFrequency", "monthly"] }, 1, 0] },
+          },
+          quarterlyCount: {
+            $sum: { $cond: [{ $eq: ["$rentFrequency", "quarterly"] }, 1, 0] },
+          },
+        },
+      },
+    ]),
+
+    // Overdue: past englishDueDate, balance > 0 — with frequency split
+    Rent.aggregate([
+      {
+        $match: {
+          englishDueDate: { $lt: nepaliTodayDate },
+          $expr: {
+            $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          monthlyCount: {
+            $sum: { $cond: [{ $eq: ["$rentFrequency", "monthly"] }, 1, 0] },
+          },
+          quarterlyCount: {
+            $sum: { $cond: [{ $eq: ["$rentFrequency", "quarterly"] }, 1, 0] },
+          },
+          totalOutstandingPaisa: {
+            $sum: { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+          },
+        },
+      },
+    ]),
+  ]);
+
+  const pendingCtx = outstandingContextAgg[0] ?? {};
+  const overdueCtx = overdueCountAgg[0] ?? {};
+
+  const earliestDueDate = pendingCtx.earliestDueDate ?? null;
+  const pendingMonthly = pendingCtx.monthlyCount ?? 0;
+  const pendingQuarterly = pendingCtx.quarterlyCount ?? 0;
+
+  const overdueCount = overdueCtx.count ?? 0;
+  const overdueMonthly = overdueCtx.monthlyCount ?? 0;
+  const overdueQuarterly = overdueCtx.quarterlyCount ?? 0;
+  const overdueAmountPaisa = overdueCtx.totalOutstandingPaisa ?? 0;
 
   // nepaliTodayDate = nepaliToday.getDateObject() from getNepaliMonthDates().
   // JS Date object — correct type for MongoDB $lt on a Date field.
@@ -811,6 +893,28 @@ export async function getDashboardStatsData() {
       totalUnits,
       occupiedUnits,
       occupancyRate,
+
+      // ── Outstanding context — drives phase-aware KPI tile ─────────────────
+      //
+      // earliestDueDate: real englishDueDate of the earliest unpaid rent this
+      //   Nepali month. Frontend computes daysUntilDue from this + today.
+      //
+      // pending* / overdue* counts: monthly vs quarterly split so the KPI
+      //   sub-label can show "6 monthly · 2 quarterly" without a separate query.
+      //   Never used as the hero number — that stays a unified rupee figure.
+      outstandingContext: {
+        earliestDueDate, // JS Date | null
+
+        // Pending (unpaid, not yet overdue)
+        pendingMonthly,
+        pendingQuarterly,
+
+        // Overdue (past englishDueDate, balance > 0)
+        trulyOverdueCount: overdueCount,
+        trulyOverdueAmountPaisa: overdueAmountPaisa,
+        overdueMonthly,
+        overdueQuarterly,
+      },
 
       // ── Rent summary ──────────────────────────────────────────────────────
       rentSummary: {
