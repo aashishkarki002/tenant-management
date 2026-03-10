@@ -337,12 +337,12 @@ function SettingTab({
 
                         {/* Header */}
                         <div className="flex items-center space-x-3">
-                            <div className="p-2 bg-blue-50 rounded-lg">
+                            <div className="p-2 bg-secondary rounded-lg">
                                 <User className="w-5 h-5 text-blue-600" />
                             </div>
                             <div>
-                                <h4 className="font-semibold text-slate-900">Administrator Profile</h4>
-                                <p className="text-sm text-slate-500">
+                                <h4 className="font-semibold text-foreground">Administrator Profile</h4>
+                                <p className="text-sm text-text-sub">
                                     These details will be used for official communications
                                 </p>
                             </div>
@@ -359,7 +359,7 @@ function SettingTab({
                             {/* Right: Fields */}
                             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <label className="text-sm font-medium text-text-body flex items-center gap-2">
                                         <User className="w-4 h-4" /> Full Name
                                     </label>
                                     <Input
@@ -371,7 +371,7 @@ function SettingTab({
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <label className="text-sm font-medium text-text-body flex items-center gap-2">
                                         <Mail className="w-4 h-4" /> Email Address
                                     </label>
                                     <Input
@@ -379,11 +379,11 @@ function SettingTab({
                                         value={formik.values.email}
                                         onChange={formik.handleChange}
                                         readOnly={!isEditingProfile}
-                                        className={!isEditingProfile ? "bg-slate-50" : ""}
+                                        className={!isEditingProfile ? "bg-secondary" : ""}
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <label className="text-sm font-medium text-text-body flex items-center gap-2">
                                         <Phone className="w-4 h-4" /> Phone Number
                                     </label>
                                     <Input
@@ -391,11 +391,11 @@ function SettingTab({
                                         value={formik.values.phone}
                                         onChange={formik.handleChange}
                                         readOnly={!isEditingProfile}
-                                        className={!isEditingProfile ? "bg-slate-50" : ""}
+                                        className={!isEditingProfile ? "bg-secondary" : ""}
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <label className="text-sm font-medium text-text-body flex items-center gap-2">
                                         <Building className="w-4 h-4" /> Company Name
                                     </label>
                                     <Input
@@ -403,11 +403,11 @@ function SettingTab({
                                         value={formik.values.company}
                                         onChange={formik.handleChange}
                                         readOnly={!isEditingProfile}
-                                        className={!isEditingProfile ? "bg-slate-50" : ""}
+                                        className={!isEditingProfile ? "bg-secondary" : ""}
                                     />
                                 </div>
                                 <div className="md:col-span-2 space-y-2">
-                                    <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    <label className="text-sm font-medium text-text-body flex items-center gap-2">
                                         <MapPin className="w-4 h-4" /> Office Address
                                     </label>
                                     <Input
@@ -415,7 +415,7 @@ function SettingTab({
                                         value={formik.values.address}
                                         onChange={formik.handleChange}
                                         readOnly={!isEditingProfile}
-                                        className={!isEditingProfile ? "bg-slate-50" : ""}
+                                        className={!isEditingProfile ? "bg-secondary" : ""}
                                     />
                                 </div>
                             </div>
@@ -456,12 +456,12 @@ function SettingTab({
             <Card>
                 <div className="space-y-6 p-4">
                     <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-blue-50 rounded-lg">
+                        <div className="p-2 bg-secondary rounded-lg">
                             <CreditCard className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
-                            <h4 className="font-semibold text-slate-900">Financial Accounts</h4>
-                            <p className="text-sm text-slate-500">Configure bank details for automated payments</p>
+                            <h4 className="font-semibold text-foreground">Financial Accounts</h4>
+                            <p className="text-sm text-text-sub">Configure bank details for automated payments</p>
                         </div>
                     </div>
 
@@ -469,15 +469,15 @@ function SettingTab({
                         {bankAccounts.map((account) => (
                             <div
                                 key={account._id}
-                                className="flex items-center justify-between p-4 border border-slate-100 rounded-xl bg-slate-50/50"
+                                className="flex items-center justify-between p-4 border border-border rounded-xl bg-secondary"
                             >
                                 <div className="flex items-center gap-4">
-                                    <div className="bg-white p-2 rounded-lg border border-slate-200">
-                                        <Building className="w-5 h-5 text-slate-400" />
+                                    <div className="bg-white p-2 rounded-lg border border-border">
+                                        <Building className="w-5 h-5 text-text-sub" />
                                     </div>
                                     <div>
-                                        <h5 className="font-medium text-slate-900">{account.bankName}</h5>
-                                        <p className="text-xs text-slate-500">
+                                        <h5 className="font-medium text-foreground">{account.bankName}</h5>
+                                        <p className="text-xs text-text-sub">
                                             {account.accountName} • {account.accountNumber}
                                         </p>
                                     </div>
@@ -486,7 +486,7 @@ function SettingTab({
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                                        className="text-text-sub hover:text-text-body hover:bg-secondary"
                                         onClick={() => handleEditClick(account)}
                                     >
                                         <Pencil className="w-4 h-4" />
@@ -494,7 +494,7 @@ function SettingTab({
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                        className="text-danger hover:text-danger-hover hover:bg-danger-bg"
                                         onClick={() => handleDeleteClick(account._id)}
                                     >
                                         <Trash2 className="w-4 h-4" />
@@ -515,7 +515,7 @@ function SettingTab({
                                 <DrawerContent>
                                     <DrawerHeader>
                                         <DrawerTitle>Add New Bank Account</DrawerTitle>
-                                        <p className="text-sm text-gray-500 mt-2">
+                                        <p className="text-sm text-text-sub mt-2">
                                             Add the bank account details for rent collection and security deposits
                                         </p>
                                     </DrawerHeader>
@@ -530,7 +530,10 @@ function SettingTab({
                         ) : (
                             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                                 <DialogTrigger asChild>
-                                    <Button variant="outline" icon={Plus}>Add New Bank Account</Button>
+                                    <Button icon={Plus}>
+                                        <Plus className="w-4 h-4" />
+                                        Add New Bank Account
+                                    </Button>
                                 </DialogTrigger>
                                 <DialogContent>
                                     <DialogHeader>
@@ -556,18 +559,18 @@ function SettingTab({
             <Card>
                 <form onSubmit={handlePasswordChange} className="space-y-4 p-4">
                     <div className="flex items-center space-x-3 mb-4">
-                        <div className="p-2 bg-blue-50 rounded-lg">
+                        <div className="p-2 bg-secondary rounded-lg">
                             <Lock className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
-                            <h4 className="font-semibold text-slate-900">Change Password</h4>
-                            <p className="text-sm text-slate-500">Ensure your password is strong and secure</p>
+                            <h4 className="font-semibold text-foreground">Change Password</h4>
+                            <p className="text-sm text-text-sub">Ensure your password is strong and secure</p>
                         </div>
                     </div>
 
                     <div className="space-y-4">
                         <div>
-                            <label htmlFor="currentPassword" className="block text-sm font-medium text-slate-700 mb-2">
+                            <label htmlFor="currentPassword" className="block text-sm font-medium text-text-body mb-2">
                                 Current Password
                             </label>
                             <Input
@@ -579,7 +582,7 @@ function SettingTab({
                             />
                         </div>
                         <div>
-                            <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700 mb-2">
+                            <label htmlFor="newPassword" className="block text-sm font-medium text-text-body mb-2">
                                 New Password
                             </label>
                             <Input
@@ -589,10 +592,10 @@ function SettingTab({
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 placeholder="Enter your new password"
                             />
-                            <p className="text-xs text-slate-500 mt-1">Must be at least 8 characters long</p>
+                            <p className="text-xs text-text-sub mt-1">Must be at least 8 characters long</p>
                         </div>
                         <div>
-                            <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
+                            <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-body mb-2">
                                 Confirm New Password
                             </label>
                             <Input
@@ -605,12 +608,12 @@ function SettingTab({
                         </div>
 
                         {passwordError && (
-                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                            <div className="p-3 bg-danger-bg border border-danger-border rounded-lg text-danger text-sm">
                                 {passwordError}
                             </div>
                         )}
                         {passwordSuccess && (
-                            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                            <div className="p-3 bg-success-bg border success-border rounded-lg text-success text-sm">
                                 Password changed successfully!
                             </div>
                         )}

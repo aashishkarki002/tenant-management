@@ -1,10 +1,10 @@
 import React from "react";
 
 const METER_SEGMENTS = [
-  { key: "unit", label: "Units", color: "var(--color-accent)", bg: "bg-accent-bg", text: "text-accent", border: "border-accent-border", dotClass: "bg-accent" },
-  { key: "common_area", label: "Common Area", color: "var(--color-info)", bg: "bg-info-bg", text: "text-info", border: "border-info-border", dotClass: "bg-info" },
-  { key: "parking", label: "Parking", color: "var(--color-success)", bg: "bg-success-bg", text: "text-success", border: "border-success-border", dotClass: "bg-success" },
-  { key: "sub_meter", label: "Sub-Meter", color: "var(--color-warning)", bg: "bg-warning-bg", text: "text-warning", border: "border-warning-border", dotClass: "bg-warning" },
+  { key: "unit", label: "Units", color: "var(--color-primary)", bg: "bg-primary-bg", text: "text-primary", border: "border-primary-border", dotClass: "bg-primary" },
+  { key: "common_area", label: "Common Area", color: "var(--color-success)", bg: "bg-success-bg", text: "text-success", border: "border-success-border", dotClass: "bg-success" },
+  { key: "parking", label: "Parking", color: "var(--color-warning)", bg: "bg-warning-bg", text: "text-warning", border: "border-warning-border", dotClass: "bg-warning" },
+  { key: "sub_meter", label: "Sub-Meter", color: "var(--color-danger)", bg: "bg-danger-bg", text: "text-danger", border: "border-danger-border", dotClass: "bg-danger" },
 ];
 
 const fmt = {
@@ -47,7 +47,7 @@ export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
 
       <div className="px-5 py-4 space-y-4">
         {/* Stacked bar — animated on load */}
-        <div className="relative h-4 w-full rounded-full bg-muted-fill overflow-hidden flex shadow-inner">
+        <div className="relative h-4 w-full rounded-full bg-secondary overflow-hidden flex shadow-inner">
           {activeSegments.map((seg) => {
             const pct = (seg.units / divisor) * 100;
             return (
@@ -74,7 +74,7 @@ export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
             return (
               <div
                 key={seg.key}
-                className={`group rounded-xl border px-3.5 py-3.5 ${seg.bg} ${seg.border} 
+                className={`group rounded-xl border border-border px-3.5 py-3.5 ${seg.bg} ${seg.border} 
                   transition-all duration-200 hover:shadow-md hover:scale-[1.02] cursor-default
                   animate-in fade-in slide-in-from-bottom-2`}
                 style={{ animationDelay: `${index * 50}ms` }}
@@ -89,7 +89,7 @@ export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
                     {seg.label}
                   </span>
                   <span className={`text-xs font-bold ${seg.text} opacity-70 
-                    px-1.5 py-0.5 rounded-md bg-muted-fill/50`}>
+                    px-1.5 py-0.5 rounded-md bg-secondary hover:bg-secondary/80`}>
                     {pct}%
                   </span>
                 </div>
@@ -100,7 +100,7 @@ export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
                 <p className={`text-xs ${seg.text} opacity-80 mt-1`}>
                   {fmt.rs(seg.amount)}
                 </p>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-muted-fill">
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
                   <p className={`text-[10px] ${seg.text} opacity-60 font-medium`}>
                     {seg.count} {seg.count === 1 ? "reading" : "readings"}
                   </p>

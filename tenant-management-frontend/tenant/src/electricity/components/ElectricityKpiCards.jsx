@@ -1,14 +1,5 @@
 import React from "react";
 import { Zap, DollarSign, AlertTriangle, Gauge } from "lucide-react";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-
-
-
-
-// ─── Formatters ───────────────────────────────────────────────────────────────
-
 const fmt = {
   kwh: (n) =>
     Number(n).toLocaleString("en-NP", {
@@ -139,10 +130,7 @@ export function ElectricityKpiCards({
           <span className="text-xs font-semibold text-text-sub uppercase tracking-wider">
             Key Metrics
           </span>
-          <span className="text-xs font-bold text-text-sub bg-muted-fill border border-muted-fill
-            px-2.5 py-1 rounded-full">
-            {periodLabel}
-          </span>
+
         </div>
       )}
 

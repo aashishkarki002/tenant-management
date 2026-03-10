@@ -6,9 +6,8 @@
  * - Zero business logic, zero paisa conversion, zero filtering
  * - All numbers arrive from the backend ready to render
  *
- * STYLE: Inline styles replaced with Tailwind utility classes.
- * style={} retained only for: dynamic/computed values, chart config,
- * SVG props, and CSS custom property references.
+ * STYLE: All colors reference CSS custom properties from index.css.
+ * No hardcoded hex values for theme colors — dark mode works automatically.
  */
 
 import { useState, useEffect } from "react";
@@ -23,27 +22,50 @@ import { useExpenseSummary, useBankAccounts } from "../hooks/useAccounting";
 import { useIsMobile } from "@/hooks/use-mobile";
 import api from "../../../plugins/axios";
 
-// ─── Design tokens ─────────────────────────────────────────────────────────────
+// ─── Design tokens — CSS variables (petrol theme) ────────────────────────────
 const C = {
-    bg: "#FAFAF8", surface: "#FFFFFF", alt: "#F5F4F0",
-    forest: "#1A5276", forestLight: "#2E86C1",
-    amber: "#92400E", amberBg: "#FEF9C3",
-    red: "#991B1B", redBg: "#FEE2E2",
-    blue: "#1E40AF", blueBg: "#DBEAFE",
-    violet: "#6D28D9", violetBg: "#EDE9FE",
-    teal: "#0E7490", tealBg: "#ECFEFF",
-    border: "#E7E5E0", text: "#1C1917", mid: "#44403C", muted: "#78716C",
-    positive: "#166534", negative: "#991B1B",
+    bg: "var(--color-bg)",
+    surface: "var(--color-surface-raised)",
+    alt: "var(--color-surface)",
+    forest: "var(--color-accent)",
+    forestLight: "var(--color-info)",
+    amber: "var(--color-warning)",
+    amberBg: "var(--color-warning-bg)",
+    red: "var(--color-danger)",
+    redBg: "var(--color-danger-bg)",
+    blue: "var(--color-info)",
+    blueBg: "var(--color-info-bg)",
+    // Viz-only colors — no semantic token
+    violet: "#6D28D9",
+    violetBg: "#EDE9FE",
+    teal: "#0E7490",
+    tealBg: "#ECFEFF",
+    border: "var(--color-border)",
+    text: "var(--color-text-strong)",
+    mid: "var(--color-text-body)",
+    muted: "var(--color-text-sub)",
+    positive: "var(--color-success)",
+    negative: "var(--color-danger)",
 };
 
-const EXP_PALETTE = [C.red, C.amber, C.violet, C.blue, "#D97706", C.teal, "#BE185D", C.forestLight];
+const EXP_PALETTE = [
+    "var(--color-danger)",
+    "var(--color-warning)",
+    "#6D28D9",
+    "var(--color-info)",
+    "#D97706",
+    "#0E7490",
+    "#BE185D",
+    "var(--color-info)",
+];
+
 const REF_CFG = {
-    MANUAL: { bg: C.alt, color: C.muted },
-    MAINTENANCE: { bg: C.red + "18", color: C.red },
-    UTILITY: { bg: C.blue + "18", color: C.blue },
-    SALARY: { bg: C.violet + "18", color: C.violet },
-    RENT: { bg: C.amber + "18", color: C.amber },
-    VENDOR: { bg: C.teal + "18", color: C.teal },
+    MANUAL: { bg: "var(--color-surface)", color: "var(--color-text-sub)" },
+    MAINTENANCE: { bg: "var(--color-danger-bg)", color: "var(--color-danger)" },
+    UTILITY: { bg: "var(--color-info-bg)", color: "var(--color-info)" },
+    SALARY: { bg: "#EDE9FE", color: "#6D28D9" },
+    RENT: { bg: "var(--color-warning-bg)", color: "var(--color-warning)" },
+    VENDOR: { bg: "#ECFEFF", color: "#0E7490" },
 };
 
 const fmt = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
@@ -57,7 +79,6 @@ const Q_LABELS = {
     3: "Q3 · Magh–Chaitra", 4: "Q4 · Baishakh–Ashadh",
 };
 
-// ─── Keyframes injected once ──────────────────────────────────────────────────
 const S = `
   @keyframes ex-up   { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
   @keyframes ex-spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
@@ -70,10 +91,8 @@ const S = `
 // ─── Atoms ────────────────────────────────────────────────────────────────────
 function Card({ children, style = {}, delay = 0 }) {
     return (
-        <div
-            className="ex-card rounded-2xl border"
-            style={{ background: C.surface, borderColor: C.border, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}
-        >
+        <div className="ex-card rounded-2xl border"
+            style={{ background: C.surface, borderColor: C.border, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}>
             {children}
         </div>
     );
@@ -81,10 +100,8 @@ function Card({ children, style = {}, delay = 0 }) {
 
 function Dark({ children, style = {}, delay = 0 }) {
     return (
-        <div
-            className="ex-card rounded-2xl"
-            style={{ background: C.forest, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}
-        >
+        <div className="ex-card rounded-2xl"
+            style={{ background: C.forest, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}>
             {children}
         </div>
     );
@@ -92,16 +109,14 @@ function Dark({ children, style = {}, delay = 0 }) {
 
 function Lbl({ children, light, style = {} }) {
     return (
-        <div
-            className="text-[10px] font-bold tracking-[0.1em] uppercase mb-2"
-            style={{ color: light ? "rgba(255,255,255,.45)" : C.muted, ...style }}
-        >
+        <div className="text-[10px] font-bold tracking-[0.1em] uppercase mb-2"
+            style={{ color: light ? "rgba(255,255,255,.45)" : C.muted, ...style }}>
             {children}
         </div>
     );
 }
 
-function Num({ v, size = 32, color = C.text }) {
+function Num({ v, size = 32, color = "var(--color-text-strong)" }) {
     return (
         <div className="ex-serif leading-none" style={{ fontSize: size, color, letterSpacing: "-0.02em" }}>
             ₹{Number(Math.abs(v)).toLocaleString("en-IN")}
@@ -111,16 +126,14 @@ function Num({ v, size = 32, color = C.text }) {
 
 function Delta({ up, label }) {
     return (
-        <span
-            className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
-            style={{ background: up ? "#DCFCE7" : "#FEE2E2", color: up ? C.positive : C.negative }}
-        >
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
+            style={{ background: up ? "var(--color-success-bg)" : "var(--color-danger-bg)", color: up ? C.positive : C.negative }}>
             {up ? <ArrowUpRightIcon size={11} /> : <ArrowDownRightIcon size={11} />}{label}
         </span>
     );
 }
 
-function Bar2({ value, max, color = C.red, h = 5 }) {
+function Bar2({ value, max, color = "var(--color-danger)", h = 5 }) {
     const w = max > 0 ? Math.min((value / max) * 100, 100) : 0;
     return (
         <div className="flex-1 overflow-hidden" style={{ height: h, borderRadius: h / 2, background: C.border }}>
@@ -154,22 +167,27 @@ function Tip({ active, payload, label }) {
 }
 
 function SPill({ s }) {
-    const cfg = { RECORDED: [C.amberBg, C.amber], SYNCED: ["#D1FAE5", C.positive], REVERSED: [C.redBg, C.red] };
-    const [bg, color] = cfg[s] ?? [C.alt, C.muted];
+    const cfg = {
+        RECORDED: ["var(--color-warning-bg)", "var(--color-warning)"],
+        SYNCED: ["var(--color-success-bg)", "var(--color-success)"],
+        REVERSED: ["var(--color-danger-bg)", "var(--color-danger)"],
+    };
+    const [bg, color] = cfg[s] ?? ["var(--color-surface)", "var(--color-text-sub)"];
     return <span className="rounded text-[10px] font-bold px-2 py-0.5" style={{ background: bg, color }}>{s}</span>;
 }
 
 function RPill({ t }) {
-    const c = REF_CFG[t] ?? { bg: C.alt, color: C.muted };
+    const c = REF_CFG[t] ?? { bg: "var(--color-surface)", color: "var(--color-text-sub)" };
     return <span className="rounded text-[10px] font-bold px-2 py-0.5" style={{ background: c.bg, color: c.color }}>{t}</span>;
 }
 
 function PPill({ t }) {
     return (
-        <span
-            className="rounded text-[10px] font-bold px-2 py-0.5"
-            style={{ background: t === "EXTERNAL" ? C.redBg : C.amberBg, color: t === "EXTERNAL" ? C.red : C.amber }}
-        >
+        <span className="rounded text-[10px] font-bold px-2 py-0.5"
+            style={{
+                background: t === "EXTERNAL" ? "var(--color-danger-bg)" : "var(--color-warning-bg)",
+                color: t === "EXTERNAL" ? "var(--color-danger)" : "var(--color-warning)",
+            }}>
             {t}
         </span>
     );
@@ -179,6 +197,8 @@ function PPill({ t }) {
 export default function ExpenseBreakDown({
     onExpenseAdded,
     selectedQuarter = null,
+    selectedMonth = null,
+    fiscalYear = null,
     compareMode = false,
     compareQuarter = null,
     customStartDate = "",
@@ -195,12 +215,14 @@ export default function ExpenseBreakDown({
 
     const { data: D, loading, error, refetch } = useExpenseSummary(
         selectedQuarter,
-        selectedQuarter === "custom" ? customStartDate : "",
-        selectedQuarter === "custom" ? customEndDate : "",
+        customStartDate,
+        customEndDate,
+        selectedMonth,
+        fiscalYear,
     );
 
     const { data: DB, loading: loadingB } = useExpenseSummary(
-        compareMode ? compareQuarter : null, "", "",
+        compareMode ? compareQuarter : null, "", "", null, fiscalYear,
     );
 
     useEffect(() => {
@@ -214,10 +236,16 @@ export default function ExpenseBreakDown({
 
     const onSuccess = () => { refetch(); onExpenseAdded?.(); };
 
+    const BS_MONTH_NAMES = [
+        "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
+        "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
+    ];
     const periodLabel =
-        selectedQuarter === "custom" ? `${customStartDate} → ${customEndDate}`
-            : selectedQuarter ? Q_LABELS[Number(selectedQuarter)] ?? "All"
-                : "All Periods";
+        customStartDate && customEndDate ? `${customStartDate} → ${customEndDate}`
+            : selectedMonth ? `${BS_MONTH_NAMES[selectedMonth - 1]}${fiscalYear ? ` ${fiscalYear}` : ""}`
+                : selectedQuarter ? Q_LABELS[Number(selectedQuarter)] ?? "All"
+                    : fiscalYear ? `FY ${fiscalYear}/${String(fiscalYear + 1).slice(2)}`
+                        : "All Periods";
 
     const exportCSV = () => {
         if (!D) return;
@@ -253,25 +281,16 @@ export default function ExpenseBreakDown({
                     </div>
                 </div>
                 <div className={`flex gap-2 ${isMobile ? "flex-wrap w-full" : "flex-nowrap"}`}>
-                    <button
-                        onClick={refetch}
-                        className="flex items-center rounded-[9px] border cursor-pointer"
-                        style={{ padding: isMobile ? "10px 12px" : "8px 10px", borderColor: C.border, background: C.surface, minHeight: isMobile ? 44 : undefined }}
-                    >
+                    <button onClick={refetch} className="flex items-center rounded-[9px] border cursor-pointer"
+                        style={{ padding: isMobile ? "10px 12px" : "8px 10px", borderColor: C.border, background: C.surface, minHeight: isMobile ? 44 : undefined }}>
                         <RefreshCw size={14} color={C.mid} style={{ animation: loading ? "ex-spin 1s linear infinite" : "none" }} />
                     </button>
-                    <button
-                        onClick={exportCSV}
-                        className="flex items-center gap-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer"
-                        style={{ padding: isMobile ? "10px 16px" : "8px 14px", borderColor: C.border, background: C.surface, color: C.mid, minHeight: isMobile ? 44 : undefined }}
-                    >
+                    <button onClick={exportCSV} className="flex items-center gap-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer"
+                        style={{ padding: isMobile ? "10px 16px" : "8px 14px", borderColor: C.border, background: C.surface, color: C.mid, minHeight: isMobile ? 44 : undefined }}>
                         <Download size={13} />{isMobile ? "" : "CSV"}
                     </button>
-                    <button
-                        onClick={() => setDialogOpen(true)}
-                        className="flex items-center gap-1.5 rounded-[9px] border-none text-[13px] font-bold cursor-pointer text-white"
-                        style={{ padding: isMobile ? "10px 16px" : "8px 16px", background: C.red, flex: isMobile ? 1 : undefined, justifyContent: isMobile ? "center" : undefined, minHeight: isMobile ? 44 : undefined }}
-                    >
+                    <button onClick={() => setDialogOpen(true)} className="flex items-center gap-1.5 rounded-[9px] border-none text-[13px] font-bold cursor-pointer text-white"
+                        style={{ padding: isMobile ? "10px 16px" : "8px 16px", background: C.red, flex: isMobile ? 1 : undefined, justifyContent: isMobile ? "center" : undefined, minHeight: isMobile ? 44 : undefined }}>
                         <PlusIcon size={14} />Add Expense
                     </button>
                 </div>
@@ -279,14 +298,16 @@ export default function ExpenseBreakDown({
 
             {/* ── Error ──────────────────────────────────────────────────────────── */}
             {error && (
-                <div className="rounded-xl px-4 py-3 text-[13px] mb-4" style={{ background: C.redBg, border: `1px solid ${C.red}30`, color: C.red }}>
+                <div className="rounded-xl px-4 py-3 text-[13px] mb-4"
+                    style={{ background: C.redBg, border: `1px solid var(--color-danger-border)`, color: C.red }}>
                     ⚠ {error} — <button onClick={refetch} className="bg-transparent border-none cursor-pointer font-bold underline" style={{ color: C.red }}>Retry</button>
                 </div>
             )}
 
             {/* ── Compare banner ──────────────────────────────────────────────────── */}
             {compareMode && !loading && !loadingB && DB && (
-                <div className="rounded-2xl px-[18px] py-[13px] flex items-center justify-between flex-wrap gap-3 mb-[18px]" style={{ background: C.red + "0E", border: `1px solid ${C.red}28` }}>
+                <div className="rounded-2xl px-[18px] py-[13px] flex items-center justify-between flex-wrap gap-3 mb-[18px]"
+                    style={{ background: "var(--color-danger-bg)", border: `1px solid var(--color-danger-border)` }}>
                     <span className="text-[11px] font-bold tracking-[0.08em] uppercase" style={{ color: C.red }}>Compare Mode</span>
                     <div className="flex items-center gap-4 flex-wrap">
                         <div className="text-center">
@@ -331,10 +352,10 @@ export default function ExpenseBreakDown({
                 </Dark>
 
                 {[
-                    { label: "Avg Ticket", val: fmt(totals.avg), sub: "per transaction", grad: `${C.red},#FCA5A5` },
-                    { label: "Top Category", val: categories[0]?.name ?? "—", sub: categories[0] ? fmt(categories[0].amount) : "No data", grad: `${C.amber},#FCD34D` },
+                    { label: "Avg Ticket", val: fmt(totals.avg), sub: "per transaction", grad: `var(--color-danger),#FCA5A5` },
+                    { label: "Top Category", val: categories[0]?.name ?? "—", sub: categories[0] ? fmt(categories[0].amount) : "No data", grad: `var(--color-warning),#FCD34D` },
                     { label: "Operating Cost", val: fmt(operatingAmt), sub: "Salary · Utility · Maintenance", grad: `${C.violet},#C4B5FD` },
-                    { label: "Non-Operating", val: fmt(nonOpAmt), sub: "Vendor · Manual · Other", grad: `${C.blue},#93C5FD` },
+                    { label: "Non-Operating", val: fmt(nonOpAmt), sub: "Vendor · Manual · Other", grad: `var(--color-info),#93C5FD` },
                 ].map((k, i) => (
                     <Card key={k.label} delay={i + 1} style={{ padding: 0, overflow: "hidden" }}>
                         <div style={{ height: 3, background: `linear-gradient(90deg,${k.grad})`, borderRadius: "16px 16px 0 0" }} />
@@ -348,14 +369,10 @@ export default function ExpenseBreakDown({
             </div>
 
             {/* ── Tab nav ─────────────────────────────────────────────────────────── */}
-            <div
-                className={`flex gap-1 rounded-xl p-1 mb-[18px] ${isMobile ? "w-full overflow-x-auto" : "w-fit"}`}
-                style={{ background: C.alt }}
-            >
+            <div className={`flex gap-1 rounded-xl p-1 mb-[18px] ${isMobile ? "w-full overflow-x-auto" : "w-fit"}`}
+                style={{ background: C.alt }}>
                 {TABS.map(t => (
-                    <button
-                        key={t}
-                        onClick={() => setTab(t)}
+                    <button key={t} onClick={() => setTab(t)}
                         className="rounded-[9px] border-none cursor-pointer text-[13px] font-semibold transition-all whitespace-nowrap"
                         style={{
                             padding: isMobile ? "9px 16px" : "7px 18px",
@@ -363,8 +380,7 @@ export default function ExpenseBreakDown({
                             color: tab === t ? "#fff" : C.mid,
                             flex: isMobile ? 1 : undefined,
                             minHeight: isMobile ? 44 : undefined,
-                        }}
-                    >
+                        }}>
                         {t[0].toUpperCase() + t.slice(1)}
                     </button>
                 ))}
@@ -520,7 +536,8 @@ export default function ExpenseBreakDown({
                                 <div className="text-sm font-bold" style={{ color: C.text }}>All Transactions</div>
                                 <div className="text-[11px] mt-0.5" style={{ color: C.muted }}>{transactions.length} total · {periodLabel}</div>
                             </div>
-                            <button onClick={exportCSV} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer" style={{ borderColor: C.border, background: C.surface, color: C.mid }}>
+                            <button onClick={exportCSV} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer"
+                                style={{ borderColor: C.border, background: C.surface, color: C.mid }}>
                                 <Download size={13} />Export CSV
                             </button>
                         </div>
@@ -557,9 +574,11 @@ export default function ExpenseBreakDown({
                                             Showing {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, transactions.length)} of {transactions.length}
                                         </span>
                                         <div className="flex gap-1.5">
-                                            <button onClick={prevPage} disabled={currentPage === 1} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>← Prev</button>
+                                            <button onClick={prevPage} disabled={currentPage === 1} className="px-3 py-1 rounded-lg border text-xs font-semibold"
+                                                style={{ borderColor: C.border, background: C.surface, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>← Prev</button>
                                             <span className="px-3 py-1 text-xs" style={{ color: C.muted }}>{currentPage} / {totalPages}</span>
-                                            <button onClick={nextPage} disabled={currentPage === totalPages} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>Next →</button>
+                                            <button onClick={nextPage} disabled={currentPage === totalPages} className="px-3 py-1 rounded-lg border text-xs font-semibold"
+                                                style={{ borderColor: C.border, background: C.surface, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>Next →</button>
                                         </div>
                                     </div>
                                 )}
@@ -643,8 +662,10 @@ export default function ExpenseBreakDown({
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="rounded-xl px-3.5 py-3" style={{ background: (categories[0]?.pct ?? 0) > 60 ? C.redBg : (categories[0]?.pct ?? 0) > 40 ? C.amberBg : "#F0FDF4" }}>
-                                        <div className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: (categories[0]?.pct ?? 0) > 60 ? C.red : (categories[0]?.pct ?? 0) > 40 ? C.amber : C.positive }}>
+                                    <div className="rounded-xl px-3.5 py-3"
+                                        style={{ background: (categories[0]?.pct ?? 0) > 60 ? C.redBg : (categories[0]?.pct ?? 0) > 40 ? C.amberBg : "var(--color-success-bg)" }}>
+                                        <div className="text-[11px] font-bold uppercase tracking-[0.06em]"
+                                            style={{ color: (categories[0]?.pct ?? 0) > 60 ? C.red : (categories[0]?.pct ?? 0) > 40 ? C.amber : C.positive }}>
                                             {(categories[0]?.pct ?? 0) > 60 ? "High concentration" : (categories[0]?.pct ?? 0) > 40 ? "Moderate concentration" : "Diversified spend"}
                                         </div>
                                         <div className="text-xs mt-1" style={{ color: C.mid }}>"{categories[0]?.name}" drives {categories[0]?.pct ?? 0}% of expenses</div>

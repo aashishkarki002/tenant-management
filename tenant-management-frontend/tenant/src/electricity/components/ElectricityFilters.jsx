@@ -152,13 +152,6 @@ export function ElectricityFilters({
           </>
         )}
 
-        {/* Period summary — pushed to the right */}
-        {periodLabel && (
-            <div className="ml-auto hidden lg:flex items-center gap-2 px-3 py-1.5 bg-muted-fill rounded-lg border border-muted-fill">
-            <span className="text-xs text-text-sub font-medium">Viewing:</span>
-            <span className="text-sm font-bold text-text-strong">{periodLabel}</span>
-          </div>
-        )}
 
       </div>
     </div>

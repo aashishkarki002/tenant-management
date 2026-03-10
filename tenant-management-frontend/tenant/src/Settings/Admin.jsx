@@ -168,8 +168,8 @@ export default function Admin() {
     <div className="p-4 sm:p-6 md:p-8 space-y-6">
       {/* Page header */}
       <div className="space-y-1">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Settings</h1>
-        <p className="text-sm sm:text-base text-slate-500">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">Settings</h1>
+        <p className="text-sm sm:text-base text-text-sub">
           Manage your account preferences, admin details, and financial settings
         </p>
       </div>
@@ -190,7 +190,7 @@ export default function Admin() {
             overflow-x-auto
             whitespace-nowrap
             mb-6
-            bg-slate-100
+            bg-secondary
             rounded-lg
             p-1
             gap-1
@@ -203,11 +203,11 @@ export default function Admin() {
               px-4 py-2
               rounded-md
               text-sm font-medium
-              text-slate-600
-              data-[state=active]:bg-white
-              data-[state=active]:text-slate-900
+              text-text-sub
+              data-[state=active]:bg-surface-raised
+              data-[state=active]:text-foreground
               data-[state=active]:shadow-sm
-              hover:text-slate-900
+              hover:text-foreground
               transition-all
               shrink-0
             "
@@ -223,11 +223,11 @@ export default function Admin() {
               px-4 py-2
               rounded-md
               text-sm font-medium
-              text-slate-600
-              data-[state=active]:bg-white
-              data-[state=active]:text-slate-900
+              text-text-sub
+              data-[state=active]:bg-surface-raised
+              data-[state=active]:text-foreground
               data-[state=active]:shadow-sm
-              hover:text-slate-900
+              hover:text-foreground
               transition-all
               shrink-0
             "
@@ -243,11 +243,11 @@ export default function Admin() {
               px-4 py-2
               rounded-md
               text-sm font-medium
-              text-slate-600
-              data-[state=active]:bg-white
-              data-[state=active]:text-slate-900
+              text-text-sub
+              data-[state=active]:bg-surface-raised
+              data-[state=active]:text-foreground
               data-[state=active]:shadow-sm
-              hover:text-slate-900
+              hover:text-foreground
               transition-all
               shrink-0
             "

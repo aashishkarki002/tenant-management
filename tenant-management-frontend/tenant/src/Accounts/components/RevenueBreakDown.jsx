@@ -47,7 +47,7 @@ const REF_CFG = {
     MANUAL: { bg: C.alt, color: C.muted },
 };
 
-const fmt = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
+const fmt = (n) => `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
 const fmtK = (v) => {
     const a = Math.abs(v);
     return a >= 100000 ? `${(a / 100000).toFixed(1)}L` : a >= 1000 ? `${(a / 1000).toFixed(0)}K` : String(a);
@@ -180,6 +180,8 @@ function TPill({ t }) {
 export default function RevenueBreakDown({
     onRevenueAdded,
     selectedQuarter = null,
+    selectedMonth = null,
+    fiscalYear = null,
     compareMode = false,
     compareQuarter = null,
     customStartDate = "",
@@ -196,12 +198,14 @@ export default function RevenueBreakDown({
 
     const { data: D, loading, error, refetch } = useRevenueSummary(
         selectedQuarter,
-        selectedQuarter === "custom" ? customStartDate : "",
-        selectedQuarter === "custom" ? customEndDate : "",
+        customStartDate,
+        customEndDate,
+        selectedMonth,
+        fiscalYear,
     );
 
     const { data: DB, loading: loadingB } = useRevenueSummary(
-        compareMode ? compareQuarter : null, "", "",
+        compareMode ? compareQuarter : null, "", "", null, fiscalYear,
     );
 
     useEffect(() => {
@@ -216,10 +220,16 @@ export default function RevenueBreakDown({
 
     const onSuccess = () => { refetch(); onRevenueAdded?.(); };
 
+    const BS_MONTH_NAMES = [
+        "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
+        "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
+    ];
     const periodLabel =
-        selectedQuarter === "custom" ? `${customStartDate} → ${customEndDate}`
-            : selectedQuarter ? Q_LABELS[Number(selectedQuarter)] ?? "All"
-                : "All Periods";
+        customStartDate && customEndDate ? `${customStartDate} → ${customEndDate}`
+            : selectedMonth ? `${BS_MONTH_NAMES[selectedMonth - 1]}${fiscalYear ? ` ${fiscalYear}` : ""}`
+                : selectedQuarter ? Q_LABELS[Number(selectedQuarter)] ?? "All"
+                    : fiscalYear ? `FY ${fiscalYear}/${String(fiscalYear + 1).slice(2)}`
+                        : "All Periods";
 
     const exportCSV = () => {
         if (!D) return;
@@ -335,7 +345,6 @@ export default function RevenueBreakDown({
                     { label: "Avg Ticket", val: fmt(totals.avg), sub: "per transaction", grad: `${C.forestLight},#6EE7B7` },
                     { label: "Top Source", val: streams[0]?.name ?? "—", sub: streams[0] ? fmt(streams[0].amount) : "No sources", grad: `${C.amber},#FCD34D` },
                     { label: "Tenant Revenue", val: fmt(payerSplit.find(p => p.name === "Tenant")?.amount ?? 0), sub: `${payerSplit.find(p => p.name === "Tenant")?.pct ?? 0}% of total`, grad: `${C.blue},#93C5FD` },
-                    { label: "Top Source %", val: streams[0] ? `${streams[0].pct}%` : "—", sub: "concentration", grad: `${C.violet},#C4B5FD` },
                 ].map((k, i) => (
                     <Card key={k.label} delay={i + 1} style={{ padding: 0, overflow: "hidden" }}>
                         <div style={{ height: 3, background: `linear-gradient(90deg,${k.grad})`, borderRadius: "16px 16px 0 0" }} />
@@ -346,6 +355,39 @@ export default function RevenueBreakDown({
                         </div>
                     </Card>
                 ))}
+
+                {/* Revenue Concentration — replaces bland "Top Source %" with actionable risk signal */}
+                {(() => {
+                    const pct = streams[0]?.pct ?? 0;
+                    const isHighRisk = pct >= 80;
+                    const isMedRisk = pct >= 60 && pct < 80;
+                    const riskColor = isHighRisk ? C.red : isMedRisk ? C.amber : C.positive;
+                    const riskBg = isHighRisk ? C.redBg : isMedRisk ? C.amberBg : "#DCFCE7";
+                    const riskLabel = isHighRisk ? "⚠ High Risk" : isMedRisk ? "Moderate" : "Healthy";
+                    return (
+                        <Card delay={4} style={{ padding: 0, overflow: "hidden" }}>
+                            <div style={{ height: 3, background: `linear-gradient(90deg,${C.violet},#C4B5FD)`, borderRadius: "16px 16px 0 0" }} />
+                            <div className="px-[18px] py-3.5">
+                                <Lbl>Revenue Concentration</Lbl>
+                                <div className="flex items-end gap-2 mb-1">
+                                    <div className="rv-serif text-2xl leading-none" style={{ color: C.text }}>
+                                        {streams[0] ? `${pct}%` : "—"}
+                                    </div>
+                                    {streams[0] && (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full mb-0.5" style={{ background: riskBg, color: riskColor }}>
+                                            {riskLabel}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-[11px]" style={{ color: C.muted }}>
+                                    {streams[0]
+                                        ? `${streams[0].name} dominates${isHighRisk ? " — consider diversifying" : ""}`
+                                        : "No stream data"}
+                                </div>
+                            </div>
+                        </Card>
+                    );
+                })()}
             </div>
 
             {/* ── Tab nav ───────────────────────────────────────────────────────────── */}
@@ -404,7 +446,22 @@ export default function RevenueBreakDown({
 
                         <Card delay={6}>
                             <Lbl>Revenue by Source</Lbl>
-                            {loading ? <Sk h={130} /> : streams.length === 0 ? <None /> : (
+                            {loading ? (
+                                <div className="flex flex-col gap-2">
+                                    {/* Shimmer circle */}
+                                    <div className="mx-auto rounded-full" style={{ width: 110, height: 110, background: C.alt, animation: "rv-pulse 1.5s infinite" }} />
+                                    <Sk h={14} />
+                                    <Sk h={14} />
+                                </div>
+                            ) : streams.length === 0 ? (
+                                <div
+                                    className="flex flex-col items-center justify-center gap-1.5 border border-dashed rounded-xl"
+                                    style={{ height: 130, borderColor: C.border }}
+                                >
+                                    <div className="text-[12px] font-semibold" style={{ color: C.mid }}>No streams yet</div>
+                                    <div className="text-[10px]" style={{ color: C.muted }}>Add revenue to see breakdown</div>
+                                </div>
+                            ) : (
                                 <>
                                     <ResponsiveContainer width="100%" height={130}>
                                         <PieChart>
@@ -507,6 +564,50 @@ export default function RevenueBreakDown({
                             )}
                         </Card>
                     </div>
+
+                    {/* Recent Transactions preview — surface 5 latest without tab-switching */}
+                    {transactions.length > 0 && (
+                        <Card delay={10}>
+                            <div className="flex justify-between items-center mb-3">
+                                <Lbl style={{ marginBottom: 0 }}>Recent Transactions</Lbl>
+                                <button
+                                    onClick={() => setTab("transactions")}
+                                    className="text-xs font-bold bg-transparent border-none cursor-pointer"
+                                    style={{ color: C.forestLight }}
+                                >
+                                    View all {transactions.length} →
+                                </button>
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                                {transactions.slice(0, 5).map((t, i) => (
+                                    <div
+                                        key={t._id ?? i}
+                                        className="flex items-center gap-3 px-2 py-2.5 rounded-[9px]"
+                                        style={{ background: i % 2 !== 0 ? C.alt + "80" : "transparent" }}
+                                    >
+                                        <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center"
+                                            style={{ background: C.forestLight + "18" }}>
+                                            <ArrowUpRightIcon size={13} color={C.forestLight} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[13px] font-medium overflow-hidden text-ellipsis whitespace-nowrap" style={{ color: C.text }}>
+                                                {t.payer ?? "—"}
+                                            </div>
+                                            <div className="text-[10px]" style={{ color: C.muted }}>{t.bsDate ?? t.date ?? "—"}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-[13px] font-bold text-right" style={{ color: C.positive }}>
+                                                +{fmt(t.amount)}
+                                            </div>
+                                            <div className="text-[10px] text-right" style={{ color: C.muted }}>
+                                                {t.source ?? t.refType ?? ""}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    )}
                 </div>
             )}
 

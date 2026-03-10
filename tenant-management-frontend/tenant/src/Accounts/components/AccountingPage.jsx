@@ -15,8 +15,9 @@ import {
     Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from "@/components/ui/sheet";
 import {
-    AreaChart, Area, BarChart, Bar, XAxis, YAxis,
-    CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend,
+    ComposedChart, Bar, Line, XAxis, YAxis,
+    CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+    Legend, AreaChart, Area, BarChart, Cell,
 } from "recharts";
 
 import { useHeaderSlot } from "../../context/HeaderSlotContext";
@@ -64,33 +65,58 @@ function toBSMonthYear(isoOrDate) {
     } catch { return "—"; }
 }
 
-// ─── Design tokens — petrol theme ─────────────────────────────────────────────
+// ─── Current BS month name (for chart highlight) ──────────────────────────────
+function getCurrentBSMonthName() {
+    try {
+        const now = new NepaliDate();
+        return BS_MONTHS[now.getMonth()];
+    } catch { return null; }
+}
+const CURRENT_BS_MONTH = getCurrentBSMonthName();
+
+
+function getCurrentFiscalYear() {
+    try {
+        const now = new NepaliDate();
+        const bsMonth = now.getMonth();
+        const bsYear = now.getYear();
+        return bsMonth <= 2 ? bsYear - 1 : bsYear;
+    } catch {
+        return new NepaliDate().getYear();
+    }
+}
+
+const CURRENT_FISCAL_YEAR = getCurrentFiscalYear();
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
-    bg: "#FAFAF8",
-    surface: "#FFFFFF",
-    surfaceAlt: "#F5F4F0",
-    surfaceHover: "#FAFAF8",
-    forest: "#1A5276",
-    forestMid: "#154360",
-    forestLight: "#2E86C1",
-    amber: "#92400E",
-    amberBg: "#FEF9C3",
-    amberLight: "#FDE68A",
-    red: "#991B1B",
-    redBg: "#FEE2E2",
-    blue: "#1E40AF",
-    blueBg: "#DBEAFE",
+    bg: "var(--color-bg)",
+    surface: "var(--color-surface-raised)",
+    surfaceAlt: "var(--color-surface)",
+    surfaceHover: "var(--color-bg)",
+    forest: "var(--color-accent)",
+    forestMid: "var(--color-accent-hover)",
+    forestLight: "var(--color-info)",
+    amber: "var(--color-warning)",
+    amberBg: "var(--color-warning-bg)",
+    amberLight: "var(--color-warning-border)",
+    red: "var(--color-danger)",
+    redBg: "var(--color-danger-bg)",
+    blue: "var(--color-info)",
+    blueBg: "var(--color-info-bg)",
     violet: "#6D28D9",
-    border: "#E7E5E0",
-    borderStrong: "#D6D3CC",
-    text: "#1C1917",
-    textMid: "#44403C",
-    textMuted: "#78716C",
-    positive: "#166534",
-    positiveBg: "#DCFCE7",
-    negative: "#991B1B",
-    negativeBg: "#FEE2E2",
-    neutral: "#44403C",
+    border: "var(--color-border)",
+    borderStrong: "var(--color-muted-fill)",
+    text: "var(--color-text-strong)",
+    textMid: "var(--color-text-body)",
+    textMuted: "var(--color-text-sub)",
+    positive: "var(--color-success)",
+    positiveBg: "var(--color-success-bg)",
+    negative: "var(--color-danger)",
+    negativeBg: "var(--color-danger-bg)",
+    neutral: "var(--color-text-body)",
+    // Net line color — distinct from bars
+    netLine: "#10B981",
 };
 
 const QUARTERS = [
@@ -167,7 +193,7 @@ function Delta({ value, label }) {
     );
 }
 
-function ProgBar({ value, max, color = C.forest, h = 5 }) {
+function ProgBar({ value, max, color = "var(--color-accent)", h = 5 }) {
     const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
     return (
         <div className="flex-1 overflow-hidden" style={{ height: h, borderRadius: h / 2, background: C.border }}>
@@ -176,7 +202,7 @@ function ProgBar({ value, max, color = C.forest, h = 5 }) {
     );
 }
 
-function Spark({ data = [], color = C.forest, h = 32 }) {
+function Spark({ data = [], color = "var(--color-accent)", h = 32 }) {
     if (data.length < 2) return <div style={{ height: h }} />;
     const vals = data.map(d => d.v ?? 0);
     const mn = Math.min(...vals), mx = Math.max(...vals), rng = mx - mn || 1;
@@ -191,7 +217,7 @@ function Spark({ data = [], color = C.forest, h = 32 }) {
     );
 }
 
-function Gauge({ pct, color = C.forest }) {
+function Gauge({ pct, color = "var(--color-accent)" }) {
     const r = 48, cx = 60, cy = 58;
     const clamped = Math.max(0, Math.min(1, pct));
     const angle = Math.PI + clamped * Math.PI;
@@ -219,7 +245,12 @@ function ChartTip({ active, payload, label }) {
                 <div key={p.dataKey} className="flex items-center gap-2 text-xs text-white mb-0.5">
                     <span className="inline-block w-2 h-2 rounded-sm flex-shrink-0" style={{ background: p.fill ?? p.color }} />
                     <span style={{ opacity: .65, flex: 1 }}>{p.name}</span>
-                    <span className="font-bold">₹{fmtK(Math.abs(p.value || 0))}</span>
+                    <span className="font-bold">
+                        {p.dataKey === "net"
+                            ? `${(p.value ?? 0) >= 0 ? "+" : "−"}₹${fmtK(Math.abs(p.value || 0))}`
+                            : `₹${fmtK(Math.abs(p.value || 0))}`
+                        }
+                    </span>
                 </div>
             ))}
         </div>
@@ -234,24 +265,199 @@ function Skeleton({ h = 32 }) {
 // ─── CHART COMPONENTS ────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function RevExpChart({ data = [], loading }) {
-    if (loading) return <Skeleton h={180} />;
+/**
+ * Revenue vs Expenses bar chart with a net cash flow line overlay.
+ * Uses ComposedChart so bars and line share the same axis space.
+ * A secondary right-axis for the net line prevents scale distortion when
+ * net values are much smaller than gross revenue/expense bars.
+ */
+function RevExpChart({ data = [], loading, currentMonth = null }) {
+    const [logScale, setLogScale] = useState(false);
+
+    // Enrich data with net value for the line
+    const enriched = useMemo(() =>
+        data.map(d => ({
+            ...d,
+            net: (d.revenue ?? 0) - (d.expenses ?? 0),
+        })),
+        [data]
+    );
+
+    const dominanceFlag = useMemo(() => {
+        if (data.length < 2) return false;
+        const vals = data.map(d => Math.max(d.revenue ?? 0, d.expenses ?? 0)).filter(v => v > 0);
+        if (!vals.length) return false;
+        const sorted = [...vals].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        return median > 0 && sorted[sorted.length - 1] > 5 * median;
+    }, [data]);
+
+    if (loading) return <Skeleton h={200} />;
     if (!data.length) return (
-        <div className="flex items-center justify-center text-[13px]" style={{ height: 180, color: C.textMuted }}>
-            No data for selected period
+        <div className="flex flex-col items-center justify-center gap-1 border border-dashed rounded-xl" style={{ height: 200, color: C.textMuted, borderColor: C.border }}>
+            <div className="text-[13px] font-semibold" style={{ color: C.textMid }}>No data for selected period</div>
+            <div className="text-[11px]">Select a quarter or custom range</div>
         </div>
     );
+
+    // Compute net domain with some padding for the right axis
+    const netVals = enriched.map(d => d.net);
+    const netMin = Math.min(...netVals);
+    const netMax = Math.max(...netVals);
+    const netPad = Math.max(Math.abs(netMax - netMin) * 0.15, 1000);
+    const netDomain = [netMin - netPad, netMax + netPad];
+
     return (
-        <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={data} margin={{ top: 4, right: 0, left: -18, bottom: 0 }} barCategoryGap="30%" barGap={3}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={C.border} />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.textMuted }} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: C.textMuted }} tickLine={false} axisLine={false} width={38} />
-                <Tooltip content={<ChartTip />} cursor={{ fill: C.surfaceAlt, radius: 4 }} />
-                <Bar dataKey="revenue" name="Revenue" fill={C.forestLight} radius={[3, 3, 0, 0]} maxBarSize={28} />
-                <Bar dataKey="expenses" name="Expenses" fill={C.amber} radius={[3, 3, 0, 0]} maxBarSize={28} />
-            </BarChart>
-        </ResponsiveContainer>
+        <div>
+            {dominanceFlag && (
+                <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px]" style={{ color: C.textMuted }}>
+                        ⚠ One period dominates — consider log scale
+                    </span>
+                    <button
+                        onClick={() => setLogScale(p => !p)}
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-lg cursor-pointer border"
+                        style={{ borderColor: logScale ? C.forest : C.border, background: logScale ? C.forest + "10" : "transparent", color: logScale ? C.forest : C.textMuted }}
+                    >
+                        {logScale ? "Linear" : "Log scale"}
+                    </button>
+                </div>
+            )}
+
+            {/* Legend */}
+            <div className="flex items-center gap-4 mb-3 flex-wrap">
+                {[
+                    { color: C.forestLight, label: "Revenue" },
+                    { color: C.amber, label: "Expenses" },
+                    { color: C.netLine, label: "Net Cash Flow", isDash: true },
+                ].map(x => (
+                    <div key={x.label} className="flex items-center gap-1.5">
+                        {x.isDash ? (
+                            <svg width={20} height={10} style={{ flexShrink: 0 }}>
+                                <line x1="0" y1="5" x2="20" y2="5" stroke={x.color} strokeWidth={2} strokeDasharray="4 2" />
+                                <circle cx="10" cy="5" r="2.5" fill={x.color} />
+                            </svg>
+                        ) : (
+                            <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: x.color }} />
+                        )}
+                        <span className="text-[11px]" style={{ color: C.textMuted }}>{x.label}</span>
+                    </div>
+                ))}
+            </div>
+
+            <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={enriched} margin={{ top: 4, right: 44, left: -18, bottom: 0 }} barCategoryGap="30%" barGap={3}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={C.border} />
+                    <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 10, fill: C.textMuted }}
+                        tickLine={false}
+                        axisLine={false}
+                    />
+                    {/* Left axis — bars (revenue / expenses) */}
+                    <YAxis
+                        yAxisId="bars"
+                        tickFormatter={fmtK}
+                        tick={{ fontSize: 10, fill: C.textMuted }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={38}
+                        scale={logScale ? "log" : "auto"}
+                        domain={logScale ? ["auto", "auto"] : undefined}
+                        allowDataOverflow={logScale}
+                    />
+                    {/* Right axis — net line, independent scale */}
+                    <YAxis
+                        yAxisId="net"
+                        orientation="right"
+                        tickFormatter={v => `${v >= 0 ? "+" : "−"}${fmtK(Math.abs(v))}`}
+                        tick={{ fontSize: 9, fill: C.netLine, opacity: 0.7 }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={44}
+                        domain={netDomain}
+                    />
+                    <Tooltip content={<ChartTip />} cursor={{ fill: C.surfaceAlt, radius: 4 }} />
+
+                    <Bar yAxisId="bars" dataKey="revenue" name="Revenue" radius={[3, 3, 0, 0]} maxBarSize={28}>
+                        {enriched.map((entry, i) => {
+                            const isCurrent = currentMonth && entry.label === currentMonth;
+                            return (
+                                <Cell
+                                    key={`rev-${i}`}
+                                    fill={C.forestLight}
+                                    opacity={isCurrent ? 1 : 0.72}
+                                    stroke={isCurrent ? C.forestLight : "none"}
+                                    strokeWidth={isCurrent ? 1.5 : 0}
+                                />
+                            );
+                        })}
+                    </Bar>
+                    <Bar yAxisId="bars" dataKey="expenses" name="Expenses" radius={[3, 3, 0, 0]} maxBarSize={28}>
+                        {enriched.map((entry, i) => {
+                            const isCurrent = currentMonth && entry.label === currentMonth;
+                            return (
+                                <Cell
+                                    key={`exp-${i}`}
+                                    fill={C.amber}
+                                    opacity={isCurrent ? 1 : 0.72}
+                                    stroke={isCurrent ? C.amber : "none"}
+                                    strokeWidth={isCurrent ? 1.5 : 0}
+                                />
+                            );
+                        })}
+                    </Bar>
+
+                    {/* Zero reference line for net axis */}
+                    <ReferenceLine yAxisId="net" y={0} stroke={C.netLine} strokeOpacity={0.25} strokeDasharray="4 3" />
+
+                    {/* Current month marker */}
+                    {currentMonth && enriched.some(d => d.label === currentMonth) && (
+                        <ReferenceLine
+                            yAxisId="bars"
+                            x={currentMonth}
+                            stroke={C.forest}
+                            strokeDasharray="3 3"
+                            strokeOpacity={0.45}
+                            strokeWidth={1.5}
+                            label={{
+                                value: "now",
+                                position: "insideTopRight",
+                                fontSize: 9,
+                                fontWeight: 700,
+                                fill: C.forest,
+                                opacity: 0.7,
+                            }}
+                        />
+                    )}
+
+                    <Line
+                        yAxisId="net"
+                        type="monotone"
+                        dataKey="net"
+                        name="Net"
+                        stroke={C.netLine}
+                        strokeWidth={2}
+                        strokeDasharray="5 3"
+                        dot={(props) => {
+                            const { cx, cy, payload } = props;
+                            const isPositive = (payload.net ?? 0) >= 0;
+                            return (
+                                <circle
+                                    key={`dot-${cx}-${cy}`}
+                                    cx={cx}
+                                    cy={cy}
+                                    r={3.5}
+                                    fill={isPositive ? C.netLine : C.negative}
+                                    stroke="none"
+                                />
+                            );
+                        }}
+                        activeDot={{ r: 5, fill: C.netLine, strokeWidth: 0 }}
+                    />
+                </ComposedChart>
+            </ResponsiveContainer>
+        </div>
     );
 }
 
@@ -446,6 +652,14 @@ function Scorecard({ totals, loading }) {
     const statusColor = margin >= 25 ? C.positive : margin >= 10 ? C.amber : margin >= 0 ? C.amber : C.negative;
     const gaugePct = Math.max(0, Math.min(1, margin / 40));
 
+    const insight = margin >= 25
+        ? "Strong profitability. Expenses well controlled."
+        : margin >= 10
+            ? "Healthy margin. Review expense growth."
+            : margin >= 0
+                ? "Low margin. Prioritize expense reduction."
+                : "Expenses exceed revenue. Action needed.";
+
     return (
         <div className="flex flex-col gap-4">
             <div className="flex flex-col items-center">
@@ -461,15 +675,43 @@ function Scorecard({ totals, loading }) {
                     : <div className="ap-serif text-[30px] -mt-2 leading-none" style={{ color: C.text }}>{margin.toFixed(1)}%</div>
                 }
                 <div className="text-[11px] mt-0.5" style={{ color: C.textMuted }}>Net Margin</div>
+                <div className="flex items-center gap-3 mt-2">
+                    {[{ l: "At Risk", c: C.negative }, { l: "Watch", c: C.amber }, { l: "Excellent", c: C.positive }].map(x => (
+                        <div key={x.l} className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: x.c }} />
+                            <span className="text-[9px]" style={{ color: C.textMuted }}>{x.l}</span>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-2 text-center text-[11px] px-1 py-1.5 rounded-lg w-full" style={{ background: `${statusColor}10`, color: statusColor }}>
+                    {insight}
+                </div>
             </div>
             <div className="flex flex-col gap-2.5">
                 {[
-                    { label: "Expense Ratio", value: expRatio, max: 100, color: expRatio > 80 ? C.red : C.amber, display: `${expRatio.toFixed(1)}%` },
-                    { label: "Revenue Retained", value: Math.max(0, 100 - expRatio), max: 100, color: C.forestLight, display: `${Math.max(0, 100 - expRatio).toFixed(1)}%` },
+                    {
+                        label: "Expense Ratio",
+                        value: expRatio,
+                        max: 100,
+                        color: expRatio > 80 ? C.red : C.amber,
+                        display: `${expRatio.toFixed(1)}%`,
+                        benchmark: "target <20%",
+                    },
+                    {
+                        label: "Revenue Retained",
+                        value: Math.max(0, 100 - expRatio),
+                        max: 100,
+                        color: C.forestLight,
+                        display: `${Math.max(0, 100 - expRatio).toFixed(1)}%`,
+                        benchmark: "target >80%",
+                    },
                 ].map(m => (
                     <div key={m.label}>
                         <div className="flex justify-between mb-1.5">
-                            <span className="text-[11px]" style={{ color: C.textMuted }}>{m.label}</span>
+                            <div>
+                                <span className="text-[11px]" style={{ color: C.textMuted }}>{m.label}</span>
+                                <span className="text-[9px] ml-1.5" style={{ color: C.textMuted, opacity: 0.6 }}>{m.benchmark}</span>
+                            </div>
                             <span className="text-[11px] font-bold" style={{ color: C.text }}>{m.display}</span>
                         </div>
                         <ProgBar value={m.value} max={m.max} color={m.color} />
@@ -477,11 +719,24 @@ function Scorecard({ totals, loading }) {
                 ))}
                 {coverage !== null && (
                     <div className="mt-0.5 px-3 py-2.5 rounded-xl" style={{ background: coverage >= 1 ? C.positiveBg : C.negativeBg }}>
-                        <div className="text-[10px] font-bold tracking-[0.07em] uppercase" style={{ color: coverage >= 1 ? C.positive : C.red }}>
-                            Liability Coverage
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-[10px] font-bold tracking-[0.07em] uppercase" style={{ color: coverage >= 1 ? C.positive : C.red }}>
+                                    Liability Coverage
+                                </div>
+                                <div className="text-[9px] mt-0.5" style={{ color: C.textMuted }}>
+                                    Revenue ÷ Liabilities · target &gt;1×
+                                </div>
+                            </div>
+                            <div className="ap-serif text-2xl" style={{ color: coverage >= 1 ? C.positive : C.red }}>
+                                {coverage.toFixed(2)}×
+                            </div>
                         </div>
-                        <div className="ap-serif text-2xl mt-0.5" style={{ color: C.text }}>{coverage.toFixed(2)}×</div>
-                        <div className="text-[11px]" style={{ color: C.textMuted }}>revenue vs liabilities</div>
+                        {coverage < 1 && (
+                            <div className="mt-1.5 text-[10px] font-semibold" style={{ color: C.red }}>
+                                ⚠ Revenue does not fully cover liabilities
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -541,47 +796,29 @@ function LedgerFeed({ entries = [], loading, onViewAll }) {
     );
 }
 
-function ExportBtn({ summary, filterLabel }) {
-    const dl = (data, name, type) => {
-        const b = new Blob([data], { type });
-        const u = URL.createObjectURL(b);
-        Object.assign(document.createElement("a"), { href: u, download: name }).click();
-        URL.revokeObjectURL(u);
-    };
-    const t = summary?.totals ?? {};
+// ─── FY Picker inline helper ──────────────────────────────────────────────────
+function FYPicker({ value, onChange, years }) {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <button
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer"
-                    style={{ borderColor: C.border, background: C.surface, color: C.text }}
+                    className="flex items-center gap-1 rounded-[9px] text-[12px] font-semibold cursor-pointer"
+                    style={{ padding: "5px 10px", border: `1.5px solid ${C.border}`, background: "transparent", color: C.textMid }}
                 >
-                    <ShareIcon size={12} />Export<ChevronDownIcon size={10} style={{ opacity: .4 }} />
+                    FY {value}<ChevronDownIcon size={10} style={{ opacity: .5 }} />
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="rounded-xl min-w-[176px]">
-                <DropdownMenuItem onClick={() => window.print()} className="gap-2 cursor-pointer">
-                    <PrinterIcon size={13} />Print Report
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => {
-                    const rows = [
-                        ["Metric", "Value"],
-                        ["Revenue", t.totalRevenue ?? 0],
-                        ["Expenses", t.totalExpenses ?? 0],
-                        ["Liabilities", t.totalLiabilities ?? 0],
-                        ["Net Cash Flow", t.netCashFlow ?? 0],
-                        ["Period", filterLabel],
-                    ];
-                    dl(rows.map(r => r.join(",")).join("\n"), `accounts-${Date.now()}.csv`, "text/csv");
-                }}>
-                    <DownloadIcon size={13} />Export CSV
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => {
-                    dl(JSON.stringify(summary, null, 2), `accounts-${Date.now()}.json`, "application/json");
-                }}>
-                    <FileTextIcon size={13} />Export JSON
-                </DropdownMenuItem>
+            <DropdownMenuContent align="start" className="rounded-xl p-2 min-w-[120px]">
+                {years.map(y => (
+                    <DropdownMenuItem
+                        key={y}
+                        onClick={() => onChange(y)}
+                        className="cursor-pointer rounded-lg"
+                        style={{ fontWeight: y === value ? 700 : 400, color: y === value ? C.forest : C.textMid }}
+                    >
+                        FY {y}/{String(y + 1).slice(2)}
+                    </DropdownMenuItem>
+                ))}
             </DropdownMenuContent>
         </DropdownMenu>
     );
@@ -592,333 +829,316 @@ function ExportBtn({ summary, filterLabel }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function AccountingHeaderSlot({
+    filterGranularity, onGranularityChange,
     selectedQuarter, onQuarterChange,
+    selectedMonth, onMonthChange,
+    selectedFiscalYear, onFiscalYearChange,
     customStart, customEnd, onCustomStartChange, onCustomEndChange,
     compareMode, onCompareModeToggle,
     compareQuarter, onCompareQuarterChange,
     onAddRevenue, onAddExpense, onRefresh,
     summary, filterLabel, bankAccounts,
+    activeTab = "overview",
 }) {
     const isMobile = useIsMobile();
-    const [showCustom, setShowCustom] = useState(false);
     const [showMobileFilters, setShowMobileFilters] = useState(false);
+    const [showCustom, setShowCustom] = useState(false);
+
+    const FISCAL_YEARS = useMemo(() => {
+        return [CURRENT_FISCAL_YEAR, CURRENT_FISCAL_YEAR - 1, CURRENT_FISCAL_YEAR - 2];
+    }, []);
+
+    const GRANULARITIES = [
+        { id: "month", label: "Month" },
+        { id: "quarter", label: "Quarter" },
+        { id: "year", label: "Year" },
+        { id: "custom", label: "Custom" },
+    ];
+
+    const handleGranularity = (g) => {
+        onGranularityChange(g);
+        if (g !== "custom") {
+            onCustomStartChange("");
+            onCustomEndChange("");
+        }
+        if (g !== "month") onMonthChange(null);
+        if (g !== "quarter") onQuarterChange(null);
+    };
 
     const handleApplyCustom = () => {
-        onQuarterChange("custom");
         setShowCustom(false);
     };
 
-    const activeFilterCount = useMemo(() => {
-        let count = 0;
-        if (selectedQuarter !== null) count++;
-        if (compareMode) count++;
-        return count;
-    }, [selectedQuarter, compareMode]);
+    const secondaryPicker = () => {
+        if (filterGranularity === "year") {
+            return (
+                <div className="flex gap-1.5 flex-wrap">
+                    {FISCAL_YEARS.map(y => (
+                        <button
+                            key={y}
+                            onClick={() => onFiscalYearChange(y)}
+                            className="rounded-lg text-[12px] font-semibold cursor-pointer transition-all"
+                            style={{
+                                padding: "5px 12px",
+                                border: `1.5px solid ${selectedFiscalYear === y ? C.forest : C.border}`,
+                                background: selectedFiscalYear === y ? C.forest : "transparent",
+                                color: selectedFiscalYear === y ? "#fff" : C.textMid,
+                            }}
+                        >
+                            FY {y}/{String(y + 1).slice(2)}
+                        </button>
+                    ))}
+                </div>
+            );
+        }
 
-    const QPill = ({ label, value }) => (
-        <button
-            onClick={() => onQuarterChange(value)}
-            className="rounded-lg text-[13px] font-semibold cursor-pointer transition-all"
-            style={{
-                padding: "6px 14px", minHeight: 44,
-                border: `1px solid ${selectedQuarter === value ? C.forest : C.border}`,
-                background: selectedQuarter === value ? C.forest : "transparent",
-                color: selectedQuarter === value ? "#fff" : C.textMid,
-            }}
-        >
-            {label}
-        </button>
-    );
+        if (filterGranularity === "quarter") {
+            return (
+                <div className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                        {QUARTERS.filter(q => q.value !== null).map(q => (
+                            <button
+                                key={q.value}
+                                onClick={() => onQuarterChange(q.value)}
+                                className="rounded-lg text-[12px] font-semibold cursor-pointer transition-all"
+                                style={{
+                                    padding: "5px 10px",
+                                    border: `1.5px solid ${selectedQuarter === q.value ? C.forest : C.border}`,
+                                    background: selectedQuarter === q.value ? C.forest : "transparent",
+                                    color: selectedQuarter === q.value ? "#fff" : C.textMid,
+                                }}
+                                title={QUARTER_MONTHS[q.value]}
+                            >
+                                {q.label}
+                            </button>
+                        ))}
+                    </div>
+                    <FYPicker value={selectedFiscalYear} onChange={onFiscalYearChange} years={FISCAL_YEARS} />
+                </div>
+            );
+        }
 
-    // ─── MOBILE LAYOUT ────────────────────────────────────────────────────────
+        if (filterGranularity === "month") {
+            return (
+                <div className="flex items-center gap-2 flex-wrap">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                className="flex items-center gap-1.5 rounded-[9px] text-[13px] font-semibold cursor-pointer"
+                                style={{
+                                    padding: "5px 12px",
+                                    border: `1.5px solid ${selectedMonth ? C.forest : C.border}`,
+                                    background: selectedMonth ? C.forest + "08" : "transparent",
+                                    color: selectedMonth ? C.forest : C.textMid,
+                                }}
+                            >
+                                {selectedMonth ? BS_MONTHS[selectedMonth - 1] : "Select Month"}
+                                <ChevronDownIcon size={12} style={{ opacity: .5 }} />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="rounded-2xl p-3 min-w-[240px]">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.1em] mb-2.5" style={{ color: C.textMuted }}>
+                                BS Month · FY {selectedFiscalYear}
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                                {BS_MONTHS.map((m, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => onMonthChange(i + 1)}
+                                        className="rounded-lg text-center text-[12px] font-semibold cursor-pointer transition-all"
+                                        style={{
+                                            padding: "7px 4px",
+                                            border: `1px solid ${selectedMonth === i + 1 ? C.forest : C.border}`,
+                                            background: selectedMonth === i + 1 ? C.forest : "transparent",
+                                            color: selectedMonth === i + 1 ? "#fff" : C.textMid,
+                                        }}
+                                    >
+                                        {m.slice(0, 3)}
+                                    </button>
+                                ))}
+                            </div>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <FYPicker value={selectedFiscalYear} onChange={onFiscalYearChange} years={FISCAL_YEARS} />
+                </div>
+            );
+        }
+
+        if (filterGranularity === "custom") {
+            return (
+                <div className="flex items-center gap-2">
+                    {customStart && customEnd ? (
+                        <span
+                            className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border cursor-pointer"
+                            style={{ borderColor: C.border, color: C.textMid, background: C.surface }}
+                            onClick={() => setShowCustom(true)}
+                        >
+                            {toBSShort(customStart)} → {toBSShort(customEnd)}
+                        </span>
+                    ) : (
+                        <button
+                            onClick={() => setShowCustom(true)}
+                            className="flex items-center gap-1.5 rounded-[9px] text-[12px] font-semibold cursor-pointer"
+                            style={{ padding: "5px 12px", border: `1.5px dashed ${C.border}`, background: "transparent", color: C.textMuted }}
+                        >
+                            <CalendarIcon size={13} /> Set date range
+                        </button>
+                    )}
+                    {showCustom && (
+                        <div
+                            className="absolute top-full left-0 mt-2 z-50 rounded-2xl border shadow-xl p-5 min-w-[300px]"
+                            style={{ background: C.surface, borderColor: C.border }}
+                        >
+                            <div className="text-[10px] font-bold uppercase tracking-[0.1em] mb-3" style={{ color: C.textMuted }}>Custom Date Range</div>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <div className="text-[10px] font-semibold mb-1.5" style={{ color: C.textMuted }}>Start</div>
+                                    <DualCalendarTailwind value={customStart} onChange={v => onCustomStartChange(v ?? "")} />
+                                </div>
+                                <div>
+                                    <div className="text-[10px] font-semibold mb-1.5" style={{ color: C.textMuted }}>End</div>
+                                    <DualCalendarTailwind value={customEnd} onChange={v => onCustomEndChange(v ?? "")} />
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    disabled={!customStart || !customEnd}
+                                    onClick={handleApplyCustom}
+                                    className="flex-1 rounded-[9px] border-none text-[12px] font-bold cursor-pointer text-white"
+                                    style={{ padding: "8px 0", background: C.forest, opacity: (!customStart || !customEnd) ? .4 : 1 }}
+                                >
+                                    Apply
+                                </button>
+                                <button
+                                    onClick={() => setShowCustom(false)}
+                                    className="px-4 rounded-[9px] border text-[12px] font-semibold cursor-pointer"
+                                    style={{ borderColor: C.border, background: C.surface, color: C.textMid }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        return null;
+    };
+
     if (isMobile) {
         return (
             <div className="flex flex-col gap-2.5">
                 <div className="flex items-center gap-2">
-                    {/* Hero CTA */}
                     <button
                         onClick={onAddRevenue}
                         className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border-none text-sm font-bold cursor-pointer text-white"
-                        style={{ padding: "10px 16px", background: C.forestLight, minHeight: 46, boxShadow: "0 2px 12px rgba(26,43,26,0.2)" }}
+                        style={{ padding: "10px 16px", background: C.forestLight, minHeight: 46 }}
                     >
-                        <PlusIcon size={17} strokeWidth={2.5} />
-                        Add Revenue
+                        <PlusIcon size={17} strokeWidth={2.5} /> Add Revenue
                     </button>
-
-                    {/* Filter drawer trigger */}
                     <Sheet open={showMobileFilters} onOpenChange={setShowMobileFilters}>
                         <SheetTrigger asChild>
                             <button
                                 className="flex items-center justify-center gap-1.5 rounded-xl cursor-pointer relative text-[13px] font-semibold"
                                 style={{
                                     padding: "10px 14px", minHeight: 46,
-                                    border: `1.5px solid ${activeFilterCount > 0 ? C.forest : C.border}`,
-                                    background: activeFilterCount > 0 ? C.forest + "10" : C.surface,
-                                    color: activeFilterCount > 0 ? C.forest : C.textMid,
+                                    border: `1.5px solid ${filterGranularity !== "year" ? C.forest : C.border}`,
+                                    background: filterGranularity !== "year" ? C.forest + "10" : C.surface,
+                                    color: filterGranularity !== "year" ? C.forest : C.textMid,
                                 }}
                             >
                                 <FilterIcon size={17} strokeWidth={2.2} />
-                                {activeFilterCount > 0 && (
-                                    <span
-                                        className="absolute -top-1 -right-1 flex items-center justify-center text-[10px] font-bold text-white rounded-full border-2"
-                                        style={{ width: 18, height: 18, background: C.forest, borderColor: C.bg }}
-                                    >
-                                        {activeFilterCount}
+                                {filterGranularity !== "year" && (
+                                    <span className="absolute -top-1 -right-1 flex items-center justify-center text-[10px] font-bold text-white rounded-full border-2"
+                                        style={{ width: 18, height: 18, background: C.forest, borderColor: C.bg }}>
+                                        1
                                     </span>
                                 )}
                             </button>
                         </SheetTrigger>
                         <SheetContent side="bottom" className="overflow-auto" style={{ borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "85vh" }}>
                             <SheetHeader>
-                                <SheetTitle className="text-lg font-bold" style={{ color: C.forest }}>
-                                    Filter & Compare
-                                </SheetTitle>
+                                <SheetTitle className="text-lg font-bold" style={{ color: C.forest }}>Filter Period</SheetTitle>
                             </SheetHeader>
-                            <div className="mt-6 flex flex-col gap-6">
+                            <div className="mt-6 flex flex-col gap-5">
                                 <div>
-                                    <div className="text-xs font-bold uppercase tracking-[0.08em] mb-3" style={{ color: C.textMuted }}>Period</div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {QUARTERS.map(q => <QPill key={q.label} label={q.label} value={q.value} />)}
-                                    </div>
-                                    <div className="mt-4 p-4 rounded-xl border" style={{ borderColor: C.border, background: C.surfaceAlt }}>
-                                        <div className="text-[11px] font-bold uppercase tracking-[0.08em] mb-3" style={{ color: C.textMuted }}>Custom Range</div>
-                                        <div className="flex flex-col gap-3">
-                                            <div>
-                                                <div className="text-[11px] font-semibold mb-1.5" style={{ color: C.textMuted }}>Start Date</div>
-                                                <DualCalendarTailwind value={customStart} onChange={v => onCustomStartChange(v ?? "")} />
-                                            </div>
-                                            <div>
-                                                <div className="text-[11px] font-semibold mb-1.5" style={{ color: C.textMuted }}>End Date</div>
-                                                <DualCalendarTailwind value={customEnd} onChange={v => onCustomEndChange(v ?? "")} />
-                                            </div>
-                                        </div>
-                                        <button
-                                            disabled={!customStart || !customEnd}
-                                            onClick={() => { handleApplyCustom(); setShowMobileFilters(false); }}
-                                            className="mt-3 w-full rounded-xl border-none text-sm font-bold cursor-pointer text-white"
-                                            style={{ padding: "10px 0", background: C.forest, minHeight: 44, opacity: (!customStart || !customEnd) ? .4 : 1 }}
-                                        >
-                                            Apply Custom Range
-                                        </button>
+                                    <div className="text-xs font-bold uppercase tracking-[0.08em] mb-3" style={{ color: C.textMuted }}>Granularity</div>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {GRANULARITIES.map(g => (
+                                            <button key={g.id} onClick={() => handleGranularity(g.id)}
+                                                className="rounded-lg text-center text-[13px] font-semibold cursor-pointer py-2.5"
+                                                style={{
+                                                    border: `1px solid ${filterGranularity === g.id ? C.forest : C.border}`,
+                                                    background: filterGranularity === g.id ? C.forest : "transparent",
+                                                    color: filterGranularity === g.id ? "#fff" : C.textMid,
+                                                }}>
+                                                {g.label}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
-
-                                <div>
-                                    <div className="text-xs font-bold uppercase tracking-[0.08em] mb-3" style={{ color: C.textMuted }}>Comparison</div>
-                                    <button
-                                        onClick={onCompareModeToggle}
-                                        className="w-full flex items-center justify-center gap-2 rounded-xl text-sm font-semibold cursor-pointer"
-                                        style={{
-                                            padding: "12px 16px", minHeight: 46,
-                                            border: `1.5px solid ${compareMode ? C.forest : C.border}`,
-                                            background: compareMode ? C.forest : C.surface,
-                                            color: compareMode ? "#fff" : C.textMid,
-                                        }}
-                                    >
-                                        <GitCompareArrowsIcon size={17} strokeWidth={2.2} />
-                                        {compareMode ? "Comparing Active" : "Enable Compare"}
-                                    </button>
-                                    {compareMode && (
-                                        <div className="mt-4">
-                                            <div className="text-[11px] font-bold uppercase tracking-[0.08em] mb-2.5" style={{ color: C.textMuted }}>Compare Against</div>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {QUARTERS.filter(q => q.value !== null).map(q => (
-                                                    <button
-                                                        key={q.value}
-                                                        onClick={() => onCompareQuarterChange(q.value)}
-                                                        className="flex flex-col items-center justify-center rounded-xl text-[13px] font-semibold cursor-pointer"
-                                                        style={{
-                                                            padding: "10px 12px", minHeight: 46,
-                                                            border: `1.5px solid ${compareQuarter === q.value ? C.amber : C.border}`,
-                                                            background: compareQuarter === q.value ? C.amberBg : C.surface,
-                                                            color: compareQuarter === q.value ? C.amber : C.textMid,
-                                                        }}
-                                                    >
-                                                        <span className="font-bold">{q.label}</span>
-                                                        <span className="text-[9px] mt-0.5" style={{ opacity: .7 }}>
-                                                            {QUARTER_MONTHS[q.value]}
-                                                        </span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                <div className="p-4 rounded-xl border" style={{ borderColor: C.border, background: C.surfaceAlt }}>
+                                    {secondaryPicker()}
                                 </div>
-
-                                <button
-                                    onClick={() => setShowMobileFilters(false)}
+                                <button onClick={() => setShowMobileFilters(false)}
                                     className="w-full rounded-xl border-none text-[15px] font-bold cursor-pointer text-white"
-                                    style={{ padding: "14px 16px", minHeight: 48, background: C.forest }}
-                                >
+                                    style={{ padding: "14px 16px", minHeight: 48, background: C.forest }}>
                                     Apply Filters
                                 </button>
                             </div>
                         </SheetContent>
                     </Sheet>
-
-                    {/* More actions */}
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <button
-                                className="flex items-center rounded-xl cursor-pointer border"
-                                style={{ padding: "10px 12px", minHeight: 46, borderColor: C.border, background: C.surface }}
-                            >
-                                <MoreVerticalIcon size={19} color={C.textMid} strokeWidth={2.2} />
-                            </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="rounded-xl min-w-[200px]">
-                            <DropdownMenuItem onClick={onAddExpense} className="gap-2.5 cursor-pointer py-3 px-4">
-                                <PlusIcon size={16} color={C.amber} />
-                                <span className="text-sm font-semibold">Add Expense</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={onRefresh} className="gap-2.5 cursor-pointer py-3 px-4">
-                                <RefreshCwIcon size={16} />Refresh Data
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => window.print()} className="gap-2.5 cursor-pointer py-3 px-4">
-                                <PrinterIcon size={16} />Print Report
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="gap-2.5 cursor-pointer py-3 px-4" onClick={() => {
-                                const t = summary?.totals ?? {};
-                                const rows = [["Metric", "Value"], ["Revenue", t.totalRevenue ?? 0], ["Expenses", t.totalExpenses ?? 0], ["Net Cash Flow", t.netCashFlow ?? 0], ["Period", filterLabel]];
-                                const b = new Blob([rows.map(r => r.join(",")).join("\n")], { type: "text/csv" });
-                                const u = URL.createObjectURL(b);
-                                Object.assign(document.createElement("a"), { href: u, download: `accounts-${Date.now()}.csv` }).click();
-                                URL.revokeObjectURL(u);
-                            }}>
-                                <DownloadIcon size={16} />Export CSV
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
                 </div>
-
-                {/* Active filter chip */}
-                {(selectedQuarter !== null || compareMode) && (
-                    <div
-                        className="flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl border"
-                        style={{ background: `linear-gradient(135deg, ${C.forestLight}10 0%, ${C.surface} 100%)`, borderColor: C.forest + "20" }}
-                    >
-                        <div className="text-xs flex-1" style={{ color: C.textMid }}>
-                            <span className="font-bold" style={{ color: C.forest }}>{filterLabel}</span>
-                            {compareMode && (
-                                <span className="ml-1.5 text-[11px] font-semibold" style={{ color: C.amber }}>
-                                    · vs Q{compareQuarter}
-                                </span>
-                            )}
-                        </div>
-                        <button
-                            onClick={() => {
-                                onQuarterChange(null);
-                                onCustomStartChange("");
-                                onCustomEndChange("");
-                                if (compareMode) onCompareModeToggle();
-                            }}
-                            className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded cursor-pointer border"
-                            style={{ color: C.textMuted, background: C.surface, borderColor: C.border }}
-                        >
-                            <XIcon size={13} />Clear
-                        </button>
-                    </div>
-                )}
             </div>
         );
     }
 
-    // ─── DESKTOP LAYOUT ───────────────────────────────────────────────────────
     return (
-        <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Add Revenue */}
-            <button
-                onClick={onAddRevenue}
-                className="flex items-center gap-1.5 rounded-xl border-none text-sm font-bold cursor-pointer text-white transition-transform hover:-translate-y-px"
-                style={{ padding: "7px 18px", background: C.forestLight, boxShadow: "0 2px 8px rgba(26,43,26,0.15)" }}
-            >
-                <PlusIcon size={15} strokeWidth={2.5} />
-                Add Revenue
-            </button>
+        <div className="flex items-center gap-2.5 flex-wrap relative">
+            {activeTab !== "revenue" && (
+                <button
+                    onClick={onAddRevenue}
+                    className="flex items-center gap-1.5 rounded-xl border-none text-sm font-bold cursor-pointer text-white transition-transform hover:-translate-y-px"
+                    style={{ padding: "7px 18px", background: C.forestLight, boxShadow: "0 2px 8px rgba(26,43,26,0.15)" }}
+                >
+                    <PlusIcon size={15} strokeWidth={2.5} />Add Revenue
+                </button>
+            )}
+            {activeTab === "revenue" && (
+                <span className="text-[12px] font-semibold px-3 py-1.5 rounded-lg"
+                    style={{ background: C.positiveBg, color: C.positive }}>
+                    Revenue View
+                </span>
+            )}
 
-            <div className="w-px h-7 mx-1" style={{ background: C.border }} />
+            <div className="w-px h-7 mx-0.5" style={{ background: C.border }} />
 
-            {/* Period filter */}
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+            <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: C.surfaceAlt }}>
+                {GRANULARITIES.map(g => (
                     <button
-                        className="flex items-center gap-1.5 rounded-[9px] text-[13px] font-semibold cursor-pointer transition-all"
+                        key={g.id}
+                        onClick={() => handleGranularity(g.id)}
+                        className="rounded-md text-[12px] font-semibold cursor-pointer transition-all"
                         style={{
-                            padding: "7px 14px",
-                            border: `1.5px solid ${selectedQuarter !== null ? C.forest : C.border}`,
-                            background: selectedQuarter !== null ? C.forest + "08" : "transparent",
-                            color: selectedQuarter !== null ? C.forest : C.textMid,
+                            padding: "5px 12px",
+                            background: filterGranularity === g.id ? C.surface : "transparent",
+                            color: filterGranularity === g.id ? C.forest : C.textMuted,
+                            boxShadow: filterGranularity === g.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                            fontWeight: filterGranularity === g.id ? 700 : 500,
                         }}
                     >
-                        <CalendarIcon size={14} strokeWidth={2.2} />
-                        <span>{selectedQuarter === "custom" ? `${toBSShort(customStart)}–${toBSShort(customEnd)}` : selectedQuarter ? `Q${selectedQuarter}` : "All Periods"}</span>
-                        <ChevronDownIcon size={13} style={{ opacity: .5 }} />
+                        {g.label}
                     </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="rounded-2xl p-5 min-w-[280px]">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.1em] mb-3.5" style={{ color: C.textMuted }}>Select Period</div>
-                    <div className="grid grid-cols-3 gap-2 mb-4">
-                        {QUARTERS.map(q => (
-                            <button
-                                key={q.label}
-                                onClick={() => onQuarterChange(q.value)}
-                                className="rounded-lg text-center text-[13px] font-semibold cursor-pointer transition-all"
-                                style={{
-                                    padding: "10px 8px",
-                                    border: `1px solid ${selectedQuarter === q.value ? C.forest : C.border}`,
-                                    background: selectedQuarter === q.value ? C.forest : "transparent",
-                                    color: selectedQuarter === q.value ? "#fff" : C.textMid,
-                                }}
-                            >
-                                {q.label}
-                                {q.value && (
-                                    <div className="text-[9px] mt-0.5" style={{ opacity: .7 }}>
-                                        {QUARTER_MONTHS[q.value]?.split("–")[0]}
-                                    </div>
-                                )}
-                            </button>
-                        ))}
-                    </div>
-                    <DropdownMenuSeparator />
-                    <div className="mt-4">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.1em] mb-2.5" style={{ color: C.textMuted }}>Custom Range</div>
-                        <div className="grid grid-cols-2 gap-2.5 mb-3">
-                            <div>
-                                <div className="text-[10px] font-semibold mb-1.5" style={{ color: C.textMuted }}>Start</div>
-                                <DualCalendarTailwind value={customStart} onChange={v => onCustomStartChange(v ?? "")} />
-                            </div>
-                            <div>
-                                <div className="text-[10px] font-semibold mb-1.5" style={{ color: C.textMuted }}>End</div>
-                                <DualCalendarTailwind value={customEnd} onChange={v => onCustomEndChange(v ?? "")} />
-                            </div>
-                        </div>
-                        <button
-                            disabled={!customStart || !customEnd}
-                            onClick={handleApplyCustom}
-                            className="w-full rounded-[9px] border-none text-[13px] font-bold cursor-pointer text-white"
-                            style={{ padding: "9px 0", background: C.forest, opacity: (!customStart || !customEnd) ? .4 : 1 }}
-                        >
-                            Apply Custom Range
-                        </button>
-                    </div>
-                    {selectedQuarter !== null && (
-                        <>
-                            <DropdownMenuSeparator />
-                            <button
-                                onClick={() => { onQuarterChange(null); onCustomStartChange(""); onCustomEndChange(""); }}
-                                className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold bg-transparent border-none cursor-pointer py-2"
-                                style={{ color: C.textMuted }}
-                            >
-                                <XIcon size={13} />Clear Filter
-                            </button>
-                        </>
-                    )}
-                </DropdownMenuContent>
-            </DropdownMenu>
+                ))}
+            </div>
 
-            {/* Compare toggle */}
+            <div className="relative">
+                {secondaryPicker()}
+            </div>
+
+            <div className="w-px h-7 mx-0.5" style={{ background: C.border }} />
+
             <button
                 onClick={onCompareModeToggle}
                 className="flex items-center gap-1.5 rounded-[9px] text-[13px] font-semibold cursor-pointer transition-all"
@@ -972,7 +1192,6 @@ function AccountingHeaderSlot({
 
             <div className="flex-1 min-w-5" />
 
-            {/* More actions */}
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <button
@@ -1005,28 +1224,6 @@ function AccountingHeaderSlot({
                     }}>
                         <DownloadIcon size={15} />Export CSV
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-2.5 cursor-pointer py-2.5 px-3.5" onClick={() => {
-                        const b = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
-                        const u = URL.createObjectURL(b);
-                        Object.assign(document.createElement("a"), { href: u, download: `accounts-${Date.now()}.json` }).click();
-                        URL.revokeObjectURL(u);
-                    }}>
-                        <FileTextIcon size={15} />Export JSON
-                    </DropdownMenuItem>
-                    {bankAccounts[0] && (
-                        <>
-                            <DropdownMenuSeparator />
-                            <div className="px-3.5 py-2.5 pointer-events-none">
-                                <div className="flex items-center gap-2">
-                                    <BuildingIcon size={14} color={C.textMuted} />
-                                    <div>
-                                        <div className="text-[11px] font-bold" style={{ color: C.text }}>{bankAccounts[0].bankName}</div>
-                                        <div className="text-[10px]" style={{ color: C.textMuted }}>Balance: ₹{bankAccounts[0].balance?.toLocaleString()}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
-                    )}
                 </DropdownMenuContent>
             </DropdownMenu>
         </div>
@@ -1038,7 +1235,10 @@ function AccountingHeaderSlot({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function AccountingPage() {
+    const [filterGranularity, setFilterGranularity] = useState("year");
     const [selectedQuarter, setSelectedQuarter] = useState(null);
+    const [selectedMonth, setSelectedMonth] = useState(null);
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState(CURRENT_FISCAL_YEAR);
     const [customStart, setCustomStart] = useState("");
     const [customEnd, setCustomEnd] = useState("");
     const [compareMode, setCompareMode] = useState(false);
@@ -1046,25 +1246,64 @@ export default function AccountingPage() {
     const [activeTab, setActiveTab] = useState("overview");
     const [pendingAction, setPendingAction] = useState(null);
 
+    const resolvedFilter = useMemo(() => {
+        if (filterGranularity === "custom" && customStart && customEnd) {
+            return { quarter: null, month: null, startDate: customStart, endDate: customEnd, fiscalYear: selectedFiscalYear };
+        }
+        if (filterGranularity === "month" && selectedMonth) {
+            return { quarter: null, month: selectedMonth, startDate: null, endDate: null, fiscalYear: selectedFiscalYear };
+        }
+        if (filterGranularity === "quarter" && selectedQuarter) {
+            return { quarter: selectedQuarter, month: null, startDate: null, endDate: null, fiscalYear: selectedFiscalYear };
+        }
+        // "year" granularity — no quarter/month, just fiscalYear
+        return { quarter: null, month: null, startDate: null, endDate: null, fiscalYear: selectedFiscalYear };
+    }, [filterGranularity, selectedQuarter, selectedMonth, selectedFiscalYear, customStart, customEnd]);
+
+    // ── Derive chart-level allYear flag ─────────────────────────────────────
+    // allYear = true when user is in "year" granularity mode (no quarter selected)
+    // This tells the backend to return all 12 months of the fiscal year in fiscal order.
+    const chartAllYear = filterGranularity === "year";
+
+    // ── Chart quarter: only pass a quarter when the user explicitly picked one ─
+    // In "year" mode, selectedQuarter is null — allYear covers it.
+    const chartQuarter = filterGranularity === "quarter" ? resolvedFilter.quarter : null;
+
     const activeCompareQuarter = compareMode ? compareQuarter : null;
 
     const { summary, loadingSummary, ledgerEntries, loadingLedger, refetch } =
-        useAccounting(selectedQuarter, "all", customStart, customEnd);
+        useAccounting(
+            resolvedFilter.quarter,
+            "all",
+            resolvedFilter.startDate,
+            resolvedFilter.endDate,
+            resolvedFilter.month,
+            resolvedFilter.fiscalYear,
+        );
 
     const { bankAccounts } = useBankAccounts();
 
+    // ── FIX: pass fiscalYear + allYear to useMonthlyChart ───────────────────
     const { chartData, compareData, comparisonStats, loadingChart } =
-        useMonthlyChart(selectedQuarter, activeCompareQuarter);
+        useMonthlyChart(
+            chartQuarter,
+            activeCompareQuarter,
+            selectedFiscalYear,
+            chartAllYear,
+        );
 
     const totals = summary?.totals ?? { totalRevenue: 0, totalExpenses: 0, totalLiabilities: 0, netCashFlow: 0 };
-
     const netMargin = totals.totalRevenue > 0 ? (totals.netCashFlow / totals.totalRevenue) * 100 : 0;
 
     const filterLabel = useMemo(() => {
-        if (selectedQuarter === "custom") return `${toBSDate(customStart)} → ${toBSDate(customEnd)}`;
-        if (selectedQuarter) return `Q${selectedQuarter} · ${QUARTER_MONTHS[selectedQuarter]} · FY 2081`;
-        return "FY 2081/82 · All Periods";
-    }, [selectedQuarter, customStart, customEnd]);
+        if (filterGranularity === "custom" && customStart && customEnd)
+            return `${toBSDate(customStart)} → ${toBSDate(customEnd)}`;
+        if (filterGranularity === "month" && selectedMonth)
+            return `${BS_MONTHS[selectedMonth - 1]} ${selectedFiscalYear}`;
+        if (filterGranularity === "quarter" && selectedQuarter)
+            return `Q${selectedQuarter} · ${QUARTER_MONTHS[selectedQuarter]} · FY ${selectedFiscalYear}`;
+        return `FY ${selectedFiscalYear}/${String(selectedFiscalYear + 1).slice(2)}`;
+    }, [filterGranularity, selectedQuarter, selectedMonth, selectedFiscalYear, customStart, customEnd]);
 
     const labelA = selectedQuarter ? `Q${selectedQuarter} · ${QUARTER_MONTHS[selectedQuarter] ?? ""}` : "Current";
     const labelB = `Q${compareQuarter} · ${QUARTER_MONTHS[compareQuarter] ?? ""}`;
@@ -1075,8 +1314,14 @@ export default function AccountingPage() {
     useHeaderSlot(
         () => (
             <AccountingHeaderSlot
+                filterGranularity={filterGranularity}
+                onGranularityChange={setFilterGranularity}
                 selectedQuarter={selectedQuarter}
                 onQuarterChange={setSelectedQuarter}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
+                selectedFiscalYear={selectedFiscalYear}
+                onFiscalYearChange={setSelectedFiscalYear}
                 customStart={customStart}
                 customEnd={customEnd}
                 onCustomStartChange={setCustomStart}
@@ -1091,13 +1336,22 @@ export default function AccountingPage() {
                 summary={summary}
                 filterLabel={filterLabel}
                 bankAccounts={bankAccounts}
+                activeTab={activeTab}
             />
         ),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [selectedQuarter, customStart, customEnd, compareMode, compareQuarter, filterLabel, summary, bankAccounts, handleAddRevenue, handleAddExpense, refetch],
+        [filterGranularity, selectedQuarter, selectedMonth, selectedFiscalYear, customStart, customEnd, compareMode, compareQuarter, filterLabel, summary, bankAccounts, handleAddRevenue, handleAddExpense, refetch, activeTab],
     );
 
-    const filterProps = { selectedQuarter, compareMode, compareQuarter, customStartDate: customStart, customEndDate: customEnd };
+    const filterProps = {
+        selectedQuarter: resolvedFilter.quarter,
+        selectedMonth: resolvedFilter.month,
+        fiscalYear: resolvedFilter.fiscalYear,
+        compareMode,
+        compareQuarter,
+        customStartDate: resolvedFilter.startDate,
+        customEndDate: resolvedFilter.endDate,
+    };
 
     return (
         <div className="ap min-h-screen" style={{ background: C.bg }}>
@@ -1139,98 +1393,139 @@ export default function AccountingPage() {
             {/* ── Page body ─────────────────────────────────────────────────── */}
             <div className="flex flex-col gap-[18px]" style={{ padding: "16px 28px 32px" }}>
 
-                {/* ── HERO KPI CARDS ─────────────────────────────────────────── */}
-                <div className="grid gap-3.5" style={{ gridTemplateColumns: "minmax(260px,auto) 1fr 1fr 1fr" }}>
-
-                    {/* Net Cash Position — dark hero card */}
-                    <DarkCard delay={0} style={{ padding: "22px 26px", minWidth: 260 }}>
-                        <Lbl light>Net Cash Position</Lbl>
-                        {loadingSummary
-                            ? <div className="h-[54px] rounded-lg" style={{ background: "rgba(255,255,255,.08)", animation: "ap-pulse 1.5s infinite" }} />
-                            : <div className="ap-serif text-[52px] text-white leading-none" style={{ letterSpacing: "-0.02em" }}>
-                                ₹{fmtN(Math.abs(totals.netCashFlow))}
+                {activeTab === "overview" && (
+                    <div className="grid gap-3.5" style={{ gridTemplateColumns: "minmax(260px,auto) 1fr 1fr 1fr" }}>
+                        <DarkCard delay={0} style={{ padding: "22px 26px", minWidth: 260 }}>
+                            <Lbl light>Net Cash Position</Lbl>
+                            {loadingSummary
+                                ? <div className="h-[54px] rounded-lg" style={{ background: "rgba(255,255,255,.08)", animation: "ap-pulse 1.5s infinite" }} />
+                                : <div className="ap-serif text-[52px] text-white leading-none" style={{ letterSpacing: "-0.02em" }}>
+                                    ₹{fmtN(Math.abs(totals.netCashFlow))}
+                                </div>
+                            }
+                            <div className="mt-2 flex items-center gap-2">
+                                <Delta value={netMargin} label={`${netMargin >= 0 ? "+" : ""}${netMargin.toFixed(1)}% margin`} />
+                                <span className="text-[11px]" style={{ color: "rgba(255,255,255,.4)" }}>
+                                    {totals.netCashFlow >= 0 ? "Surplus" : "Deficit"}
+                                </span>
                             </div>
-                        }
-                        <div className="mt-2 flex items-center gap-2">
-                            <Delta value={netMargin} label={`${netMargin >= 0 ? "+" : ""}${netMargin.toFixed(1)}% margin`} />
-                            <span className="text-[11px]" style={{ color: "rgba(255,255,255,.4)" }}>
-                                {totals.netCashFlow >= 0 ? "Surplus" : "Deficit"}
+                            <div className="mt-3.5">
+                                <Spark
+                                    data={(compareMode ? compareData : chartData).map(d =>
+                                        compareMode
+                                            ? { v: (d.revenueA ?? 0) - (d.expensesA ?? 0) }
+                                            : { v: (d.revenue ?? 0) - (d.expenses ?? 0) }
+                                    )}
+                                    color={totals.netCashFlow >= 0 ? "#6EE7B7" : "#FCA5A5"}
+                                    h={36}
+                                />
+                            </div>
+                            <div className="mt-2.5 flex gap-4">
+                                {[
+                                    { l: "Revenue", v: totals.totalRevenue, c: "#6EE7B7" },
+                                    { l: "Expenses", v: totals.totalExpenses, c: "#FCA5A5" },
+                                ].map(x => (
+                                    <div key={x.l}>
+                                        <div className="text-[10px] mb-0.5" style={{ color: "rgba(255,255,255,.35)" }}>{x.l}</div>
+                                        <div className="text-sm font-bold" style={{ color: x.c }}>₹{fmtK(x.v)}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </DarkCard>
+
+                        <Card delay={1}>
+                            <Lbl>Total Revenue</Lbl>
+                            {loadingSummary
+                                ? <Skeleton h={40} />
+                                : <div className="ap-serif text-[40px] font-normal leading-none" style={{ color: C.forest, letterSpacing: "-0.02em" }}>
+                                    ₹{fmtN(totals.totalRevenue)}
+                                </div>
+                            }
+                            <div className="mt-2.5">
+                                <Spark data={chartData.map(d => ({ v: d.revenue ?? 0 }))} color={C.forestLight} h={28} />
+                            </div>
+                            <div className="mt-2.5">
+                                <BreakdownPills breakdown={summary?.incomeStreams?.breakdown?.slice(0, 3) ?? []} loading={loadingSummary} />
+                            </div>
+                        </Card>
+
+                        <Card delay={2}>
+                            <Lbl>Total Expenses</Lbl>
+                            {loadingSummary
+                                ? <Skeleton h={40} />
+                                : <div className="ap-serif text-[40px] font-normal leading-none" style={{ color: C.amber, letterSpacing: "-0.02em" }}>
+                                    ₹{fmtN(totals.totalExpenses)}
+                                </div>
+                            }
+                            <div className="mt-2.5">
+                                <Spark data={chartData.map(d => ({ v: d.expenses ?? 0 }))} color={C.amber} h={28} />
+                            </div>
+                            <div className="mt-2.5">
+                                <BreakdownPills breakdown={summary?.expensesBreakdown?.slice(0, 3) ?? []} loading={loadingSummary} />
+                            </div>
+                        </Card>
+
+                        <Card delay={3}>
+                            <div className="flex items-start justify-between mb-1">
+                                <Lbl style={{ marginBottom: 0 }}>Outstanding Liabilities</Lbl>
+                                <span
+                                    className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                                    style={{ background: C.redBg, color: C.red, whiteSpace: "nowrap" }}
+                                >
+                                    BALANCE SHEET
+                                </span>
+                            </div>
+                            {loadingSummary
+                                ? <Skeleton h={40} />
+                                : <div className="ap-serif text-[40px] font-normal leading-none mt-2" style={{ color: C.red, letterSpacing: "-0.02em" }}>
+                                    ₹{fmtN(totals.totalLiabilities)}
+                                </div>
+                            }
+                            <div className="mt-1 text-[11px]" style={{ color: C.textMuted }}>
+                                Deposits &amp; obligations held — not cash flow
+                            </div>
+                            <div className="mt-2.5">
+                                <BreakdownPills breakdown={summary?.liabilitiesBreakdown ?? []} loading={loadingSummary} />
+                            </div>
+                        </Card>
+                    </div>
+                )}
+
+                {activeTab !== "overview" && (
+                    <div
+                        className="flex items-center justify-between gap-4 px-4 py-2.5 rounded-xl border"
+                        style={{ background: C.surfaceAlt, borderColor: C.border }}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-bold uppercase tracking-[0.07em]" style={{ color: C.textMuted }}>Net</span>
+                                <span className="text-[14px] font-bold" style={{ color: totals.netCashFlow >= 0 ? C.positive : C.negative }}>
+                                    {totals.netCashFlow >= 0 ? "+" : "−"}₹{fmtK(Math.abs(totals.netCashFlow))}
+                                </span>
+                            </div>
+                            <div className="w-px h-4" style={{ background: C.border }} />
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[11px]" style={{ color: C.textMuted }}>Revenue</span>
+                                <span className="text-[13px] font-semibold" style={{ color: C.forestLight }}>₹{fmtK(totals.totalRevenue)}</span>
+                            </div>
+                            <div className="w-px h-4" style={{ background: C.border }} />
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[11px]" style={{ color: C.textMuted }}>Expenses</span>
+                                <span className="text-[13px] font-semibold" style={{ color: C.amber }}>₹{fmtK(totals.totalExpenses)}</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                                style={{ background: C.forest + "14", color: C.forest }}>
+                                {filterLabel}
+                            </span>
+                            <span className="text-[10px]" style={{ color: C.textMuted }}>
+                                ↑ Summary for this period
                             </span>
                         </div>
-                        <div className="mt-3.5">
-                            <Spark
-                                data={(compareMode ? compareData : chartData).map(d =>
-                                    compareMode
-                                        ? { v: (d.revenueA ?? 0) - (d.expensesA ?? 0) }
-                                        : { v: (d.revenue ?? 0) - (d.expenses ?? 0) }
-                                )}
-                                color={totals.netCashFlow >= 0 ? "#6EE7B7" : "#FCA5A5"}
-                                h={36}
-                            />
-                        </div>
-                        <div className="mt-2.5 flex gap-4">
-                            {[
-                                { l: "Revenue", v: totals.totalRevenue, c: "#6EE7B7" },
-                                { l: "Expenses", v: totals.totalExpenses, c: "#FCA5A5" },
-                            ].map(x => (
-                                <div key={x.l}>
-                                    <div className="text-[10px] mb-0.5" style={{ color: "rgba(255,255,255,.35)" }}>{x.l}</div>
-                                    <div className="text-sm font-bold" style={{ color: x.c }}>₹{fmtK(x.v)}</div>
-                                </div>
-                            ))}
-                        </div>
-                    </DarkCard>
+                    </div>
+                )}
 
-                    {/* Revenue */}
-                    <Card delay={1}>
-                        <Lbl>Total Revenue</Lbl>
-                        {loadingSummary
-                            ? <Skeleton h={40} />
-                            : <div className="ap-serif text-[40px] font-normal leading-none" style={{ color: C.forest, letterSpacing: "-0.02em" }}>
-                                ₹{fmtN(totals.totalRevenue)}
-                            </div>
-                        }
-                        <div className="mt-2.5">
-                            <Spark data={chartData.map(d => ({ v: d.revenue ?? 0 }))} color={C.forestLight} h={28} />
-                        </div>
-                        <div className="mt-2.5">
-                            <BreakdownPills breakdown={summary?.incomeStreams?.breakdown?.slice(0, 3) ?? []} loading={loadingSummary} />
-                        </div>
-                    </Card>
-
-                    {/* Expenses */}
-                    <Card delay={2}>
-                        <Lbl>Total Expenses</Lbl>
-                        {loadingSummary
-                            ? <Skeleton h={40} />
-                            : <div className="ap-serif text-[40px] font-normal leading-none" style={{ color: C.amber, letterSpacing: "-0.02em" }}>
-                                ₹{fmtN(totals.totalExpenses)}
-                            </div>
-                        }
-                        <div className="mt-2.5">
-                            <Spark data={chartData.map(d => ({ v: d.expenses ?? 0 }))} color={C.amber} h={28} />
-                        </div>
-                        <div className="mt-2.5">
-                            <BreakdownPills breakdown={summary?.expensesBreakdown?.slice(0, 3) ?? []} loading={loadingSummary} />
-                        </div>
-                    </Card>
-
-                    {/* Liabilities */}
-                    <Card delay={3}>
-                        <Lbl>Outstanding Liabilities</Lbl>
-                        {loadingSummary
-                            ? <Skeleton h={40} />
-                            : <div className="ap-serif text-[40px] font-normal leading-none" style={{ color: C.red, letterSpacing: "-0.02em" }}>
-                                ₹{fmtN(totals.totalLiabilities)}
-                            </div>
-                        }
-                        <div className="mt-2.5">
-                            <BreakdownPills breakdown={summary?.liabilitiesBreakdown ?? []} loading={loadingSummary} />
-                        </div>
-                    </Card>
-                </div>
-
-                {/* ── OVERVIEW TAB ───────────────────────────────────────────── */}
                 {activeTab === "overview" && (
                     <div className="flex flex-col gap-4">
                         {compareMode && (
@@ -1259,7 +1554,6 @@ export default function AccountingPage() {
                             <CompareStatStrip stats={comparisonStats} labelA={labelA} labelB={labelB} loading={loadingChart} />
                         )}
 
-                        {/* Cash flow trend + scorecard */}
                         <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 290px" }}>
                             <Card delay={compareMode ? 2 : 0}>
                                 <div className="flex justify-between items-start mb-3">
@@ -1269,15 +1563,8 @@ export default function AccountingPage() {
                                         </Lbl>
                                         <div className="text-[11px]" style={{ color: C.textMuted }}>{filterLabel}</div>
                                     </div>
-                                    <div className="flex gap-3">
-                                        {[{ c: C.forestLight, l: "Revenue" }, { c: C.amber, l: "Expenses" }].map(x => (
-                                            <div key={x.l} className="flex items-center gap-1.5 text-[11px]" style={{ color: C.textMuted }}>
-                                                <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: x.c }} />{x.l}
-                                            </div>
-                                        ))}
-                                    </div>
                                 </div>
-                                <RevExpChart data={chartData} loading={loadingChart} />
+                                <RevExpChart data={chartData} loading={loadingChart} currentMonth={CURRENT_BS_MONTH} />
                             </Card>
 
                             <Card delay={compareMode ? 3 : 1}>
@@ -1286,7 +1573,6 @@ export default function AccountingPage() {
                             </Card>
                         </div>
 
-                        {/* Cash position + revenue streams */}
                         <div className="grid grid-cols-2 gap-4">
                             <Card delay={compareMode ? 4 : 2}>
                                 <div className="flex justify-between mb-2.5">
@@ -1311,7 +1597,6 @@ export default function AccountingPage() {
                             </Card>
                         </div>
 
-                        {/* Recent transactions */}
                         <Card delay={compareMode ? 6 : 4}>
                             <div className="flex justify-between items-center mb-3.5">
                                 <Lbl style={{ marginBottom: 0 }}>Recent Transactions</Lbl>
@@ -1328,35 +1613,25 @@ export default function AccountingPage() {
                     </div>
                 )}
 
-                {/* ── REVENUE TAB ─────────────────────────────────────────────── */}
                 {activeTab === "revenue" && (
                     <div className="flex flex-col gap-4">
-                        <Card
-                            delay={0}
-                            style={{
-                                padding: "14px 20px",
-                                background: `linear-gradient(135deg, ${C.positiveBg} 0%, ${C.surface} 100%)`,
-                                borderLeft: `4px solid ${C.forestLight}`,
-                            }}
+                        <div
+                            className="flex items-center justify-between flex-wrap gap-2 px-1 pb-1 border-b"
+                            style={{ borderColor: C.border }}
                         >
-                            <div className="flex items-center justify-between flex-wrap gap-3">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: C.forestLight }}>
-                                        <TrendingUpIcon size={18} color="#fff" />
-                                    </div>
-                                    <div>
-                                        <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.textMuted }}>Revenue Detail View</div>
-                                        <div className="text-[13px] mt-0.5" style={{ color: C.textMid }}>
-                                            Analyzing revenue streams for <span className="font-bold" style={{ color: C.text }}>{filterLabel}</span>
-                                        </div>
-                                    </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: C.forestLight }}>
+                                    <TrendingUpIcon size={13} color="#fff" />
                                 </div>
-                                <div className="px-4 py-2 rounded-xl border" style={{ background: C.surface, borderColor: C.border }}>
-                                    <div className="text-[10px] mb-0.5" style={{ color: C.textMuted }}>Total Revenue (from KPIs above)</div>
-                                    <div className="text-lg font-bold" style={{ color: C.forestLight }}>₹{fmtN(totals.totalRevenue)}</div>
-                                </div>
+                                <span className="text-[13px]" style={{ color: C.textMid }}>
+                                    Revenue streams for{" "}
+                                    <span className="font-bold" style={{ color: C.text }}>{filterLabel}</span>
+                                </span>
                             </div>
-                        </Card>
+                            <span className="text-[12px] font-semibold" style={{ color: C.forestLight }}>
+                                ₹{fmtN(totals.totalRevenue)} total
+                            </span>
+                        </div>
                         <RevenueBreakDown
                             onRevenueAdded={refetch}
                             {...filterProps}
@@ -1366,35 +1641,25 @@ export default function AccountingPage() {
                     </div>
                 )}
 
-                {/* ── EXPENSES TAB ────────────────────────────────────────────── */}
                 {activeTab === "expenses" && (
                     <div className="flex flex-col gap-4">
-                        <Card
-                            delay={0}
-                            style={{
-                                padding: "14px 20px",
-                                background: `linear-gradient(135deg, ${C.amberBg} 0%, ${C.surface} 100%)`,
-                                borderLeft: `4px solid ${C.amber}`,
-                            }}
+                        <div
+                            className="flex items-center justify-between flex-wrap gap-2 px-1 pb-1 border-b"
+                            style={{ borderColor: C.border }}
                         >
-                            <div className="flex items-center justify-between flex-wrap gap-3">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: C.amber }}>
-                                        <TrendingDownIcon size={18} color="#fff" />
-                                    </div>
-                                    <div>
-                                        <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.textMuted }}>Expense Detail View</div>
-                                        <div className="text-[13px] mt-0.5" style={{ color: C.textMid }}>
-                                            Analyzing expense categories for <span className="font-bold" style={{ color: C.text }}>{filterLabel}</span>
-                                        </div>
-                                    </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: C.amber }}>
+                                    <TrendingDownIcon size={13} color="#fff" />
                                 </div>
-                                <div className="px-4 py-2 rounded-xl border" style={{ background: C.surface, borderColor: C.border }}>
-                                    <div className="text-[10px] mb-0.5" style={{ color: C.textMuted }}>Total Expenses (from KPIs above)</div>
-                                    <div className="text-lg font-bold" style={{ color: C.amber }}>₹{fmtN(totals.totalExpenses)}</div>
-                                </div>
+                                <span className="text-[13px]" style={{ color: C.textMid }}>
+                                    Expense categories for{" "}
+                                    <span className="font-bold" style={{ color: C.text }}>{filterLabel}</span>
+                                </span>
                             </div>
-                        </Card>
+                            <span className="text-[12px] font-semibold" style={{ color: C.amber }}>
+                                ₹{fmtN(totals.totalExpenses)} total
+                            </span>
+                        </div>
                         <ExpenseBreakDown
                             onExpenseAdded={refetch}
                             {...filterProps}
@@ -1404,15 +1669,14 @@ export default function AccountingPage() {
                     </div>
                 )}
 
-                {/* ── LEDGER TAB ──────────────────────────────────────────────── */}
                 {activeTab === "ledger" && (
                     <div className="flex flex-col gap-4">
                         <Card
                             delay={0}
                             style={{
                                 padding: "14px 20px",
-                                background: `linear-gradient(135deg, ${C.blueBg} 0%, ${C.surface} 100%)`,
-                                borderLeft: `4px solid ${C.blue}`,
+                                background: `linear-gradient(135deg, var(--color-info-bg) 0%, var(--color-surface-raised) 100%)`,
+                                borderLeft: `4px solid var(--color-info)`,
                             }}
                         >
                             <div className="flex items-center justify-between flex-wrap gap-3">

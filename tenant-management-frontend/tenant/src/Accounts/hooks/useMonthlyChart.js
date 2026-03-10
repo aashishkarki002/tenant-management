@@ -17,18 +17,16 @@ function sum(arr, key) {
 /**
  * Fetches monthly chart data from /api/accounting/monthly-chart.
  *
- * Industry standard: one HTTP request → all data.
- * Previously this made N requests (one per month) from the client — that logic
- * now lives entirely in accounting.service.js::getMonthlyChartData().
- *
- * @param selectedQuarter  Primary period  (null = last 5 months)
+ * @param selectedQuarter  Primary period  (null = last 5 months, or allYear if fiscalYear set)
  * @param compareQuarter   Secondary period (null = compare off)
- * @param fiscalYear       BS year override
+ * @param fiscalYear       BS year override — when set with no quarter, sends allYear=true
+ * @param allYear          Force allYear mode (12-month fiscal year view)
  */
 export function useMonthlyChart(
   selectedQuarter,
   compareQuarter = null,
   fiscalYear = null,
+  allYear = false,
 ) {
   const [chartData, setChartData] = useState([]);
   const [compareData, setCompareData] = useState([]);
@@ -39,8 +37,13 @@ export function useMonthlyChart(
 
   const buildParams = (quarter) => {
     const params = {};
-    if (quarter) params.quarter = quarter;
     if (fiscalYear) params.fiscalYear = fiscalYear;
+    if (quarter) {
+      params.quarter = quarter;
+    } else if (allYear || fiscalYear) {
+      // When viewing a full fiscal year (no specific quarter), request all 12 months
+      params.allYear = true;
+    }
     return params;
   };
 
@@ -48,7 +51,6 @@ export function useMonthlyChart(
     setLoadingChart(true);
     try {
       if (isCompare) {
-        // Two parallel requests — still just 2 HTTP calls (vs N before)
         const [resA, resB] = await Promise.all([
           api.get("/api/accounting/monthly-chart", {
             params: buildParams(selectedQuarter),
@@ -111,7 +113,7 @@ export function useMonthlyChart(
       setLoadingChart(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedQuarter, compareQuarter, fiscalYear]);
+  }, [selectedQuarter, compareQuarter, fiscalYear, allYear]);
 
   useEffect(() => {
     let cancelled = false;

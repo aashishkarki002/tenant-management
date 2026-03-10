@@ -279,20 +279,10 @@ export default function ElectricityPage() {
         <div className="flex items-center gap-2 ml-auto shrink-0">
           <Button
             type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleExportReport}
-            className="border-[#DDD6D0] text-[#1C1A18] bg-white hover:bg-[#F8F5F2] hover:text-[#3D1414]"
-          >
-            <Download className="w-3 h-3" />
-            <span className="hidden sm:inline ml-1.5">Export</span>
-          </Button>
-          <Button
-            type="button"
             size="sm"
             onClick={() => setDialogOpen(true)}
             className="hover:opacity-90"
-            style={{ background: "#3D1414", color: "#F0DADA" }}
+
           >
             <PlusIcon className="w-3 h-3" />
             <span className="hidden sm:inline ml-1.5">Add Reading</span>
@@ -301,8 +291,19 @@ export default function ElectricityPage() {
             type="button"
             variant="outline"
             size="sm"
+            onClick={handleExportReport}
+            className=" text-foreground bg-secondary hover:bg-secondary/80"
+          >
+            <Download className="w-3 h-3" />
+            <span className="hidden sm:inline ml-1.5">Export</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => navigate("/submeter")}
-            className="border-[#DDD6D0] text-[#1C1A18] bg-white hover:bg-[#F8F5F2] hover:text-[#3D1414]"
+            className=" text-foreground bg-secondary hover:bg-secondary/80"
           >
             <Settings className="w-3 h-3" />
             <span className="hidden sm:inline ml-1.5">Submeters</span>
@@ -375,7 +376,7 @@ export default function ElectricityPage() {
   // Inline-row saving is handled via an explicit onClick handler.
 
   return (
-    <div className="min-h-screen pb-8" style={{ background: "#F8F5F2" }}>
+    <div className="min-h-screen pb-8 bg-background">
       <div className="space-y-4 pt-5 px-4 sm:px-5">
 
         <ElectricityHeader
@@ -393,19 +394,19 @@ export default function ElectricityPage() {
 
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-[#1C1A18] tracking-tight">
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">
               Electricity Dashboard
             </h1>
-            <p className="text-sm text-[#948472] mt-1">
+            <p className="text-sm text-text-sub mt-1">
               Monitor consumption, track billing, and manage meter readings across all properties
             </p>
           </div>
           {periodLabel && (
-            <div className="bg-white rounded-lg border border-[#E8E4E0] px-4 py-2 shadow-sm">
-              <p className="text-xs text-[#948472] font-medium uppercase tracking-wide">
+            <div className="bg-surface-raised rounded-lg border border-border px-4 py-2 shadow-sm">
+              <p className="text-xs text-text-sub font-medium uppercase tracking-wide">
                 Current Period
               </p>
-              <p className="text-base font-bold text-[#1C1A18] mt-0.5">{periodLabel}</p>
+              <p className="text-base font-bold text-foreground mt-0.5">{periodLabel}</p>
             </div>
           )}
         </div>
@@ -426,19 +427,19 @@ export default function ElectricityPage() {
         <ElectricityInsights grouped={grouped} />
 
         {searchQuery && (
-          <div className="bg-white rounded-lg border border-[#E8E4E0] px-4 py-2.5 flex items-center justify-between">
+          <div className="bg-surface-raised rounded-lg border border-border px-4 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-[#948472]" />
-              <p className="text-sm text-[#1C1A18]">
+              <Search className="w-4 h-4 text-text-sub" />
+              <p className="text-sm text-foreground">
                 Found <span className="font-bold">{readings.length}</span> result
                 {readings.length !== 1 ? "s" : ""} for{" "}
-                <span className="font-semibold text-[#3D1414]">"{searchQuery}"</span>
+                <span className="font-semibold text-primary">"{searchQuery}"</span>
               </p>
             </div>
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              className="text-xs text-[#948472] hover:text-[#3D1414] underline underline-offset-2 transition-colors"
+              className="text-xs text-text-sub hover:text-primary underline underline-offset-2 transition-colors"
             >
               Clear search
             </button>
