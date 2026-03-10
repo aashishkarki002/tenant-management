@@ -1,21 +1,28 @@
 /**
- * camCharge.js
+ * camCharge.js  (FIXED)
  *
  * Builds the journal payload for a CAM charge:
  *   DR  Accounts Receivable  (ASSET ↑ — tenant owes CAM)
  *   CR  Revenue              (REVENUE ↑ — CAM income earned)
  *
- * Aligned with rentCharge.js:
- *   - Uses getRawPaisa() to safely extract the integer paisa value.
- *   - Uses buildJournalPayload() for a validated, canonical output.
- *   - Uses assertNepaliFields() to catch wrong calendar fields early.
- *   - Includes tenant name in all descriptions (matches security-deposit pattern).
+ * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
+ *      never as a raw Date object.
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
 import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
 import { getRawPaisa } from "../../../utils/moneyUtil.js";
-import { assertNepaliFields } from "../../../utils/nepaliDateHelper.js";
+import {
+  assertNepaliFields,
+  formatNepaliISO,
+} from "../../../utils/nepaliDateHelper.js";
+import NepaliDate from "nepali-datetime";
+
+function resolveNepaliDateString(raw, fallback) {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  const base = raw instanceof Date ? raw : fallback;
+  return formatNepaliISO(new NepaliDate(base));
+}
 
 /**
  * @param {Object} cam  - Cam document (Mongoose doc or plain object)
@@ -23,37 +30,35 @@ import { assertNepaliFields } from "../../../utils/nepaliDateHelper.js";
  *   Optional:   createdAt, createdBy, nepaliDate, tenant.name
  *
  * @param {Object} options
- *   @param {*}      options.createdBy  - Admin ObjectId (overrides cam.createdBy)
+ *   @param {*} options.createdBy  - Admin ObjectId
  *
  * @returns {Object} Canonical journal payload for postJournalEntry
  */
 export function buildCamChargeJournal(cam, options = {}) {
-  // ── 1. Nepali calendar validation ────────────────────────────────────────
+  // ── 1. Validate ───────────────────────────────────────────────────────────
   assertNepaliFields({
     nepaliYear: cam.nepaliYear,
     nepaliMonth: cam.nepaliMonth,
   });
 
-  // ── 2. Extract raw paisa — no guessing, no coercion ──────────────────────
+  // ── 2. Extract raw paisa ──────────────────────────────────────────────────
   const amountPaisa = getRawPaisa(cam, "amountPaisa");
 
-  // ── 3. Metadata ──────────────────────────────────────────────────────────
+  // ── 3. Metadata ───────────────────────────────────────────────────────────
   const transactionDate =
     cam.createdAt instanceof Date
       ? cam.createdAt
       : new Date(cam.createdAt ?? Date.now());
-  const nepaliDate =
-    cam.nepaliDate instanceof Date ? cam.nepaliDate : transactionDate;
+
+  // FIX: always a BS "YYYY-MM-DD" string
+  const nepaliDate = resolveNepaliDateString(cam.nepaliDate, transactionDate);
+
   const { nepaliMonth, nepaliYear } = cam;
   const tenantName = cam.tenant?.name ?? "Tenant";
   const createdBy = options.createdBy ?? cam.createdBy ?? null;
-
-  // ── 4. Descriptions — include tenant name so ledger entries are
-  //       unambiguous when scanning across multiple tenants (matches
-  //       security-deposit and rent-charge patterns).
   const description = `CAM charge for ${nepaliMonth}/${nepaliYear} from ${tenantName}`;
 
-  // ── 5. Build canonical payload ───────────────────────────────────────────
+  // ── 4. Build canonical payload ────────────────────────────────────────────
   return buildJournalPayload({
     transactionType: "CAM_CHARGE",
     referenceType: "Cam",

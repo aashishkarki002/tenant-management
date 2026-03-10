@@ -7,20 +7,28 @@
  *   DR  Expense Account   (EXPENSE ↑ — cost recorded)
  *   CR  Cash / Bank       (ASSET ↓  — money leaves)
  *
- * Changes from original:
- *   - paymentMethod now required; CR account resolved via getCreditAccountForPayment().
- *   - Uses buildJournalPayload() for canonical, validated output.
- *   - assertIntegerPaisa() instead of silent conversion.
+ * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
+ *      never as a raw Date object.
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
 import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
-import { assertNepaliFields } from "../../../utils/nepaliDateHelper.js";
+import {
+  assertNepaliFields,
+  formatNepaliISO,
+} from "../../../utils/nepaliDateHelper.js";
 import {
   getCreditAccountForPayment,
   assertValidPaymentMethod,
 } from "../../../utils/paymentAccountUtils.js";
 import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
+import NepaliDate from "nepali-datetime";
+
+function resolveNepaliDateString(raw, fallback) {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  const base = raw instanceof Date ? raw : fallback;
+  return formatNepaliISO(new NepaliDate(base));
+}
 
 const EXPENSE_TYPE_MAP = {
   MAINTENANCE: "MAINTENANCE_EXPENSE",
@@ -37,7 +45,6 @@ const EXPENSE_TYPE_MAP = {
  *               referenceType, tenant, property
  *
  * @param {string} [bankAccountCode]
- *   Required when paymentMethod is bank_transfer or cheque.
  *
  * @returns {Object} Canonical journal payload
  */
@@ -62,8 +69,13 @@ export function buildExpenseJournal(expense, bankAccountCode) {
     expense.EnglishDate instanceof Date
       ? expense.EnglishDate
       : new Date(expense.EnglishDate ?? Date.now());
-  const nepaliDate =
-    expense.nepaliDate instanceof Date ? expense.nepaliDate : transactionDate;
+
+  // FIX: always a BS "YYYY-MM-DD" string
+  const nepaliDate = resolveNepaliDateString(
+    expense.nepaliDate,
+    transactionDate,
+  );
+
   const tenantName = expense?.tenant?.name ?? "";
   const transactionType =
     EXPENSE_TYPE_MAP[expense.referenceType] ?? "OTHER_EXPENSE";

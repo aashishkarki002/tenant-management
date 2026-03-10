@@ -4,6 +4,8 @@ import { Revenue } from "../revenue/Revenue.Model.js";
 import { RevenueSource } from "../revenue/RevenueSource.Model.js";
 import { Liability } from "../liabilities/Liabilities.Model.js";
 import { LiabilitySource } from "../liabilities/LiabilitesSource.Model.js";
+import { Expense } from "../expenses/Expense.Model.js";
+import ExpenseSource from "../expenses/ExpenseSource.Model.js";
 import { paisaToRupees } from "../../utils/moneyUtil.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -29,6 +31,9 @@ const NEPALI_MONTH_NAMES = [
  *   Q2 → Kartik(6),  Mangsir(7), Poush(8)
  *   Q3 → Magh(9),    Falgun(10), Chaitra(11)
  *   Q4 → Baisakh(0), Jestha(1),  Ashadh(2)
+ *
+ * Nepal fiscal year month order (0-indexed, Shrawan-first):
+ *   [3,4,5,6,7,8,9,10,11,0,1,2]
  */
 const FISCAL_QUARTER_MONTHS = {
   1: [3, 4, 5],
@@ -36,6 +41,11 @@ const FISCAL_QUARTER_MONTHS = {
   3: [9, 10, 11],
   4: [0, 1, 2],
 };
+
+/** All 12 BS months in Nepal fiscal year order (Shrawan → Ashadh). */
+const FISCAL_YEAR_MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+
+const OPERATING_REF_TYPES = new Set(["MAINTENANCE", "UTILITY", "SALARY"]);
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -107,6 +117,34 @@ function getQuarterMonths(quarter, fiscalYear) {
 }
 
 /**
+ * Get all 12 BS months for a full fiscal year in Nepal fiscal order
+ * (Shrawan → Ashadh). Q4 months (Baisakh–Ashadh) belong to year+1 in
+ * the Gregorian sense but the same BS fiscal year label.
+ *
+ * @param {number} fiscalYear  BS year (e.g. 2081 = FY 2081/82)
+ */
+function getFiscalYearMonths(fiscalYear) {
+  return FISCAL_YEAR_MONTH_ORDER.map((month0) => {
+    // Q4 months (Baisakh=0, Jestha=1, Ashadh=2) fall in the next BS year
+    const year = month0 <= 2 ? fiscalYear + 1 : fiscalYear;
+    return { year, month0 };
+  });
+}
+
+/**
+ * Resolve a { month, fiscalYear } pair → { startDate, endDate } ISO strings.
+ * month is 1-indexed (1 = Baisakh, 4 = Shrawan, etc.)
+ *
+ * @param {number} month      1-indexed BS month
+ * @param {number} [fiscalYear]
+ */
+function resolveMonthToDateRange(month, fiscalYear) {
+  const month0 = month - 1; // convert to 0-indexed
+  const year = fiscalYear ?? new NepaliDate().getYear();
+  return bsMonthToDateRange(year, month0);
+}
+
+/**
  * Compute % change; returns null when base is 0 (avoids division by zero).
  */
 function pctChange(base, next) {
@@ -115,22 +153,59 @@ function pctChange(base, next) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ─── 1. ACCOUNTING SUMMARY (existing, unchanged) ─────────────────────────────
+// ─── 1. ACCOUNTING SUMMARY ────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Build accounting summary for dashboard (revenue, liabilities, cash flow, breakdowns).
- * Filters: startDate / endDate (ISO strings) | nepaliYear | quarter (1-4)
+ *
+ * Filter priority (first match wins):
+ *   1. startDate + endDate  — explicit Gregorian range
+ *   2. month + fiscalYear   — single BS month (e.g. month=4 = Shrawan)
+ *   3. quarter + fiscalYear — 3-month BS quarter
+ *   4. (none)               — all-time
  */
 export async function getAccountingSummary({
   startDate,
   endDate,
   nepaliYear,
   quarter,
+  month, // NEW: 1-indexed BS month (1=Baisakh … 12=Chaitra)
+  fiscalYear, // NEW: BS year override shared by month/quarter resolution
 }) {
-  const dateFilter = buildDateFilter(startDate, endDate);
+  // ── Resolve date range ────────────────────────────────────────────────────
+  let resolvedStart = startDate;
+  let resolvedEnd = endDate;
 
-  // Aggregate revenues by source
+  if (!resolvedStart && !resolvedEnd) {
+    if (month) {
+      ({ startDate: resolvedStart, endDate: resolvedEnd } =
+        resolveMonthToDateRange(Number(month), fiscalYear));
+    } else if (quarter) {
+      const months = getQuarterMonths(Number(quarter), fiscalYear);
+      const first = bsMonthToDateRange(months[0].year, months[0].month0);
+      const last = bsMonthToDateRange(
+        months[months.length - 1].year,
+        months[months.length - 1].month0,
+      );
+      resolvedStart = first.startDate;
+      resolvedEnd = last.endDate;
+    } else if (fiscalYear) {
+      // Fiscal year only — scope to full 12-month year (Shrawan → Ashadh)
+      const fyMonths = getFiscalYearMonths(fiscalYear);
+      const first = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
+      const last = bsMonthToDateRange(
+        fyMonths[fyMonths.length - 1].year,
+        fyMonths[fyMonths.length - 1].month0,
+      );
+      resolvedStart = first.startDate;
+      resolvedEnd = last.endDate;
+    }
+  }
+
+  const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
+
+  // ── Revenue aggregation ───────────────────────────────────────────────────
   const revenueMatch = {};
   if (dateFilter) revenueMatch.date = dateFilter;
 
@@ -155,7 +230,7 @@ export async function getAccountingSummary({
     },
   ]);
 
-  // Aggregate liabilities by source
+  // ── Liability aggregation ─────────────────────────────────────────────────
   const liabilityMatch = {};
   if (dateFilter) liabilityMatch.date = dateFilter;
 
@@ -180,10 +255,10 @@ export async function getAccountingSummary({
     },
   ]);
 
-  // Expenses from ledger (until dedicated expense model is primary)
+  // ── Expenses from ledger ──────────────────────────────────────────────────
   const ledgerSummary = await ledgerService.getLedgerSummary({
-    startDate,
-    endDate,
+    startDate: resolvedStart,
+    endDate: resolvedEnd,
     nepaliYear,
     quarter,
   });
@@ -254,21 +329,38 @@ export async function getAccountingSummary({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ─── 2. MONTHLY CHART (replaces N round-trips in useMonthlyChart) ────────────
+// ─── 2. MONTHLY CHART DATA ────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Return per-month revenue/expenses/liabilities for a quarter or last 5 months.
- * Single backend function → single HTTP request; eliminates N client round-trips.
+ * Return per-month revenue/expenses/liabilities for:
+ *   - a single quarter    (quarter=1-4)
+ *   - a full fiscal year  (allYear=true, fiscalYear=BS year)   ← NEW
+ *   - last 5 months       (default fallback)
  *
- * @param {1|2|3|4|null} quarter      null = last 5 months
- * @param {number}        [fiscalYear] BS year override
+ * Single backend function → single HTTP request.
+ *
+ * @param {1|2|3|4|null} quarter
+ * @param {number}        [fiscalYear]  BS year override
+ * @param {boolean}       [allYear]     NEW — return all 12 months of fiscal year
  * @returns {Array<{ key, label, revenue, expenses, liabilities }>}
  */
-export async function getMonthlyChartData({ quarter, fiscalYear } = {}) {
-  const months = quarter
-    ? getQuarterMonths(Number(quarter), fiscalYear)
-    : getLastNMonths(5);
+export async function getMonthlyChartData({
+  quarter,
+  fiscalYear,
+  allYear = false, // NEW
+} = {}) {
+  let months;
+
+  if (allYear) {
+    // Full 12-month fiscal year view (Shrawan → Ashadh)
+    const year = fiscalYear ?? new NepaliDate().getYear();
+    months = getFiscalYearMonths(year);
+  } else if (quarter) {
+    months = getQuarterMonths(Number(quarter), fiscalYear);
+  } else {
+    months = getLastNMonths(5);
+  }
 
   const results = await Promise.all(
     months.map(async ({ year, month0 }) => {
@@ -276,7 +368,7 @@ export async function getMonthlyChartData({ quarter, fiscalYear } = {}) {
       try {
         const summary = await getAccountingSummary({ startDate, endDate });
         return {
-          key: `${year}-${String(month0).padStart(2, "0")}`,
+          key: `${year}-${String(month0 + 1).padStart(2, "0")}`, // 1-indexed in key
           label: NEPALI_MONTH_NAMES[month0],
           revenue: summary.totals.totalRevenue,
           expenses: summary.totals.totalExpenses,
@@ -284,7 +376,7 @@ export async function getMonthlyChartData({ quarter, fiscalYear } = {}) {
         };
       } catch {
         return {
-          key: `${year}-${String(month0).padStart(2, "0")}`,
+          key: `${year}-${String(month0 + 1).padStart(2, "0")}`,
           label: NEPALI_MONTH_NAMES[month0],
           revenue: 0,
           expenses: 0,
@@ -303,43 +395,52 @@ export async function getMonthlyChartData({ quarter, fiscalYear } = {}) {
 
 /**
  * Full revenue breakdown for the RevenueBreakDown page.
- * All aggregation happens here — frontend receives ready-to-render data.
  *
- * Returns:
- *   totals      – { total, count, avg, momPct }
- *   streams     – [{ code, name, amount, count, pct }]   sorted by amount desc
- *   trend       – [{ key, label, revenue, count }]        last 8 BS months
- *   payerSplit  – [{ name, amount, pct, color }]
- *   refTypes    – [{ type, amount, count, pct }]
- *   topTenants  – [{ id, name, amount, count, pctOfTotal, sources }]
- *   statusMap   – { RECORDED: n, SYNCED: n, REVERSED: n }
- *   transactions– [{ id, payer, source, refType, payerType, amount, bsDate, status }]
+ * Filter priority:
+ *   1. startDate + endDate  — explicit range
+ *   2. month + fiscalYear   — single BS month   ← NEW
+ *   3. quarter + fiscalYear — 3-month quarter
+ *   4. (none)               — all-time
  */
 export async function getRevenueBreakdownSummary({
   startDate,
   endDate,
   quarter,
   fiscalYear,
+  month, // NEW: 1-indexed BS month
 } = {}) {
-  // Resolve date range from quarter if no explicit date range
   let resolvedStart = startDate;
   let resolvedEnd = endDate;
 
-  if (quarter && quarter !== "custom" && !startDate && !endDate) {
-    const months = getQuarterMonths(Number(quarter), fiscalYear);
-    const first = bsMonthToDateRange(months[0].year, months[0].month0);
-    const last = bsMonthToDateRange(
-      months[months.length - 1].year,
-      months[months.length - 1].month0,
-    );
-    resolvedStart = first.startDate;
-    resolvedEnd = last.endDate;
+  if (!resolvedStart && !resolvedEnd) {
+    if (month) {
+      ({ startDate: resolvedStart, endDate: resolvedEnd } =
+        resolveMonthToDateRange(Number(month), fiscalYear));
+    } else if (quarter && quarter !== "custom") {
+      const months = getQuarterMonths(Number(quarter), fiscalYear);
+      const first = bsMonthToDateRange(months[0].year, months[0].month0);
+      const last = bsMonthToDateRange(
+        months[months.length - 1].year,
+        months[months.length - 1].month0,
+      );
+      resolvedStart = first.startDate;
+      resolvedEnd = last.endDate;
+    } else if (fiscalYear) {
+      // Fiscal year only — full 12-month scope
+      const fyMonths = getFiscalYearMonths(fiscalYear);
+      const first = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
+      const last = bsMonthToDateRange(
+        fyMonths[fyMonths.length - 1].year,
+        fyMonths[fyMonths.length - 1].month0,
+      );
+      resolvedStart = first.startDate;
+      resolvedEnd = last.endDate;
+    }
   }
 
   const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
   const match = dateFilter ? { date: dateFilter } : {};
 
-  // Fetch revenues with populated relations in one aggregation
   const revenues = await Revenue.aggregate([
     { $match: match },
     {
@@ -353,7 +454,7 @@ export async function getRevenueBreakdownSummary({
     { $unwind: { path: "$source", preserveNullAndEmptyArrays: true } },
     {
       $lookup: {
-        from: "tenants", // collection name for Tenant model
+        from: "tenants",
         localField: "tenant",
         foreignField: "_id",
         as: "tenant",
@@ -412,12 +513,12 @@ export async function getRevenueBreakdownSummary({
     }))
     .sort((a, b) => b.amount - a.amount);
 
-  // ── Monthly trend (last 8 BS months within matched data) ──────────────────
+  // ── Monthly trend ─────────────────────────────────────────────────────────
   const trendMap = new Map();
   revenues.forEach((r) => {
     const bs = toBS(new Date(r.date));
     if (!bs) return;
-    const key = `${bs.year}-${String(bs.month0).padStart(2, "0")}`;
+    const key = `${bs.year}-${String(bs.month0 + 1).padStart(2, "0")}`;
     if (!trendMap.has(key)) {
       trendMap.set(key, {
         key,
@@ -440,7 +541,6 @@ export async function getRevenueBreakdownSummary({
       amountPaisa: undefined,
     }));
 
-  // MoM % change
   const momPct =
     trend.length >= 2
       ? pctChange(
@@ -539,7 +639,7 @@ export async function getRevenueBreakdownSummary({
     statusMap[s] = (statusMap[s] || 0) + 1;
   });
 
-  // ── Transactions (already sorted desc by date) ────────────────────────────
+  // ── Transactions ──────────────────────────────────────────────────────────
   const transactions = revenues.map((r) => {
     const bs = toBS(new Date(r.date));
     const bsDate = bs
@@ -578,56 +678,72 @@ export async function getRevenueBreakdownSummary({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Import the Expense and ExpenseSource models.
- * Adjust the import path to match your project structure.
- */
-import { Expense } from "../expenses/Expense.Model.js";
-import ExpenseSource from "../expenses/ExpenseSource.Model.js";
-
-const OPERATING_REF_TYPES = new Set(["MAINTENANCE", "UTILITY", "SALARY"]);
-
-/**
  * Full expense breakdown for the ExpenseBreakDown page.
- * All aggregation happens here — frontend receives ready-to-render data.
  *
- * Returns:
- *   totals       – { total, count, avg, momPct }
- *   categories   – [{ code, name, amount, count, pct }]
- *   trend        – [{ key, label, expenses, count }]
- *   payeeSplit   – [{ name, amount, pct }]
- *   refTypes     – [{ type, amount, count, pct }]
- *   operatingAmt – number (salary + utility + maintenance)
- *   nonOpAmt     – number
- *   statusMap    – { RECORDED: n, … }
- *   transactions – [{ id, source, refType, payeeType, amount, bsDate, status, notes }]
+ * Filter priority:
+ *   1. startDate + endDate  — explicit range
+ *   2. month + fiscalYear   — single BS month   ← NEW
+ *   3. quarter + fiscalYear — 3-month quarter
+ *   4. (none)               — all-time
  */
 export async function getExpenseBreakdownSummary({
   startDate,
   endDate,
   quarter,
   fiscalYear,
+  month, // NEW: 1-indexed BS month
 } = {}) {
   let resolvedStart = startDate;
   let resolvedEnd = endDate;
 
-  if (quarter && quarter !== "custom" && !startDate && !endDate) {
-    const months = getQuarterMonths(Number(quarter), fiscalYear);
-    const first = bsMonthToDateRange(months[0].year, months[0].month0);
-    const last = bsMonthToDateRange(
-      months[months.length - 1].year,
-      months[months.length - 1].month0,
-    );
-    resolvedStart = first.startDate;
-    resolvedEnd = last.endDate;
+  // ── Resolve date range ────────────────────────────────────────────────────
+  if (!resolvedStart && !resolvedEnd) {
+    if (month) {
+      ({ startDate: resolvedStart, endDate: resolvedEnd } =
+        resolveMonthToDateRange(Number(month), fiscalYear));
+    } else if (quarter && quarter !== "custom") {
+      const months = getQuarterMonths(Number(quarter), fiscalYear);
+      const first = bsMonthToDateRange(months[0].year, months[0].month0);
+      const last = bsMonthToDateRange(
+        months[months.length - 1].year,
+        months[months.length - 1].month0,
+      );
+      resolvedStart = first.startDate;
+      resolvedEnd = last.endDate;
+    } else if (fiscalYear) {
+      // Fiscal year only — full 12-month scope
+      const fyMonths = getFiscalYearMonths(fiscalYear);
+      const first = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
+      const last = bsMonthToDateRange(
+        fyMonths[fyMonths.length - 1].year,
+        fyMonths[fyMonths.length - 1].month0,
+      );
+      resolvedStart = first.startDate;
+      resolvedEnd = last.endDate;
+    }
   }
 
-  // Build match using nepaliMonth (stored on model) or EnglishDate
+  // ── Build match ───────────────────────────────────────────────────────────
+  // Prefer nepaliMonth index match for quarter (stored field, no date conversion).
+  // For month filter, also use nepaliMonth if available.
   let match = {};
-  if (quarter && quarter !== "custom" && !startDate && !endDate) {
-    const nepaliMonths = FISCAL_QUARTER_MONTHS[Number(quarter)].map(
-      (m0) => m0 + 1,
-    ); // convert to 1-indexed
-    match = { nepaliMonth: { $in: nepaliMonths } };
+
+  if (!startDate && !endDate) {
+    if (month) {
+      // nepaliMonth is stored as 1-indexed on the Expense model
+      match = { nepaliMonth: Number(month) };
+      if (fiscalYear) match.nepaliYear = Number(fiscalYear);
+    } else if (quarter && quarter !== "custom") {
+      const nepaliMonths = FISCAL_QUARTER_MONTHS[Number(quarter)].map(
+        (m0) => m0 + 1,
+      );
+      match = { nepaliMonth: { $in: nepaliMonths } };
+      if (fiscalYear) match.nepaliYear = Number(fiscalYear);
+    } else if (fiscalYear) {
+      // Full fiscal year: use the resolved date range (covers both BS years in FY)
+      const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
+      if (dateFilter) match.EnglishDate = dateFilter;
+    }
   } else {
     const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
     if (dateFilter) match.EnglishDate = dateFilter;
@@ -706,11 +822,11 @@ export async function getExpenseBreakdownSummary({
     }))
     .sort((a, b) => b.amount - a.amount);
 
-  // ── Monthly trend (BS months from nepaliYear + nepaliMonth) ───────────────
+  // ── Monthly trend ─────────────────────────────────────────────────────────
   const trendMap = new Map();
   expenses.forEach((e) => {
     if (!e.nepaliYear || !e.nepaliMonth) return;
-    const month0 = (e.nepaliMonth - 1) % 12; // convert 1-indexed to 0-indexed
+    const month0 = (e.nepaliMonth - 1) % 12;
     const key = `${e.nepaliYear}-${String(e.nepaliMonth).padStart(2, "0")}`;
     if (!trendMap.has(key)) {
       trendMap.set(key, {
@@ -809,7 +925,6 @@ export async function getExpenseBreakdownSummary({
     refType: e.referenceType ?? "MANUAL",
     payeeType: e.payeeType,
     amount: paisaToRupees(e.amountPaisa || 0),
-    // Prefer stored BS date fields; fall back to converting EnglishDate
     bsDate:
       e.nepaliYear && e.nepaliMonth
         ? `${NEPALI_MONTH_NAMES[(e.nepaliMonth - 1) % 12]} ${e.nepaliYear}`

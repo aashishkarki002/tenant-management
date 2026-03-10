@@ -174,7 +174,12 @@ class LedgerService {
         nepaliYear,
         // Store the full Nepali date string (BS "YYYY-MM-DD") directly on the
         // entry so statements can display it without joining Transaction.
-        nepaliDate: typeof nepaliDate === "string" ? nepaliDate : null,
+        nepaliDate:
+          typeof nepaliDate === "string"
+            ? nepaliDate
+            : nepaliDate instanceof Date
+              ? nepaliDate.toISOString().split("T")[0] // fallback: ISO date string
+              : null,
         transactionDate,
       });
     }

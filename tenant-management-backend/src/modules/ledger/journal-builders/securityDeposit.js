@@ -1,18 +1,35 @@
+/**
+ * securityDeposit.js  (FIXED)
+ *
+ * Build journal payload for security deposit received
+ * (DR Cash/Bank, CR Security Deposit Liability).
+ *
+ * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
+ *      never as a raw Date object.
+ */
+
 import { ACCOUNT_CODES } from "../config/accounts.js";
 import { rupeesToPaisa } from "../../../utils/moneyUtil.js";
+import { formatNepaliISO } from "../../../utils/nepaliDateHelper.js";
+import NepaliDate from "nepali-datetime";
+
+function resolveNepaliDateString(raw, fallback) {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  const base = raw instanceof Date ? raw : fallback;
+  return formatNepaliISO(new NepaliDate(base));
+}
 
 /**
- * Build journal payload for security deposit received (DR Cash/Bank, CR Security Deposit Liability).
- * Uses paisa for all amounts.
  * @param {Object} sd - Security deposit document with _id, amountPaisa, paidDate, tenant, property
- * @param {Object} options - { createdBy }; optional nepaliMonth, nepaliYear if not derivable from paidDate
- * @param {string} [cashBankAccountCode] - Account code for DR (default CASH_BANK 1000)
+ * @param {Object} options - { createdBy, nepaliMonth, nepaliYear, tenantName }
+ * @param {string} [cashBankAccountCode]
+ *
  * @returns {Object} Journal payload for postJournalEntry
  */
 export function buildSecurityDepositJournal(
   sd,
   options = {},
-  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK
+  cashBankAccountCode = ACCOUNT_CODES.CASH_BANK,
 ) {
   const {
     createdBy,
@@ -20,19 +37,32 @@ export function buildSecurityDepositJournal(
     nepaliYear: optNepaliYear,
     tenantName: optTenantName,
   } = options;
+
   const transactionDate = sd.paidDate || new Date();
-  const d = new Date(transactionDate);
-  const nepaliMonth = optNepaliMonth ?? d.getMonth() + 1;
-  const nepaliYear = optNepaliYear ?? d.getFullYear();
-  const nepaliDate = transactionDate;
+
+  // FIX: always a BS "YYYY-MM-DD" string
+  const nepaliDate = resolveNepaliDateString(sd.nepaliDate, transactionDate);
+
+  // Nepali month/year: prefer explicitly passed values; derive via NepaliDate
+  // as fallback (never raw getMonth/getFullYear which would give Gregorian values).
+  let nepaliMonth = optNepaliMonth;
+  let nepaliYear = optNepaliYear;
+  if (!nepaliMonth || !nepaliYear) {
+    const nd = new NepaliDate(transactionDate);
+    nepaliMonth = nepaliMonth ?? nd.getMonth() + 1;
+    nepaliYear = nepaliYear ?? nd.getYear();
+  }
+
   const tenantName =
     optTenantName ?? sd?.tenant?.name ?? (sd?.tenant ? "Tenant" : "Unknown");
   const description = `Security deposit received from ${tenantName} for ${nepaliMonth}/${nepaliYear}`;
 
-  // Get amount in paisa (use paisa field if available, otherwise convert)
-  const amountPaisa = sd.amountPaisa !== undefined
-    ? sd.amountPaisa
-    : (sd.amount ? rupeesToPaisa(sd.amount) : 0);
+  const amountPaisa =
+    sd.amountPaisa !== undefined
+      ? sd.amountPaisa
+      : sd.amount
+        ? rupeesToPaisa(sd.amount)
+        : 0;
 
   return {
     transactionType: "SECURITY_DEPOSIT",
@@ -45,24 +75,19 @@ export function buildSecurityDepositJournal(
     description,
     createdBy,
     totalAmountPaisa: amountPaisa,
-    totalAmount: amountPaisa / 100, // Backward compatibility
     tenant: sd.tenant,
     property: sd.property,
     entries: [
       {
         accountCode: cashBankAccountCode,
         debitAmountPaisa: amountPaisa,
-        debitAmount: amountPaisa / 100, // Backward compatibility
         creditAmountPaisa: 0,
-        creditAmount: 0,
         description,
       },
       {
         accountCode: ACCOUNT_CODES.SECURITY_DEPOSIT_LIABILITY,
         debitAmountPaisa: 0,
-        debitAmount: 0,
         creditAmountPaisa: amountPaisa,
-        creditAmount: amountPaisa / 100, // Backward compatibility
         description,
       },
     ],

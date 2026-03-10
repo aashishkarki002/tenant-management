@@ -1,5 +1,5 @@
 /**
- * lateFee.js  (NEW)
+ * lateFee.js  (FIXED)
  *
  * Builds the journal payload for a late fee charge.
  *
@@ -7,8 +7,8 @@
  *   DR  Accounts Receivable   (ASSET ↑   — tenant owes the late fee)
  *   CR  Late Fee Revenue      (REVENUE ↑ — income earned from penalty)
  *
- * When the tenant PAYS the late fee later, use buildPaymentReceivedJournal()
- * with transactionType = "LATE_FEE_PAYMENT_RECEIVED".
+ * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
+ *      never as a raw Date object.
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
@@ -16,12 +16,20 @@ import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
 import {
   assertNepaliFields,
   resolveNepaliPeriod,
+  formatNepaliISO,
 } from "../../../utils/nepaliDateHelper.js";
 import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
 import {
   assertValidPaymentMethod,
   getDebitAccountForPayment,
 } from "../../../utils/paymentAccountUtils.js";
+import NepaliDate from "nepali-datetime";
+
+function resolveNepaliDateString(raw, fallback) {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  const base = raw instanceof Date ? raw : fallback;
+  return formatNepaliISO(new NepaliDate(base));
+}
 
 /**
  * @param {Object} lateFee
@@ -45,8 +53,12 @@ export function buildLateFeeJournal(lateFee) {
       ? lateFee.chargedAt
       : new Date(lateFee.chargedAt ?? lateFee.createdAt ?? Date.now());
 
-  const nepaliDate =
-    lateFee.nepaliDate instanceof Date ? lateFee.nepaliDate : transactionDate;
+  // FIX: always a BS "YYYY-MM-DD" string
+  const nepaliDate = resolveNepaliDateString(
+    lateFee.nepaliDate,
+    transactionDate,
+  );
+
   const tenantName = lateFee.tenant?.name ?? "Tenant";
   const daysInfo = lateFee.daysOverdue
     ? ` (${lateFee.daysOverdue} days overdue)`
@@ -75,7 +87,7 @@ export function buildLateFeeJournal(lateFee) {
         description: `Late fee receivable — ${tenantName}`,
       },
       {
-        accountCode: ACCOUNT_CODES.LATE_FEE_REVENUE, // add to ACCOUNT_CODES config
+        accountCode: ACCOUNT_CODES.LATE_FEE_REVENUE,
         debitAmountPaisa: 0,
         creditAmountPaisa: lateFee.amountPaisa,
         description: `Late fee income — ${lateFee.nepaliMonth}/${lateFee.nepaliYear}`,
@@ -89,7 +101,6 @@ export function buildLateFeeJournal(lateFee) {
 
 /**
  * Builds the journal for when a late fee payment is actually received.
- * Reuses the same pattern as rent payment received.
  *
  *   DR  Cash / Bank Account   (ASSET ↑ — money in)
  *   CR  Accounts Receivable   (ASSET ↓ — tenant owes less)
@@ -99,8 +110,6 @@ export function buildLateFeeJournal(lateFee) {
  * @param {string} [bankAccountCode]
  */
 export function buildLateFeePaymentJournal(payment, lateFee, bankAccountCode) {
-  // Delegate to the payment received builder with a different transactionType
-  // by importing the helper here to avoid circular dependencies
   assertValidPaymentMethod(payment.paymentMethod);
   assertIntegerPaisa(payment.amountPaisa, "payment.amountPaisa");
 
@@ -108,6 +117,12 @@ export function buildLateFeePaymentJournal(payment, lateFee, bankAccountCode) {
     payment.paymentDate instanceof Date
       ? payment.paymentDate
       : new Date(payment.paymentDate ?? Date.now());
+
+  // FIX: always a BS "YYYY-MM-DD" string
+  const nepaliDate = resolveNepaliDateString(
+    payment.nepaliDate,
+    transactionDate,
+  );
 
   const { nepaliMonth, nepaliYear } = resolveNepaliPeriod({
     nepaliMonth: lateFee?.nepaliMonth,
@@ -129,7 +144,7 @@ export function buildLateFeePaymentJournal(payment, lateFee, bankAccountCode) {
     referenceType: "LateFeePayment",
     referenceId: payment._id,
     transactionDate,
-    nepaliDate: payment.nepaliDate ?? transactionDate,
+    nepaliDate,
     nepaliMonth,
     nepaliYear,
     description,

@@ -7,20 +7,28 @@
  *   DR  Cash / Bank Account   (ASSET ↑ — money received)
  *   CR  Accounts Receivable   (ASSET ↓ — tenant owes less)
  *
- * Changes from original:
- *   - paymentMethod is now required; routed to correct account via getDebitAccountForPayment().
- *   - No Gregorian fallback for nepaliMonth/nepaliYear.
- *   - Uses buildJournalPayload() for canonical, validated output.
+ * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
+ *      never as a raw Date object.
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
 import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
-import { resolveNepaliPeriod } from "../../../utils/nepaliDateHelper.js";
+import {
+  resolveNepaliPeriod,
+  formatNepaliISO,
+} from "../../../utils/nepaliDateHelper.js";
 import {
   getDebitAccountForPayment,
   assertValidPaymentMethod,
 } from "../../../utils/paymentAccountUtils.js";
 import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
+import NepaliDate from "nepali-datetime";
+
+function resolveNepaliDateString(raw, fallback) {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  const base = raw instanceof Date ? raw : fallback;
+  return formatNepaliISO(new NepaliDate(base));
+}
 
 /**
  * @param {Object} payment  - Payment document
@@ -32,31 +40,34 @@ import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
  *   Optional:   tenant, property
  *
  * @param {string} [bankAccountCode]
- *   Required when paymentMethod is "bank_transfer" or "cheque".
- *   Should be the account code of the specific BankAccount (e.g. "1010-NABIL").
  *
  * @returns {Object} Canonical journal payload
  */
 export function buildPaymentReceivedJournal(payment, rent, bankAccountCode) {
-  // ── 1. Validate payment method ───────────────────────────────────────────
+  // ── 1. Validate ───────────────────────────────────────────────────────────
   assertValidPaymentMethod(payment.paymentMethod);
-
-  // ── 2. Validate amount ───────────────────────────────────────────────────
   assertIntegerPaisa(payment.amountPaisa, "payment.amountPaisa");
 
-  // ── 3. Resolve Nepali period (no Gregorian fallback) ─────────────────────
+  // ── 2. Dates ──────────────────────────────────────────────────────────────
   const transactionDate =
     payment.paymentDate instanceof Date
       ? payment.paymentDate
       : new Date(payment.paymentDate ?? Date.now());
 
+  // FIX: always a BS "YYYY-MM-DD" string
+  const nepaliDate = resolveNepaliDateString(
+    payment.nepaliDate,
+    transactionDate,
+  );
+
+  // ── 3. Resolve Nepali period ──────────────────────────────────────────────
   const { nepaliMonth, nepaliYear } = resolveNepaliPeriod({
     nepaliMonth: rent?.nepaliMonth,
     nepaliYear: rent?.nepaliYear,
     fallbackDate: transactionDate,
   });
 
-  // ── 4. Determine DR account from payment method ───────────────────────────
+  // ── 4. Determine DR account ───────────────────────────────────────────────
   const drAccountCode = getDebitAccountForPayment(
     payment.paymentMethod,
     bankAccountCode,
@@ -66,8 +77,6 @@ export function buildPaymentReceivedJournal(payment, rent, bankAccountCode) {
   const description =
     `Rent payment received for ${nepaliMonth}/${nepaliYear}` +
     (tenantName ? ` — ${tenantName}` : "");
-  const nepaliDate =
-    payment.nepaliDate instanceof Date ? payment.nepaliDate : transactionDate;
 
   // ── 5. Build canonical payload ───────────────────────────────────────────
   return buildJournalPayload({

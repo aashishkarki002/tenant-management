@@ -5,17 +5,32 @@
  *   DR  Accounts Receivable  (ASSET ↑ — tenant owes more)
  *   CR  Rent Revenue         (REVENUE ↑ — income earned)
  *
- * Changes from original:
- *   - Removed the dangerous "> 100" paisa heuristic.
- *   - Uses getRawPaisa() to safely extract the integer paisa value.
- *   - Uses buildJournalPayload() for a validated, canonical output.
- *   - Uses assertNepaliFields() to catch wrong calendar fields early.
+ * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
+ *      never as a raw Date object (which would be silently dropped
+ *      by the `typeof nepaliDate === "string"` guard in postJournalEntry).
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
 import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
 import { getRawPaisa } from "../../../utils/moneyUtil.js";
-import { assertNepaliFields } from "../../../utils/nepaliDateHelper.js";
+import {
+  assertNepaliFields,
+  formatNepaliISO,
+} from "../../../utils/nepaliDateHelper.js";
+import NepaliDate from "nepali-datetime";
+
+/**
+ * Resolve a BS date string from either an existing string, a Date, or fall back
+ * to converting transactionDate via NepaliDate.
+ * @param {string|Date|undefined} raw
+ * @param {Date} fallback
+ * @returns {string}  "YYYY-MM-DD" BS
+ */
+function resolveNepaliDateString(raw, fallback) {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  const base = raw instanceof Date ? raw : fallback;
+  return formatNepaliISO(new NepaliDate(base));
+}
 
 /**
  * @param {Object} rent  - Rent document (Mongoose doc or plain object)
@@ -32,7 +47,7 @@ export function buildRentChargeJournal(rent) {
     nepaliMonth: rent.nepaliMonth,
   });
 
-  // ── 2. Extract raw paisa — no guessing, no coercion ──────────────────────
+  // ── 2. Extract raw paisa ─────────────────────────────────────────────────
   const rentAmountPaisa = getRawPaisa(rent, "rentAmountPaisa");
 
   // ── 3. Metadata ──────────────────────────────────────────────────────────
@@ -40,8 +55,10 @@ export function buildRentChargeJournal(rent) {
     rent.createdAt instanceof Date
       ? rent.createdAt
       : new Date(rent.createdAt ?? Date.now());
-  const nepaliDate =
-    rent.nepaliDate instanceof Date ? rent.nepaliDate : transactionDate;
+
+  // FIX: always a BS "YYYY-MM-DD" string
+  const nepaliDate = resolveNepaliDateString(rent.nepaliDate, transactionDate);
+
   const { nepaliMonth, nepaliYear } = rent;
   const tenantName = rent.tenant?.name ?? "Tenant";
 
@@ -51,8 +68,6 @@ export function buildRentChargeJournal(rent) {
       ? Math.ceil(nepaliMonth / 3)
       : undefined;
 
-  // Match the security-deposit pattern: always say "from <TenantName>" so the
-  // ledger entry is unambiguous when scanning across multiple tenants.
   const description =
     billingFrequency === "quarterly"
       ? `Rent charge (Q${quarter} ${nepaliYear}) from ${tenantName}`

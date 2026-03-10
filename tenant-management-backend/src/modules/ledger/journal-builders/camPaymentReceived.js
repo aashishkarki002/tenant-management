@@ -1,19 +1,37 @@
+/**
+ * camPaymentReceived.js  (FIXED)
+ *
+ * Builds the journal payload for a CAM payment received.
+ *   DR  Cash / Bank           (ASSET ↑ — money received)
+ *   CR  Accounts Receivable   (ASSET ↓ — tenant owes less)
+ *
+ * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
+ *      never as a raw Date object.
+ */
+
 import { ACCOUNT_CODES } from "../config/accounts.js";
 import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
 import { getDebitAccountForPayment } from "../../../utils/paymentAccountUtils.js";
+import { formatNepaliISO } from "../../../utils/nepaliDateHelper.js";
+import NepaliDate from "nepali-datetime";
+
+function resolveNepaliDateString(raw, fallback) {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  const base = raw instanceof Date ? raw : fallback;
+  return formatNepaliISO(new NepaliDate(base));
+}
 
 /**
- * Build journal payload for a CAM payment received (DR Cash/Bank, CR Accounts Receivable).
- * Uses paisa for all amounts.
- * @param {Object} payment - Payment document with _id, paymentDate, nepaliDate, amountPaisa, createdBy/receivedBy
+ * @param {Object} payment - Payment document
+ *   Must have:  _id, amountPaisa (integer), paymentMethod
+ *   Optional:   paymentDate, nepaliDate, createdBy / receivedBy
+ *
  * @param {Object} cam - Cam document with tenant, property, nepaliMonth, nepaliYear
- * @param {number} [amountPaisa] - Amount in paisa to record (defaults to payment.amountPaisa)
- * @param {number} [amount] - Amount in rupees (backward compatibility)
- * @param {string} [cashBankAccountCode] - Account code for DR (default CASH_BANK 1000)
+ * @param {string} [bankAccountCode]
+ *
  * @returns {Object} Journal payload for postJournalEntry
  */
 export function buildCamPaymentReceivedJournal(payment, cam, bankAccountCode) {
-  // Validate
   if (!payment.amountPaisa || !Number.isInteger(payment.amountPaisa)) {
     throw new Error(
       `payment.amountPaisa must be an integer, got: ${payment.amountPaisa}`,
@@ -28,8 +46,12 @@ export function buildCamPaymentReceivedJournal(payment, cam, bankAccountCode) {
   const nepaliMonth =
     cam?.nepaliMonth ?? new Date(transactionDate).getMonth() + 1;
   const nepaliYear = cam?.nepaliYear ?? new Date(transactionDate).getFullYear();
-  const nepaliDate =
-    payment.nepaliDate instanceof Date ? payment.nepaliDate : transactionDate;
+
+  // FIX: always a BS "YYYY-MM-DD" string
+  const nepaliDate = resolveNepaliDateString(
+    payment.nepaliDate,
+    transactionDate,
+  );
 
   const drAccountCode = getDebitAccountForPayment(
     payment.paymentMethod,
