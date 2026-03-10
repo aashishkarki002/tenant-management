@@ -8,13 +8,13 @@ import api from "../../../plugins/axios";
 
 function TabBar({ tabs, active, onChange }) {
     return (
-        <div className="flex border-b border-gray-100 bg-gray-50 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+        <div className="flex border-b border-muted-fill bg-muted-fill overflow-x-auto" style={{ scrollbarWidth: "none" }}>
             {tabs.map(t => (
                 <button key={t.key} onClick={() => onChange(t.key)}
                     className={`shrink-0 flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors whitespace-nowrap px-3 min-w-[72px]
                         ${active === t.key
-                            ? "text-blue-600 border-b-2 border-blue-600 bg-white"
-                            : "text-gray-400 hover:text-gray-600"}`}>
+                            ? "text-accent border-b-2 border-accent bg-surface-raised"
+                            : "text-text-sub hover:text-text-body"}`}>
                     {t.label}
                 </button>
             ))}
@@ -25,10 +25,10 @@ function TabBar({ tabs, active, onChange }) {
 function SectionHeader({ title, onAdd, btnColor }) {
     return (
         <div className="flex justify-between items-center mb-3">
-            <p className="text-xs font-semibold text-gray-600">{title}</p>
+            <p className="text-xs font-semibold text-text-sub">{title}</p>
             {onAdd && (
                 <button onClick={onAdd}
-                    className={`flex items-center gap-1 text-xs h-7 px-3 rounded-md font-semibold text-white transition-colors ${btnColor}`}>
+                    className={`flex items-center gap-1 text-xs h-7 px-3 rounded-md font-semibold text-text-strong transition-colors ${btnColor}`}>
                     <Plus className="w-3.5 h-3.5" /> Add
                 </button>
             )}
@@ -37,7 +37,7 @@ function SectionHeader({ title, onAdd, btnColor }) {
 }
 
 function EmptyState({ text }) {
-    return <p className="text-xs text-gray-400 italic text-center py-10">{text}</p>;
+    return <p className="text-xs text-text-sub italic text-center py-10">{text}</p>;
 }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
@@ -48,11 +48,11 @@ function OverviewTab({ gen, checks, services }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Fuel trend */}
             <div>
-                <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold mb-2">
+                <p className="text-[10px] uppercase tracking-widest text-text-sub font-semibold mb-2">
                     Fuel Trend (last {Math.min(last7.length, 7)} checks)
                 </p>
                 {last7.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">No checks yet</p>
+                    <p className="text-xs text-text-sub italic">No checks yet</p>
                 ) : (
                     <div className="flex items-end gap-1 h-16 w-full">
                         {last7.map((c, i) => {
@@ -65,7 +65,7 @@ function OverviewTab({ gen, checks, services }) {
                             return (
                                 <div key={i} title={`${p}% — ${fmt.date(c.date)}`}
                                     className="flex-1 flex flex-col items-center gap-0.5 group cursor-default min-w-0">
-                                    <span className="text-[8px] text-gray-400 group-hover:text-gray-600 leading-none">{p}%</span>
+                                    <span className="text-[8px] text-text-sub group-hover:text-text-body leading-none">{p}%</span>
                                     <div className={`w-full rounded-t ${color}`}
                                         style={{ height: `${Math.max(4, (p / 100) * 44)}px` }} />
                                 </div>
@@ -77,16 +77,16 @@ function OverviewTab({ gen, checks, services }) {
 
             {/* Latest service */}
             <div>
-                <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold mb-2">Latest Service</p>
+                <p className="text-[10px] uppercase tracking-widest text-text-sub font-semibold mb-2">Latest Service</p>
                 {services.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">No service logs yet</p>
+                    <p className="text-xs text-text-sub italic">No service logs yet</p>
                 ) : (
-                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 space-y-0.5">
-                        <p className="text-sm font-semibold text-purple-800">{services[0].type}</p>
-                        <p className="text-xs text-purple-600">{fmt.date(services[0].date)}</p>
-                        {services[0].technician && <p className="text-xs text-purple-500">Tech: {services[0].technician}</p>}
-                        {services[0].costPaisa > 0 && <p className="text-xs text-purple-500">Cost: {fmt.rupees(services[0].costPaisa)}</p>}
-                        {services[0].nextServiceDate && <p className="text-xs text-purple-400">Next: {fmt.date(services[0].nextServiceDate)}</p>}
+                    <div className="bg-muted-fill border border-muted-fill rounded-xl p-3 space-y-0.5">
+                        <p className="text-sm font-semibold text-text-strong">{services[0].type}</p>
+                        <p className="text-xs text-accent">{fmt.date(services[0].date)}</p>
+                        {services[0].technician && <p className="text-xs text-accent">Tech: {services[0].technician}</p>}
+                        {services[0].costPaisa > 0 && <p className="text-xs text-accent">Cost: {fmt.rupees(services[0].costPaisa)}</p>}
+                        {services[0].nextServiceDate && <p className="text-xs text-accent">Next: {fmt.date(services[0].nextServiceDate)}</p>}
                     </div>
                 )}
             </div>
@@ -94,12 +94,12 @@ function OverviewTab({ gen, checks, services }) {
             {/* Sub-meter info */}
             {gen.subMeter && (
                 <div className="col-span-full">
-                    <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold mb-2">Grid Sub-Meter</p>
-                    <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                        <Zap className="w-4 h-4 text-yellow-500 shrink-0" />
+                    <p className="text-[10px] uppercase tracking-widest text-text-sub font-semibold mb-2">Grid Sub-Meter</p>
+                    <div className="flex items-center gap-3 bg-muted-fill border border-muted-fill rounded-xl p-3">
+                        <Zap className="w-4 h-4 text-accent shrink-0" />
                         <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-yellow-800">{gen.subMeter.name}</p>
-                            <p className="text-[10px] text-yellow-600 mt-0.5">
+                            <p className="text-xs font-semibold text-text-strong">{gen.subMeter.name}</p>
+                            <p className="text-[10px] text-accent mt-0.5">
                                 Last reading: {gen.subMeter.lastReading?.value != null
                                     ? `${gen.subMeter.lastReading.value} kWh`
                                     : "No readings yet"}
@@ -110,8 +110,8 @@ function OverviewTab({ gen, checks, services }) {
                         </div>
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border
                             ${gen.subMeter.isActive
-                                ? "bg-green-50 text-green-700 border-green-200"
-                                : "bg-gray-100 text-gray-400 border-gray-200"}`}>
+                                ? "bg-muted-fill text-text-strong border-muted-fill"
+                                : "bg-muted-fill text-text-sub border-muted-fill"}`}>
                             {gen.subMeter.isActive ? "Active" : "Inactive"}
                         </span>
                     </div>
@@ -127,7 +127,7 @@ function ChecksTab({ gen, checks, onAddCheck }) {
     return (
         <div>
             <SectionHeader title="Daily Check Log" onAdd={onAddCheck}
-                btnColor="bg-blue-600 hover:bg-blue-700 active:bg-blue-800" />
+                btnColor="bg-accent hover:bg-accent-hover active:bg-accent" />
             {checks.length === 0 ? <EmptyState text="No checks recorded yet" /> : (
                 <div className="space-y-2">
                     {checks.map((c, i) => {
@@ -138,7 +138,7 @@ function ChecksTab({ gen, checks, onAddCheck }) {
                                 ? "bg-amber-100 text-amber-700"
                                 : "bg-green-100 text-green-700";
                         return (
-                            <div key={i} className="flex items-start gap-3 rounded-xl border border-gray-100 p-3 bg-gray-50/60">
+                            <div key={i} className="flex items-start gap-3 rounded-xl border border-muted-fill p-3 bg-muted-fill/60">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${circleColor}`}>
                                     {pct}%
                                 </div>
@@ -150,14 +150,14 @@ function ChecksTab({ gen, checks, onAddCheck }) {
                                             </Pill>
                                         )}
                                         {c.runningHours != null && (
-                                            <span className="text-[11px] text-gray-400">{c.runningHours} hrs</span>
+                                            <span className="text-[11px] text-text-sub">{c.runningHours} hrs</span>
                                         )}
                                         {c.checkedBy?.name && (
-                                            <span className="text-[11px] text-gray-400">by {c.checkedBy.name}</span>
+                                            <span className="text-[11px] text-text-sub">by {c.checkedBy.name}</span>
                                         )}
                                     </div>
-                                    {c.notes && <p className="text-xs text-gray-500 mt-1 leading-snug">{c.notes}</p>}
-                                    <p className="text-[10px] text-gray-400 mt-1">{fmt.time(c.date)}</p>
+                                    {c.notes && <p className="text-xs text-text-sub mt-1 leading-snug">{c.notes}</p>}
+                                    <p className="text-[10px] text-text-sub mt-1">{fmt.time(c.date)}</p>
                                 </div>
                             </div>
                         );
@@ -174,32 +174,32 @@ function RefillsTab({ refills, onAddRefill }) {
     return (
         <div>
             <SectionHeader title="Fuel Refill Log" onAdd={onAddRefill}
-                btnColor="bg-orange-500 hover:bg-orange-600 active:bg-orange-700" />
+                btnColor="bg-accent hover:bg-accent-hover active:bg-accent" />
             {refills.length === 0 ? <EmptyState text="No refills recorded yet" /> : (
                 <div className="space-y-2">
                     {refills.map((r, i) => (
-                        <div key={i} className="flex items-start gap-3 rounded-xl border border-orange-100 p-3 bg-orange-50/30">
-                            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
-                                <span className="text-xs font-bold text-orange-600 leading-none">{r.litersAdded}L</span>
+                        <div key={i} className="flex items-start gap-3 rounded-xl border border-muted-fill p-3 bg-muted-fill/30">
+                            <div className="w-10 h-10 rounded-full bg-muted-fill flex items-center justify-center shrink-0">
+                                <span className="text-xs font-bold text-accent leading-none">{r.litersAdded}L</span>
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex gap-2 flex-wrap items-center">
                                     {r.fuelLevelAfterPercent != null && (
-                                        <span className="text-xs text-gray-600">→ {r.fuelLevelAfterPercent}% after</span>
+                                        <span className="text-xs text-text-sub">→ {r.fuelLevelAfterPercent}% after</span>
                                     )}
                                     {r.costPaisa > 0 && (
-                                        <span className="text-xs font-semibold text-gray-700">{fmt.rupees(r.costPaisa)}</span>
+                                        <span className="text-xs font-semibold text-text-strong">{fmt.rupees(r.costPaisa)}</span>
                                     )}
-                                    {r.supplier && <span className="text-xs text-gray-500">{r.supplier}</span>}
-                                    {r.invoiceRef && <span className="text-xs text-gray-400">#{r.invoiceRef}</span>}
+                                    {r.supplier && <span className="text-xs text-text-sub">{r.supplier}</span>}
+                                    {r.invoiceRef && <span className="text-xs text-text-sub">#{r.invoiceRef}</span>}
                                     {r.costPaisa > 0 && (
-                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">
+                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-muted-fill text-text-strong border border-muted-fill">
                                             ✦ Expense posted
                                         </span>
                                     )}
                                 </div>
-                                {r.notes && <p className="text-xs text-gray-400 mt-1 leading-snug">{r.notes}</p>}
-                                <p className="text-[10px] text-gray-400 mt-1">{fmt.time(r.date)}</p>
+                                {r.notes && <p className="text-xs text-text-sub mt-1 leading-snug">{r.notes}</p>}
+                                <p className="text-[10px] text-text-sub mt-1">{fmt.time(r.date)}</p>
                             </div>
                         </div>
                     ))}
@@ -215,30 +215,30 @@ function ServicesTab({ services, onAddService }) {
     return (
         <div>
             <SectionHeader title="Service History" onAdd={onAddService}
-                btnColor="bg-purple-600 hover:bg-purple-700 active:bg-purple-800" />
+                btnColor="bg-accent hover:bg-accent-hover active:bg-accent" />
             {services.length === 0 ? <EmptyState text="No service records yet" /> : (
                 <div className="space-y-2">
                     {services.map((s, i) => (
-                        <div key={i} className="rounded-xl border border-gray-200 p-3 bg-white">
+                        <div key={i} className="rounded-xl border border-muted-fill p-3 bg-surface-raised">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-sm font-semibold text-gray-800">{s.type}</p>
+                                <p className="text-sm font-semibold text-text-strong">{s.type}</p>
                                 {s.costPaisa > 0 && (
-                                    <span className="text-xs font-medium text-gray-500">{fmt.rupees(s.costPaisa)}</span>
+                                    <span className="text-xs font-medium text-text-sub">{fmt.rupees(s.costPaisa)}</span>
                                 )}
                                 {s.costPaisa > 0 && (
-                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-muted-fill text-text-strong border border-muted-fill">
                                         ✦ Expense posted
                                     </span>
                                 )}
                             </div>
-                            {s.description && <p className="text-xs text-gray-600 mt-1 leading-snug">{s.description}</p>}
-                            <div className="flex gap-x-3 gap-y-0.5 mt-1.5 flex-wrap text-xs text-gray-400">
+                            {s.description && <p className="text-xs text-text-sub mt-1 leading-snug">{s.description}</p>}
+                            <div className="flex gap-x-3 gap-y-0.5 mt-1.5 flex-wrap text-xs text-text-sub">
                                 <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{fmt.date(s.date)}</span>
                                 {s.technician && <span>Tech: {s.technician}</span>}
                                 {s.nextServiceDate && <span>Next: {fmt.date(s.nextServiceDate)}</span>}
                                 {s.nextServiceHours && <span>Next at {s.nextServiceHours} hrs</span>}
                             </div>
-                            {s.notes && <p className="text-xs text-gray-400 mt-1 italic leading-snug">{s.notes}</p>}
+                            {s.notes && <p className="text-xs text-text-sub mt-1 italic leading-snug">{s.notes}</p>}
                         </div>
                     ))}
                 </div>
@@ -275,23 +275,23 @@ function ElectricityTab({ gen }) {
     if (!gen.subMeter) {
         return (
             <div className="flex flex-col items-center justify-center py-10 text-center">
-                <AlertCircle className="w-8 h-8 text-gray-300 mb-2" />
-                <p className="text-xs text-gray-400 font-medium">No sub-meter linked</p>
-                <p className="text-[11px] text-gray-400 mt-1">This generator was created before sub-meter auto-provisioning was enabled.</p>
+                <AlertCircle className="w-8 h-8 text-text-sub mb-2" />
+                <p className="text-xs text-text-sub font-medium">No sub-meter linked</p>
+                <p className="text-[11px] text-text-sub mt-1">This generator was created before sub-meter auto-provisioning was enabled.</p>
             </div>
         );
     }
 
     if (loading) {
-        return <p className="text-xs text-gray-400 text-center py-10 animate-pulse">Loading electricity readings…</p>;
+        return <p className="text-xs text-text-sub text-center py-10 animate-pulse">Loading electricity readings…</p>;
     }
 
     if (error) {
         return (
             <div className="text-center py-8">
-                <p className="text-xs text-red-500 mb-2">{error}</p>
+                <p className="text-xs text-danger mb-2">{error}</p>
                 <button onClick={fetchReadings}
-                    className="text-xs text-blue-600 underline">Retry</button>
+                    className="text-xs text-accent underline">Retry</button>
             </div>
         );
     }
@@ -315,9 +315,9 @@ function ElectricityTab({ gen }) {
                         { label: "Total Units", value: `${totalUnits.toFixed(1)} kWh` },
                         { label: "Total Cost", value: fmt.rupees(totalAmount * 100) },
                     ].map(({ label, value }) => (
-                        <div key={label} className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-center">
-                            <p className="text-[9px] uppercase tracking-widest text-yellow-600 font-semibold">{label}</p>
-                            <p className="text-xs font-bold text-yellow-800 mt-0.5">{value}</p>
+                        <div key={label} className="bg-muted-fill border border-muted-fill rounded-lg p-2 text-center">
+                            <p className="text-[9px] uppercase tracking-widest text-text-sub font-semibold">{label}</p>
+                            <p className="text-xs font-bold text-text-strong mt-0.5">{value}</p>
                         </div>
                     ))}
                 </div>
@@ -328,36 +328,36 @@ function ElectricityTab({ gen }) {
             ) : (
                 <div className="space-y-2">
                     {[...readings].reverse().slice(0, 15).map((r, i) => (
-                        <div key={i} className="flex items-start gap-3 rounded-xl border border-yellow-100 p-3 bg-yellow-50/30">
-                            <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
-                                <Zap className="w-4 h-4 text-yellow-600" />
+                        <div key={i} className="flex items-start gap-3 rounded-xl border border-muted-fill p-3 bg-muted-fill/30">
+                            <div className="w-10 h-10 rounded-full bg-muted-fill flex items-center justify-center shrink-0">
+                                <Zap className="w-4 h-4 text-accent" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex gap-2 flex-wrap items-center">
-                                    <span className="text-xs font-semibold text-gray-700">
+                                    <span className="text-xs font-semibold text-text-strong">
                                         {r.currentReading} kWh
                                     </span>
                                     {r.consumption != null && (
-                                        <span className="flex items-center gap-0.5 text-xs text-gray-500">
+                                        <span className="flex items-center gap-0.5 text-xs text-text-sub">
                                             <TrendingDown className="w-3 h-3" />
                                             {r.consumption} units used
                                         </span>
                                     )}
                                     {r.totalAmount > 0 && (
-                                        <span className="text-xs font-medium text-yellow-700">
+                                        <span className="text-xs font-medium text-text-strong">
                                             {fmt.rupees(r.totalAmount * 100)}
                                         </span>
                                     )}
                                     {r.status && (
                                         <Pill className={
-                                            r.status === "paid" ? "bg-green-50 text-green-700 border-green-200"
-                                                : r.status === "cancelled" ? "bg-gray-100 text-gray-400 border-gray-200"
-                                                    : "bg-blue-50 text-blue-600 border-blue-200"
+                                            r.status === "paid" ? "bg-muted-fill text-text-strong border-muted-fill"
+                                                : r.status === "cancelled" ? "bg-muted-fill text-text-sub border-muted-fill"
+                                                    : "bg-muted-fill text-text-sub border-muted-fill"
                                         }>{r.status}</Pill>
                                     )}
                                 </div>
-                                {r.notes && <p className="text-xs text-gray-400 mt-1 leading-snug">{r.notes}</p>}
-                                <p className="text-[10px] text-gray-400 mt-1">{fmt.time(r.readingDate)}</p>
+                                {r.notes && <p className="text-xs text-text-sub mt-1 leading-snug">{r.notes}</p>}
+                                <p className="text-[10px] text-text-sub mt-1">{fmt.time(r.readingDate)}</p>
                             </div>
                         </div>
                     ))}
@@ -384,7 +384,7 @@ export function GeneratorCardDetail({ gen, tab, onTabChange, onAddCheck, onAddRe
     ];
 
     return (
-        <div className="border-t border-gray-200">
+        <div className="border-t border-muted-fill">
             <TabBar tabs={tabs} active={tab} onChange={onTabChange} />
             <div className="p-3 sm:p-4 space-y-3">
                 {tab === "overview" && <OverviewTab gen={gen} checks={checks} services={services} />}

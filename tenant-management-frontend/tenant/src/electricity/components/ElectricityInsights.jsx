@@ -63,9 +63,9 @@ export function ElectricityInsights({ grouped = {} }) {
     highest && {
       id: "highest",
       icon: TrendingUp,
-      iconBg: "bg-red-50",
-      iconColor: "text-red-600",
-      borderColor: "border-red-200",
+      iconBg: "bg-danger-bg",
+      iconColor: "text-danger",
+      borderColor: "border-danger-border",
       label: "Highest Consumption",
       value: `${fmt.kwh(highest.consumption)} kWh`,
       detail: highest.name,
@@ -73,9 +73,9 @@ export function ElectricityInsights({ grouped = {} }) {
     lowest && {
       id: "lowest",
       icon: TrendingDown,
-      iconBg: "bg-green-50",
-      iconColor: "text-green-600",
-      borderColor: "border-green-200",
+      iconBg: "bg-success-bg",
+      iconColor: "text-success",
+      borderColor: "border-success-border",
       label: "Lowest Consumption",
       value: `${fmt.kwh(lowest.consumption)} kWh`,
       detail: lowest.name,
@@ -83,9 +83,9 @@ export function ElectricityInsights({ grouped = {} }) {
     unpaidCount > 0 && {
       id: "unpaid",
       icon: AlertCircle,
-      iconBg: "bg-orange-50",
-      iconColor: "text-orange-600",
-      borderColor: "border-orange-200",
+      iconBg: "bg-warning-bg",
+      iconColor: "text-warning",
+      borderColor: "border-warning-border",
       label: "Unpaid Electricity Total",
       value: fmt.rs(unpaidTotal),
       detail: `Across ${unpaidCount} tenant${unpaidCount !== 1 ? "s" : ""}`,
@@ -101,7 +101,7 @@ export function ElectricityInsights({ grouped = {} }) {
         return (
           <div
             key={card.id}
-            className={`group flex items-center gap-3 bg-white rounded-xl border ${card.borderColor ?? "border-[#E8E4E0]"} 
+            className={`group flex items-center gap-3 bg-surface-raised rounded-xl border ${card.borderColor ?? "border-muted-fill"} 
               px-4 py-3.5 transition-all duration-200 hover:shadow-md hover:scale-[1.02]
               animate-in fade-in slide-in-from-left-2`}
             style={{ animationDelay: `${index * 75}ms` }}
@@ -111,11 +111,11 @@ export function ElectricityInsights({ grouped = {} }) {
               <Icon className={`w-5 h-5 ${card.iconColor}`} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold tracking-wider uppercase text-[#948472] mb-0.5">
+              <p className="text-[10px] font-bold tracking-wider uppercase text-text-sub mb-0.5">
                 {card.label}
               </p>
-              <p className="text-base font-bold text-[#1C1A18] truncate leading-tight">{card.value}</p>
-              <p className="text-xs text-[#948472] truncate mt-1">{card.detail}</p>
+              <p className="text-base font-bold text-text-strong truncate leading-tight">{card.value}</p>
+              <p className="text-xs text-text-sub truncate mt-1">{card.detail}</p>
             </div>
           </div>
         );

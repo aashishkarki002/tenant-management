@@ -1,5 +1,3 @@
-
-
 import { usePagination } from "../hooks/usePagination";
 import {
     Table,
@@ -20,10 +18,6 @@ import {
     ChevronRightIcon,
     MoreHorizontalIcon,
 } from "lucide-react";
-
-
-
-
 
 export default function LedgerTable({
     entries,
@@ -79,14 +73,14 @@ export default function LedgerTable({
                                         {entry.description || entry.account?.name || "-"}
                                     </TableCell>
                                     <TableCell
-                                        style={{ color: entry.debit ? "var(--color-danger)" : undefined }}
                                         className="font-medium"
+                                        style={{ color: entry.debit ? "var(--color-danger)" : undefined }}
                                     >
                                         {entry.debit ? `−₹${entry.debit.toLocaleString()}` : "-"}
                                     </TableCell>
                                     <TableCell
-                                        style={{ color: entry.credit ? "var(--color-success)" : undefined }}
                                         className="font-medium"
+                                        style={{ color: entry.credit ? "var(--color-success)" : undefined }}
                                     >
                                         {entry.credit ? `+₹${entry.credit.toLocaleString()}` : "-"}
                                     </TableCell>
@@ -125,7 +119,6 @@ export default function LedgerTable({
                             </PaginationItem>
 
                             {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                                // Show first page, last page, current page, and pages around current
                                 if (
                                     page === 1 ||
                                     page === totalPages ||

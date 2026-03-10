@@ -18,11 +18,9 @@ export default function QuarterButton({
     const [hovered, setHovered] = useState(false);
     const isSelected = selectedQuarter === value;
 
-    // Show quarter and month range (e.g. "Q1 · Jan – Mar")
     const monthText = value ? (quarterToMonths[value] ?? null) : null;
     const displayText = monthText ? `${quarter} · ${monthText}` : quarter;
 
-    // Width accommodates full text
     const width = monthText ? 180 : 80;
 
     return (
@@ -32,8 +30,8 @@ export default function QuarterButton({
             onHoverEnd={() => setHovered(false)}
             animate={{
                 width,
-                backgroundColor: isSelected ? "#1A5276" : hovered ? "#154360" : "#F5F4F0",
-                color: isSelected ? "#ffffff" : hovered ? "#ffffff" : "#1C1917",
+                backgroundColor: isSelected ? "var(--color-accent)" : hovered ? "var(--color-accent-hover)" : "var(--color-surface)",
+                color: isSelected ? "var(--color-surface-raised)" : hovered ? "var(--color-surface-raised)" : "var(--color-text-strong)",
             }}
             transition={{ stiffness: 300, damping: 20 }}
             className="h-10 rounded-md text-sm font-medium whitespace-nowrap"

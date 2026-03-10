@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 
 import {
-  Sidebar, SidebarContent, SidebarFooter, useSidebar,
+  Sidebar, SidebarContent, SidebarFooter, SidebarRail, useSidebar,
 } from "@/components/ui/sidebar";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -79,7 +79,8 @@ export default function AppSidebar() {
   const avatarSrc = user?.profilePicture || undefined;
 
   return (
-    <Sidebar className="w-52 bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
+    <Sidebar className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
+      <SidebarRail />
 
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-4 py-4 border-b border-sidebar-border">

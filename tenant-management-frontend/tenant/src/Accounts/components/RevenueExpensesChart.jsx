@@ -1,11 +1,4 @@
 // components/RevenueExpensesChart.jsx
-// ─── Design direction: Refined financial dashboard — dark-tinted card surface,
-//     monochromatic slate base with two sharp accent hues (emerald for profit,
-//     rose for loss). Typography: DM Mono for numbers, DM Sans for labels.
-//     The default view tells the PROFIT STORY (net = revenue - expenses).
-//     A toggle switches to the full Revenue vs Expenses breakdown.
-//     Compare mode (period A vs B) is available as a third view.
-// ──────────────────────────────────────────────────────────────────────────────
 
 import { useState, useMemo } from "react";
 import {
@@ -15,17 +8,16 @@ import {
 
 // ─── Design tokens — petrol theme ──────────────────────────────────────────────
 const TOKEN = {
-    profit: "#166534",   // --color-success — positive net
-    loss: "#991B1B",     // --color-danger  — negative net
-    revenue: "#1A5276",  // --color-accent (petrol) — revenue bars
-    expenses: "#92400E", // --color-warning — expense bars
-    revenueB: "#2E86C1", // lighter petrol  — period B revenue
-    expensesB: "#FDE68A",// --color-warning-border — period B expenses
+    profit: "#166534",
+    loss: "#991B1B",
+    revenue: "#1A5276",
+    expenses: "#92400E",
+    revenueB: "#2E86C1",
+    expensesB: "#FDE68A",
     grid: "var(--border)",
     muted: "var(--muted-foreground)",
 };
 
-// ─── Y-axis formatter ──────────────────────────────────────────────────────────
 const fmtY = (v) => {
     const abs = Math.abs(v);
     const sign = v < 0 ? "-" : "";
@@ -34,40 +26,37 @@ const fmtY = (v) => {
     return `${sign}${abs}`;
 };
 
-// ─── Custom Tooltip ────────────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label, view }) {
     if (!active || !payload?.length) return null;
     const isCompare = view === "compare";
     const [la, lb] = isCompare ? label.split(" / ") : [label, null];
 
     return (
-        <div style={{
-            background: "var(--popover)",
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            padding: "14px 16px",
-            minWidth: 200,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-            fontFamily: "'DM Sans', sans-serif",
-        }}>
+        <div className="bg-popover border border-border rounded-xl shadow-lg min-w-[200px] p-4 font-sans">
             {isCompare ? (
-                <div style={{ display: "flex", gap: 12, marginBottom: 10 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: TOKEN.revenue, textTransform: "uppercase", letterSpacing: "0.08em" }}>{la}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: TOKEN.revenueB, textTransform: "uppercase", letterSpacing: "0.08em" }}>{lb}</span>
+                <div className="flex gap-3 mb-2.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: TOKEN.revenue }}>{la}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: TOKEN.revenueB }}>{lb}</span>
                 </div>
             ) : (
-                <p style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-2.5">
                     {label}
                 </p>
             )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div className="flex flex-col gap-1.5">
                 {payload.map((entry) => (
-                    <div key={entry.dataKey} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--foreground)" }}>
-                            <span style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: entry.fill ?? entry.color, display: "inline-block" }} />
+                    <div key={entry.dataKey} className="flex items-center justify-between gap-5">
+                        <span className="flex items-center gap-1.5 text-[13px] text-foreground">
+                            <span
+                                className="inline-block w-2.5 h-2.5 rounded-sm"
+                                style={{ backgroundColor: entry.fill ?? entry.color }}
+                            />
                             {entry.name}
                         </span>
-                        <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'DM Mono', monospace", color: entry.value < 0 ? TOKEN.loss : "var(--foreground)" }}>
+                        <span
+                            className="text-[13px] font-bold font-mono"
+                            style={{ color: entry.value < 0 ? TOKEN.loss : undefined }}
+                        >
                             {entry.value < 0 ? "-" : ""}₹{Math.abs(Number(entry.value)).toLocaleString()}
                         </span>
                     </div>
@@ -77,57 +66,51 @@ function CustomTooltip({ active, payload, label, view }) {
     );
 }
 
-// ─── Custom Legend ─────────────────────────────────────────────────────────────
 function CustomLegend({ payload }) {
     return (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center", paddingTop: 12 }}>
+        <div className="flex flex-wrap gap-4 justify-center pt-3">
             {payload?.map((e) => (
-                <div key={e.value} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: e.color, display: "inline-block" }} />
-                    <span style={{ fontSize: 12, color: "var(--muted-foreground)", fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>{e.value}</span>
+                <div key={e.value} className="flex items-center gap-1.5">
+                    <span
+                        className="inline-block w-3 h-3 rounded-sm"
+                        style={{ backgroundColor: e.color }}
+                    />
+                    <span className="text-xs text-muted-foreground font-medium">{e.value}</span>
                 </div>
             ))}
         </div>
     );
 }
 
-// ─── Skeleton ──────────────────────────────────────────────────────────────────
 function ChartSkeleton() {
     return (
-        <div style={{ width: "100%", height: 300, display: "flex", alignItems: "flex-end", gap: 10, padding: "16px 32px 32px" }}>
+        <div className="w-full h-[300px] flex items-end gap-2.5 px-8 pb-8 pt-4">
             {[55, 80, 40, 90, 65, 75, 50, 85, 60, 70, 45, 80].map((h, i) => (
-                <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: "4px 4px 0 0", background: "var(--muted)", opacity: 0.5, animation: "pulse 1.5s ease-in-out infinite", animationDelay: `${i * 0.07}s` }} />
+                <div
+                    key={i}
+                    className="flex-1 rounded-t bg-muted opacity-50 animate-pulse"
+                    style={{ height: `${h}%`, animationDelay: `${i * 0.07}s` }}
+                />
             ))}
         </div>
     );
 }
 
-// ─── View toggle button ────────────────────────────────────────────────────────
 function ViewTab({ label, active, onClick }) {
     return (
         <button
             type="button"
             onClick={onClick}
-            style={{
-                padding: "6px 14px",
-                fontSize: 12,
-                fontWeight: 600,
-                fontFamily: "'DM Sans', sans-serif",
-                letterSpacing: "0.02em",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-                transition: "background 0.15s, color 0.15s",
-                background: active ? "var(--primary)" : "transparent",
-                color: active ? "var(--primary-foreground)" : "var(--muted-foreground)",
-            }}
+            className={`px-3.5 py-1.5 text-xs font-semibold tracking-wide rounded-md border-none cursor-pointer transition-colors ${active
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-transparent text-muted-foreground hover:text-foreground"
+                }`}
         >
             {label}
         </button>
     );
 }
 
-// ─── Summary KPI strip ─────────────────────────────────────────────────────────
 function KpiStrip({ data, view }) {
     const totals = useMemo(() => {
         if (view === "net") {
@@ -149,19 +132,17 @@ function KpiStrip({ data, view }) {
     if (!totals.length) return null;
 
     return (
-        <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+        <div className="flex gap-4 mb-5 flex-wrap">
             {totals.map((k) => (
-                <div key={k.label} style={{
-                    flex: "1 1 120px",
-                    background: "var(--muted)",
-                    borderRadius: 10,
-                    padding: "12px 16px",
-                    borderLeft: `3px solid ${k.color}`,
-                }}>
-                    <p style={{ fontSize: 11, color: "var(--muted-foreground)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>
+                <div
+                    key={k.label}
+                    className="flex-1 basis-[120px] bg-muted rounded-xl px-4 py-3"
+                    style={{ borderLeft: `3px solid ${k.color}` }}
+                >
+                    <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-[0.07em] mb-1">
                         {k.label}
                     </p>
-                    <p style={{ fontSize: 18, fontWeight: 700, fontFamily: "'DM Mono', monospace", color: k.color }}>
+                    <p className="text-lg font-bold font-mono" style={{ color: k.color }}>
                         {k.value < 0 ? "-" : ""}₹{Math.abs(k.value).toLocaleString()}
                     </p>
                 </div>
@@ -170,17 +151,6 @@ function KpiStrip({ data, view }) {
     );
 }
 
-// ─── Main component ────────────────────────────────────────────────────────────
-/**
- * RevenueExpensesChart
- *
- * Props:
- *   data        — [{ label, revenue, expenses }]           ← normal mode
- *   compareData — [{ label, revenueA, revenueB, expensesA, expensesB }]  ← compare mode
- *   loading     — boolean
- *   title       — string (optional)
- *   subtitle    — string (optional)
- */
 export default function RevenueExpensesChart({
     data = [],
     compareData = [],
@@ -191,53 +161,36 @@ export default function RevenueExpensesChart({
     periodALabel = null,
     periodBLabel = null,
 }) {
-    // "net" | "breakdown" | "compare"
     const [view, setView] = useState("net");
-
     const hasCompare = compareData.length > 0;
 
-    // Derive net data from normal data
     const netData = useMemo(() =>
-        data.map((d) => ({
-            ...d,
-            net: (d.revenue ?? 0) - (d.expenses ?? 0),
-        })),
+        data.map((d) => ({ ...d, net: (d.revenue ?? 0) - (d.expenses ?? 0) })),
         [data]
     );
 
     const chartData = view === "compare" ? compareData : netData;
 
-    const showCompareTab = hasCompare;
-
     return (
         <div className="w-full rounded-xl border border-border bg-card overflow-hidden">
-            {/* Google Fonts — DM Sans + DM Mono */}
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap');
-                @keyframes pulse {
-                    0%,100% { opacity: 0.5; }
-                    50%      { opacity: 0.8; }
-                }
+                @keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.8; } }
             `}</style>
 
             {/* Header */}
-            <div style={{ padding: "20px 24px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div className="px-6 pt-5 flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <p style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: "var(--foreground)", margin: 0 }}>
-                        {title}
-                    </p>
-                    <p style={{ fontSize: 13, color: "var(--muted-foreground)", marginTop: 2, fontFamily: "'DM Sans', sans-serif" }}>
-                        {subtitle}
-                    </p>
-                    {/* Compare period legend — shown when compareMode and labels are supplied */}
+                    <p className="text-base font-bold text-foreground m-0">{title}</p>
+                    <p className="text-[13px] text-muted-foreground mt-0.5">{subtitle}</p>
                     {compareMode && periodALabel && (
-                        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 20, background: "var(--emerald-100, #d1fae5)", padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "var(--emerald-700, #047857)" }}>
-                                <span style={{ width: 8, height: 8, borderRadius: 2, background: "#10b981", display: "inline-block" }} />
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                <span className="inline-block w-2 h-2 rounded-sm bg-emerald-500" />
                                 A: {periodALabel}
                             </span>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 20, background: "var(--cyan-100, #cffafe)", padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "var(--cyan-700, #0e7490)" }}>
-                                <span style={{ width: 8, height: 8, borderRadius: 2, background: "#06b6d4", display: "inline-block" }} />
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-100 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-700">
+                                <span className="inline-block w-2 h-2 rounded-sm bg-cyan-500" />
                                 B: {periodBLabel}
                             </span>
                         </div>
@@ -245,32 +198,25 @@ export default function RevenueExpensesChart({
                 </div>
 
                 {/* View toggle */}
-                <div style={{
-                    display: "flex",
-                    gap: 4,
-                    background: "var(--muted)",
-                    borderRadius: 8,
-                    padding: 4,
-                }}>
+                <div className="flex gap-1 bg-muted rounded-lg p-1">
                     <ViewTab label="Net Profit" active={view === "net"} onClick={() => setView("net")} />
                     <ViewTab label="Breakdown" active={view === "breakdown"} onClick={() => setView("breakdown")} />
-                    {showCompareTab && (
+                    {hasCompare && (
                         <ViewTab label="Compare" active={view === "compare"} onClick={() => setView("compare")} />
                     )}
                 </div>
             </div>
 
-            <div style={{ padding: "20px 24px 24px" }}>
+            <div className="px-6 pb-6 pt-5">
                 {loading ? (
                     <ChartSkeleton />
                 ) : !chartData?.length ? (
-                    <div style={{ height: 300, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, border: "1px dashed var(--border)", borderRadius: 12 }}>
-                        <p style={{ fontSize: 14, fontWeight: 600, color: "var(--foreground)", fontFamily: "'DM Sans', sans-serif" }}>No data available</p>
-                        <p style={{ fontSize: 12, color: "var(--muted-foreground)", fontFamily: "'DM Sans', sans-serif" }}>Select a period to see results</p>
+                    <div className="h-[300px] flex flex-col items-center justify-center gap-1.5 border border-dashed border-border rounded-xl">
+                        <p className="text-sm font-semibold text-foreground">No data available</p>
+                        <p className="text-xs text-muted-foreground">Select a period to see results</p>
                     </div>
                 ) : (
                     <>
-                        {/* KPI strip — only for net & breakdown views */}
                         {view !== "compare" && <KpiStrip data={netData} view={view} />}
 
                         <ResponsiveContainer width="100%" height={300}>
@@ -286,58 +232,43 @@ export default function RevenueExpensesChart({
                                     stroke={TOKEN.grid}
                                     strokeOpacity={0.5}
                                 />
-
                                 <XAxis
                                     dataKey="label"
-                                    tick={{ fontSize: 11, fill: TOKEN.muted, fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}
+                                    tick={{ fontSize: 11, fill: TOKEN.muted, fontWeight: 500 }}
                                     tickLine={false}
                                     axisLine={false}
                                     dy={8}
                                     interval={0}
                                 />
-
                                 <YAxis
                                     tickFormatter={fmtY}
-                                    tick={{ fontSize: 11, fill: TOKEN.muted, fontFamily: "'DM Mono', monospace" }}
+                                    tick={{ fontSize: 11, fill: TOKEN.muted }}
                                     tickLine={false}
                                     axisLine={false}
                                     width={44}
                                 />
-
-                                {/* Zero line for net profit view */}
                                 {view === "net" && (
                                     <ReferenceLine y={0} stroke={TOKEN.muted} strokeDasharray="4 4" strokeOpacity={0.6} />
                                 )}
-
                                 <Tooltip
                                     content={<CustomTooltip view={view} />}
                                     cursor={{ fill: "var(--muted)", opacity: 0.3, radius: 4 }}
                                 />
-
                                 <Legend content={<CustomLegend />} />
 
-                                {/* ── NET PROFIT VIEW ─────────────────────────── */}
                                 {view === "net" && (
                                     <Bar dataKey="net" name="Net Profit" radius={[5, 5, 0, 0]} maxBarSize={52}>
                                         {netData.map((entry, i) => (
-                                            <Cell
-                                                key={i}
-                                                fill={entry.net >= 0 ? TOKEN.profit : TOKEN.loss}
-                                                opacity={0.92}
-                                            />
+                                            <Cell key={i} fill={entry.net >= 0 ? TOKEN.profit : TOKEN.loss} opacity={0.92} />
                                         ))}
                                     </Bar>
                                 )}
-
-                                {/* ── BREAKDOWN VIEW ──────────────────────────── */}
                                 {view === "breakdown" && (
                                     <>
                                         <Bar dataKey="revenue" name="Revenue" fill={TOKEN.revenue} radius={[5, 5, 0, 0]} maxBarSize={44} />
                                         <Bar dataKey="expenses" name="Expenses" fill={TOKEN.expenses} radius={[5, 5, 0, 0]} maxBarSize={44} />
                                     </>
                                 )}
-
-                                {/* ── COMPARE VIEW ────────────────────────────── */}
                                 {view === "compare" && (
                                     <>
                                         <Bar dataKey="revenueA" name="Revenue (A)" fill={TOKEN.revenue} radius={[5, 5, 0, 0]} maxBarSize={32} />

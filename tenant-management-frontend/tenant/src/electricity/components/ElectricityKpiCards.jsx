@@ -71,10 +71,10 @@ const KPI_CONFIG = [
     id: "consumption",
     label: "Total Consumption",
     icon: Zap,
-    iconBg: "bg-blue-50",
-    iconColor: "text-blue-600",
-    borderAccent: "border-l-blue-500",
-    barColor: "bg-blue-500",           // ← explicit, never derived
+    iconBg: "bg-accent-bg",
+    iconColor: "text-accent",
+    borderAccent: "border-l-accent",
+    barColor: "bg-accent",           // ← explicit, never derived
     getValue: (kpis) => `${fmt.kwh(kpis.totalConsumption)} kWh`,
     getSub: () => "This billing period",
   },
@@ -82,10 +82,10 @@ const KPI_CONFIG = [
     id: "revenue",
     label: "Electricity Revenue",
     icon: DollarSign,
-    iconBg: "bg-emerald-50",
-    iconColor: "text-emerald-600",
-    borderAccent: "border-l-emerald-500",
-    barColor: "bg-emerald-500",
+    iconBg: "bg-success-bg",
+    iconColor: "text-success",
+    borderAccent: "border-l-success",
+    barColor: "bg-success",
     getValue: (kpis) => fmt.rs(kpis.totalRevenue),
     getSub: () => "Billed this period",
   },
@@ -93,10 +93,10 @@ const KPI_CONFIG = [
     id: "pending",
     label: "Pending Bills",
     icon: AlertTriangle,
-    iconBg: "bg-orange-50",
-    iconColor: "text-orange-600",
-    borderAccent: "border-l-orange-500",
-    barColor: "bg-orange-500",
+    iconBg: "bg-warning-bg",
+    iconColor: "text-warning",
+    borderAccent: "border-l-warning",
+    barColor: "bg-warning",
     getValue: (kpis) => fmt.rs(kpis.pendingAmount),
     getSub: (kpis) =>
       kpis.pendingCount > 0
@@ -108,10 +108,10 @@ const KPI_CONFIG = [
     id: "meters",
     label: "Readings Completed",
     icon: Gauge,
-    iconBg: "bg-cyan-50",
-    iconColor: "text-cyan-600",
-    borderAccent: "border-l-cyan-500",
-    barColor: "bg-cyan-500",
+    iconBg: "bg-accent-bg",
+    iconColor: "text-accent",
+    borderAccent: "border-l-accent",
+    barColor: "bg-accent",
     getValue: (kpis) => `${kpis.recordedMeters} / ${kpis.totalMeters}`,
     getSub: () => "Meters recorded",
     getAlert: (kpis) => kpis.totalMeters > 0 && kpis.recordedMeters < kpis.totalMeters,
@@ -136,10 +136,10 @@ export function ElectricityKpiCards({
       {/* Section header — makes it unambiguous which period the KPIs represent */}
       {periodLabel && (
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-[#948472] uppercase tracking-wider">
+          <span className="text-xs font-semibold text-text-sub uppercase tracking-wider">
             Key Metrics
           </span>
-          <span className="text-xs font-bold text-[#625848] bg-[#F0EDE9] border border-[#E8E4E0]
+          <span className="text-xs font-bold text-text-sub bg-muted-fill border border-muted-fill
             px-2.5 py-1 rounded-full">
             {periodLabel}
           </span>
@@ -154,9 +154,9 @@ export function ElectricityKpiCards({
           return (
             <div
               key={config.id}
-              className={`group relative bg-white rounded-xl border border-[#E8E4E0]
+              className={`group relative bg-surface-raised rounded-xl border border-muted-fill
                 px-4 py-4 transition-all duration-200 hover:shadow-lg hover:scale-[1.02]
-                ${showAlert ? "ring-2 ring-orange-200/50" : ""}`}
+                ${showAlert ? "ring-2 ring-warning-border/50" : ""}`}
             >
               {/* Left accent bar — explicit barColor, never derived from borderAccent */}
               <div
@@ -166,13 +166,13 @@ export function ElectricityKpiCards({
 
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold tracking-wide uppercase text-[#948472] mb-1.5">
+                  <p className="text-[11px] font-semibold tracking-wide uppercase text-text-sub mb-1.5">
                     {config.label}
                   </p>
-                  <p className="text-2xl font-bold text-[#1C1A18] leading-tight truncate">
+                  <p className="text-2xl font-bold text-text-strong leading-tight truncate">
                     {config.getValue(kpis)}
                   </p>
-                  <p className="text-xs text-[#948472] mt-1.5">{config.getSub(kpis)}</p>
+                  <p className="text-xs text-text-sub mt-1.5">{config.getSub(kpis)}</p>
                 </div>
                 <div
                   className={`flex items-center justify-center w-11 h-11 rounded-xl ${config.iconBg}
@@ -184,8 +184,8 @@ export function ElectricityKpiCards({
 
               {showAlert && config.getAlertText && (
                 <div
-                  className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-amber-700
-                    bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5
+                  className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-warning
+                    bg-warning-bg border border-warning-border rounded-lg px-2.5 h-7   py-1.5
                     animate-in fade-in slide-in-from-top-1 duration-200"
                 >
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />

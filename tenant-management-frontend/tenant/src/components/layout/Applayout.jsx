@@ -1,6 +1,6 @@
 // src/components/layout/AppLayout.jsx
 import {
-  SidebarProvider, SidebarTrigger, SidebarInset, SidebarRail,
+  SidebarProvider, SidebarTrigger, SidebarInset,
 } from "../ui/sidebar";
 import AppSidebar from "../app-sidebar";
 import StaffSidebar from "../staff-sidebar";
@@ -18,7 +18,6 @@ export default function AppLayout({ children }) {
       <HeaderSlotProvider>
         <SidebarProvider>
           {isAdmin ? <AppSidebar /> : <StaffSidebar />}
-          <SidebarRail />
 
           <SidebarInset className="relative flex flex-col min-h-screen bg-background">
 

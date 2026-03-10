@@ -1,5 +1,3 @@
-
-
 import {
     PieChart,
     Pie,
@@ -9,8 +7,6 @@ import {
     ResponsiveContainer,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-
 
 // Petrol theme palette — accent + semantic colors for chart segments
 const DEFAULT_COLORS = [

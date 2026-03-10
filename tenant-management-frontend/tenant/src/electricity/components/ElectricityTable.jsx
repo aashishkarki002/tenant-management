@@ -53,11 +53,11 @@ export function ElectricityTable({
   ];
 
   return (
-    <div className="bg-white rounded-xl border border-[#E8E4E0] overflow-hidden">
+    <div className="bg-surface-raised rounded-xl border border-muted-fill overflow-hidden">
       {/* Header bar */}
-      <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-[#F0EDE9]">
-        <h3 className="text-sm font-semibold text-[#1C1A18]">Meter Readings</h3>
-        <span className="text-xs text-[#948472]">
+      <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-muted-fill">
+        <h3 className="text-sm font-semibold text-text-strong">Meter Readings</h3>
+        <span className="text-xs text-text-sub">
           {filteredData.length} {filteredData.length === 1 ? "reading" : "readings"}
         </span>
       </div>
@@ -73,20 +73,20 @@ export function ElectricityTable({
 
         {/* Table */}
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-[#948472]">
+          <div className="flex items-center justify-center gap-2 py-16 text-text-sub">
             <Loader2 className="w-5 h-5 animate-spin" />
             <span className="text-sm font-medium">Loading readings...</span>
           </div>
         ) : filteredData.length === 0 && newRows.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-[#F0EDE9] flex items-center justify-center mb-4">
-              <Zap className="w-7 h-7 text-[#948472]" />
+            <div className="w-14 h-14 rounded-2xl bg-muted-fill flex items-center justify-center mb-4">
+              <Zap className="w-7 h-7 text-text-sub" />
             </div>
-            <h4 className="text-base font-semibold text-[#1C1A18] mb-1">
+            <h4 className="text-base font-semibold text-text-strong mb-1">
               No electricity readings recorded
             </h4>
-            <p className="text-sm text-[#948472] mb-5 max-w-sm">
+            <p className="text-sm text-text-sub mb-5 max-w-sm">
               No electricity readings have been recorded for this billing period.
               Start by adding your first reading.
             </p>
@@ -94,7 +94,7 @@ export function ElectricityTable({
               <Button
                 type="button"
                 onClick={onAddReading}
-                className="flex items-center gap-2 bg-[#3D1414] text-white hover:bg-[#2D0E0E] rounded-lg px-5 py-2.5"
+                className="flex items-center gap-2 bg-accent text-white hover:bg-accent-hover rounded-lg px-5 py-2.5"
               >
                 <PlusCircle className="w-4 h-4" />
                 Add First Reading
@@ -102,21 +102,21 @@ export function ElectricityTable({
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-[#E8E4E0] mt-1">
+          <div className="overflow-x-auto rounded-lg border border-muted-fill mt-1">
             <table className="w-full table-auto border-collapse min-w-[900px]">
               <thead>
-                <tr className="bg-[#FAFAF8]">
+                <tr className="bg-muted-fill">
                   {COLUMNS.map((col) => (
                     <th
                       key={col}
-                      className="py-2.5 px-4 text-left text-[10px] font-bold text-[#948472] uppercase tracking-wider"
+                      className="py-2.5 px-4 text-left text-[10px] font-bold text-text-sub uppercase tracking-wider"
                     >
                       {col}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F0EDE9]">
+              <tbody className="divide-y divide-muted-fill">
                 {paginatedData.map((record, index) => (
                   <ElectricityTableRow
                     key={record._id ?? index}

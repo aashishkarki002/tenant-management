@@ -1,10 +1,10 @@
 import React from "react";
 
 const METER_SEGMENTS = [
-  { key: "unit", label: "Units", color: "#3b82f6", bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", lightBg: "#EFF6FF" },
-  { key: "common_area", label: "Common Area", color: "#a855f7", bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200", lightBg: "#FAF5FF" },
-  { key: "parking", label: "Parking", color: "#06b6d4", bg: "bg-cyan-50", text: "text-cyan-700", border: "border-cyan-200", lightBg: "#ECFEFF" },
-  { key: "sub_meter", label: "Sub-Meter", color: "#f59e0b", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", lightBg: "#FFFBEB" },
+  { key: "unit", label: "Units", color: "var(--color-accent)", bg: "bg-accent-bg", text: "text-accent", border: "border-accent-border", dotClass: "bg-accent" },
+  { key: "common_area", label: "Common Area", color: "var(--color-info)", bg: "bg-info-bg", text: "text-info", border: "border-info-border", dotClass: "bg-info" },
+  { key: "parking", label: "Parking", color: "var(--color-success)", bg: "bg-success-bg", text: "text-success", border: "border-success-border", dotClass: "bg-success" },
+  { key: "sub_meter", label: "Sub-Meter", color: "var(--color-warning)", bg: "bg-warning-bg", text: "text-warning", border: "border-warning-border", dotClass: "bg-warning" },
 ];
 
 const fmt = {
@@ -32,14 +32,14 @@ export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
   if (activeSegments.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-xl border border-[#E8E4E0] overflow-hidden shadow-sm
+    <div className="bg-surface-raised rounded-xl border border-muted-fill overflow-hidden shadow-sm
       hover:shadow-md transition-shadow duration-200">
       {/* Header */}
-      <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-[#F0EDE9] bg-gradient-to-r from-[#F8F5F2] to-white">
-        <h3 className="text-sm font-bold text-[#1C1A18] tracking-tight">Consumption Breakdown</h3>
+      <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-muted-fill bg-gradient-to-r from-muted-fill to-surface-raised">
+        <h3 className="text-sm font-bold text-text-strong tracking-tight">Consumption Breakdown</h3>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-[#948472]">Total:</span>
-          <span className="text-sm font-bold text-[#3D1414]">
+          <span className="text-xs font-medium text-text-sub">Total:</span>
+          <span className="text-sm font-bold text-text-strong">
             {fmt.kwh(grandTotalUnits)} kWh
           </span>
         </div>
@@ -47,7 +47,7 @@ export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
 
       <div className="px-5 py-4 space-y-4">
         {/* Stacked bar — animated on load */}
-        <div className="relative h-4 w-full rounded-full bg-[#F0EDE9] overflow-hidden flex shadow-inner">
+        <div className="relative h-4 w-full rounded-full bg-muted-fill overflow-hidden flex shadow-inner">
           {activeSegments.map((seg) => {
             const pct = (seg.units / divisor) * 100;
             return (
@@ -89,7 +89,7 @@ export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
                     {seg.label}
                   </span>
                   <span className={`text-xs font-bold ${seg.text} opacity-70 
-                    px-1.5 py-0.5 rounded-md bg-white/50`}>
+                    px-1.5 py-0.5 rounded-md bg-muted-fill/50`}>
                     {pct}%
                   </span>
                 </div>
@@ -100,13 +100,11 @@ export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
                 <p className={`text-xs ${seg.text} opacity-80 mt-1`}>
                   {fmt.rs(seg.amount)}
                 </p>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-current/10">
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-muted-fill">
                   <p className={`text-[10px] ${seg.text} opacity-60 font-medium`}>
                     {seg.count} {seg.count === 1 ? "reading" : "readings"}
                   </p>
-                  <div className={`w-1.5 h-1.5 rounded-full ${seg.color.includes("blue") ? "bg-blue-500" : 
-                    seg.color.includes("purple") ? "bg-purple-500" :
-                    seg.color.includes("cyan") ? "bg-cyan-500" : "bg-amber-500"}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${seg.dotClass}`} />
                 </div>
               </div>
             );

@@ -291,12 +291,12 @@ export default function Maintenance() {
       <div className="flex items-center w-full min-w-0">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <div className="hidden sm:flex items-center gap-2 shrink-0">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#1C1A18' }} />
-            <span className="text-sm font-semibold whitespace-nowrap" style={{ color: '#1C1A18' }}>
+            <span className="h-1.5 w-1.5 rounded-full bg-text-strong" />
+            <span className="text-sm font-semibold whitespace-nowrap text-text-strong">
               Maintenance
             </span>
           </div>
-          <div className="hidden sm:block h-4 w-px shrink-0" style={{ background: '#DDD6D0' }} />
+          <div className="hidden sm:block h-4 w-px shrink-0 bg-muted-fill" />
           <nav className="flex items-center gap-1 flex-1 sm:flex-none">
             {[
               { id: 'list', label: 'List', Icon: List },
@@ -307,12 +307,12 @@ export default function Maintenance() {
                 key={id}
                 type="button"
                 onClick={() => setActiveTab(id)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors"
-                style={
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors',
                   activeTab === id
-                    ? { background: '#EEE9E5', color: '#1C1A18' }
-                    : { color: '#948472' }
-                }
+                    ? 'bg-surface-raised text-text-strong'
+                    : 'text-text-sub',
+                )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="hidden sm:inline">{label}</span>
@@ -320,18 +320,7 @@ export default function Maintenance() {
             ))}
           </nav>
         </div>
-        <div className="ml-auto shrink-0">
-          <AddTaskDialog
-            formik={formik}
-            formSections={formSections}
-            toggleFormSection={toggleFormSection}
-            unit={units ?? []}
-            staffs={staffs ?? []}
-            selectedTenant={selectedTenant}
-            isLoading={isLoading}
-            compact
-          />
-        </div>
+
       </div>
     ),
     [activeTab],
@@ -342,27 +331,27 @@ export default function Maintenance() {
   ──────────────────────────────────────────────────────────────────────── */
   return (
     <div className="pb-12">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 bg-surface">
         {/* ════════════════ LIST TAB ════════════════ */}
         <TabsContent value="list" className="space-y-6">
 
           {/* ── Page Header ── */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Maintenance</h1>
-              <p className="mt-1 text-sm text-gray-500">
+              <h1 className="text-2xl font-bold text-text-strong sm:text-3xl">Maintenance</h1>
+              <p className="mt-1 text-sm text-text-sub">
                 Manage repair requests and track maintenance tasks
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50/50 p-0.5">
+              <div className="flex items-center rounded-lg border border-muted-fill bg-muted-fill/50 p-0.5">
                 <button
                   onClick={() => setViewMode('cards')}
                   className={cn(
                     'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                     viewMode === 'cards'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700',
+                      ? 'bg-surface-raised text-text-strong shadow-sm'
+                      : 'text-text-sub hover:text-text-body',
                   )}
                 >
                   <LayoutGrid className="h-3.5 w-3.5" />
@@ -373,8 +362,8 @@ export default function Maintenance() {
                   className={cn(
                     'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                     viewMode === 'table'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700',
+                      ? 'bg-surface-raised text-text-strong shadow-sm'
+                      : 'text-text-sub hover:text-text-body',
                   )}
                 >
                   <LayoutList className="h-3.5 w-3.5" />
@@ -399,44 +388,44 @@ export default function Maintenance() {
               {
                 label: 'Open',
                 value: stats.open,
-                bg: 'bg-slate-50', border: 'border-slate-200',
-                numColor: 'text-slate-700',
+                bg: 'bg-muted-fill', border: 'border-muted-fill',
+                numColor: 'text-text-strong',
               },
               {
                 label: 'In Progress',
                 value: stats.inProgress,
-                bg: 'bg-blue-50', border: 'border-blue-200',
-                numColor: 'text-blue-700',
+                bg: 'bg-muted-fill', border: 'border-muted-fill',
+                numColor: 'text-text-strong',
               },
               {
                 label: 'Overdue',
                 value: stats.overdue,
-                bg: stats.overdue > 0 ? 'bg-red-50' : 'bg-gray-50',
-                border: stats.overdue > 0 ? 'border-red-200' : 'border-gray-200',
-                numColor: stats.overdue > 0 ? 'text-red-700' : 'text-gray-400',
+                bg: stats.overdue > 0 ? 'bg-muted-fill' : 'bg-muted-fill',
+                border: stats.overdue > 0 ? 'border-muted-fill' : 'border-muted-fill',
+                numColor: stats.overdue > 0 ? 'text-text-strong' : 'text-text-sub',
               },
               {
                 label: 'Completed This Week',
                 value: stats.completedThisWeek,
-                bg: 'bg-emerald-50', border: 'border-emerald-200',
-                numColor: 'text-emerald-700',
+                bg: 'bg-muted-fill', border: 'border-muted-fill',
+                numColor: 'text-text-strong',
               },
             ].map(({ label, value, bg, border, numColor }) => (
               <div key={label} className={cn('rounded-xl border p-5 shadow-sm', bg, border)}>
                 <p className={cn('text-3xl font-bold tabular-nums', numColor)}>{value}</p>
-                <p className="mt-1 text-xs font-medium text-gray-500">{label}</p>
+                <p className="mt-1 text-xs font-medium text-text-sub">{label}</p>
               </div>
             ))}
           </div>
 
           {/* ── Search ── */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-sub pointer-events-none" />
             <Input
               placeholder="Search repairs, tenants, or units..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white border-gray-200 h-10"
+              className="pl-10 bg-surface-raised border-muted-fill h-10"
             />
           </div>
 
@@ -444,12 +433,12 @@ export default function Maintenance() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             {/* Status filters */}
             <div className="flex items-center gap-2">
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-text-sub">
                 Status
               </span>
               <div className="sm:hidden flex-1">
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="h-8 text-sm bg-white border-gray-300">
+                  <SelectTrigger className="h-8 text-sm bg-surface-raised border-muted-fill">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -469,8 +458,8 @@ export default function Maintenance() {
                     className={cn(
                       'rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
                       statusFilter === s
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700',
+                        ? 'bg-surface-raised text-text-strong shadow-sm'
+                        : 'text-text-sub hover:text-text-body',
                     )}
                   >
                     {s === 'All' ? 'All' : formatStatus(s)}
@@ -479,16 +468,16 @@ export default function Maintenance() {
               </div>
             </div>
 
-            <div className="hidden sm:block h-4 w-px bg-gray-200" />
+            <div className="hidden sm:block h-4 w-px bg-muted-fill" />
 
             {/* Priority filters */}
             <div className="flex items-center gap-2">
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-text-sub">
                 Priority
               </span>
               <div className="sm:hidden flex-1">
                 <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                  <SelectTrigger className="h-8 text-sm bg-white border-gray-300">
+                  <SelectTrigger className="h-8 text-sm bg-surface-raised border-muted-fill">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -498,7 +487,7 @@ export default function Maintenance() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="hidden sm:flex items-center rounded-lg border border-gray-200 bg-gray-50/50 p-0.5">
+              <div className="hidden sm:flex items-center rounded-lg border border-muted-fill bg-muted-fill/50 p-0.5">
                 {PRIORITY_FILTERS.map((p) => (
                   <button
                     key={p}
@@ -506,8 +495,8 @@ export default function Maintenance() {
                     className={cn(
                       'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                       priorityFilter === p
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700',
+                        ? 'bg-surface-raised text-text-strong shadow-sm'
+                        : 'text-text-sub hover:text-text-body',
                     )}
                   >
                     {p}
@@ -518,7 +507,7 @@ export default function Maintenance() {
 
             {/* Result count */}
             {hasActiveFilters && (
-              <span className="ml-auto text-xs text-gray-400">
+              <span className="ml-auto text-xs text-text-sub">
                 {filteredMaintenance.length} result{filteredMaintenance.length !== 1 ? 's' : ''}
               </span>
             )}
@@ -536,7 +525,7 @@ export default function Maintenance() {
                       <div className="flex items-center gap-2.5 mb-4">
                         <div className={cn('h-2 w-2 rounded-full', dot)} />
                         <h3 className={cn('text-sm font-semibold', textColor)}>{label}</h3>
-                        <span className="text-xs text-gray-400 tabular-nums">{items.length}</span>
+                        <span className="text-xs text-text-sub tabular-nums">{items.length}</span>
                         <div className="flex-1 border-t border-gray-100" />
                       </div>
                       <div className="space-y-4">
@@ -558,7 +547,7 @@ export default function Maintenance() {
           ) : (
             <div className="flex flex-col items-center justify-center text-center gap-4">
               <Empty>
-                <EmptyTitle className="text-gray-500">
+                <EmptyTitle className="text-text-sub">
                   {maintenance.length === 0
                     ? "No maintenance tasks yet"
                     : "No tasks match the current filters"}
@@ -617,10 +606,10 @@ function AddTaskDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl lg:max-w-3xl bg-white text-black max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900">
+          <DialogTitle className="text-xl font-bold text-text-strong">
             Add Maintenance Task
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription className="text-text-sub">
             Log new repair or upkeep request
           </DialogDescription>
         </DialogHeader>
@@ -638,22 +627,22 @@ function AddTaskDialog({
                   id="title" name="title"
                   placeholder="e.g., AC Repair or Leaking Faucet"
                   value={formik.values.title} onChange={formik.handleChange}
-                  className="mt-1.5 bg-white border-gray-300"
+                  className="mt-1.5 bg-surface-raised border-muted-fill"
                 />
               </div>
               <div>
-                <Label className="text-gray-700">Task Description</Label>
+                <Label className="text-text-strong">Task Description</Label>
                 <Input
                   name="description" placeholder="Enter description"
                   value={formik.values.description} onChange={formik.handleChange}
-                  className="mt-1.5 bg-white border-gray-300"
+                  className="mt-1.5 bg-surface-raised border-muted-fill"
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <Label className="text-gray-700">Category</Label>
+                  <Label className="text-text-strong">Category</Label>
                   <Select value={formik.values.category} onValueChange={(v) => formik.setFieldValue('category', v)}>
-                    <SelectTrigger className="mt-1.5 bg-white border-gray-300">
+                    <SelectTrigger className="mt-1.5 bg-surface-raised border-muted-fill">
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
@@ -665,9 +654,9 @@ function AddTaskDialog({
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-gray-700">Status</Label>
+                  <Label className="text-text-strong">Status</Label>
                   <Select value={formik.values.status} onValueChange={(v) => formik.setFieldValue('status', v)}>
-                    <SelectTrigger className="mt-1.5 bg-white border-gray-300">
+                    <SelectTrigger className="mt-1.5 bg-surface-raised border-muted-fill">
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -680,7 +669,7 @@ function AddTaskDialog({
                 </div>
               </div>
               <div>
-                <Label className="text-gray-700">Priority Level</Label>
+                <Label className="text-text-strong">Priority Level</Label>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {PRIORITY_OPTIONS.map(({ value, dot, label: lbl }) => (
                     <Button
@@ -689,8 +678,8 @@ function AddTaskDialog({
                       className={cn(
                         'rounded-full text-sm font-medium transition',
                         formik.values.priority === value
-                          ? 'border-gray-700 bg-gray-700 text-white'
-                          : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50',
+                          ? 'border-text-strong bg-text-strong text-white'
+                          : 'border-muted-fill bg-surface-raised text-text-sub hover:bg-surface-hover',
                       )}
                     >
                       <span className={cn('mr-1.5 h-2 w-2 rounded-full', dot)} />{lbl}
@@ -706,9 +695,9 @@ function AddTaskDialog({
               toggle={() => toggleFormSection('property')}
             >
               <div>
-                <Label className="text-gray-700">Unit Number</Label>
+                <Label className="text-text-strong">Unit Number</Label>
                 <Select value={formik.values.unit} onValueChange={(v) => formik.setFieldValue('unit', v)}>
-                  <SelectTrigger className="mt-1.5 bg-white border-gray-300">
+                  <SelectTrigger className="mt-1.5 bg-surface-raised border-muted-fill">
                     <SelectValue placeholder="Select unit" />
                   </SelectTrigger>
                   <SelectContent>
@@ -719,25 +708,25 @@ function AddTaskDialog({
                 </Select>
               </div>
               {selectedTenant && (
-                <div className="rounded-md border border-gray-200 bg-white p-4">
-                  <p className="mb-2 text-sm font-medium text-gray-700">Tenant Details</p>
+                <div className="rounded-md border border-muted-fill bg-surface-raised p-4">
+                  <p className="mb-2 text-sm font-medium text-text-strong">Tenant Details</p>
                   <div className="grid gap-2 text-sm sm:grid-cols-2">
                     <div>
-                      <span className="text-gray-500">Name</span>
-                      <p className="font-medium text-gray-900">{selectedTenant.name || 'N/A'}</p>
+                      <span className="text-text-sub">Name</span>
+                      <p className="font-medium text-text-strong">{selectedTenant.name || 'N/A'}</p>
                     </div>
                     <div>
-                      <span className="text-gray-500">Email</span>
-                      <p className="text-gray-900">{selectedTenant.email || 'N/A'}</p>
+                      <span className="text-text-sub">Email</span>
+                      <p className="text-text-strong">{selectedTenant.email || 'N/A'}</p>
                     </div>
                     <div>
-                      <span className="text-gray-500">Phone</span>
-                      <p className="text-gray-900">{selectedTenant.phone || 'N/A'}</p>
+                      <span className="text-text-sub">Phone</span>
+                      <p className="text-text-strong">{selectedTenant.phone || 'N/A'}</p>
                     </div>
                     {selectedTenant.address && (
                       <div className="sm:col-span-2">
-                        <span className="text-gray-500">Address</span>
-                        <p className="text-gray-900">{selectedTenant.address}</p>
+                        <span className="text-text-sub">Address</span>
+                        <p className="text-text-strong">{selectedTenant.address}</p>
                       </div>
                     )}
                   </div>
@@ -752,13 +741,13 @@ function AddTaskDialog({
                 toggle={() => toggleFormSection('assign')}
               >
                 <div>
-                  <Label className="text-gray-700">Assign To Staff</Label>
+                  <Label className="text-text-strong">Assign To Staff</Label>
                   <Select
                     value={formik.values.assignTo || ''}
                     onValueChange={(v) => formik.setFieldValue('assignTo', v)}
                     disabled={(staffs ?? []).length === 0}
                   >
-                    <SelectTrigger className="mt-1.5 bg-white border-gray-300">
+                    <SelectTrigger className="mt-1.5 bg-surface-raised border-muted-fill">
                       <SelectValue placeholder={(staffs ?? []).length === 0 ? 'No staff available' : 'Select staff'} />
                     </SelectTrigger>
                     {(staffs ?? []).length > 0 && (
@@ -773,14 +762,14 @@ function AddTaskDialog({
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-gray-700">Estimated Cost</Label>
+                  <Label className="text-text-strong">Estimated Cost</Label>
                   <div className="relative mt-1.5">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600">₹</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-sub">₹</span>
                     <Input
                       name="estimatedCost" type="number"
                       value={formik.values.estimatedCost}
                       onChange={formik.handleChange}
-                      className="pl-8 bg-white border-gray-300"
+                      className="pl-8 bg-surface-raised border-muted-fill"
                     />
                   </div>
                 </div>
@@ -791,7 +780,7 @@ function AddTaskDialog({
                 open={formSections.timing}
                 toggle={() => toggleFormSection('timing')}
               >
-                <Label className="text-gray-700">Scheduled Date (English/Nepali)</Label>
+                <Label className="text-text-strong">Scheduled Date (English/Nepali)</Label>
                 <div className="mt-1.5">
                   <DualCalendarTailwind
                     value={formik.values.scheduledDate || ''}
@@ -827,18 +816,18 @@ function AddTaskDialog({
 /* ── Collapsible form section ──────────────────────────────────────────── */
 function FormSection({ title, open, toggle, children }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50/50">
+    <div className="rounded-lg border border-muted-fill bg-muted-fill/50">
       <button
         type="button" onClick={toggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left font-semibold text-gray-900"
+        className="flex w-full items-center justify-between px-4 py-3 text-left font-semibold text-text-strong"
       >
         {title}
         {open
-          ? <ChevronUp className="h-4 w-4 text-gray-500" />
-          : <ChevronDown className="h-4 w-4 text-gray-500" />}
+          ? <ChevronUp className="h-4 w-4 text-text-sub" />
+          : <ChevronDown className="h-4 w-4 text-text-sub" />}
       </button>
       {open && (
-        <div className="space-y-4 border-t border-gray-200 px-4 pb-4 pt-3">
+        <div className="space-y-4 border-t border-muted-fill px-4 pb-4 pt-3">
           {children}
         </div>
       )}

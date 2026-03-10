@@ -13,8 +13,8 @@ export function FuelGauge({ pct = 0, size = 80, dark = false }) {
 
     const color =
         pct <= 10 ? "#ef4444" : pct <= 25 ? "#f59e0b" : "#22c55e";
-    const trackColor = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-    const labelColor = dark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)";
+    const trackColor = dark ? "var(--color-border)" : "var(--color-border)";
+    const labelColor = dark ? "var(--color-text-sub)" : "var(--color-text-sub)";
 
     return (
         <svg width={size} height={size} viewBox="0 0 96 96" className="shrink-0">

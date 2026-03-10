@@ -1,10 +1,14 @@
 /**
- * RevenueBreakDown.tsx
+ * RevenueBreakDown.jsx
  *
  * ARCHITECTURE: Dumb display component.
  * - Fetches pre-aggregated data via useRevenueSummary()
  * - Zero business logic, zero paisa conversion, zero filtering
  * - All numbers arrive from the backend ready to render
+ *
+ * STYLE: Inline styles replaced with Tailwind utility classes.
+ * style={} retained only for: dynamic/computed values, chart config,
+ * SVG props, and CSS custom property references.
  */
 
 import { useState, useEffect } from "react";
@@ -43,7 +47,6 @@ const REF_CFG = {
     MANUAL: { bg: C.alt, color: C.muted },
 };
 
-// ─── Formatting (display only — no conversion) ────────────────────────────────
 const fmt = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
 const fmtK = (v) => {
     const a = Math.abs(v);
@@ -55,7 +58,7 @@ const Q_LABELS = {
     3: "Q3 · Magh–Chaitra", 4: "Q4 · Baishakh–Ashadh",
 };
 
-// ─── Atoms ────────────────────────────────────────────────────────────────────
+// ─── Keyframes injected once ──────────────────────────────────────────────────
 const S = `
   @keyframes rv-up   { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
   @keyframes rv-spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
@@ -65,61 +68,115 @@ const S = `
   .rv-card  { animation:rv-up .3s ease both; }
 `;
 
+// ─── Atoms ────────────────────────────────────────────────────────────────────
 function Card({ children, style = {}, delay = 0 }) {
-    return <div className="rv-card" style={{ background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}>{children}</div>;
+    return (
+        <div
+            className="rv-card rounded-2xl border"
+            style={{ background: C.surface, borderColor: C.border, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}
+        >
+            {children}
+        </div>
+    );
 }
+
 function Dark({ children, style = {}, delay = 0 }) {
-    return <div className="rv-card" style={{ background: C.forest, borderRadius: 16, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}>{children}</div>;
+    return (
+        <div
+            className="rv-card rounded-2xl"
+            style={{ background: C.forest, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}
+        >
+            {children}
+        </div>
+    );
 }
+
 function Lbl({ children, light, style = {} }) {
-    return <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: light ? "rgba(255,255,255,.45)" : C.muted, marginBottom: 8, ...style }}>{children}</div>;
+    return (
+        <div
+            className="text-[10px] font-bold tracking-[0.1em] uppercase mb-2"
+            style={{ color: light ? "rgba(255,255,255,.45)" : C.muted, ...style }}
+        >
+            {children}
+        </div>
+    );
 }
+
 function Num({ v, size = 32, color = C.text }) {
-    return <div className="rv-serif" style={{ fontSize: size, color, lineHeight: 1, letterSpacing: "-0.02em" }}>₹{Number(Math.abs(v)).toLocaleString("en-IN")}</div>;
+    return (
+        <div className="rv-serif leading-none" style={{ fontSize: size, color, letterSpacing: "-0.02em" }}>
+            ₹{Number(Math.abs(v)).toLocaleString("en-IN")}
+        </div>
+    );
 }
+
 function Delta({ up, label }) {
-    return <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: up ? "#DCFCE7" : "#FEE2E2", color: up ? C.positive : C.negative }}>
-        {up ? <ArrowUpRightIcon size={11} /> : <ArrowDownRightIcon size={11} />}{label}
-    </span>;
+    return (
+        <span
+            className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
+            style={{ background: up ? "#DCFCE7" : "#FEE2E2", color: up ? C.positive : C.negative }}
+        >
+            {up ? <ArrowUpRightIcon size={11} /> : <ArrowDownRightIcon size={11} />}{label}
+        </span>
+    );
 }
+
 function Bar2({ value, max, color = C.forestLight, h = 5 }) {
     const w = max > 0 ? Math.min((value / max) * 100, 100) : 0;
-    return <div style={{ height: h, borderRadius: h / 2, background: C.border, overflow: "hidden", flex: 1 }}><div style={{ height: "100%", width: `${w}%`, background: color, borderRadius: h / 2, transition: "width .5s" }} /></div>;
+    return (
+        <div className="flex-1 overflow-hidden" style={{ height: h, borderRadius: h / 2, background: C.border }}>
+            <div style={{ height: "100%", width: `${w}%`, background: color, borderRadius: h / 2, transition: "width .5s" }} />
+        </div>
+    );
 }
+
 function Sk({ h = 14 }) {
-    return <div style={{ height: h, background: C.alt, borderRadius: 6, marginBottom: 6, animation: "rv-pulse 1.5s infinite" }} />;
+    return <div className="rounded-md mb-1.5" style={{ height: h, background: C.alt, animation: "rv-pulse 1.5s infinite" }} />;
 }
+
 function None({ msg = "No data for this period" }) {
-    return <div style={{ padding: "32px 0", textAlign: "center", color: C.muted, fontSize: 13 }}>{msg}</div>;
+    return <div className="py-8 text-center text-[13px]" style={{ color: C.muted }}>{msg}</div>;
 }
+
 function Tip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
-    return <div style={{ background: C.forest, borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,.18)" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.4)", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
-        {payload.map(p => <div key={p.dataKey} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#fff", marginBottom: 2 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: p.fill ?? p.color ?? p.stroke, display: "inline-block" }} />
-            <span style={{ opacity: 0.6 }}>{p.name}</span>
-            <span style={{ fontWeight: 700, marginLeft: "auto" }}>₹{Math.abs(p.value || 0).toLocaleString()}</span>
-        </div>)}
-    </div>;
+    return (
+        <div className="rounded-xl p-3.5" style={{ background: C.forest, boxShadow: "0 8px 24px rgba(0,0,0,.18)" }}>
+            <div className="text-[10px] font-bold tracking-[0.1em] uppercase mb-1.5" style={{ color: "rgba(255,255,255,.4)" }}>{label}</div>
+            {payload.map(p => (
+                <div key={p.dataKey} className="flex items-center gap-2 text-xs text-white mb-0.5">
+                    <span className="inline-block w-2 h-2 rounded-sm" style={{ background: p.fill ?? p.color ?? p.stroke }} />
+                    <span style={{ opacity: 0.6 }}>{p.name}</span>
+                    <span className="font-bold ml-auto">₹{Math.abs(p.value || 0).toLocaleString()}</span>
+                </div>
+            ))}
+        </div>
+    );
 }
+
 function SPill({ s }) {
     const cfg = { RECORDED: [C.amberBg, C.amber], SYNCED: ["#D1FAE5", C.positive], REVERSED: [C.redBg, C.red] };
     const [bg, color] = cfg[s] ?? [C.alt, C.muted];
-    return <span style={{ background: bg, color, borderRadius: 6, fontSize: 10, fontWeight: 700, padding: "2px 8px" }}>{s}</span>;
+    return <span className="rounded text-[10px] font-bold px-2 py-0.5" style={{ background: bg, color }}>{s}</span>;
 }
+
 function RPill({ t }) {
     const c = REF_CFG[t] ?? { bg: C.alt, color: C.muted };
-    return <span style={{ background: c.bg, color: c.color, borderRadius: 6, fontSize: 10, fontWeight: 700, padding: "2px 8px" }}>{t}</span>;
+    return <span className="rounded text-[10px] font-bold px-2 py-0.5" style={{ background: c.bg, color: c.color }}>{t}</span>;
 }
+
 function TPill({ t }) {
-    return <span style={{ background: t === "TENANT" ? C.forestLight + "22" : C.blueBg, color: t === "TENANT" ? C.forestLight : C.blue, borderRadius: 6, fontSize: 10, fontWeight: 700, padding: "2px 8px" }}>{t}</span>;
+    return (
+        <span
+            className="rounded text-[10px] font-bold px-2 py-0.5"
+            style={{ background: t === "TENANT" ? C.forestLight + "22" : C.blueBg, color: t === "TENANT" ? C.forestLight : C.blue }}
+        >
+            {t}
+        </span>
+    );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-
-
-
 export default function RevenueBreakDown({
     onRevenueAdded,
     selectedQuarter = null,
@@ -137,37 +194,20 @@ export default function RevenueBreakDown({
     const [sources, setSources] = useState([]);
     const [banks, setBanks] = useState([]);
 
-    // Primary period data
-    const {
-        data: D,
-        loading,
-        error,
-        refetch,
-    } = useRevenueSummary(
+    const { data: D, loading, error, refetch } = useRevenueSummary(
         selectedQuarter,
         selectedQuarter === "custom" ? customStartDate : "",
         selectedQuarter === "custom" ? customEndDate : "",
     );
 
-    // Compare period data (only fetched when compare mode is active)
-    const {
-        data: DB,
-        loading: loadingB,
-    } = useRevenueSummary(
-        compareMode ? compareQuarter : null,
-        "",
-        "",
+    const { data: DB, loading: loadingB } = useRevenueSummary(
+        compareMode ? compareQuarter : null, "", "",
     );
 
-    // Parent can trigger dialog open via prop
     useEffect(() => {
-        if (openDialog) {
-            setDialogOpen(true);
-            onDialogOpenHandled?.();
-        }
+        if (openDialog) { setDialogOpen(true); onDialogOpenHandled?.(); }
     }, [openDialog]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Load dialog dependencies in parallel
     useEffect(() => {
         api.get("/api/tenant/get-tenants").then(({ data }) => setTenants(data?.tenants ?? [])).catch(() => { });
         api.get("/api/revenue/get-revenue-sources").then(({ data }) => setSources(data?.revenueSources ?? [])).catch(() => { });
@@ -192,8 +232,6 @@ export default function RevenueBreakDown({
     };
 
     const TABS = ["overview", "tenants", "transactions", "analysis"];
-
-    // Safe defaults while data loads
     const totals = D?.totals ?? { total: 0, count: 0, avg: 0, momPct: null };
     const streams = D?.streams ?? [];
     const trend = D?.trend ?? [];
@@ -208,21 +246,33 @@ export default function RevenueBreakDown({
             <style>{S}</style>
 
             {/* ── Header ──────────────────────────────────────────────────────────── */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+            <div className="flex justify-between items-center mb-[18px] flex-wrap gap-3">
                 <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 3 }}>{periodLabel}</div>
-                    <div style={{ fontSize: 13, color: C.mid }}>
+                    <div className="text-[10px] font-bold tracking-[0.1em] uppercase mb-0.5" style={{ color: C.muted }}>{periodLabel}</div>
+                    <div className="text-[13px]" style={{ color: C.mid }}>
                         {loading ? "Loading…" : `${totals.count} transactions · ${fmt(totals.total)}`}
                     </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: isMobile ? "wrap" : "nowrap", width: isMobile ? "100%" : "auto" }}>
-                    <button onClick={refetch} style={{ padding: isMobile ? "10px 12px" : "8px 10px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", minHeight: isMobile ? 44 : undefined }}>
+                <div className={`flex gap-2 ${isMobile ? "flex-wrap w-full" : "flex-nowrap"}`}>
+                    <button
+                        onClick={refetch}
+                        className="flex items-center rounded-[9px] border cursor-pointer"
+                        style={{ padding: isMobile ? "10px 12px" : "8px 10px", borderColor: C.border, background: C.surface, minHeight: isMobile ? 44 : undefined }}
+                    >
                         <RefreshCw size={14} color={C.mid} style={{ animation: loading ? "rv-spin 1s linear infinite" : "none" }} />
                     </button>
-                    <button onClick={exportCSV} style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "10px 16px" : "8px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.mid, cursor: "pointer", minHeight: isMobile ? 44 : undefined }}>
+                    <button
+                        onClick={exportCSV}
+                        className="flex items-center gap-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer"
+                        style={{ padding: isMobile ? "10px 16px" : "8px 14px", borderColor: C.border, background: C.surface, color: C.mid, minHeight: isMobile ? 44 : undefined }}
+                    >
                         <Download size={13} />{isMobile ? "" : "CSV"}
                     </button>
-                    <button onClick={() => setDialogOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "10px 16px" : "8px 16px", borderRadius: 9, border: "none", background: C.forest, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", flex: isMobile ? 1 : undefined, justifyContent: "center", minHeight: isMobile ? 44 : undefined }}>
+                    <button
+                        onClick={() => setDialogOpen(true)}
+                        className="flex items-center gap-1.5 rounded-[9px] border-none text-[13px] font-bold cursor-pointer text-white"
+                        style={{ padding: isMobile ? "10px 16px" : "8px 16px", background: C.forest, flex: isMobile ? 1 : undefined, justifyContent: isMobile ? "center" : undefined, minHeight: isMobile ? 44 : undefined }}
+                    >
                         <PlusIcon size={14} />Add Revenue
                     </button>
                 </div>
@@ -230,26 +280,26 @@ export default function RevenueBreakDown({
 
             {/* ── Error ──────────────────────────────────────────────────────────────── */}
             {error && (
-                <div style={{ background: C.redBg, border: `1px solid ${C.red}30`, borderRadius: 12, padding: "11px 16px", color: C.red, fontSize: 13, marginBottom: 16 }}>
-                    ⚠ {error} — <button onClick={refetch} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontWeight: 700, textDecoration: "underline" }}>Retry</button>
+                <div className="rounded-xl px-4 py-3 text-[13px] mb-4" style={{ background: C.redBg, border: `1px solid ${C.red}30`, color: C.red }}>
+                    ⚠ {error} — <button onClick={refetch} className="bg-transparent border-none cursor-pointer font-bold underline" style={{ color: C.red }}>Retry</button>
                 </div>
             )}
 
             {/* ── Compare banner ────────────────────────────────────────────────────── */}
             {compareMode && !loading && !loadingB && DB && (
-                <div style={{ background: C.forest + "10", border: `1px solid ${C.forest}28`, borderRadius: 14, padding: "13px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: C.forest, letterSpacing: ".08em", textTransform: "uppercase" }}>Compare Mode</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                        <div style={{ textAlign: "center" }}>
-                            <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>{periodLabel}</div>
-                            <div className="rv-serif" style={{ fontSize: 20, color: C.forestLight }}>{fmt(totals.total)}</div>
+                <div className="rounded-2xl px-[18px] py-[13px] flex items-center justify-between flex-wrap gap-3 mb-[18px]" style={{ background: C.forest + "10", border: `1px solid ${C.forest}28` }}>
+                    <span className="text-[11px] font-bold tracking-[0.08em] uppercase" style={{ color: C.forest }}>Compare Mode</span>
+                    <div className="flex items-center gap-4 flex-wrap">
+                        <div className="text-center">
+                            <div className="text-[10px] font-bold uppercase mb-0.5" style={{ color: C.muted }}>{periodLabel}</div>
+                            <div className="rv-serif text-xl" style={{ color: C.forestLight }}>{fmt(totals.total)}</div>
                         </div>
-                        <div style={{ color: C.muted, fontSize: 18 }}>→</div>
-                        <div style={{ textAlign: "center" }}>
-                            <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>
+                        <div className="text-lg" style={{ color: C.muted }}>→</div>
+                        <div className="text-center">
+                            <div className="text-[10px] font-bold uppercase mb-0.5" style={{ color: C.muted }}>
                                 {compareQuarter ? Q_LABELS[compareQuarter] : "Compare"}
                             </div>
-                            <div className="rv-serif" style={{ fontSize: 20, color: C.blue }}>{fmt(DB.totals.total)}</div>
+                            <div className="rv-serif text-xl" style={{ color: C.blue }}>{fmt(DB.totals.total)}</div>
                         </div>
                         {totals.total > 0 && (
                             <Delta
@@ -262,20 +312,20 @@ export default function RevenueBreakDown({
             )}
 
             {/* ── Hero KPI strip ────────────────────────────────────────────────────── */}
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "220px repeat(4,1fr)", gap: 14, marginBottom: 18 }}>
+            <div className={`grid gap-3.5 mb-[18px] ${isMobile ? "grid-cols-1" : "grid-cols-[220px_repeat(4,1fr)]"}`}>
                 <Dark delay={0}>
                     <Lbl light>Total Revenue</Lbl>
                     <Num v={totals.total} size={38} color="#fff" />
-                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div className="mt-2 flex gap-2 flex-wrap">
                         {totals.momPct !== null && (
                             <Delta up={(totals.momPct ?? 0) >= 0} label={`${Math.abs(totals.momPct ?? 0).toFixed(1)}% MoM`} />
                         )}
                     </div>
-                    <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
                         {[{ l: "Transactions", v: totals.count }, { l: "Streams", v: streams.length }].map(x => (
                             <div key={x.l}>
-                                <div style={{ fontSize: 10, color: "rgba(255,255,255,.38)", marginBottom: 2 }}>{x.l}</div>
-                                <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{x.v}</div>
+                                <div className="text-[10px] mb-0.5" style={{ color: "rgba(255,255,255,.38)" }}>{x.l}</div>
+                                <div className="text-base font-bold text-white">{x.v}</div>
                             </div>
                         ))}
                     </div>
@@ -289,19 +339,33 @@ export default function RevenueBreakDown({
                 ].map((k, i) => (
                     <Card key={k.label} delay={i + 1} style={{ padding: 0, overflow: "hidden" }}>
                         <div style={{ height: 3, background: `linear-gradient(90deg,${k.grad})`, borderRadius: "16px 16px 0 0" }} />
-                        <div style={{ padding: "14px 18px" }}>
+                        <div className="px-[18px] py-3.5">
                             <Lbl>{k.label}</Lbl>
-                            <div className="rv-serif" style={{ fontSize: 24, color: C.text, lineHeight: 1, marginBottom: 4 }}>{k.val}</div>
-                            <div style={{ fontSize: 11, color: C.muted }}>{k.sub}</div>
+                            <div className="rv-serif text-2xl leading-none mb-1" style={{ color: C.text }}>{k.val}</div>
+                            <div className="text-[11px]" style={{ color: C.muted }}>{k.sub}</div>
                         </div>
                     </Card>
                 ))}
             </div>
 
             {/* ── Tab nav ───────────────────────────────────────────────────────────── */}
-            <div style={{ display: "flex", gap: 4, background: C.alt, borderRadius: 12, padding: 4, width: isMobile ? "100%" : "fit-content", marginBottom: 18, overflowX: isMobile ? "auto" : "visible" }}>
+            <div
+                className={`flex gap-1 rounded-xl p-1 mb-[18px] ${isMobile ? "w-full overflow-x-auto" : "w-fit"}`}
+                style={{ background: C.alt }}
+            >
                 {TABS.map(t => (
-                    <button key={t} onClick={() => setTab(t)} style={{ padding: isMobile ? "9px 16px" : "7px 18px", borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === t ? C.forest : "transparent", color: tab === t ? "#fff" : C.mid, transition: "all .15s", flex: isMobile ? 1 : undefined, minHeight: isMobile ? 44 : undefined, whiteSpace: "nowrap" }}>
+                    <button
+                        key={t}
+                        onClick={() => setTab(t)}
+                        className="rounded-[9px] border-none cursor-pointer text-[13px] font-semibold transition-all whitespace-nowrap"
+                        style={{
+                            padding: isMobile ? "9px 16px" : "7px 18px",
+                            background: tab === t ? C.forest : "transparent",
+                            color: tab === t ? "#fff" : C.mid,
+                            flex: isMobile ? 1 : undefined,
+                            minHeight: isMobile ? 44 : undefined,
+                        }}
+                    >
                         {t[0].toUpperCase() + t.slice(1)}
                     </button>
                 ))}
@@ -309,12 +373,14 @@ export default function RevenueBreakDown({
 
             {/* ═══════════════════ OVERVIEW ══════════════════════════════════════════ */}
             {tab === "overview" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 250px", gap: 16 }}>
-                        {/* Revenue trend area chart */}
+                <div className="flex flex-col gap-4">
+                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[1fr_250px]"}`}>
                         <Card delay={5}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                                <div><Lbl style={{ marginBottom: 2 }}>Revenue Trend</Lbl><div style={{ fontSize: 11, color: C.muted }}>{periodLabel} · monthly</div></div>
+                            <div className="flex justify-between items-start mb-3.5">
+                                <div>
+                                    <Lbl style={{ marginBottom: 2 }}>Revenue Trend</Lbl>
+                                    <div className="text-[11px]" style={{ color: C.muted }}>{periodLabel} · monthly</div>
+                                </div>
                                 {totals.momPct !== null && <Delta up={(totals.momPct ?? 0) >= 0} label={`${Math.abs(totals.momPct ?? 0).toFixed(1)}% last month`} />}
                             </div>
                             {loading ? <Sk h={200} /> : trend.length === 0 ? <None /> : (
@@ -336,7 +402,6 @@ export default function RevenueBreakDown({
                             )}
                         </Card>
 
-                        {/* Revenue by source donut */}
                         <Card delay={6}>
                             <Lbl>Revenue by Source</Lbl>
                             {loading ? <Sk h={130} /> : streams.length === 0 ? <None /> : (
@@ -349,13 +414,13 @@ export default function RevenueBreakDown({
                                             <Tooltip formatter={(v) => `${v}%`} contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12 }} />
                                         </PieChart>
                                     </ResponsiveContainer>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 4 }}>
+                                    <div className="flex flex-col gap-2.5 mt-1">
                                         {streams.map((s, i) => (
-                                            <div key={s.code ?? i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: PALETTE[i % PALETTE.length], flexShrink: 0 }} />
-                                                <span style={{ fontSize: 12, color: C.mid, flex: 1 }}>{s.name}</span>
-                                                <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{s.pct}%</span>
-                                                <span style={{ fontSize: 11, color: C.muted }}>{fmt(s.amount)}</span>
+                                            <div key={s.code ?? i} className="flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
+                                                <span className="text-xs flex-1" style={{ color: C.mid }}>{s.name}</span>
+                                                <span className="text-xs font-bold" style={{ color: C.text }}>{s.pct}%</span>
+                                                <span className="text-[11px]" style={{ color: C.muted }}>{fmt(s.amount)}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -364,44 +429,44 @@ export default function RevenueBreakDown({
                         </Card>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 1fr", gap: 16 }}>
-                        {/* Payer split */}
+                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[2fr_1fr_1fr]"}`}>
                         <Card delay={7}>
                             <Lbl>Payer Split</Lbl>
                             {loading ? <><Sk /><Sk /></> : payerSplit.length === 0 ? <None /> : (
                                 <>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 68px", gap: "0 10px", padding: "0 2px 8px", borderBottom: `1px solid ${C.border}` }}>
-                                        {["Payer", "Share", "Amount"].map(h => <span key={h} style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: ".06em", textTransform: "uppercase" }}>{h}</span>)}
+                                    <div className="grid gap-x-2.5 pb-2 border-b" style={{ gridTemplateColumns: "1fr 1fr 68px", borderColor: C.border }}>
+                                        {["Payer", "Share", "Amount"].map(h => (
+                                            <span key={h} className="text-[10px] font-bold tracking-[0.06em] uppercase" style={{ color: C.muted }}>{h}</span>
+                                        ))}
                                     </div>
                                     {payerSplit.map((p, i) => (
-                                        <div key={p.name} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 68px", gap: "0 10px", alignItems: "center", padding: "9px 2px", borderBottom: `1px solid ${C.border}40` }}>
-                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                                <span style={{ width: 8, height: 8, borderRadius: "50%", background: PALETTE[i], flexShrink: 0 }} />
-                                                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{p.name}</div>
+                                        <div key={p.name} className="grid items-center py-2.5 border-b" style={{ gridTemplateColumns: "1fr 1fr 68px", gap: "0 10px", borderColor: C.border + "40" }}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PALETTE[i] }} />
+                                                <div className="text-[13px] font-semibold" style={{ color: C.text }}>{p.name}</div>
                                             </div>
-                                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                            <div className="flex items-center gap-1.5">
                                                 <Bar2 value={p.amount} max={totals.total} color={PALETTE[i]} />
-                                                <span style={{ fontSize: 10, color: C.muted, minWidth: 24 }}>{p.pct}%</span>
+                                                <span className="text-[10px] min-w-[24px]" style={{ color: C.muted }}>{p.pct}%</span>
                                             </div>
-                                            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, textAlign: "right" }}>₹{fmtK(p.amount)}</div>
+                                            <div className="text-[13px] font-bold text-right" style={{ color: C.text }}>₹{fmtK(p.amount)}</div>
                                         </div>
                                     ))}
                                 </>
                             )}
                         </Card>
 
-                        {/* Ref types */}
                         <Card delay={8}>
                             <Lbl>By Reference Type</Lbl>
                             {loading ? <><Sk /><Sk /><Sk /></> : refTypes.length === 0 ? <None /> : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                <div className="flex flex-col gap-3">
                                     {refTypes.map(r => (
                                         <div key={r.type}>
-                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                                            <div className="flex justify-between items-center mb-1.5">
                                                 <RPill t={r.type} />
-                                                <div style={{ textAlign: "right" }}>
-                                                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{fmt(r.amount)}</div>
-                                                    <div style={{ fontSize: 10, color: C.muted }}>{r.count} txns · {r.pct}%</div>
+                                                <div className="text-right">
+                                                    <div className="text-xs font-bold" style={{ color: C.text }}>{fmt(r.amount)}</div>
+                                                    <div className="text-[10px]" style={{ color: C.muted }}>{r.count} txns · {r.pct}%</div>
                                                 </div>
                                             </div>
                                             <Bar2 value={r.amount} max={totals.total} color={REF_CFG[r.type]?.color ?? C.forestLight} />
@@ -411,7 +476,6 @@ export default function RevenueBreakDown({
                             )}
                         </Card>
 
-                        {/* Stats & status */}
                         <Card delay={9}>
                             <Lbl>Stats & Status</Lbl>
                             {loading ? <><Sk /><Sk /><Sk /></> : (
@@ -423,18 +487,18 @@ export default function RevenueBreakDown({
                                         { l: "Top Source", v: streams[0] ? `${streams[0].pct}%` : "—" },
                                         { l: "Tenant Txns", v: transactions.filter(t => t.payerType === "TENANT").length },
                                     ].map(s => (
-                                        <div key={s.l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                                            <span style={{ fontSize: 12, color: C.muted }}>{s.l}</span>
-                                            <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{s.v}</span>
+                                        <div key={s.l} className="flex justify-between items-center py-2 border-b" style={{ borderColor: C.border }}>
+                                            <span className="text-xs" style={{ color: C.muted }}>{s.l}</span>
+                                            <span className="text-[13px] font-bold" style={{ color: C.text }}>{s.v}</span>
                                         </div>
                                     ))}
-                                    <div style={{ marginTop: 14 }}>
+                                    <div className="mt-3.5">
                                         <Lbl style={{ marginBottom: 8 }}>Status</Lbl>
-                                        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                                        <div className="flex flex-col gap-1.5">
                                             {Object.entries(statusMap).map(([s, n]) => (
-                                                <div key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                <div key={s} className="flex justify-between items-center">
                                                     <SPill s={s} />
-                                                    <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{n}</span>
+                                                    <span className="text-[13px] font-bold" style={{ color: C.text }}>{n}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -448,27 +512,30 @@ export default function RevenueBreakDown({
 
             {/* ═══════════════════ TENANTS ═════════════════════════════════════════════ */}
             {tab === "tenants" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr", gap: 16 }}>
+                <div className="flex flex-col gap-4">
+                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[1.2fr_1fr]"}`}>
                         <Card delay={0}>
                             <Lbl>Top Tenant Contributors</Lbl>
                             {loading ? <><Sk /><Sk /><Sk /></> : topTenants.length === 0 ? <None msg="No tenant revenue for this period" /> : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                <div className="flex flex-col gap-2">
                                     {topTenants.map((t, i) => {
                                         const CLR = [C.forest, C.blue, C.violet, C.amber, C.forestLight, C.red, C.teal, "#BE185D"];
                                         return (
-                                            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 13px", background: C.alt, borderRadius: 12 }}>
-                                                <div style={{ width: 34, height: 34, borderRadius: "50%", background: CLR[i % 8] + "1A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: CLR[i % 8], flexShrink: 0 }}>
+                                            <div key={t.id} className="flex items-center gap-3 px-3.5 py-3 rounded-xl" style={{ background: C.alt }}>
+                                                <div
+                                                    className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-extrabold flex-shrink-0"
+                                                    style={{ background: CLR[i % 8] + "1A", color: CLR[i % 8] }}
+                                                >
                                                     {t.name[0]?.toUpperCase()}
                                                 </div>
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
-                                                    <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{t.sources} · {t.count} txn{t.count !== 1 ? "s" : ""}</div>
-                                                    <div style={{ marginTop: 5 }}><Bar2 value={t.amount} max={topTenants[0].amount} color={CLR[i % 8]} h={4} /></div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-[13px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: C.text }}>{t.name}</div>
+                                                    <div className="text-[11px] mt-0.5" style={{ color: C.muted }}>{t.sources} · {t.count} txn{t.count !== 1 ? "s" : ""}</div>
+                                                    <div className="mt-1.5"><Bar2 value={t.amount} max={topTenants[0].amount} color={CLR[i % 8]} h={4} /></div>
                                                 </div>
-                                                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                                                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{fmt(t.amount)}</div>
-                                                    <div style={{ fontSize: 10, color: C.muted, marginTop: 1 }}>{t.pctOfTotal}% of total</div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className="text-sm font-bold" style={{ color: C.text }}>{fmt(t.amount)}</div>
+                                                    <div className="text-[10px] mt-0.5" style={{ color: C.muted }}>{t.pctOfTotal}% of total</div>
                                                 </div>
                                             </div>
                                         );
@@ -477,16 +544,16 @@ export default function RevenueBreakDown({
                             )}
                         </Card>
 
-                        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        <div className="flex flex-col gap-4">
                             <Card delay={1}>
                                 <Lbl>Payer Classification</Lbl>
                                 {loading ? <Sk h={80} /> : (
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                    <div className="grid grid-cols-2 gap-3">
                                         {payerSplit.map((p, i) => (
-                                            <div key={p.name} style={{ background: PALETTE[i] + "18", borderRadius: 12, padding: "14px 16px" }}>
-                                                <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE[i], letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 6 }}>{p.name}</div>
-                                                <div className="rv-serif" style={{ fontSize: 28, color: C.text, lineHeight: 1 }}>{p.pct}%</div>
-                                                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{fmt(p.amount)}</div>
+                                            <div key={p.name} className="rounded-xl px-4 py-3.5" style={{ background: PALETTE[i] + "18" }}>
+                                                <div className="text-[10px] font-bold tracking-[0.08em] uppercase mb-1.5" style={{ color: PALETTE[i] }}>{p.name}</div>
+                                                <div className="rv-serif text-[28px] leading-none" style={{ color: C.text }}>{p.pct}%</div>
+                                                <div className="text-[11px] mt-1" style={{ color: C.muted }}>{fmt(p.amount)}</div>
                                             </div>
                                         ))}
                                     </div>
@@ -518,51 +585,51 @@ export default function RevenueBreakDown({
                 const { paginatedItems: pageTxns, currentPage, totalPages, nextPage, prevPage, startIndex } = usePagination(transactions, TXN_PAGE_SIZE);
                 return (
                     <Card delay={0} style={{ padding: 0 }}>
-                        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div className="px-5 py-4 flex justify-between items-center border-b" style={{ borderColor: C.border }}>
                             <div>
-                                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>All Transactions</div>
-                                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{transactions.length} total · {periodLabel}</div>
+                                <div className="text-sm font-bold" style={{ color: C.text }}>All Transactions</div>
+                                <div className="text-[11px] mt-0.5" style={{ color: C.muted }}>{transactions.length} total · {periodLabel}</div>
                             </div>
-                            <button onClick={exportCSV} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: C.mid, cursor: "pointer" }}>
+                            <button onClick={exportCSV} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer" style={{ borderColor: C.border, background: C.surface, color: C.mid }}>
                                 <Download size={13} />Export CSV
                             </button>
                         </div>
-                        {loading ? <div style={{ padding: 20 }}><Sk /><Sk /><Sk /></div> : transactions.length === 0 ? <None msg="No transactions" /> : (
+                        {loading ? <div className="p-5"><Sk /><Sk /><Sk /></div> : transactions.length === 0 ? <None msg="No transactions" /> : (
                             <>
-                                <div style={{ overflowX: "auto" }}>
-                                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse">
                                         <thead>
                                             <tr style={{ borderBottom: `2px solid ${C.border}` }}>
                                                 {["#", "Payer", "Source", "Ref", "Type", "Amount", "Date", "Status"].map(h => (
-                                                    <th key={h} style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: ".06em", textTransform: "uppercase" }}>{h}</th>
+                                                    <th key={h} className="text-left px-3.5 py-2.5 text-[10px] font-bold tracking-[0.06em] uppercase" style={{ color: C.muted }}>{h}</th>
                                                 ))}
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {pageTxns.map((t, i) => (
                                                 <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}50`, background: i % 2 === 0 ? C.surface : C.alt + "70" }}>
-                                                    <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12 }}>{startIndex + i + 1}</td>
-                                                    <td style={{ padding: "9px 14px", fontWeight: 600, color: C.text, fontSize: 13 }}>{t.payer}</td>
-                                                    <td style={{ padding: "9px 14px", color: C.mid, fontSize: 13 }}>{t.source}</td>
-                                                    <td style={{ padding: "9px 14px" }}><RPill t={t.refType} /></td>
-                                                    <td style={{ padding: "9px 14px" }}><TPill t={t.payerType} /></td>
-                                                    <td style={{ padding: "9px 14px", fontWeight: 700, color: C.positive, fontSize: 13 }}>{fmt(t.amount)}</td>
-                                                    <td style={{ padding: "9px 14px", color: C.muted, fontSize: 12 }}>{t.bsDate}</td>
-                                                    <td style={{ padding: "9px 14px" }}><SPill s={t.status} /></td>
+                                                    <td className="px-3.5 py-2.5 text-xs" style={{ color: C.muted }}>{startIndex + i + 1}</td>
+                                                    <td className="px-3.5 py-2.5 font-semibold text-[13px]" style={{ color: C.text }}>{t.payer}</td>
+                                                    <td className="px-3.5 py-2.5 text-[13px]" style={{ color: C.mid }}>{t.source}</td>
+                                                    <td className="px-3.5 py-2.5"><RPill t={t.refType} /></td>
+                                                    <td className="px-3.5 py-2.5"><TPill t={t.payerType} /></td>
+                                                    <td className="px-3.5 py-2.5 font-bold text-[13px]" style={{ color: C.positive }}>{fmt(t.amount)}</td>
+                                                    <td className="px-3.5 py-2.5 text-xs" style={{ color: C.muted }}>{t.bsDate}</td>
+                                                    <td className="px-3.5 py-2.5"><SPill s={t.status} /></td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                 </div>
                                 {totalPages > 1 && (
-                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderTop: `1px solid ${C.border}` }}>
-                                        <span style={{ fontSize: 12, color: C.muted }}>
+                                    <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: C.border }}>
+                                        <span className="text-xs" style={{ color: C.muted }}>
                                             Showing {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, transactions.length)} of {transactions.length}
                                         </span>
-                                        <div style={{ display: "flex", gap: 6 }}>
-                                            <button onClick={prevPage} disabled={currentPage === 1} style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>← Prev</button>
-                                            <span style={{ padding: "5px 12px", fontSize: 12, color: C.muted }}>{currentPage} / {totalPages}</span>
-                                            <button onClick={nextPage} disabled={currentPage === totalPages} style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontSize: 12, fontWeight: 600, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>Next →</button>
+                                        <div className="flex gap-1.5">
+                                            <button onClick={prevPage} disabled={currentPage === 1} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>← Prev</button>
+                                            <span className="px-3 py-1 text-xs" style={{ color: C.muted }}>{currentPage} / {totalPages}</span>
+                                            <button onClick={nextPage} disabled={currentPage === totalPages} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>Next →</button>
                                         </div>
                                     </div>
                                 )}
@@ -574,40 +641,38 @@ export default function RevenueBreakDown({
 
             {/* ═══════════════════ ANALYSIS ════════════════════════════════════════════ */}
             {tab === "analysis" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
-                        {/* Concentration risk */}
+                <div className="flex flex-col gap-4">
+                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
                         <Card delay={0}>
                             <Lbl>Revenue Concentration Risk</Lbl>
                             {loading ? <><Sk /><Sk /></> : streams.length === 0 ? <None /> : (
                                 <>
-                                    <div style={{ marginBottom: 14 }}>
-                                        <div style={{ display: "flex", height: 24, borderRadius: 8, overflow: "hidden", gap: 1 }}>
+                                    <div className="mb-3.5">
+                                        <div className="flex h-6 rounded-lg overflow-hidden gap-px">
                                             {streams.map((s, i) => (
                                                 <div key={s.code ?? i} title={`${s.name}: ${s.pct}%`}
                                                     style={{ width: `${s.pct}%`, background: PALETTE[i % PALETTE.length], display: s.pct < 1 ? "none" : "block" }} />
                                             ))}
                                         </div>
-                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 10 }}>
+                                        <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 mt-2.5">
                                             {streams.map((s, i) => (
-                                                <div key={s.code ?? i} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                                    <span style={{ width: 8, height: 8, borderRadius: 2, background: PALETTE[i % PALETTE.length], display: "inline-block" }} />
-                                                    <span style={{ fontSize: 11, color: C.muted }}>{s.name} <b style={{ color: C.text }}>{s.pct}%</b></span>
+                                                <div key={s.code ?? i} className="flex items-center gap-1.5">
+                                                    <span className="inline-block w-2 h-2 rounded-sm" style={{ background: PALETTE[i % PALETTE.length] }} />
+                                                    <span className="text-[11px]" style={{ color: C.muted }}>{s.name} <b style={{ color: C.text }}>{s.pct}%</b></span>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
-                                    <div style={{ padding: "12px 14px", background: (streams[0]?.pct ?? 0) > 60 ? C.redBg : (streams[0]?.pct ?? 0) > 40 ? C.amberBg : "#F0FDF4", borderRadius: 10 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 700, color: (streams[0]?.pct ?? 0) > 60 ? C.red : (streams[0]?.pct ?? 0) > 40 ? C.amber : C.positive, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                                    <div className="rounded-xl px-3.5 py-3" style={{ background: (streams[0]?.pct ?? 0) > 60 ? C.redBg : (streams[0]?.pct ?? 0) > 40 ? C.amberBg : "#F0FDF4" }}>
+                                        <div className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: (streams[0]?.pct ?? 0) > 60 ? C.red : (streams[0]?.pct ?? 0) > 40 ? C.amber : C.positive }}>
                                             {(streams[0]?.pct ?? 0) > 60 ? "High concentration risk" : (streams[0]?.pct ?? 0) > 40 ? "Moderate concentration" : "Well diversified"}
                                         </div>
-                                        <div style={{ fontSize: 12, color: C.mid, marginTop: 3 }}>Top source accounts for {streams[0]?.pct ?? 0}% of revenue</div>
+                                        <div className="text-xs mt-1" style={{ color: C.mid }}>Top source accounts for {streams[0]?.pct ?? 0}% of revenue</div>
                                     </div>
                                 </>
                             )}
                         </Card>
 
-                        {/* MoM bar */}
                         <Card delay={1}>
                             <Lbl>Month-over-Month Revenue</Lbl>
                             {loading ? <Sk h={180} /> : trend.length === 0 ? <None /> : (
@@ -624,8 +689,8 @@ export default function RevenueBreakDown({
                                 </ResponsiveContainer>
                             )}
                             {totals.momPct !== null && (
-                                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
-                                    <span style={{ fontSize: 12, color: C.muted }}>Last month change</span>
+                                <div className="flex items-center gap-2 mt-2.5">
+                                    <span className="text-xs" style={{ color: C.muted }}>Last month change</span>
                                     <Delta up={(totals.momPct ?? 0) >= 0} label={`${(totals.momPct ?? 0) >= 0 ? "+" : ""}${(totals.momPct ?? 0).toFixed(1)}%`} />
                                 </div>
                             )}

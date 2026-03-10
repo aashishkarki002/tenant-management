@@ -19,7 +19,7 @@ export function GeneratorCardHeader({ gen, onCheckClick, onRefillClick, onServic
         gen.serialNumber ? `S/N ${gen.serialNumber}` : null,
         gen.property?.name,
         // Show sub-meter linkage status — useful for ops team to confirm metering
-        gen.subMeter ? `⚡ ${gen.subMeter.name ?? "Sub-meter linked"}` : "⚡ No sub-meter",
+        gen.subMeter ? ` ${gen.subMeter.name ?? "Sub-meter linked"}` : " No sub-meter",
     ].filter(Boolean);
 
     return (
@@ -36,7 +36,7 @@ export function GeneratorCardHeader({ gen, onCheckClick, onRefillClick, onServic
                 {/* Name + pill + (desktop) meta */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                        <h3 className="font-bold text-sm text-gray-900 truncate leading-tight">{gen.name}</h3>
+                        <h3 className="font-bold text-sm text-text-strong truncate leading-tight">{gen.name}</h3>
                         <Pill className={statusStyle.pill}>
                             <StatusDot status={gen.status} />
                             {gen.status?.replace(/_/g, " ")}

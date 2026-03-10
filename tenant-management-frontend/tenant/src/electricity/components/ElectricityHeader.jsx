@@ -23,7 +23,7 @@ export function ElectricityHeader({
         <div>
           <p
             className="text-[11px] font-semibold tracking-[0.16em] uppercase mb-1"
-            style={{ color: "#AFA097" }}
+            style={{ color: "var(--color-text-sub)" }}
           >
             Sallyan House &bull; {fiscalYearLabel}
           </p>

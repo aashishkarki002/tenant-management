@@ -28,12 +28,6 @@ import { toast } from "sonner";
 import { getAllBlocks } from "./addTenant/utils/propertyHelper";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 
-// ─── Filter Registry ───────────────────────────────────────────────────────────
-//
-// Progressive disclosure pattern: separate essential filters from advanced ones.
-// Essential = used frequently by 80% of users (Status, Payment)
-// Advanced = used occasionally for specific workflows (Billing, Lease)
-//
 const ESSENTIAL_FILTERS = [
   {
     key: "status",
@@ -78,14 +72,9 @@ const ADVANCED_FILTERS = [
   },
 ];
 
-// Combined for backward compatibility
 const FILTER_GROUPS = [...ESSENTIAL_FILTERS, ...ADVANCED_FILTERS];
 
 // ─── URL param helpers ─────────────────────────────────────────────────────────
-//
-// Industry standard: ALL filter state lives in URL so users can share
-// and refresh without losing context. This is the Next.js / React Router pattern.
-//
 function parseFiltersFromParams(searchParams) {
   return {
     search: searchParams.get("search") ?? "",
@@ -117,37 +106,59 @@ function hasActiveFilters(f) {
   );
 }
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, description, highlight, iconBg, iconColor }) {
+// ─── Stat Card ─────────────────────────────────────────────────────────────────
+//
+// Industry standard (Linear, Stripe): clean number-first layout, muted icon,
+// semantic left-border accent instead of colored icon containers.
+// Avoids the "4 colorful boxes" AI-generated pattern.
+//
+const ACCENT_COLORS = {
+  default: "var(--color-border)",
+  success: "var(--color-success)",
+  warning: "var(--color-warning)",
+  danger: "var(--color-danger)",
+  accent: "var(--color-accent)",
+};
+
+function StatCard({ icon: Icon, label, value, description, accent = "default" }) {
+  const borderAccent = ACCENT_COLORS[accent] ?? ACCENT_COLORS.default;
+
   return (
     <div
-      className="rounded-xl border shadow-[var(--shadow-card)] px-4 py-3 flex items-center gap-3"
-      style={{
-        background: highlight ? "var(--color-danger-bg)" : "var(--color-surface)",
-        borderColor: highlight ? "var(--color-danger-border)" : "var(--color-border)",
-      }}
+      className="rounded-xl border shadow-[var(--shadow-card)] px-4 py-3.5 flex items-start gap-3 relative overflow-hidden"
+      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
     >
+      {/* Thin left accent stripe — the only semantic color signal */}
       <div
-        className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-        style={{ background: iconBg ?? "var(--color-surface-raised)" }}
-      >
-        <Icon
-          className="w-[18px] h-[18px]"
-          style={{ color: highlight ? "var(--color-danger)" : (iconColor ?? "var(--color-text-sub)") }}
-        />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] text-text-sub font-medium uppercase tracking-widest font-sans">{label}</p>
+        className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full"
+
+      />
+
+      <div className="pl-2.5 flex-1 min-w-0">
         <p
-          className="text-xl font-bold leading-tight font-mono tabular-nums"
+          className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 font-sans"
+          style={{ color: "var(--color-text-weak)" }}
+        >
+          {label}
+        </p>
+        <p
+          className="text-2xl font-bold leading-none font-mono tabular-nums"
           style={{ color: "var(--color-text-strong)" }}
         >
           {value}
         </p>
         {description && (
-          <p className="text-[10px] text-text-sub mt-0.5 truncate">{description}</p>
+          <p className="text-[11px] mt-1.5 truncate" style={{ color: "var(--color-text-sub)" }}>
+            {description}
+          </p>
         )}
       </div>
+
+      {/* Icon: always muted — decorative only */}
+      <Icon
+        className="w-4 h-4 mt-0.5 shrink-0"
+        style={{ color: "var(--color-text-weak)" }}
+      />
     </div>
   );
 }
@@ -183,7 +194,7 @@ function TenantCardSkeleton() {
 function FilterChip({ label, dot, onRemove }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-full text-xs font-medium border"
+      className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1.5 rounded-full text-[11px] font-medium border"
       style={{
         background: "var(--color-accent-light)",
         borderColor: "var(--color-accent-mid)",
@@ -194,7 +205,7 @@ function FilterChip({ label, dot, onRemove }) {
       {label}
       <button
         onClick={onRemove}
-        className="ml-0.5 rounded-full p-0.5 transition-colors hover:opacity-70"
+        className="ml-0.5 rounded-full p-0.5 transition-opacity hover:opacity-60"
       >
         <X className="w-3 h-3" />
       </button>
@@ -202,12 +213,7 @@ function FilterChip({ label, dot, onRemove }) {
   );
 }
 
-// ─── Inline Filter Group Button ────────────────────────────────────────────────
-//
-// Each filter group renders as a single compact dropdown in the header.
-// Active state is visually indicated via count badge + filled style.
-// Pattern: same as Linear's filter bar.
-//
+// ─── Filter Group Button ───────────────────────────────────────────────────────
 function FilterGroupButton({ group, selectedValues, onToggle }) {
   const [open, setOpen] = useState(false);
   const Icon = group.icon;
@@ -217,7 +223,7 @@ function FilterGroupButton({ group, selectedValues, onToggle }) {
     <div className="relative">
       <button
         onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-sm font-medium transition-colors shrink-0"
+        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors shrink-0"
         style={activeCount > 0 ? {
           background: "var(--color-accent)",
           color: "#ffffff",
@@ -228,41 +234,38 @@ function FilterGroupButton({ group, selectedValues, onToggle }) {
           borderColor: "var(--color-border)",
         }}
       >
-        <Icon className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{group.label}</span>
+        <Icon className="w-3.5 h-3.5 shrink-0" />
+        <span className="hidden md:inline">{group.label}</span>
         {activeCount > 0 && (
-          <span className="bg-white/30 text-white text-xs rounded-full w-4 h-4
-                           flex items-center justify-center font-bold">
+          <span className="bg-white/30 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">
             {activeCount}
           </span>
         )}
-        <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
-            className="absolute top-11 left-0 z-50 rounded-xl border shadow-[var(--shadow-modal)] p-1 min-w-[168px]"
+            className="absolute top-11 left-0 z-50 rounded-xl border shadow-[var(--shadow-modal)] p-1 min-w-[160px]"
             style={{ background: "var(--color-surface-raised)", borderColor: "var(--color-border)" }}
           >
             {group.options.map(opt => (
               <button
                 key={opt.value}
                 onClick={() => onToggle(group.key, opt.value)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors"
                 style={selectedValues.includes(opt.value) ? {
                   background: "var(--color-accent-light)",
                   color: "var(--color-accent)",
                   fontWeight: 500,
-                } : {
-                  color: "var(--color-text-body)",
-                }}
+                } : { color: "var(--color-text-body)" }}
                 onMouseEnter={e => { if (!selectedValues.includes(opt.value)) e.currentTarget.style.background = "var(--color-surface)"; }}
                 onMouseLeave={e => { if (!selectedValues.includes(opt.value)) e.currentTarget.style.background = ""; }}
               >
-                {opt.dot && <span className={`w-2 h-2 rounded-full ${opt.dot}`} />}
-                {opt.label}
+                {opt.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dot}`} />}
+                <span className="flex-1">{opt.label}</span>
                 {selectedValues.includes(opt.value) && (
                   <span className="ml-auto text-xs" style={{ color: "var(--color-accent)" }}>✓</span>
                 )}
@@ -276,11 +279,7 @@ function FilterGroupButton({ group, selectedValues, onToggle }) {
 }
 
 // ─── Advanced Filters Popover ──────────────────────────────────────────────────
-//
-// Desktop: Shows advanced filters in a clean popover panel
-// Reduces cognitive load by hiding rarely-used filters behind progressive disclosure
-//
-function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
+function AdvancedFiltersPopover({ filters, onFilterToggle }) {
   const [open, setOpen] = useState(false);
 
   const advancedActiveCount = ADVANCED_FILTERS.reduce(
@@ -288,19 +287,11 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
     0
   );
 
-  const handleToggle = () => {
-    setOpen(v => !v);
-  };
-
-  const handleFilterToggle = (key, value) => {
-    onFilterToggle(key, value);
-  };
-
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
-        onClick={handleToggle}
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-sm font-medium transition-colors shrink-0"
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors"
         style={advancedActiveCount > 0 ? {
           background: "var(--color-accent)",
           color: "#ffffff",
@@ -311,11 +302,10 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
           borderColor: "var(--color-border)",
         }}
       >
-        <SlidersHorizontal className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">More Filters</span>
+        <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+        <span className="hidden md:inline whitespace-nowrap">More Filters</span>
         {advancedActiveCount > 0 && (
-          <span className="bg-white/30 text-white text-xs rounded-full w-4 h-4
-                           flex items-center justify-center font-bold">
+          <span className="bg-white/30 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">
             {advancedActiveCount}
           </span>
         )}
@@ -324,14 +314,12 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-
           <div
-            className="absolute top-11 right-0 z-50 rounded-xl border shadow-[var(--shadow-modal)] w-72 overflow-hidden"
+            className="absolute top-11 right-0 z-50 rounded-xl border shadow-[var(--shadow-modal)] w-68 overflow-hidden"
             style={{ background: "var(--color-surface-raised)", borderColor: "var(--color-border)" }}
           >
-            {/* Header */}
             <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: "var(--color-border)" }}>
-              <h3 className="text-sm font-semibold" style={{ color: "var(--color-text-strong)" }}>Advanced Filters</h3>
+              <h3 className="text-xs font-semibold" style={{ color: "var(--color-text-strong)" }}>Advanced Filters</h3>
               <button
                 onClick={() => setOpen(false)}
                 className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors"
@@ -343,19 +331,17 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
               </button>
             </div>
 
-            {/* Filter Groups */}
-            <div className="p-3 space-y-3 max-h-96 overflow-y-auto">
+            <div className="p-3 space-y-3 max-h-80 overflow-y-auto">
               {ADVANCED_FILTERS.map(group => {
                 const Icon = group.icon;
                 const selectedValues = filters[group.key] ?? [];
-
                 return (
                   <div key={group.key}>
                     <label
-                      className="flex items-center gap-2 text-xs font-semibold mb-2 px-1 uppercase tracking-wide"
+                      className="flex items-center gap-1.5 text-[10px] font-semibold mb-2 px-1 uppercase tracking-widest"
                       style={{ color: "var(--color-text-sub)" }}
                     >
-                      <Icon className="w-3.5 h-3.5" />
+                      <Icon className="w-3 h-3" />
                       {group.label}
                     </label>
                     <div className="space-y-1">
@@ -364,8 +350,8 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
                         return (
                           <button
                             key={opt.value}
-                            onClick={() => handleFilterToggle(group.key, opt.value)}
-                            className="w-full text-left px-3 py-2 rounded-lg border transition-all flex items-center gap-2"
+                            onClick={() => onFilterToggle(group.key, opt.value)}
+                            className="w-full text-left px-3 py-2 rounded-lg border transition-all flex items-center gap-2 text-xs"
                             style={isSelected ? {
                               background: "var(--color-accent-light)",
                               color: "var(--color-accent)",
@@ -377,10 +363,9 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
                               borderColor: "var(--color-border)",
                             }}
                           >
-                            {opt.dot && <span className={`w-2 h-2 rounded-full ${opt.dot}`} />}
-                            <span className="text-sm flex-1">{opt.label}</span>
+                            <span className="flex-1">{opt.label}</span>
                             {isSelected && (
-                              <span className="text-sm" style={{ color: "var(--color-accent)" }}>✓</span>
+                              <span style={{ color: "var(--color-accent)" }}>✓</span>
                             )}
                           </button>
                         );
@@ -391,18 +376,15 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
               })}
             </div>
 
-            {/* Footer */}
             {advancedActiveCount > 0 && (
               <div className="px-3 py-2.5 border-t" style={{ borderColor: "var(--color-border)" }}>
                 <button
                   onClick={() => {
                     ADVANCED_FILTERS.forEach(group => {
-                      (filters[group.key] ?? []).forEach(value => {
-                        handleFilterToggle(group.key, value);
-                      });
+                      (filters[group.key] ?? []).forEach(value => onFilterToggle(group.key, value));
                     });
                   }}
-                  className="w-full text-xs font-medium py-1.5 rounded-lg transition-colors"
+                  className="w-full text-[11px] font-medium py-1.5 rounded-lg transition-colors"
                   style={{ color: "var(--color-text-sub)" }}
                   onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface)"}
                   onMouseLeave={e => e.currentTarget.style.background = ""}
@@ -419,25 +401,8 @@ function AdvancedFiltersPopover({ filters, onFilterToggle, onClose }) {
 }
 
 // ─── Mobile Filter Drawer ──────────────────────────────────────────────────────
-//
-// Mobile-first design pattern: consolidate all filters into a single drawer
-// to prevent horizontal overflow and improve touch interaction.
-//
-function MobileFilterDrawer({
-  isOpen,
-  onClose,
-  filters,
-  allBlocks,
-  onBlockChange,
-  onFilterToggle,
-  onClearAll,
-}) {
+function MobileFilterDrawer({ isOpen, onClose, filters, allBlocks, onBlockChange, onFilterToggle, onClearAll }) {
   if (!isOpen) return null;
-
-  const selectedBlock = allBlocks.find(b => b._id === filters.block) ?? null;
-  const selectedInner = selectedBlock?.innerBlocks?.find(
-    ib => ib._id === filters.innerBlock
-  ) ?? null;
 
   const activeFilterCount =
     (filters.block ? 1 : 0) +
@@ -448,86 +413,61 @@ function MobileFilterDrawer({
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/40 z-50 sm:hidden"
-        onClick={onClose}
-      />
-
-      {/* Drawer */}
+      <div className="fixed inset-0 bg-black/40 z-50 sm:hidden" onClick={onClose} />
       <div
         className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl shadow-[var(--shadow-modal)]
                    max-h-[85vh] overflow-hidden flex flex-col sm:hidden
                    animate-in slide-in-from-bottom duration-300"
         style={{ background: "var(--color-surface-raised)" }}
       >
-
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--color-border)" }}>
           <div>
             <h3 className="text-base font-bold font-sans" style={{ color: "var(--color-text-strong)" }}>Filters</h3>
             {activeFilterCount > 0 && (
-              <p className="text-xs mt-0.5" style={{ color: "var(--color-text-sub)" }}>
-                {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} applied
+              <p className="text-[11px] mt-0.5" style={{ color: "var(--color-text-sub)" }}>
+                {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""} applied
               </p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-full flex items-center justify-center"
             style={{ background: "var(--color-surface)", color: "var(--color-text-sub)" }}
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-5">
-
-          {/* Block Selection */}
           <div>
-            <label
-              className="block text-xs font-semibold mb-2 uppercase tracking-widest"
-              style={{ color: "var(--color-text-sub)" }}
-            >
+            <label className="block text-[10px] font-semibold mb-2 uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>
               Location
             </label>
             <div className="space-y-1.5">
               <button
                 onClick={() => onBlockChange(null, null)}
-                className="w-full text-left px-4 py-3 rounded-xl border transition-all"
+                className="w-full text-left px-4 py-3 rounded-xl border transition-all text-sm font-medium"
                 style={!filters.block ? {
-                  background: "var(--color-accent)",
-                  color: "#ffffff",
-                  borderColor: "var(--color-accent)",
+                  background: "var(--color-accent)", color: "#ffffff", borderColor: "var(--color-accent)",
                 } : {
-                  background: "var(--color-surface-raised)",
-                  color: "var(--color-text-body)",
-                  borderColor: "var(--color-border)",
+                  background: "var(--color-surface-raised)", color: "var(--color-text-body)", borderColor: "var(--color-border)",
                 }}
               >
-                <span className="text-sm font-medium">All Blocks</span>
+                All Blocks
               </button>
-
               {allBlocks.map(block => (
                 <div key={block._id}>
                   <button
                     onClick={() => onBlockChange(block, null)}
-                    className="w-full text-left px-4 py-3 rounded-xl border transition-all"
+                    className="w-full text-left px-4 py-3 rounded-xl border transition-all text-sm font-medium"
                     style={filters.block === block._id && !filters.innerBlock ? {
-                      background: "var(--color-accent)",
-                      color: "#ffffff",
-                      borderColor: "var(--color-accent)",
+                      background: "var(--color-accent)", color: "#ffffff", borderColor: "var(--color-accent)",
                     } : {
-                      background: "var(--color-surface-raised)",
-                      color: "var(--color-text-body)",
-                      borderColor: "var(--color-border)",
+                      background: "var(--color-surface-raised)", color: "var(--color-text-body)", borderColor: "var(--color-border)",
                     }}
                   >
-                    <span className="text-sm font-medium">{block.name}</span>
+                    {block.name}
                   </button>
-
-                  {/* Inner blocks */}
                   {Array.isArray(block.innerBlocks) && block.innerBlocks.length > 0 && (
                     <div className="ml-4 mt-1.5 space-y-1.5">
                       {block.innerBlocks.map(inner => (
@@ -536,14 +476,9 @@ function MobileFilterDrawer({
                           onClick={() => onBlockChange(block, inner)}
                           className="w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm"
                           style={filters.innerBlock === inner._id ? {
-                            background: "var(--color-accent-light)",
-                            color: "var(--color-accent)",
-                            borderColor: "var(--color-accent-mid)",
-                            fontWeight: 500,
+                            background: "var(--color-accent-light)", color: "var(--color-accent)", borderColor: "var(--color-accent-mid)", fontWeight: 500,
                           } : {
-                            background: "var(--color-surface-raised)",
-                            color: "var(--color-text-sub)",
-                            borderColor: "var(--color-border)",
+                            background: "var(--color-surface-raised)", color: "var(--color-text-sub)", borderColor: "var(--color-border)",
                           }}
                         >
                           {inner.name}
@@ -556,19 +491,16 @@ function MobileFilterDrawer({
             </div>
           </div>
 
-          {/* Attribute Filters */}
           {FILTER_GROUPS.map(group => {
             const Icon = group.icon;
             const selectedValues = filters[group.key] ?? [];
-
             return (
               <div key={group.key}>
                 <label
-                  className="flex items-center gap-2 text-xs font-semibold mb-2 uppercase tracking-widest"
+                  className="flex items-center gap-2 text-[10px] font-semibold mb-2 uppercase tracking-widest"
                   style={{ color: "var(--color-text-sub)" }}
                 >
-                  <Icon className="w-3.5 h-3.5" />
-                  {group.label}
+                  <Icon className="w-3.5 h-3.5" /> {group.label}
                 </label>
                 <div className="space-y-1.5">
                   {group.options.map(opt => {
@@ -577,23 +509,16 @@ function MobileFilterDrawer({
                       <button
                         key={opt.value}
                         onClick={() => onFilterToggle(group.key, opt.value)}
-                        className="w-full text-left px-4 py-3 rounded-xl border transition-all flex items-center gap-2.5"
+                        className="w-full text-left px-4 py-3 rounded-xl border transition-all flex items-center gap-2.5 text-sm"
                         style={isSelected ? {
-                          background: "var(--color-accent-light)",
-                          color: "var(--color-accent)",
-                          borderColor: "var(--color-accent-mid)",
-                          fontWeight: 500,
+                          background: "var(--color-accent-light)", color: "var(--color-accent)", borderColor: "var(--color-accent-mid)", fontWeight: 500,
                         } : {
-                          background: "var(--color-surface-raised)",
-                          color: "var(--color-text-body)",
-                          borderColor: "var(--color-border)",
+                          background: "var(--color-surface-raised)", color: "var(--color-text-body)", borderColor: "var(--color-border)",
                         }}
                       >
-                        {opt.dot && <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />}
-                        <span className="text-sm flex-1">{opt.label}</span>
-                        {isSelected && (
-                          <span className="text-base" style={{ color: "var(--color-accent)" }}>✓</span>
-                        )}
+                        {opt.dot && <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${opt.dot}`} />}
+                        <span className="flex-1">{opt.label}</span>
+                        {isSelected && <span style={{ color: "var(--color-accent)" }}>✓</span>}
                       </button>
                     );
                   })}
@@ -603,13 +528,12 @@ function MobileFilterDrawer({
           })}
         </div>
 
-        {/* Footer Actions */}
         <div className="border-t px-5 py-4 flex gap-3" style={{ borderColor: "var(--color-border)" }}>
           <Button
             variant="outline"
             onClick={onClearAll}
             disabled={activeFilterCount === 0}
-            className="flex-1 h-11 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 h-11 text-sm font-semibold disabled:opacity-40"
             style={{ borderColor: "var(--color-border)", color: "var(--color-text-body)" }}
           >
             Clear All
@@ -619,7 +543,7 @@ function MobileFilterDrawer({
             className="flex-1 h-11 text-sm font-semibold text-white"
             style={{ background: "var(--color-accent)" }}
           >
-            Apply Filters
+            Apply
           </Button>
         </div>
       </div>
@@ -629,38 +553,23 @@ function MobileFilterDrawer({
 
 // ─── Contextual Header Slot ────────────────────────────────────────────────────
 //
-// PROGRESSIVE DISCLOSURE UX:
-//   Desktop: [Search] [Block ▾] [Status] [Payment] [More Filters ▾] | [Import] [Add]
-//   - Only essential filters (Status, Payment) visible by default
-//   - Advanced filters (Billing, Lease) behind "More Filters" button
-//   - Reduces cognitive load while keeping power-user features accessible
-//
-// Mobile:  [Search ───────────────────] [Filters(n)] [+]
-//   - All filters consolidated into single drawer (unchanged)
+// FIX: Desktop filter row overflow at intermediate viewport widths (laptop).
+// - Search: flex-1 with min/max constraints instead of fixed w-56 shrink-0
+// - FilterGroupButtons: text label hidden below md (icon-only on cramped screens)
+// - AdvancedFiltersPopover: shrink-0 so it never gets squeezed out of shape
 //
 function TenantHeaderSlot({
-  filters,
-  allBlocks,
-  onSearchChange,
-  onBlockChange,
-  onFilterToggle,
-  onNavigate,
-  onClearAll,
+  filters, allBlocks, onSearchChange, onBlockChange, onFilterToggle, onNavigate, onClearAll,
 }) {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
   const selectedBlock = allBlocks.find(b => b._id === filters.block) ?? null;
-  const selectedInner = selectedBlock?.innerBlocks?.find(
-    ib => ib._id === filters.innerBlock
-  ) ?? null;
+  const selectedInner = selectedBlock?.innerBlocks?.find(ib => ib._id === filters.innerBlock) ?? null;
 
   const blockLabel = selectedBlock
-    ? selectedInner
-      ? `${selectedBlock.name} · ${selectedInner.name}`
-      : selectedBlock.name
+    ? selectedInner ? `${selectedBlock.name} · ${selectedInner.name}` : selectedBlock.name
     : "All Blocks";
 
-  // Count active filters for mobile badge
   const mobileActiveFilterCount =
     (filters.block ? 1 : 0) +
     (filters.status?.length ?? 0) +
@@ -680,12 +589,11 @@ function TenantHeaderSlot({
         onClearAll={onClearAll}
       />
 
-      <div className="flex items-center gap-2 w-full">
+      <div className="flex items-center gap-2 w-full min-w-0">
 
-        {/* ── Mobile Layout ────────────────────────────────────────────────────── */}
+        {/* ── Mobile ──────────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2 w-full sm:hidden">
-          {/* Search */}
-          <div className="relative flex-1">
+          <div className="relative flex-1 min-w-0">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
               style={{ color: "var(--color-text-weak)" }}
@@ -703,34 +611,25 @@ function TenantHeaderSlot({
               }}
             />
           </div>
-
-          {/* Filters button */}
           <button
             onClick={() => setMobileDrawerOpen(true)}
             className="relative h-11 px-4 rounded-xl border font-medium text-sm transition-all shrink-0 flex items-center gap-2"
             style={mobileActiveFilterCount > 0 ? {
-              background: "var(--color-accent)",
-              color: "#ffffff",
-              borderColor: "var(--color-accent)",
+              background: "var(--color-accent)", color: "#ffffff", borderColor: "var(--color-accent)",
             } : {
-              background: "var(--color-surface)",
-              color: "var(--color-text-body)",
-              borderColor: "var(--color-border)",
+              background: "var(--color-surface)", color: "var(--color-text-body)", borderColor: "var(--color-border)",
             }}
           >
             <SlidersHorizontal className="w-4 h-4" />
             {mobileActiveFilterCount > 0 && (
               <span
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white text-[10px] font-bold
-                           flex items-center justify-center border-2"
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center border-2"
                 style={{ background: "var(--color-danger)", borderColor: "var(--color-surface-raised)" }}
               >
                 {mobileActiveFilterCount}
               </span>
             )}
           </button>
-
-          {/* Add tenant - primary CTA */}
           <Button
             onClick={onNavigate.toAdd}
             className="h-11 w-11 p-0 text-white shrink-0 flex items-center justify-center rounded-xl"
@@ -740,17 +639,29 @@ function TenantHeaderSlot({
           </Button>
         </div>
 
-        {/* ── Desktop Layout ───────────────────────────────────────────────────── */}
-        <div className="hidden sm:flex items-center gap-2 w-full">
-          {/* Search */}
-          <div className="relative w-56 shrink-0">
+        {/* ── Desktop ─────────────────────────────────────────────────────────── */}
+        {/*
+          Layout: [Search — flex-1] [Block▾] [Status] [Payment] [More▾] ··· | [Send] [+ Add]
+          
+          Key fixes vs. old code:
+          1. Search is now flex-1 min-w-[120px] max-w-[200px] — shrinks/grows
+             with available space instead of fixed w-56 that caused overflow.
+          2. Filter group labels hide below md breakpoint (icon-only mode) so
+             buttons don't overflow when sidebar is open on 1280px screens.
+          3. AdvancedFiltersPopover has shrink-0 — won't get compressed.
+          4. Outer div has min-w-0 — prevents flex children from overflowing parent.
+        */}
+        <div className="hidden sm:flex items-center gap-1.5 w-full min-w-0">
+
+          {/* Search — flexible width */}
+          <div className="relative flex-1 min-w-[120px] max-w-[200px] shrink">
             <Search
               className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
               style={{ color: "var(--color-text-weak)" }}
             />
             <input
               type="text"
-              placeholder="Search tenant, phone, or unit…"
+              placeholder="Search tenant…"
               value={filters.search}
               onChange={e => onSearchChange(e.target.value)}
               className="w-full h-9 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors font-sans"
@@ -767,7 +678,7 @@ function TenantHeaderSlot({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                className="h-9 text-xs shrink-0 max-w-[148px] justify-between gap-1"
+                className="h-9 text-xs shrink-0 max-w-[140px] justify-between gap-1 font-medium"
                 style={{
                   background: "var(--color-surface)",
                   borderColor: "var(--color-border)",
@@ -778,7 +689,7 @@ function TenantHeaderSlot({
                 <ArrowDown className="w-3 h-3 shrink-0" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="start">
+            <DropdownMenuContent className="w-52" align="start">
               <DropdownMenuItem onClick={() => onBlockChange(null, null)}>All Blocks</DropdownMenuItem>
               <DropdownMenuSeparator />
               {allBlocks.length === 0 ? (
@@ -808,31 +719,29 @@ function TenantHeaderSlot({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Essential filters (Status, Payment) - always visible */}
-          <div className="flex items-center gap-1.5">
-            {ESSENTIAL_FILTERS.map(group => (
-              <FilterGroupButton
-                key={group.key}
-                group={group}
-                selectedValues={filters[group.key] ?? []}
-                onToggle={onFilterToggle}
-              />
-            ))}
-          </div>
+          {/* Divider */}
+          <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
 
-          {/* Advanced filters - progressive disclosure */}
-          <AdvancedFiltersPopover
-            filters={filters}
-            onFilterToggle={onFilterToggle}
-          />
+          {/* Essential filters */}
+          {ESSENTIAL_FILTERS.map(group => (
+            <FilterGroupButton
+              key={group.key}
+              group={group}
+              selectedValues={filters[group.key] ?? []}
+              onToggle={onFilterToggle}
+            />
+          ))}
 
-          {/* Spacer */}
-          <div className="flex-1 min-w-0" />
+          {/* Advanced filters */}
+          <AdvancedFiltersPopover filters={filters} onFilterToggle={onFilterToggle} />
+
+          {/* Push CTAs to right */}
+          <div className="flex-1" />
 
           {/* Divider */}
           <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
 
-          {/* CTAs */}
+          {/* CTA: Add Tenant — primary */}
           <Button
             onClick={onNavigate.toAdd}
             className="h-9 px-3 text-xs font-semibold text-white shrink-0 flex items-center gap-1.5"
@@ -841,6 +750,8 @@ function TenantHeaderSlot({
             <Plus className="w-3.5 h-3.5" />
             Add Tenant
           </Button>
+
+          {/* CTA: Send Message — secondary */}
           <Button
             variant="outline"
             onClick={onNavigate.toMessage}
@@ -852,7 +763,7 @@ function TenantHeaderSlot({
             }}
           >
             <Bell className="w-3.5 h-3.5" />
-            Send Message
+            <span className="hidden lg:inline">Send Message</span>
           </Button>
         </div>
 
@@ -867,20 +778,15 @@ export default function Tenants() {
   const [totalCount, setTotalCount] = useState(null);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState("grid"); // "grid" | "table"
+  const [viewMode, setViewMode] = useState("grid");
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // ── All filter state lives in URL — single source of truth ──────────────────
-  const filters = useMemo(
-    () => parseFiltersFromParams(searchParams),
-    [searchParams]
-  );
-
+  const filters = useMemo(() => parseFiltersFromParams(searchParams), [searchParams]);
   const isInitialMount = useRef(true);
 
-  /* ── Setters — each writes back to URL params ─────────────────────────────── */
+  /* ── Filter setters ─────────────────────────────────────────────────────── */
 
   const setFilter = useCallback((key, value) => {
     setSearchParams(prev => {
@@ -895,7 +801,7 @@ export default function Tenants() {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       const current = next.getAll(key);
-      next.delete(key); // clear all values for this key
+      next.delete(key);
       if (current.includes(value)) {
         current.filter(v => v !== value).forEach(v => next.append(key, v));
       } else {
@@ -928,7 +834,7 @@ export default function Tenants() {
     }, { replace: true });
   }, [setSearchParams]);
 
-  /* ── Data fetching ─────────────────────────────────────────────────────────── */
+  /* ── Data fetching ──────────────────────────────────────────────────────── */
 
   const fetchProperties = async () => {
     try {
@@ -957,7 +863,6 @@ export default function Tenants() {
       if (currentFilters.search) params.search = currentFilters.search;
       if (currentFilters.block) params.block = currentFilters.block;
       if (currentFilters.innerBlock) params.innerBlock = currentFilters.innerBlock;
-
       if (currentFilters.status.length) params.status = currentFilters.status;
       if (currentFilters.paymentStatus.length) params.paymentStatus = currentFilters.paymentStatus;
       if (currentFilters.frequency.length) params.frequency = currentFilters.frequency;
@@ -974,65 +879,51 @@ export default function Tenants() {
     }
   };
 
-  /* ── Effects ───────────────────────────────────────────────────────────────── */
+  /* ── Effects ────────────────────────────────────────────────────────────── */
 
-  // Initial load
   useEffect(() => {
     setLoading(true);
     const initialFilters = parseFiltersFromParams(searchParams);
     Promise.all([
       fetchProperties(),
-      hasActiveFilters(initialFilters)
-        ? fetchFilteredTenants(initialFilters)
-        : fetchAllTenants(),
+      hasActiveFilters(initialFilters) ? fetchFilteredTenants(initialFilters) : fetchAllTenants(),
     ]).finally(() => setLoading(false));
   }, []);
 
-  // React to URL param changes (filter changes after mount)
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-
+    if (isInitialMount.current) { isInitialMount.current = false; return; }
     setLoading(true);
-    (hasActiveFilters(filters)
-      ? fetchFilteredTenants(filters)
-      : fetchAllTenants()
-    ).finally(() => setLoading(false));
-  }, [searchParams]); // searchParams is the canonical filter state
+    (hasActiveFilters(filters) ? fetchFilteredTenants(filters) : fetchAllTenants())
+      .finally(() => setLoading(false));
+  }, [searchParams]);
 
-  /* ── Derived data ──────────────────────────────────────────────────────────── */
+  /* ── Derived ────────────────────────────────────────────────────────────── */
 
   const allBlocks = useMemo(() => getAllBlocks(properties), [properties]);
 
   const activeTenants = tenants.filter(t => t.status === "active").length;
 
-  const outstandingRent = useMemo(() => {
-    return tenants.reduce((sum, t) => sum + (t.outstandingAmount ?? 0), 0);
-  }, [tenants]);
+  const outstandingRent = useMemo(
+    () => tenants.reduce((sum, t) => sum + (t.outstandingAmount ?? 0), 0),
+    [tenants]
+  );
 
-  const attentionCount = useMemo(() => {
-    return tenants.filter(t => needsAttention(t)).length;
-  }, [tenants]);
+  const attentionCount = useMemo(
+    () => tenants.filter(t => needsAttention(t)).length,
+    [tenants]
+  );
 
-  // ── Applied chips for chip bar ─────────────────────────────────────────────
   const appliedChips = useMemo(() => {
     const chips = [];
-
-    // Block/innerBlock
     const block = allBlocks.find(b => b._id === filters.block);
     if (block) {
       const inner = block.innerBlocks?.find(i => i._id === filters.innerBlock);
       chips.push({
-        key: "block",
-        value: filters.block,
+        key: "block", value: filters.block,
         label: inner ? `${block.name} · ${inner.name}` : block.name,
         onRemove: () => handleBlockChange(null, null),
       });
     }
-
-    // Attribute filters
     FILTER_GROUPS.forEach(group => {
       (filters[group.key] ?? []).forEach(value => {
         const opt = group.options.find(o => o.value === value);
@@ -1044,19 +935,15 @@ export default function Tenants() {
         });
       });
     });
-
     return chips;
   }, [filters, allBlocks]);
 
-  /* ── Navigation callbacks ──────────────────────────────────────────────────── */
-
-  // Stable object — does NOT need useRef since it's memoized once
   const navCallbacks = useMemo(() => ({
     toAdd: () => navigate("/tenant/addTenants"),
     toMessage: () => navigate("/tenant/send-message"),
   }), [navigate]);
 
-  /* ── Inject contextual slot into header ────────────────────────────────────── */
+  /* ── Header slot injection ──────────────────────────────────────────────── */
 
   useHeaderSlot(
     () => (
@@ -1070,21 +957,17 @@ export default function Tenants() {
         onClearAll={clearAllFilters}
       />
     ),
-    [filters, allBlocks] // re-inject when filters or blocks change
+    [filters, allBlocks]
   );
 
-  /* ── Render ────────────────────────────────────────────────────────────────── */
+  /* ── Render ─────────────────────────────────────────────────────────────── */
 
   const showingFiltered = hasActiveFilters(filters);
 
   return (
-    <div className="min-h-screen px-4 sm:px-5 font-sans" style={{ color: "var(--color-text-body)" }}>
+    <div className="min-h-screen px-4 sm:px-6 font-sans" style={{ color: "var(--color-text-body)" }}>
 
-      {/* ── Filter chip bar ─────────────────────────────────────────────────────
-          Industry pattern: secondary sticky bar below header that shows
-          all active filters as dismissible chips. Renders only when needed.
-          Matches Linear / Notion / Jira behavior.
-      ────────────────────────────────────────────────────────────────────────── */}
+      {/* ── Active filter chip bar ─────────────────────────────────────────── */}
       {appliedChips.length > 0 && (
         <div
           className="sticky top-14 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-2
@@ -1094,20 +977,15 @@ export default function Tenants() {
             borderColor: "var(--color-border)",
           }}
         >
-          <span className="text-xs flex items-center gap-1 shrink-0" style={{ color: "var(--color-text-weak)" }}>
+          <span className="text-[11px] flex items-center gap-1 shrink-0" style={{ color: "var(--color-text-weak)" }}>
             <Filter className="w-3 h-3" /> Filters:
           </span>
           {appliedChips.map(chip => (
-            <FilterChip
-              key={chip.key}
-              label={chip.label}
-              dot={chip.dot}
-              onRemove={chip.onRemove}
-            />
+            <FilterChip key={chip.key} label={chip.label} dot={chip.dot} onRemove={chip.onRemove} />
           ))}
           <button
             onClick={clearAllFilters}
-            className="text-xs underline underline-offset-2 ml-1 transition-opacity hover:opacity-70"
+            className="text-[11px] underline underline-offset-2 ml-1 transition-opacity hover:opacity-70"
             style={{ color: "var(--color-text-sub)" }}
           >
             Clear all
@@ -1115,55 +993,51 @@ export default function Tenants() {
         </div>
       )}
 
-      <div className="py-4">
-        {/* Page title */}
+      <div className="py-5">
+
+        {/* ── Page header ───────────────────────────────────────────────────── */}
         <div className="mb-5">
           <h1 className="text-xl font-bold font-sans" style={{ color: "var(--color-text-strong)" }}>Tenants</h1>
           <p className="text-xs mt-0.5" style={{ color: "var(--color-text-sub)" }}>
-            Manage your residents, leases, and rent collection
+            Manage residents, leases, and rent collection
           </p>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        {/* ── KPI strip ─────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <StatCard
             icon={Users}
             label="Total Tenants"
             value={totalCount ?? tenants.length}
-            description="All registered tenants"
-            iconBg="var(--color-surface-raised)"
-            iconColor="var(--color-text-sub)"
+            description="All registered"
+            accent="accent"
           />
           <StatCard
             icon={CheckCircle2}
             label="Active"
             value={activeTenants}
             description="Currently occupying"
-            iconBg="var(--color-success-bg)"
-            iconColor="var(--color-success)"
+            accent="success"
           />
           <StatCard
             icon={DollarSign}
-            label="Outstanding Rent"
+            label="Outstanding"
             value={outstandingRent > 0 ? `Rs ${outstandingRent.toLocaleString()}` : "Rs 0"}
             description="Unpaid balances"
-            iconBg="var(--color-danger-bg)"
-            iconColor="var(--color-danger)"
+            accent={outstandingRent > 0 ? "danger" : "default"}
           />
           <StatCard
             icon={AlertTriangle}
-            label="Attention Needed"
+            label="Needs Attention"
             value={attentionCount}
             description="Overdue or lease expiring"
-            iconBg="var(--color-warning-bg)"
-            iconColor="var(--color-warning)"
-            highlight={attentionCount > 0}
+            accent={attentionCount > 0 ? "warning" : "default"}
           />
         </div>
 
-        {/* View toggle + results count */}
-        <div className="flex items-center justify-between mb-3">
-          <div>
+        {/* ── View toggle + count ────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="min-h-[18px]">
             {showingFiltered && !loading && (
               <p className="text-xs" style={{ color: "var(--color-text-sub)" }}>
                 Showing{" "}
@@ -1172,10 +1046,13 @@ export default function Tenants() {
               </p>
             )}
           </div>
-          <div className="flex items-center rounded-lg p-0.5" style={{ background: "var(--color-surface)" }}>
+          <div
+            className="flex items-center rounded-lg p-0.5 border"
+            style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+          >
             <button
               onClick={() => setViewMode("grid")}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
               style={viewMode === "grid" ? {
                 background: "var(--color-surface-raised)",
                 color: "var(--color-text-strong)",
@@ -1186,7 +1063,7 @@ export default function Tenants() {
             </button>
             <button
               onClick={() => setViewMode("table")}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
               style={viewMode === "table" ? {
                 background: "var(--color-surface-raised)",
                 color: "var(--color-text-strong)",
@@ -1198,7 +1075,7 @@ export default function Tenants() {
           </div>
         </div>
 
-        {/* Empty / loading states */}
+        {/* ── Content ───────────────────────────────────────────────────────── */}
         {loading ? (
           viewMode === "grid" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
@@ -1239,18 +1116,12 @@ export default function Tenants() {
             )}
           </div>
         ) : viewMode === "grid" ? (
-          /* ── Grid View ─────────────────────────────────────────────── */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
             {tenants.map(tenant => (
-              <TenantCard
-                key={tenant._id}
-                tenant={tenant}
-                onTenantMutated={fetchAllTenants}
-              />
+              <TenantCard key={tenant._id} tenant={tenant} onTenantMutated={fetchAllTenants} />
             ))}
           </div>
         ) : (
-          /* ── Table View ────────────────────────────────────────────── */
           <div
             className="rounded-xl border overflow-hidden shadow-[var(--shadow-card)]"
             style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
@@ -1258,13 +1129,15 @@ export default function Tenants() {
             <Table>
               <TableHeader>
                 <TableRow style={{ background: "var(--color-surface-raised)" }}>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest pl-4" style={{ color: "var(--color-text-sub)" }}>Tenant</TableHead>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Unit</TableHead>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Rent</TableHead>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Status</TableHead>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Payment</TableHead>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--color-text-sub)" }}>Lease End</TableHead>
-                  <TableHead className="text-[11px] font-semibold uppercase tracking-widest text-right pr-4" style={{ color: "var(--color-text-sub)" }}>Actions</TableHead>
+                  {["Tenant", "Unit", "Rent", "Status", "Payment", "Lease End", ""].map((h, i) => (
+                    <TableHead
+                      key={i}
+                      className={`text-[10px] font-semibold uppercase tracking-widest ${i === 0 ? "pl-4" : ""} ${i === 6 ? "text-right pr-4" : ""}`}
+                      style={{ color: "var(--color-text-sub)" }}
+                    >
+                      {h}
+                    </TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1358,8 +1231,8 @@ export default function Tenants() {
                               <button
                                 className="w-7 h-7 rounded-full flex items-center justify-center transition-colors"
                                 style={{ color: "var(--color-text-weak)" }}
-                                onMouseEnter={e => { e.currentTarget.style.background = "var(--color-surface-raised)"; }}
-                                onMouseLeave={e => { e.currentTarget.style.background = ""; }}
+                                onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface-raised)"}
+                                onMouseLeave={e => e.currentTarget.style.background = ""}
                                 onClick={e => e.stopPropagation()}
                               >
                                 <MoreVertical className="w-3.5 h-3.5" />

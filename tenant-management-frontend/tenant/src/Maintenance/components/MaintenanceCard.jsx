@@ -112,11 +112,11 @@ export default function MaintenanceCard({
 
   const paymentBadgeColour =
     {
-      pending: 'bg-yellow-50 text-yellow-700',
-      partially_paid: 'bg-orange-50 text-orange-700',
-      paid: 'bg-emerald-50 text-emerald-700',
-      overpaid: 'bg-amber-100 text-amber-800',
-    }[maintenanceItem.paymentStatus] ?? 'bg-gray-100 text-gray-500';
+      pending: 'bg-muted-fill text-text-strong',
+      partially_paid: 'bg-muted-fill text-text-strong',
+      paid: 'bg-muted-fill text-text-strong',
+      overpaid: 'bg-muted-fill text-text-strong',
+    }[maintenanceItem.paymentStatus] ?? 'bg-muted-fill text-text-sub';
 
   const getInitials = (name) => {
     if (!name || typeof name !== 'string') return '?'
@@ -138,16 +138,16 @@ export default function MaintenanceCard({
         onComplete={onUpdate}
       />
 
-      <Card className="rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+      <Card className="rounded-xl border border-muted-fill bg-surface-raised shadow-sm transition-shadow hover:shadow-md">
         <CardContent className="p-5">
           {/* ── Row 1: Title + Status ── */}
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold text-gray-900 truncate">
+              <h3 className="font-semibold text-text-strong truncate">
                 {maintenanceItem.title}
               </h3>
               {(unitName || tenantName) && (
-                <p className="mt-0.5 text-sm text-gray-500">
+                <p className="mt-0.5 text-sm text-text-sub">
                   {unitName}
                   {unitName && tenantName && ' • '}
                   {tenantName}
@@ -190,18 +190,18 @@ export default function MaintenanceCard({
               </Badge>
             )}
             {isOverdue && (
-              <Badge className="rounded-full bg-red-100 text-red-700 border-0 px-2 py-0.5 text-[10px] font-medium">
+              <Badge className="rounded-full bg-muted-fill text-text-strong border-0 px-2 py-0.5 text-[10px] font-medium">
                 Overdue
               </Badge>
             )}
             {maintenanceItem.paymentStatus === 'overpaid' && (
-              <Badge className="rounded-full bg-amber-100 text-amber-800 border-0 px-2 py-0.5 text-[10px] font-medium">
+              <Badge className="rounded-full bg-muted-fill text-text-strong border-0 px-2 py-0.5 text-[10px] font-medium">
                 Overpaid
               </Badge>
             )}
-            <span className="text-xs text-gray-400">{workOrderId}</span>
+            <span className="text-xs text-text-sub">{workOrderId}</span>
             {maintenanceItem.scheduledDate && (
-              <span className="flex items-center gap-1 text-xs text-gray-400">
+              <span className="flex items-center gap-1 text-xs text-text-sub">
                 <Clock className="h-3 w-3" />
                 {formatDate(maintenanceItem.scheduledDate)}
               </span>
@@ -209,12 +209,12 @@ export default function MaintenanceCard({
           </div>
 
           {/* ── Row 3: Assignment + Quick Actions ── */}
-          <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+          <div className="mt-3 flex items-center justify-between border-t border-muted-fill pt-3">
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <div className="flex items-center gap-1">
-                <Avatar className="w-4 h-4 bg-accent/20 text-black font-semibold">
+                <Avatar className="w-4 h-4 bg-accent/20 text-text-strong font-semibold">
                   <AvatarImage src={maintenanceItem.assignedTo?.profilePicture} alt={maintenanceItem.assignedTo?.name} width={16} height={16} />
-                  <AvatarFallback className="text-black">
+                  <AvatarFallback className="text-text-strong">
                     {getInitials(maintenanceItem.assignedTo?.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -226,7 +226,7 @@ export default function MaintenanceCard({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-xs text-gray-500 hover:text-gray-700"
+                  className="h-7 px-2 text-xs text-text-sub hover:text-text-body"
                   onClick={() => setShowAssignSelect(true)}
                 >
                   <UserPlus className="mr-1 h-3.5 w-3.5" />
@@ -236,7 +236,7 @@ export default function MaintenanceCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs text-gray-500 hover:text-gray-700"
+                className="h-7 px-2 text-xs text-text-sub hover:text-text-body"
                 onClick={toggleExpand}
               >
                 {isExpanded ? (
@@ -269,7 +269,7 @@ export default function MaintenanceCard({
                 onValueChange={handleAssignStaff}
                 disabled={assigning}
               >
-                <SelectTrigger className="h-8 flex-1 bg-white border-gray-300 text-sm">
+                <SelectTrigger className="h-8 flex-1 bg-surface-raised border-muted-fill text-sm">
                   <SelectValue placeholder="Select staff">
                     {assignedStaffId
                       ? staffs.find((s) => s._id === assignedStaffId)?.name ??
@@ -316,7 +316,7 @@ export default function MaintenanceCard({
                   }
                 />
                 <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide">
+                  <p className="text-xs text-text-sub uppercase tracking-wide">
                     Payment
                   </p>
                   <span
@@ -332,10 +332,10 @@ export default function MaintenanceCard({
 
               {maintenanceItem.description && (
                 <div>
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                  <p className="text-xs font-medium text-text-sub uppercase tracking-wide mb-1">
                     Description
                   </p>
-                  <p className="text-sm text-gray-700 leading-relaxed">
+                  <p className="text-sm text-text-strong leading-relaxed">
                     {maintenanceItem.description}
                   </p>
                 </div>
@@ -351,11 +351,11 @@ export default function MaintenanceCard({
 function Info({ label, value, highlight }) {
   return (
     <div>
-      <p className="text-xs text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className="text-xs text-text-sub uppercase tracking-wide">{label}</p>
       <p
         className={cn(
           'mt-0.5 text-sm font-medium capitalize',
-          highlight === 'amber' ? 'text-amber-700 font-semibold' : 'text-gray-800',
+          highlight === 'amber' ? 'text-text-strong font-semibold' : 'text-text-body',
         )}
       >
         {value || 'N/A'}

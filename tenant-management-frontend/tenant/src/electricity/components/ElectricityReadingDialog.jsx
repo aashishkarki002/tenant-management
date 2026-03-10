@@ -447,7 +447,7 @@ export default function ElectricityReadingDialog({
                             value={blockId || ""}
                             onValueChange={(val) => handleBlockChange(type, val)}
                         >
-                            <SelectTrigger className="h-9 bg-gray-100">
+                            <SelectTrigger className="h-9 bg-muted-fill">
                                 <SelectValue placeholder="Select Building" />
                             </SelectTrigger>
                             <SelectContent>
@@ -467,7 +467,7 @@ export default function ElectricityReadingDialog({
                                 handleBlockChange(type, val === "__all__" ? "" : val)
                             }
                         >
-                            <SelectTrigger className="h-9 bg-gray-100">
+                            <SelectTrigger className="h-9 bg-muted-fill">
                                 <SelectValue placeholder="All Buildings" />
                             </SelectTrigger>
                             <SelectContent>
@@ -488,7 +488,7 @@ export default function ElectricityReadingDialog({
                             value={innerBlockId || ""}
                             onValueChange={(val) => handleInnerBlockChange(type, val)}
                         >
-                            <SelectTrigger className="h-9 bg-gray-100">
+                            <SelectTrigger className="h-9 bg-muted-fill">
                                 <SelectValue placeholder="Select Block" />
                             </SelectTrigger>
                             <SelectContent>
@@ -505,7 +505,7 @@ export default function ElectricityReadingDialog({
                     <label className="text-sm font-medium">
                         Select {itemLabel}
                         {isLoading && (
-                            <Loader2 className="inline ml-2 w-3 h-3 animate-spin text-gray-400" />
+                            <Loader2 className="inline ml-2 w-3 h-3 animate-spin text-text-sub" />
                         )}
                     </label>
                     <Select
@@ -513,7 +513,7 @@ export default function ElectricityReadingDialog({
                         onValueChange={(val) => update(type, "selected", val)}
                         disabled={isLoading}
                     >
-                        <SelectTrigger className="h-9 bg-gray-100">
+                        <SelectTrigger className="h-9 bg-muted-fill">
                             <SelectValue placeholder={isLoading ? "Loading…" : `Select ${itemLabel}`} />
                         </SelectTrigger>
                         <SelectContent>
@@ -533,12 +533,12 @@ export default function ElectricityReadingDialog({
                                             {genMeters.length > 0 && (
                                                 <>
                                                     {otherMeters.length > 0 && (
-                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-gray-400 font-semibold border-t mt-1 pt-2">
-                                                            ⚡ Generator Meters
-                                                        </div>
-                                                    )}
+                                    <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold border-t mt-1 pt-2">
+                                                        ⚡ Generator Meters
+                                                    </div>
+                                                )}
                                                     {otherMeters.length === 0 && (
-                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-gray-400 font-semibold">
+                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold">
                                                             ⚡ Generator Meters
                                                         </div>
                                                     )}
@@ -546,7 +546,7 @@ export default function ElectricityReadingDialog({
                                                         <SelectItem key={opt._id} value={opt._id}>
                                                             {opt.name?.replace("Generator – ", "") ?? opt._id}
                                                             {" "}
-                                                            <span className="text-yellow-600 text-[10px]">(Generator)</span>
+                                                            <span className="text-warning text-[10px]">(Generator)</span>
                                                         </SelectItem>
                                                     ))}
                                                 </>
@@ -570,8 +570,8 @@ export default function ElectricityReadingDialog({
 
                 {/* Tenant transition warning — shown when the unit changed tenants */}
                 {type === "unit" && tenantTransitionWarning && selected && (
-                    <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-                        <span className="mt-0.5 shrink-0 text-amber-500">⚠</span>
+                    <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-bg px-3 py-2.5 text-sm text-warning">
+                        <span className="mt-0.5 shrink-0 text-warning">⚠</span>
                         <div>
                             <span className="font-medium">Tenant transition detected.</span>{" "}
                             The previous reading on this unit belongs to a different tenant.
@@ -606,7 +606,7 @@ export default function ElectricityReadingDialog({
                         value={reading}
                         onChange={(e) => update(type, "reading", e.target.value)}
                         placeholder="Enter current meter reading"
-                        className="h-9 bg-gray-100"
+                        className="h-9 bg-muted-fill"
                     />
                 </div>
 
@@ -617,7 +617,7 @@ export default function ElectricityReadingDialog({
                         value={notes}
                         onChange={(e) => update(type, "notes", e.target.value)}
                         placeholder="Any additional notes…"
-                        className="bg-gray-100 resize-none"
+                        className="bg-muted-fill resize-none"
                         rows={3}
                     />
                 </div>
@@ -640,7 +640,7 @@ export default function ElectricityReadingDialog({
 
 
                 <Tabs value={selectedMeterType} onValueChange={setSelectedMeterType}>
-                    <TabsList className="bg-gray-100 rounded-lg gap-1 w-full">
+                    <TabsList className="bg-muted-fill rounded-lg gap-1 w-full">
                         {METER_TYPES.map(({ value, label, icon: Icon }) => (
                             <TabsTrigger
                                 key={value}
@@ -664,7 +664,7 @@ export default function ElectricityReadingDialog({
                             <CalendarDays className="w-3.5 h-3.5 text-orange-700" />
                             Billing Month (BS)
                             {!isBillingPeriodValid(billingPeriod) && (
-                                <span className="text-xs text-red-500 font-normal ml-1">required</span>
+                                <span className="text-xs text-danger font-normal ml-1">required</span>
                             )}
                         </label>
                         <Select
@@ -674,7 +674,7 @@ export default function ElectricityReadingDialog({
                                 if (parsed) setBillingPeriod(parsed);
                             }}
                         >
-                            <SelectTrigger className="h-9 bg-gray-100">
+                            <SelectTrigger className="h-9 bg-muted-fill">
                                 <SelectValue placeholder="Select billing month…">
                                     {isBillingPeriodValid(billingPeriod)
                                         ? labelForPeriod(billingPeriod)

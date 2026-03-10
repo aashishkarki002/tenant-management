@@ -14,17 +14,17 @@ import { toast } from 'sonner';
 import CompletionDialog from './CompletionDialog';
 
 const STATUS_COLORS = {
-  OPEN: 'bg-slate-100 text-slate-700',
-  IN_PROGRESS: 'bg-blue-100 text-blue-700',
-  COMPLETED: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-gray-100 text-gray-500',
+  OPEN: 'bg-muted-fill text-text-strong',
+  IN_PROGRESS: 'bg-muted-fill text-text-strong',
+  COMPLETED: 'bg-muted-fill text-text-strong',
+  CANCELLED: 'bg-muted-fill text-text-sub',
 };
 
 const PRIORITY_COLORS = {
-  URGENT: 'bg-red-100 text-red-700',
-  HIGH: 'bg-orange-100 text-orange-700',
-  MEDIUM: 'bg-amber-100 text-amber-700',
-  LOW: 'bg-gray-100 text-gray-600',
+  URGENT: 'bg-muted-fill text-text-strong',
+  HIGH: 'bg-muted-fill text-text-strong',
+  MEDIUM: 'bg-muted-fill text-text-strong',
+  LOW: 'bg-muted-fill text-text-sub',
 };
 
 export default function MaintenanceTable({
@@ -90,29 +90,29 @@ export default function MaintenanceTable({
         onComplete={onUpdate}
       />
 
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-xl border border-muted-fill bg-surface-raised shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gray-50/80">
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide pl-4">
+            <TableRow className="bg-muted-fill/80">
+              <TableHead className="text-xs font-semibold text-text-sub uppercase tracking-wide pl-4">
                 Task
               </TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <TableHead className="text-xs font-semibold text-text-sub uppercase tracking-wide">
                 Unit
               </TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <TableHead className="text-xs font-semibold text-text-sub uppercase tracking-wide">
                 Priority
               </TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <TableHead className="text-xs font-semibold text-text-sub uppercase tracking-wide">
                 Status
               </TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <TableHead className="text-xs font-semibold text-text-sub uppercase tracking-wide">
                 Scheduled
               </TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <TableHead className="text-xs font-semibold text-text-sub uppercase tracking-wide">
                 Assigned
               </TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wide text-right pr-4">
+              <TableHead className="text-xs font-semibold text-text-sub uppercase tracking-wide text-right pr-4">
                 Actions
               </TableHead>
             </TableRow>
@@ -126,8 +126,8 @@ export default function MaintenanceTable({
                 item.assignedTo?._id ?? item.assignedTo ?? '';
               const assignedName = assignedId
                 ? staffs.find((s) => s._id === assignedId)?.name ??
-                  item.assignedTo?.name ??
-                  'Assigned'
+                item.assignedTo?.name ??
+                'Assigned'
                 : null;
               const isOverdue = (() => {
                 if (status === 'COMPLETED' || status === 'CANCELLED')
@@ -144,13 +144,13 @@ export default function MaintenanceTable({
               })();
 
               return (
-                <TableRow key={item._id} className="group hover:bg-gray-50/50">
+                <TableRow key={item._id} className="group hover:bg-muted-fill/80">
                   <TableCell className="pl-4">
                     <div>
-                      <p className="font-medium text-gray-900 text-sm">
+                      <p className="font-medium text-text-strong text-sm">
                         {item.title}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-text-sub">
                         #WO-
                         {String(item._id || '')
                           .slice(-4)
@@ -161,11 +161,11 @@ export default function MaintenanceTable({
 
                   <TableCell>
                     <div>
-                      <span className="text-sm text-gray-700">
+                      <span className="text-sm text-text-strong">
                         {item.unit?.name || '—'}
                       </span>
                       {item.tenant?.name && (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-text-sub">
                           {item.tenant.name}
                         </p>
                       )}
@@ -194,7 +194,7 @@ export default function MaintenanceTable({
                         {formatStatus(item.status)}
                       </Badge>
                       {isOverdue && (
-                        <Badge className="rounded-full bg-red-100 text-red-700 border-0 px-2 py-0.5 text-[10px] font-medium">
+                        <Badge className="rounded-full bg-muted-fill text-text-strong border-0 px-2 py-0.5 text-[10px] font-medium">
                           Overdue
                         </Badge>
                       )}
@@ -202,7 +202,7 @@ export default function MaintenanceTable({
                   </TableCell>
 
                   <TableCell>
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-text-sub">
                       {formatDate(item.scheduledDate)}
                     </span>
                   </TableCell>
@@ -212,10 +212,10 @@ export default function MaintenanceTable({
                       value={assignedId || '__unassigned__'}
                       onValueChange={(val) => handleAssign(item, val)}
                     >
-                      <SelectTrigger className="h-7 w-36 border-0 bg-transparent text-xs hover:bg-gray-100 rounded-md">
+                      <SelectTrigger className="h-7 w-36 border-0 bg-transparent text-xs hover:bg-muted-fill rounded-md">
                         <SelectValue>
                           <span className="flex items-center gap-1.5">
-                            <User className="h-3 w-3 text-gray-400" />
+                            <User className="h-3 w-3 text-text-sub" />
                             <span className="truncate">
                               {assignedName || 'Unassigned'}
                             </span>
@@ -243,7 +243,7 @@ export default function MaintenanceTable({
                           handleStatusChange(item, val)
                         }
                       >
-                        <SelectTrigger className="h-7 w-auto gap-1 border-gray-200 bg-white text-xs font-medium px-2.5 rounded-md">
+                        <SelectTrigger className="h-7 w-auto gap-1 border-muted-fill bg-surface-raised text-xs font-medium px-2.5 rounded-md">
                           <SelectValue>Status</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
@@ -259,7 +259,7 @@ export default function MaintenanceTable({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                          className="h-7 px-2 text-xs text-text-strong hover:text-text-body hover:bg-muted-fill"
                           onClick={() =>
                             handleStatusChange(item, 'COMPLETED')
                           }
