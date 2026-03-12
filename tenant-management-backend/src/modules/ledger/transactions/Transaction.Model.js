@@ -9,7 +9,7 @@ const transactionSchema = new mongoose.Schema(
       index: true,
     },
     nepaliDate: {
-      type: Date,
+      type: String,
       required: true,
     },
     type: {

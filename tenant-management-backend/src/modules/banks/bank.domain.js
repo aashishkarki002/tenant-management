@@ -1,35 +1,99 @@
 /**
- * bank_domain.js  (FIXED)
+ * bank.domain.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Domain helpers for updating operational bank balances.
  *
- * Applies a received payment to the correct balance account.
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │  TWO BALANCE STORES — ONE OWNER EACH                                   │
+ * │                                                                         │
+ * │  BankAccount.balancePaisa      — operational "what's in the bank"      │
+ * │    • Owned exclusively by this file (applyPaymentToBank /              │
+ * │      applyDisbursementFromBank).                                        │
+ * │    • Used by the bank widget / reconciliation UI.                      │
+ * │                                                                         │
+ * │  Account.currentBalancePaisa   — accounting ledger balance              │
+ * │    • Owned exclusively by ledgerService.postJournalEntry() via         │
+ * │      applyJournalBalances().                                            │
+ * │    • Used by financial reports, trial balance, P&L.                    │
+ * │                                                                         │
+ * │  These two must NEVER be written by the same function.                 │
+ * │  Historically, applyPaymentToBank() also wrote                         │
+ * │  Account.currentBalancePaisa for cash payments — causing a double      │
+ * │  increment because postJournalEntry wrote it too.                      │
+ * │                                                                         │
+ * │  FIX: applyPaymentToBank / applyDisbursementFromBank touch ONLY        │
+ * │  BankAccount.balancePaisa. For cash, there is no BankAccount document  │
+ * │  — the Account.currentBalancePaisa is updated entirely by the journal. │
+ * └─────────────────────────────────────────────────────────────────────────┘
  *
- * CRITICAL FIX — C-3:
- *   Cash payments now increment the CASH account (e.g. "1100") in the Account
- *   collection instead of silently returning null.
+ * CALL PATTERN (callers must follow this exactly):
  *
- * RULE: This function must ALWAYS be called inside the same Mongoose session
- *   as ledgerService.postJournalEntry() so both operations are atomic.
- *   See H-2 fix in the integration guide.
+ *   const session = await mongoose.startSession();
+ *   session.startTransaction();
+ *   try {
+ *     await applyPaymentToBank({ paymentMethod, bankAccountId, amountPaisa, session });
+ *     await ledgerService.postJournalEntry(payload, session, entityId);
+ *     await session.commitTransaction();
+ *   } catch (err) {
+ *     await session.abortTransaction();
+ *     throw err;
+ *   } finally {
+ *     session.endSession();
+ *   }
+ *
+ * If either write fails, both roll back — the two stores stay in sync.
  */
 
 import mongoose from "mongoose";
 import BankAccount from "./BankAccountModel.js";
-import { Account } from "../ledger/accounts/Account.Model.js";
-import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
 import { assertIntegerPaisa } from "../../utils/moneyUtil.js";
 import { assertValidPaymentMethod } from "../../utils/paymentAccountUtils.js";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function requireSession(session, fnName) {
+  if (!session) {
+    throw new Error(
+      `${fnName}: a Mongoose session is required. ` +
+        `This call must be inside the same transaction as postJournalEntry().`,
+    );
+  }
+}
+
+async function findActiveBankAccount(bankAccountId, session) {
+  if (!bankAccountId) {
+    throw new Error(
+      "bankAccountId is required for bank_transfer and cheque payments.",
+    );
+  }
+  const doc = await BankAccount.findById(bankAccountId).session(session);
+  if (!doc) throw new Error(`BankAccount not found: ${bankAccountId}`);
+  if (doc.isDeleted)
+    throw new Error(`BankAccount ${bankAccountId} has been deleted.`);
+  return doc;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// applyPaymentToBank  (money IN)
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Updates the balance of the appropriate balance-sheet account when money
- * is RECEIVED (payment in). Call once per payment, inside the shared session.
+ * Increments BankAccount.balancePaisa when money is received.
+ *
+ * Cash payments have no BankAccount document — their Account.currentBalancePaisa
+ * is updated entirely by postJournalEntry via applyJournalBalances(). Calling
+ * this function with paymentMethod "cash" is a no-op and returns null, which
+ * is safe — callers should not branch on the return value.
  *
  * @param {Object} params
  * @param {string}  params.paymentMethod   - "cash" | "bank_transfer" | "cheque" | "mobile_wallet"
- * @param {string}  [params.bankAccountId] - BankAccount._id (required for bank/cheque)
+ * @param {string}  [params.bankAccountId] - BankAccount._id; required for bank/cheque
  * @param {number}  params.amountPaisa     - positive integer
  * @param {mongoose.ClientSession} params.session
  *
- * @returns {Promise<Document>}  the updated Account or BankAccount document
+ * @returns {Promise<Document|null>}  updated BankAccount, or null for cash
  */
 export async function applyPaymentToBank({
   paymentMethod,
@@ -37,79 +101,41 @@ export async function applyPaymentToBank({
   amountPaisa,
   session,
 }) {
-  // ── 1. Validate inputs ────────────────────────────────────────────────────
   assertValidPaymentMethod(paymentMethod);
   assertIntegerPaisa(amountPaisa, "amountPaisa");
+  requireSession(session, "applyPaymentToBank");
 
-  if (!session) {
-    throw new Error(
-      "applyPaymentToBank: a Mongoose session is required. " +
-        "This call must be inside the same transaction as postJournalEntry().",
-    );
-  }
-
-  // ── 2. Cash — update the CASH Account document ────────────────────────────
   if (paymentMethod === "cash") {
-    const cashAccount = await Account.findOne({
-      code: ACCOUNT_CODES.CASH,
-    }).session(session);
-    if (!cashAccount) {
-      throw new Error(
-        `Cash account (code: ${ACCOUNT_CODES.CASH}) not found. ` +
-          "Please seed the chart of accounts before processing cash payments.",
-      );
-    }
-    // Integer addition — no float error
-    cashAccount.currentBalancePaisa += amountPaisa;
-    await cashAccount.save({ session });
-    return cashAccount;
+    // Cash: no BankAccount document exists.
+    // Account.currentBalancePaisa is handled by postJournalEntry — do nothing here.
+    return null;
   }
 
-  // ── 3. Bank transfer / cheque — update the BankAccount document ───────────
-  if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
-    if (!bankAccountId) {
-      throw new Error(
-        "bankAccountId is required for bank_transfer and cheque payments",
-      );
-    }
-
-    const bankAccount =
-      await BankAccount.findById(bankAccountId).session(session);
-    if (!bankAccount) {
-      throw new Error(`BankAccount not found: ${bankAccountId}`);
-    }
-    if (bankAccount.isDeleted) {
-      throw new Error(`BankAccount ${bankAccountId} has been deleted`);
-    }
-
-    // Integer addition
-    bankAccount.balancePaisa += amountPaisa;
-    await bankAccount.save({ session });
-    return bankAccount;
-  }
-
-  // ── 4. Mobile wallet (future-proof) ──────────────────────────────────────
   if (paymentMethod === "mobile_wallet") {
-    const walletAccount = await Account.findOne({
-      code: ACCOUNT_CODES.MOBILE_WALLET ?? ACCOUNT_CODES.CASH_BANK,
-    }).session(session);
-    if (!walletAccount) {
-      throw new Error("Mobile wallet account not found in chart of accounts");
-    }
-    walletAccount.currentBalancePaisa += amountPaisa;
-    await walletAccount.save({ session });
-    return walletAccount;
+    // Wallet: no BankAccount document. Account.currentBalancePaisa handled by journal.
+    return null;
   }
 
-  // Should never reach here because assertValidPaymentMethod() already threw
-  throw new Error(`Unhandled payment method: ${paymentMethod}`);
+  // bank_transfer | cheque — increment the operational bank balance
+  const bankAccount = await findActiveBankAccount(bankAccountId, session);
+  bankAccount.balancePaisa += amountPaisa;
+  await bankAccount.save({ session });
+  return bankAccount;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// applyDisbursementFromBank  (money OUT)
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Updates the balance when money is PAID OUT (expense disbursement).
- * Decrements the appropriate account balance.
+ * Decrements BankAccount.balancePaisa when money is paid out.
  *
- * @param {Object} params  - same signature as applyPaymentToBank
+ * Same ownership rule as applyPaymentToBank: this function owns
+ * BankAccount.balancePaisa only. Account.currentBalancePaisa is owned
+ * by postJournalEntry.
+ *
+ * @param {Object} params  — same as applyPaymentToBank
+ * @returns {Promise<Document|null>}
  */
 export async function applyDisbursementFromBank({
   paymentMethod,
@@ -119,54 +145,23 @@ export async function applyDisbursementFromBank({
 }) {
   assertValidPaymentMethod(paymentMethod);
   assertIntegerPaisa(amountPaisa, "amountPaisa");
+  requireSession(session, "applyDisbursementFromBank");
 
-  if (!session) {
+  if (paymentMethod === "cash" || paymentMethod === "mobile_wallet") {
+    // Account.currentBalancePaisa handled by postJournalEntry — do nothing here.
+    return null;
+  }
+
+  const bankAccount = await findActiveBankAccount(bankAccountId, session);
+
+  if (bankAccount.balancePaisa < amountPaisa) {
     throw new Error(
-      "applyDisbursementFromBank: a Mongoose session is required.",
+      `Insufficient balance in ${bankAccount.accountCode}: ` +
+        `have ${bankAccount.balancePaisa} paisa, need ${amountPaisa} paisa.`,
     );
   }
 
-  if (paymentMethod === "cash") {
-    const cashAccount = await Account.findOne({
-      code: ACCOUNT_CODES.CASH,
-    }).session(session);
-    if (!cashAccount)
-      throw new Error(`Cash account (${ACCOUNT_CODES.CASH}) not found`);
-
-    if (cashAccount.currentBalancePaisa < amountPaisa) {
-      throw new Error(
-        `Insufficient cash balance: have ${cashAccount.currentBalancePaisa} paisa, ` +
-          `need ${amountPaisa} paisa`,
-      );
-    }
-
-    cashAccount.currentBalancePaisa -= amountPaisa;
-    await cashAccount.save({ session });
-    return cashAccount;
-  }
-
-  if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
-    if (!bankAccountId)
-      throw new Error("bankAccountId required for bank payments");
-
-    const bankAccount =
-      await BankAccount.findById(bankAccountId).session(session);
-    if (!bankAccount)
-      throw new Error(`BankAccount not found: ${bankAccountId}`);
-    if (bankAccount.isDeleted)
-      throw new Error(`BankAccount ${bankAccountId} is deleted`);
-
-    if (bankAccount.balancePaisa < amountPaisa) {
-      throw new Error(
-        `Insufficient bank balance: have ${bankAccount.balancePaisa} paisa, ` +
-          `need ${amountPaisa} paisa`,
-      );
-    }
-
-    bankAccount.balancePaisa -= amountPaisa;
-    await bankAccount.save({ session });
-    return bankAccount;
-  }
-
-  throw new Error(`Unhandled payment method: ${paymentMethod}`);
+  bankAccount.balancePaisa -= amountPaisa;
+  await bankAccount.save({ session });
+  return bankAccount;
 }

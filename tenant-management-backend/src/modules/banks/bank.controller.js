@@ -1,33 +1,30 @@
 /**
- * bank.controller.js  (FIXED — Account co-creation)
+ * bank.controller.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CRUD for BankAccount documents with atomic Account co-creation/teardown.
  *
- * ROOT PROBLEM:
- *   The ledger service's postJournalEntry does:
- *     Account.find({ code: { $in: accountCodes } })
- *   and throws "Account with code '1010-NABIL' not found" if the Account
- *   document doesn't exist — even if the BankAccount document does.
+ * WHY THE ACCOUNT CO-CREATION EXISTS:
+ *   postJournalEntry → resolveAccountsByEntity() does:
+ *     Account.find({ code: { $in: codes }, entityId, isActive: true })
+ *   If no Account document exists for code "1010-NABIL" it throws
+ *   "Account not found" even if the BankAccount document is perfectly fine.
  *
- *   These are two separate collections:
- *     BankAccount  — operational record (accountNumber, bankName, balancePaisa)
- *     Account      — chart-of-accounts row (code, name, type, currentBalancePaisa)
+ *   The Account document (chart of accounts) and the BankAccount document
+ *   (operational record) are two separate collections that must stay 1-to-1.
+ *   The only safe enforcement point is creation time, in the same transaction.
  *
- *   They must stay in 1-to-1 sync. The only safe place to enforce that is
- *   at creation time, inside the same Mongoose transaction.
+ * FIX (this commit) — createBankAccount:
+ *   Account $setOnInsert now includes entityId so resolveAccountsByEntity()
+ *   can find it. Previously entityId was omitted, meaning entity-scoped
+ *   journal posts would fail "Account not found" even though the account
+ *   existed — it just had a null entityId.
  *
- * FIX — createBankAccount:
- *   Open a session, create BOTH documents atomically.
- *   If either insert fails the whole operation rolls back.
- *   Uses findOneAndUpdate+upsert so re-running (e.g. after a crash) is safe.
- *
- * FIX — deleteBankAccount:
- *   Soft-deletes the BankAccount AND marks the Account inactive in one session.
- *   The Account row is kept (never hard-deleted) so historical journal entries
- *   that reference it still resolve correctly.
- *
- * FIX — updateBankAccount:
- *   If accountCode changes, update the Account.code in the same session.
- *   Changing a code after payments have been posted is dangerous — the
- *   controller warns but does not block it (admins may need to correct typos).
+ * OTHER RULES:
+ *   - Never hard-delete an Account row — soft-delete (isActive: false) only,
+ *     so historical journal entries that reference it still resolve.
+ *   - Code renames propagate to Account.code in the same transaction.
+ *     LedgerEntry rows reference Account by ObjectId, not code string, so
+ *     historical entries are unaffected by a rename.
  */
 
 import mongoose from "mongoose";
@@ -36,7 +33,7 @@ import { Account } from "../ledger/accounts/Account.Model.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CREATE  — atomic: BankAccount + Account in one transaction
+// CREATE
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const createBankAccount = async (req, res) => {
@@ -44,8 +41,9 @@ export const createBankAccount = async (req, res) => {
     accountNumber,
     accountName,
     bankName,
-    accountCode, // required — chart-of-accounts code e.g. "1010-NABIL"
-    openingBalance, // optional — in rupees, converted to integer paisa
+    accountCode, // required — e.g. "1010-NABIL"
+    openingBalance, // optional, in rupees
+    entityId, // required for multi-entity setups
   } = req.body;
 
   if (!accountCode?.trim()) {
@@ -54,6 +52,14 @@ export const createBankAccount = async (req, res) => {
       message:
         "accountCode is required (e.g. '1010-NABIL'). " +
         "It must be unique and match the convention for your chart of accounts.",
+    });
+  }
+
+  if (!entityId) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "entityId is required. Bank accounts must be scoped to an entity.",
     });
   }
 
@@ -66,10 +72,7 @@ export const createBankAccount = async (req, res) => {
   try {
     session.startTransaction();
 
-    /**
-     * Step 1 — Create the BankAccount (operational record).
-     * BankAccount.create([...], { session }) returns an array.
-     */
+    // ── Step 1: Create the BankAccount (operational record) ────────────────
     const [newBankAccount] = await BankAccount.create(
       [
         {
@@ -77,31 +80,33 @@ export const createBankAccount = async (req, res) => {
           accountName,
           bankName,
           accountCode: normalizedCode,
+          entityId, // ← scopes this bank account to its OwnershipEntity
           balancePaisa,
         },
       ],
       { session },
     );
 
-    /**
-     * Step 2 — Upsert the matching Account row in the chart of accounts.
-     *
-     * WHY UPSERT NOT CREATE:
-     *   If a previous attempt crashed after writing BankAccount but before
-     *   writing Account, a retry would fail with a duplicate key on BankAccount.
-     *   Upsert makes the whole operation idempotent.
-     *
-     * TYPE: always ASSET — a bank account is a current asset (money we hold).
-     * currentBalancePaisa mirrors balancePaisa so the ledger opening balance
-     * is correct from day one without a separate journal entry.
-     */
+    // ── Step 2: Upsert the matching Account row (chart of accounts) ────────
+    //
+    // WHY UPSERT:
+    //   If a previous attempt crashed between steps 1 and 2, a retry would
+    //   duplicate-key on BankAccount. Upsert makes the whole flow idempotent.
+    //
+    // FIX: entityId is now included in $setOnInsert so that
+    //   resolveAccountsByEntity({ code, entityId }) can find this account
+    //   when posting journal entries.
+    //
+    // currentBalancePaisa mirrors balancePaisa so the opening balance is
+    // correct in financial reports from day one without a separate journal.
     await Account.findOneAndUpdate(
-      { code: normalizedCode },
+      { code: normalizedCode, entityId },
       {
         $setOnInsert: {
           code: normalizedCode,
           name: `${bankName} — ${accountName}`,
           type: "ASSET",
+          entityId,
           currentBalancePaisa: balancePaisa,
           isActive: true,
         },
@@ -144,7 +149,11 @@ export const createBankAccount = async (req, res) => {
 
 export const getBankAccounts = async (req, res) => {
   try {
-    const bankAccounts = await BankAccount.find({ isDeleted: false });
+    const { entityId } = req.query;
+    const filter = { isDeleted: false };
+    if (entityId) filter.entityId = entityId;
+
+    const bankAccounts = await BankAccount.find(filter);
     return res.status(200).json({ success: true, bankAccounts });
   } catch (error) {
     console.error(error);
@@ -157,7 +166,7 @@ export const getBankAccounts = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UPDATE  — keep Account.code in sync if accountCode changes
+// UPDATE
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const updateBankAccount = async (req, res) => {
@@ -186,15 +195,15 @@ export const updateBankAccount = async (req, res) => {
 
     await bankAccount.save({ session });
 
-    // Keep Account.code in sync when accountCode is renamed
+    // Keep Account.code in sync when the code changes.
+    // LedgerEntry rows use Account._id (ObjectId), not code string,
+    // so historical entries are unaffected.
     if (newCode !== oldCode) {
       await Account.findOneAndUpdate(
         { code: oldCode },
         { code: newCode },
         { session },
       );
-      // Note: LedgerEntry rows reference Account by ObjectId (_id), not by code
-      // string, so historical entries are unaffected by a code rename.
     }
 
     await session.commitTransaction();
@@ -224,7 +233,7 @@ export const updateBankAccount = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DELETE (soft)  — deactivate Account row in the same session
+// DELETE (soft)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const deleteBankAccount = async (req, res) => {
@@ -247,11 +256,8 @@ export const deleteBankAccount = async (req, res) => {
         .json({ success: false, message: "Bank account not found" });
     }
 
-    /**
-     * Mark the Account row inactive rather than deleting it.
-     * Hard-deleting it would cause getLedger() to fail for any historical
-     * journal entries that used this account code.
-     */
+    // Soft-delete the Account row — never hard-delete, historical journal
+    // entries reference it by ObjectId and must remain resolvable.
     await Account.findOneAndUpdate(
       { code: bankAccount.accountCode },
       { isActive: false },

@@ -9,6 +9,8 @@ import generateEmailVerificationToken from "../../utils/token.js";
 import cloudinary from "../../config/cloudinary.js";
 import { uploadProfilePicture } from "../../config/uploadProfilePicture.js";
 import { uploadSingleFile } from "../tenant/uploads/upload.service.js";
+import StaffProfile from "../staffs/staffProfile.model.js";
+import mongoose from "mongoose";
 
 dotenv.config();
 
@@ -87,45 +89,124 @@ export const registerUser = async (req, res) => {
   }
 };
 
-/** Creates a staff account. Protected — admin/super_admin only. */
 export const registerStaff = async (req, res) => {
-  try {
-    const { name, email, password, phone, role } = req.body;
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-    if (!name || !email || !password || !phone) {
+  try {
+    const {
+      // Admin fields
+      name,
+      email,
+      password,
+      phone,
+      role,
+      // StaffProfile fields
+      department,
+      designation,
+      joiningDate,
+      salaryAmountPaisa,
+      reportsTo,
+      accessLevel,
+      salaryType,
+      bankDetails,
+      notes,
+    } = req.body;
+
+    // ── Validation ──────────────────────────────────────────────────────────
+    const missingFields = [];
+    if (!name) missingFields.push("name");
+    if (!email) missingFields.push("email");
+    if (!password) missingFields.push("password");
+    if (!phone) missingFields.push("phone");
+    if (!department) missingFields.push("department");
+    if (!designation) missingFields.push("designation");
+    if (!joiningDate) missingFields.push("joiningDate");
+    if (salaryAmountPaisa == null) missingFields.push("salaryAmountPaisa");
+
+    if (missingFields.length > 0) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
-        message: "All fields (name, email, password, phone) are required",
+        message: `Missing required fields: ${missingFields.join(", ")}`,
       });
     }
 
-    const existingUser = await Admin.findOne({ email });
+    if (typeof salaryAmountPaisa !== "number" || salaryAmountPaisa < 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "salaryAmountPaisa must be a non-negative number (in paisa)",
+      });
+    }
+
+    const existingUser = await Admin.findOne({ email }).session(session);
     if (existingUser) {
+      await session.abortTransaction();
+      session.endSession();
       return res
         .status(400)
         .json({ success: false, message: "User already exists" });
     }
 
+    // ── Create Admin ─────────────────────────────────────────────────────────
     const { rawToken, hashedToken, expires } = generateEmailVerificationToken();
 
-    await Admin.create({
-      name,
-      email,
-      password,
-      phone,
-      role: role || "staff",
-      emailVerificationToken: hashedToken,
-      emailVerificationTokenExpiresAt: expires,
-      isEmailVerified: false,
-    });
+    // Admin.create() with a session requires array syntax
+    const [newAdmin] = await Admin.create(
+      [
+        {
+          name,
+          email,
+          password,
+          phone,
+          role: role || "staff",
+          emailVerificationToken: hashedToken,
+          emailVerificationTokenExpiresAt: expires,
+          isEmailVerified: false,
+        },
+      ],
+      { session },
+    );
 
+    // ── Create StaffProfile ──────────────────────────────────────────────────
+    await StaffProfile.create(
+      [
+        {
+          admin: newAdmin._id,
+          department,
+          designation,
+          reportsTo: reportsTo || null,
+          accessLevel: accessLevel || 1,
+          joiningDate: new Date(joiningDate),
+          salaryType: salaryType || "monthly",
+          salaryAmountPaisa,
+          // Seed history with the opening salary so payroll has a full audit trail
+          salaryHistory: [
+            {
+              amountPaisa: salaryAmountPaisa,
+              effectiveFrom: new Date(joiningDate),
+              changedBy: req.admin.id, // the admin performing registration
+              reason: "Initial salary on account creation",
+            },
+          ],
+          bankDetails: bankDetails || {},
+          notes: notes || null,
+        },
+      ],
+      { session },
+    );
+
+    // ── Commit both writes ───────────────────────────────────────────────────
+    await session.commitTransaction();
+    session.endSession();
+
+    // ── Send welcome + verification email ────────────────────────────────────
     const verificationUrl = `${process.env.BACKEND_URL}/api/auth/verify-email?token=${rawToken}`;
     const loginUrl = `${process.env.FRONTEND_URL}/login`;
 
-    // Send a single combined email: credentials + verification CTA.
-    // Industry standard: one transactional email per action — don't flood the inbox.
-    // NOTE: Sending a plaintext password in email is acceptable ONLY at account
-    // creation time when the admin sets it. Instruct staff to change it on first login.
     await sendEmail({
       to: email,
       subject: `Your ${process.env.APP_NAME || "platform"} staff account is ready`,
@@ -143,7 +224,11 @@ export const registerStaff = async (req, res) => {
             </p>
           </div>
 
-          <p>Before you can log in you must verify your email address. 
+          <p style="margin-bottom:8px">
+            <strong>Role:</strong> ${designation} — ${department}
+          </p>
+
+          <p>Before you can log in you must verify your email address.
              This link expires in <strong>10 minutes</strong>.</p>
 
           <a href="${verificationUrl}"
@@ -162,8 +247,22 @@ export const registerStaff = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Staff account created. Credentials sent to their email.",
+      // Return enough for the UI to show a confirmation without a second GET call
+      data: {
+        adminId: newAdmin._id,
+        name: newAdmin.name,
+        email: newAdmin.email,
+        role: newAdmin.role,
+        department,
+        designation,
+        salaryType: salaryType || "monthly",
+        salaryAmountPaisa,
+        joiningDate,
+      },
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("Register staff error:", error);
     return res
       .status(500)
@@ -303,6 +402,14 @@ export const loginUser = async (req, res) => {
         address: result.admin.address,
         profilePicture: result.admin.profilePicture || null,
       },
+      // DEV ONLY: expose tokens in response body so Postman scripts can extract them.
+      // These are never sent in production — httpOnly cookies handle auth there.
+      ...(process.env.NODE_ENV !== "production" && {
+        _dev: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
+      }),
     });
   } catch (error) {
     console.error("Login error:", error);

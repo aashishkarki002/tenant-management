@@ -48,6 +48,23 @@ const bankAccountSchema = new mongoose.Schema(
       default: 0,
     },
 
+    /**
+     * The OwnershipEntity this bank account belongs to.
+     * Required for multi-entity setups — used by resolveBankAccountCodeForEntity()
+     * in revenue.service.js to pick the correct bank sub-account (e.g. "1010-SANIMA"
+     * for the private entity, "1011-NABIL" for the company entity) when posting
+     * journals, without the caller needing to hard-code a bank account code.
+     *
+     * Must match the entityId stored on the companion Account document created
+     * atomically in bank.controller.js → createBankAccount().
+     */
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OwnershipEntity",
+      required: true,
+      index: true,
+    },
+
     isDefault: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
   },
@@ -68,6 +85,9 @@ bankAccountSchema.pre("save", function () {
 
 bankAccountSchema.index({ accountNumber: 1, isDeleted: 1 });
 bankAccountSchema.index({ accountCode: 1 }, { unique: true });
+// Compound index: find the default/active bank account for a specific entity
+bankAccountSchema.index({ entityId: 1, isDeleted: 1 });
+bankAccountSchema.index({ entityId: 1, isDefault: 1, isDeleted: 1 });
 
 // ── Virtuals ──────────────────────────────────────────────────────────────────
 

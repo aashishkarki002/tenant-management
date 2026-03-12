@@ -20,5 +20,5 @@ const users = [
 ];
 
 console.log(users);
-const { id, name, age, email } = users[0];
+const { id } = users[0];
 console.log(id, name, age, email);

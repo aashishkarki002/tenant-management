@@ -23,6 +23,7 @@ export const getLedger = async (req, res) => {
       quarter,
       accountCode,
       propertyId,
+      entityId,
       type,
     } = req.query;
 
@@ -60,6 +61,7 @@ export const getLedger = async (req, res) => {
       accountCode,
       propertyId,
       type: type || "all", // Default to 'all' if not specified
+      entityId,
     });
 
     res.status(200).json({ success: true, data: ledger });
@@ -78,7 +80,8 @@ export const getLedger = async (req, res) => {
  */
 export const getLedgerSummary = async (req, res) => {
   try {
-    const { startDate, endDate, tenantId, nepaliYear, quarter } = req.query;
+    const { startDate, endDate, tenantId, nepaliYear, quarter, entityId } =
+      req.query;
 
     const summary = await ledgerService.getLedgerSummary({
       startDate,
@@ -86,6 +89,7 @@ export const getLedgerSummary = async (req, res) => {
       tenantId,
       nepaliYear: nepaliYear ? parseInt(nepaliYear) : undefined,
       quarter: quarter ? parseInt(quarter) : undefined,
+      entityId,
     });
 
     res.status(200).json({ success: true, data: summary });

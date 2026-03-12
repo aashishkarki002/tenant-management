@@ -1,12 +1,26 @@
 import mongoose from "mongoose";
 import { safePaisaToRupees } from "../../../utils/moneyUtil.js";
 
+/**
+ * Account.Model.js — v2 (multi-entity)
+ *
+ * KEY CHANGE: Account codes are now scoped per OwnershipEntity.
+ * The uniqueness constraint is (code, entityId), NOT code alone.
+ *
+ * Why: "Private" entity and "Company" entity both need a "4000 Rental Income"
+ * account, but they must track separate balances for separate P&L reports.
+ *
+ * Lookup pattern changes:
+ *   BEFORE: Account.findOne({ code })
+ *   AFTER:  Account.findOne({ code, entityId })
+ *
+ * For merged/consolidated views, query without entityId and aggregate.
+ */
 const accountSchema = new mongoose.Schema(
   {
     code: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
     name: {
@@ -24,25 +38,25 @@ const accountSchema = new mongoose.Schema(
       ref: "Account",
       default: null,
     },
-    
-    // ============================================
-    // FINANCIAL FIELDS - STORED AS PAISA (INTEGERS)
-    // ============================================
+
+    // ─────────────────────────────────────────────────
+    // ENTITY SCOPE  (required — no more null/global accounts)
+    // ─────────────────────────────────────────────────
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OwnershipEntity",
+      required: true,
+      index: true,
+    },
+
+    // ─────────────────────────────────────────────────
+    // FINANCIAL — stored as PAISA (integers)
+    // ─────────────────────────────────────────────────
     currentBalancePaisa: {
       type: Number,
       default: 0,
-      get: safePaisaToRupees,
     },
-    
-    // Backward compatibility getter
-    currentBalance: {
-      type: Number,
-      get: function () {
-        const raw = this.get("currentBalancePaisa", null, { getters: false });
-        return raw != null ? safePaisaToRupees(raw) : 0;
-      },
-    },
-    
+
     isActive: {
       type: Boolean,
       default: true,
@@ -52,10 +66,27 @@ const accountSchema = new mongoose.Schema(
       trim: true,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
 
-// Note: code field already has unique: true which creates an index
-accountSchema.index({ type: 1, isActive: 1 });
+// ─────────────────────────────────────────────────────────────────────────────
+// INDEXES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The primary lookup: resolve account by code within an entity
+accountSchema.index({ code: 1, entityId: 1 }, { unique: true });
+accountSchema.index({ type: 1, entityId: 1, isActive: 1 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VIRTUALS
+// ─────────────────────────────────────────────────────────────────────────────
+
+accountSchema.virtual("currentBalance").get(function () {
+  return safePaisaToRupees(this.currentBalancePaisa ?? 0);
+});
 
 export const Account = mongoose.model("Account", accountSchema);

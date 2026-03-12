@@ -50,6 +50,12 @@ const ledgerEntrySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Property",
     },
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OwnershipEntity",
+      // optional — null means legacy private entry (backward compatible)
+      default: null,
+    },
     nepaliMonth: {
       type: Number,
       required: true,

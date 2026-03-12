@@ -1,12 +1,18 @@
 /**
- * ledger_service.js  (FIXED)
+ * ledger.service.js — v3 (multi-entity)
  *
- * Key fixes applied:
- *   C-1  Idempotency guard on postJournalEntry — duplicate reference = no-op
- *   C-2  balancePaisa stored correctly (per-account running balance at write time)
- *   H-3  getLedger running balance is now per-account, not a mixed stream total
- *   H-4  accountCode filter now correctly applied in getLedger
- *   H-7  LedgerEntry lines inserted via insertMany — one round-trip per journal
+ * BREAKING CHANGES from v2:
+ *   - postJournalEntry: entityId is now REQUIRED (not optional).
+ *     Every journal must belong to an OwnershipEntity.
+ *   - applyJournalBalances now receives entityId explicitly.
+ *   - Account resolution uses (code, entityId) pair via resolveAccountsByEntity().
+ *   - getLedger / getLedgerSummary always filter by entityId when provided.
+ *
+ * BALANCE UPDATE STRATEGY:
+ *   - Domain-driven: balances are updated atomically via $inc in the same
+ *     Mongoose session as the Transaction and LedgerEntry writes.
+ *   - No separate balance-sync job is needed in normal flows.
+ *   - Use rebuildAccountBalance() (admin tool) only for drift repair.
  */
 
 import mongoose from "mongoose";
@@ -15,48 +21,45 @@ import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
 import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
+import {
+  applyJournalBalances,
+  computeBalanceChange,
+  resolveAccountsByEntity,
+} from "./domains/accountBalanceManger.js";
 
 class LedgerService {
   // ─────────────────────────────────────────────────────────────────────────
-  // calculateBalanceChange
+  // Backward-compat shim
   // ─────────────────────────────────────────────────────────────────────────
   calculateBalanceChange(accountType, debitAmountPaisa, creditAmountPaisa) {
-    if (
-      !Number.isInteger(debitAmountPaisa) ||
-      !Number.isInteger(creditAmountPaisa)
-    ) {
-      throw new Error(
-        `Balance change must use integer paisa. Got debit: ${debitAmountPaisa}, credit: ${creditAmountPaisa}`,
-      );
-    }
-
-    const net = debitAmountPaisa - creditAmountPaisa;
-
-    // T-account rules:
-    //   ASSET & EXPENSE:            debit increases, credit decreases → +net
-    //   LIABILITY, REVENUE, EQUITY: credit increases, debit decreases → -net
-    if (accountType === "ASSET" || accountType === "EXPENSE") return net;
-    if (
-      accountType === "LIABILITY" ||
-      accountType === "REVENUE" ||
-      accountType === "EQUITY"
-    )
-      return -net;
-    return net; // unknown type — default to debit-normal
+    return computeBalanceChange(
+      accountType,
+      debitAmountPaisa,
+      creditAmountPaisa,
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // postJournalEntry  (FIXED: C-1 idempotency · C-2 balancePaisa · H-7 insertMany)
+  // postJournalEntry
   // ─────────────────────────────────────────────────────────────────────────
   /**
-   * Post a double-entry journal.  The payload must be the canonical shape
-   * produced by buildJournalPayload() — all amounts in integer paisa.
+   * Post a double-entry journal for a specific OwnershipEntity.
    *
-   * @param {Object} payload  - canonical journal payload
-   * @param {mongoose.ClientSession|null} [session]
-   * @returns {Promise<{ transaction: Transaction, ledgerEntries: LedgerEntry[] }>}
+   * @param {Object}                       payload
+   * @param {mongoose.ClientSession|null}  [session]
+   * @param {string|ObjectId}              entityId   REQUIRED — which entity owns this journal
    */
-  async postJournalEntry(payload, session = null) {
+  async postJournalEntry(payload, session = null, entityId) {
+    // entityId from argument takes precedence over payload
+    const resolvedEntityId = entityId ?? payload.entityId ?? null;
+
+    if (!resolvedEntityId) {
+      throw new Error(
+        "postJournalEntry: entityId is required. " +
+          "Every journal must be scoped to an OwnershipEntity.",
+      );
+    }
+
     const {
       transactionType,
       referenceType,
@@ -78,13 +81,13 @@ class LedgerService {
     if (!entries?.length)
       throw new Error("Journal payload must have at least one entry");
 
-    // ── FIX C-1: Idempotency guard ─────────────────────────────────────────
-    // If this exact source document was already journaled, return the existing
-    // transaction instead of creating a duplicate.
+    // ── Idempotency guard ───────────────────────────────────────────────────
     const existing = await Transaction.findOne({
       referenceType,
       referenceId,
+      entityId: resolvedEntityId,
     }).session(session);
+
     if (existing) {
       const existingEntries = await LedgerEntry.find({
         transaction: existing._id,
@@ -96,7 +99,7 @@ class LedgerService {
       };
     }
 
-    // ── Validate entries (canonical payload already checked, but belt-and-suspenders)
+    // ── Debit/credit balance check ──────────────────────────────────────────
     const totalDebitPaisa = entries.reduce(
       (s, e) => s + (e.debitAmountPaisa || 0),
       0,
@@ -105,6 +108,7 @@ class LedgerService {
       (s, e) => s + (e.creditAmountPaisa || 0),
       0,
     );
+
     if (totalDebitPaisa !== totalCreditPaisa) {
       throw new Error(
         `Journal entries do not balance: debits ${formatMoney(totalDebitPaisa)} ` +
@@ -112,17 +116,12 @@ class LedgerService {
       );
     }
 
-    // ── Fetch all accounts in one query ────────────────────────────────────
-    const accountCodes = [...new Set(entries.map((e) => e.accountCode))];
-    const accounts = await Account.find({ code: { $in: accountCodes } })
-      .session(session)
-      .lean();
-    const accountByCode = Object.fromEntries(accounts.map((a) => [a.code, a]));
-
-    for (const code of accountCodes) {
-      if (!accountByCode[code])
-        throw new Error(`Account with code "${code}" not found`);
-    }
+    // ── Resolve accounts (code, entityId) pair ──────────────────────────────
+    const accountByCode = await resolveAccountsByEntity(
+      entries,
+      resolvedEntityId,
+      session,
+    );
 
     // ── Create Transaction ──────────────────────────────────────────────────
     const [transaction] = await Transaction.create(
@@ -136,6 +135,7 @@ class LedgerService {
           referenceId,
           totalAmountPaisa,
           createdBy,
+          entityId: resolvedEntityId,
           status: "POSTED",
           billingFrequency,
           quarter,
@@ -144,87 +144,70 @@ class LedgerService {
       { session },
     );
 
-    // ── FIX H-7: build all ledger docs first, insert in one call ───────────
-    // ── FIX C-2: fetch updated account balance after $inc, store it ─────────
-    const ledgerDocs = [];
-    const balanceUpdates = []; // collect {accountId, changeInPaisa} to $inc in bulk
-
-    for (const entry of entries) {
+    // ── Build ledger docs ───────────────────────────────────────────────────
+    const ledgerDocs = entries.map((entry) => {
       const account = accountByCode[entry.accountCode];
-      const debitAmountPaisa = entry.debitAmountPaisa || 0;
-      const creditAmountPaisa = entry.creditAmountPaisa || 0;
-      const balanceChange = this.calculateBalanceChange(
-        account.type,
-        debitAmountPaisa,
-        creditAmountPaisa,
-      );
-
-      balanceUpdates.push({ accountId: account._id, change: balanceChange });
-
-      ledgerDocs.push({
+      return {
         transaction: transaction._id,
         account: account._id,
-        debitAmountPaisa,
-        creditAmountPaisa,
-        balancePaisa: 0, // placeholder — filled after $inc below
+        debitAmountPaisa: entry.debitAmountPaisa || 0,
+        creditAmountPaisa: entry.creditAmountPaisa || 0,
+        balancePaisa: 0, // filled after $inc below
         description: entry.description ?? description,
         tenant: entry.tenant ?? payloadTenant ?? null,
         property: entry.property ?? payloadProperty ?? null,
+        entityId: resolvedEntityId,
         nepaliMonth,
         nepaliYear,
-        // Store the full Nepali date string (BS "YYYY-MM-DD") directly on the
-        // entry so statements can display it without joining Transaction.
         nepaliDate:
           typeof nepaliDate === "string"
             ? nepaliDate
             : nepaliDate instanceof Date
-              ? nepaliDate.toISOString().split("T")[0] // fallback: ISO date string
+              ? nepaliDate.toISOString().split("T")[0]
               : null,
         transactionDate,
-      });
-    }
+      };
+    });
 
-    // Apply all account balance changes
-    for (const { accountId, change } of balanceUpdates) {
-      await Account.findByIdAndUpdate(
-        accountId,
-        { $inc: { currentBalancePaisa: change } },
-        { session },
-      );
-    }
-
-    // Fetch updated balances and attach to ledger docs
-    const updatedAccountIds = [
-      ...new Set(balanceUpdates.map((u) => String(u.accountId))),
-    ];
-    const updatedAccounts = await Account.find({
-      _id: { $in: updatedAccountIds },
-    })
-      .session(session)
-      .lean();
-    const balanceByAccountId = Object.fromEntries(
-      updatedAccounts.map((a) => [String(a._id), a.currentBalancePaisa]),
+    // ── Apply balance changes via domain (entity-scoped) ────────────────────
+    const balanceResults = await applyJournalBalances(
+      entries,
+      resolvedEntityId,
+      session,
     );
 
+    // Build lookup: accountCode → new running balance
+    const newBalanceByCode = Object.fromEntries(
+      balanceResults.map((r) => [r.accountCode, r.newBalancePaisa]),
+    );
+
+    // Stamp post-$inc balance on every ledger doc
     for (const doc of ledgerDocs) {
-      doc.balancePaisa = balanceByAccountId[String(doc.account)] ?? 0;
+      const code = Object.entries(accountByCode).find(
+        ([, acc]) => String(acc._id) === String(doc.account),
+      )?.[0];
+      doc.balancePaisa = newBalanceByCode[code] ?? 0;
     }
 
-    // Insert all ledger entries in one round-trip (FIX H-7)
+    // ── Insert all entries in one round-trip ────────────────────────────────
     const ledgerEntries = await LedgerEntry.insertMany(ledgerDocs, { session });
 
     return { transaction, ledgerEntries };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // getLedger  (FIXED: H-3 per-account running balance · H-4 accountCode filter)
+  // getLedger
   // ─────────────────────────────────────────────────────────────────────────
   async getLedger(filters = {}) {
     try {
       const query = {};
 
-      if (filters.tenantId) query.tenant = filters.tenantId;
-      if (filters.propertyId) query.property = filters.propertyId;
+      if (filters.tenantId)
+        query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
+      if (filters.propertyId)
+        query.property = new mongoose.Types.ObjectId(filters.propertyId);
+      if (filters.entityId)
+        query.entityId = new mongoose.Types.ObjectId(filters.entityId);
 
       if (filters.startDate || filters.endDate) {
         query.transactionDate = {};
@@ -237,40 +220,70 @@ class LedgerService {
         }
       }
 
-      if (filters.nepaliYear) query.nepaliYear = filters.nepaliYear;
-      if (filters.nepaliMonth) query.nepaliMonth = filters.nepaliMonth;
+      if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
+      if (filters.nepaliMonth) query.nepaliMonth = Number(filters.nepaliMonth);
 
       if (filters.quarter) {
         const months = getMonthsInQuarter(parseInt(filters.quarter));
         query.nepaliMonth = { $in: months };
       }
 
-      // ── FIX H-4: accountCode filter now actually applied ───────────────
       if (filters.accountCode) {
-        const acc = await Account.findOne({ code: filters.accountCode }).lean();
-        if (!acc) throw new Error(`Account "${filters.accountCode}" not found`);
+        if (!filters.entityId) {
+          throw new Error(
+            "getLedger: entityId is required when filtering by accountCode",
+          );
+        }
+        const acc = await Account.findOne({
+          code: filters.accountCode,
+          entityId: new mongoose.Types.ObjectId(filters.entityId),
+        }).lean();
+        if (!acc)
+          throw new Error(
+            `Account "${filters.accountCode}" not found for entity ${filters.entityId}`,
+          );
         query.account = acc._id;
       }
 
-      // type filter (revenue or expense side)
       if (filters.type && filters.type !== "all") {
         const accountType = filters.type === "revenue" ? "REVENUE" : "EXPENSE";
-        const typeAccounts = await Account.find({ type: accountType })
+        const typeFilter = { type: accountType };
+        if (filters.entityId)
+          typeFilter.entityId = new mongoose.Types.ObjectId(filters.entityId);
+        const typeAccounts = await Account.find(typeFilter)
           .select("_id")
           .lean();
         query.account = { $in: typeAccounts.map((a) => a._id) };
+      }
+
+      if (filters.propertyType) {
+        const { Property } = await import("../property/Property.Model.js");
+        const matchingProps = await Property.find({
+          type: filters.propertyType,
+        })
+          .select("_id")
+          .lean();
+        const propIds = matchingProps.map((p) => p._id);
+        if (query.property) {
+          const hit = propIds.some(
+            (id) => String(id) === String(query.property),
+          );
+          if (!hit) return this._emptyLedger(filters);
+        } else {
+          query.property = { $in: propIds };
+        }
       }
 
       const entries = await LedgerEntry.find(query)
         .populate("account", "code name type")
         .populate("transaction", "type description transactionDate nepaliDate")
         .populate("tenant", "name email phone")
-        .populate("property", "name address")
+        .populate("property", "name address type")
+        .populate("entityId", "name type")
         .sort({ transactionDate: 1, createdAt: 1 })
         .lean();
 
-      // ── FIX H-3: running balance is per account code, not a global stream ──
-      const runningBalances = {}; // { accountCode: paisa }
+      const runningBalances = {};
 
       const statement = entries.map((entry) => {
         const code = entry.account?.code ?? "UNKNOWN";
@@ -285,40 +298,33 @@ class LedgerService {
           : entry.creditAmountPaisa - entry.debitAmountPaisa;
 
         runningBalances[code] += change;
-        const runningBalancePaisa = runningBalances[code];
 
         return {
           _id: entry._id,
           date: entry.transactionDate,
-          // Prefer the Nepali date string stored on the entry itself.
-          // Falls back to the populated transaction's nepaliDate for entries
-          // written before this field was added to LedgerEntry.
           nepaliDate: entry.nepaliDate ?? entry.transaction?.nepaliDate ?? null,
           nepaliMonth: entry.nepaliMonth,
           nepaliYear: entry.nepaliYear,
           account: entry.account,
           description: entry.description,
-
+          entity: entry.entityId ?? null,
+          property: entry.property,
+          tenant: entry.tenant,
+          transaction: entry.transaction,
+          createdAt: entry.createdAt,
           paisa: {
             debit: entry.debitAmountPaisa,
             credit: entry.creditAmountPaisa,
-            runningBalance: runningBalancePaisa,
+            runningBalance: runningBalances[code],
           },
-
           debit: paisaToRupees(entry.debitAmountPaisa),
           credit: paisaToRupees(entry.creditAmountPaisa),
-          runningBalance: paisaToRupees(runningBalancePaisa),
-
+          runningBalance: paisaToRupees(runningBalances[code]),
           formatted: {
             debit: formatMoney(entry.debitAmountPaisa),
             credit: formatMoney(entry.creditAmountPaisa),
-            runningBalance: formatMoney(runningBalancePaisa),
+            runningBalance: formatMoney(runningBalances[code]),
           },
-
-          tenant: entry.tenant,
-          property: entry.property,
-          transaction: entry.transaction,
-          createdAt: entry.createdAt,
         };
       });
 
@@ -358,14 +364,17 @@ class LedgerService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // getLedgerSummary  (unchanged — already correct)
+  // getLedgerSummary
   // ─────────────────────────────────────────────────────────────────────────
   async getLedgerSummary(filters = {}) {
     try {
       const query = {};
 
-      if (filters.tenantId) query.tenant = filters.tenantId;
-      if (filters.nepaliYear) query.nepaliYear = filters.nepaliYear;
+      if (filters.tenantId)
+        query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
+      if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
+      if (filters.entityId)
+        query.entityId = new mongoose.Types.ObjectId(filters.entityId);
 
       if (filters.quarter) {
         const months = getMonthsInQuarter(parseInt(filters.quarter));
@@ -407,6 +416,7 @@ class LedgerService {
             accountCode: "$accountDetails.code",
             accountName: "$accountDetails.name",
             accountType: "$accountDetails.type",
+            entityId: "$accountDetails.entityId",
             totalDebitPaisa: 1,
             totalCreditPaisa: 1,
             netBalancePaisa: {
@@ -467,18 +477,135 @@ class LedgerService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // reverseJournalEntry  (NEW — required for corrections without DB surgery)
+  // getPropertyLedger
   // ─────────────────────────────────────────────────────────────────────────
-  /**
-   * Post a reversing entry for a previously posted transaction.
-   * Swaps debit ↔ credit on every original line and posts as a new transaction
-   * with type = original.type + "_REVERSAL". The original is never modified.
-   *
-   * @param {string|ObjectId} originalTransactionId
-   * @param {string}          reason      - e.g. "Data entry error - wrong amount"
-   * @param {*}               reversedBy  - User ObjectId
-   * @param {mongoose.ClientSession} [session]
-   */
+  async getPropertyLedger(propertyId, filters = {}) {
+    if (!propertyId) throw new Error("propertyId is required");
+    return this.getLedger({ ...filters, propertyId });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getEntitySummary — P&L per OwnershipEntity
+  // ─────────────────────────────────────────────────────────────────────────
+  async getEntitySummary(filters = {}) {
+    try {
+      const matchStage = {};
+
+      if (filters.nepaliYear)
+        matchStage.nepaliYear = Number(filters.nepaliYear);
+      if (filters.nepaliMonth)
+        matchStage.nepaliMonth = Number(filters.nepaliMonth);
+      if (filters.entityId)
+        matchStage.entityId = new mongoose.Types.ObjectId(filters.entityId);
+
+      if (filters.quarter) {
+        const months = getMonthsInQuarter(parseInt(filters.quarter));
+        matchStage.nepaliMonth = { $in: months };
+      }
+
+      const rows = await LedgerEntry.aggregate([
+        { $match: matchStage },
+        {
+          $lookup: {
+            from: "accounts",
+            localField: "account",
+            foreignField: "_id",
+            as: "acct",
+          },
+        },
+        { $unwind: "$acct" },
+        {
+          $group: {
+            _id: { entityId: "$entityId", accountType: "$acct.type" },
+            totalDebitPaisa: { $sum: "$debitAmountPaisa" },
+            totalCreditPaisa: { $sum: "$creditAmountPaisa" },
+            entryCount: { $sum: 1 },
+          },
+        },
+        {
+          $lookup: {
+            from: "ownershipentities",
+            localField: "_id.entityId",
+            foreignField: "_id",
+            as: "entity",
+          },
+        },
+        {
+          $project: {
+            entityId: "$_id.entityId",
+            entityName: { $arrayElemAt: ["$entity.name", 0] },
+            entityType: { $arrayElemAt: ["$entity.type", 0] },
+            accountType: "$_id.accountType",
+            totalDebitPaisa: 1,
+            totalCreditPaisa: 1,
+            entryCount: 1,
+          },
+        },
+        { $sort: { entityName: 1, accountType: 1 } },
+      ]);
+
+      const byEntity = {};
+      for (const row of rows) {
+        const key = String(row.entityId ?? "legacy");
+        if (!byEntity[key]) {
+          byEntity[key] = {
+            entityId: row.entityId,
+            entityName: row.entityName ?? "Legacy (untagged)",
+            entityType: row.entityType ?? "private",
+            revenuePaisa: 0,
+            expensePaisa: 0,
+            assetPaisa: 0,
+            liabilityPaisa: 0,
+            entryCount: 0,
+          };
+        }
+        const e = byEntity[key];
+        e.entryCount += row.entryCount;
+
+        if (row.accountType === "REVENUE") {
+          e.revenuePaisa += row.totalCreditPaisa - row.totalDebitPaisa;
+        } else if (row.accountType === "EXPENSE") {
+          e.expensePaisa += row.totalDebitPaisa - row.totalCreditPaisa;
+        } else if (row.accountType === "ASSET") {
+          e.assetPaisa += row.totalDebitPaisa - row.totalCreditPaisa;
+        } else if (row.accountType === "LIABILITY") {
+          e.liabilityPaisa += row.totalCreditPaisa - row.totalDebitPaisa;
+        }
+      }
+
+      const summaries = Object.values(byEntity).map((e) => ({
+        ...e,
+        netProfitPaisa: e.revenuePaisa - e.expensePaisa,
+        revenue: formatMoney(e.revenuePaisa),
+        expense: formatMoney(e.expensePaisa),
+        netProfit: formatMoney(e.revenuePaisa - e.expensePaisa),
+        netProfitRupees: paisaToRupees(e.revenuePaisa - e.expensePaisa),
+      }));
+
+      const grandRevenue = summaries.reduce((s, e) => s + e.revenuePaisa, 0);
+      const grandExpense = summaries.reduce((s, e) => s + e.expensePaisa, 0);
+
+      return {
+        entities: summaries,
+        consolidated: {
+          revenuePaisa: grandRevenue,
+          expensePaisa: grandExpense,
+          netProfitPaisa: grandRevenue - grandExpense,
+          revenue: formatMoney(grandRevenue),
+          expense: formatMoney(grandExpense),
+          netProfit: formatMoney(grandRevenue - grandExpense),
+        },
+        filters,
+      };
+    } catch (error) {
+      console.error("Failed to get entity summary:", error);
+      throw error;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // reverseJournalEntry
+  // ─────────────────────────────────────────────────────────────────────────
   async reverseJournalEntry(
     originalTransactionId,
     reason,
@@ -494,6 +621,12 @@ class LedgerService {
       throw new Error("Cannot reverse a reversal transaction");
     }
 
+    if (!orig.entityId) {
+      throw new Error(
+        "Cannot reverse a transaction with no entityId — migrate it first",
+      );
+    }
+
     const origEntries = await LedgerEntry.find({
       transaction: originalTransactionId,
     })
@@ -507,7 +640,7 @@ class LedgerService {
     const reversalPayload = {
       transactionType: `${orig.type}_REVERSAL`,
       referenceType: orig.referenceType,
-      referenceId: orig.referenceId, // same source doc — idempotency guard will not block because the type differs
+      referenceId: orig.referenceId,
       transactionDate: new Date(),
       nepaliDate: orig.nepaliDate,
       nepaliMonth: orig.nepaliMonth ?? 1,
@@ -515,23 +648,40 @@ class LedgerService {
       description: `REVERSAL: ${reason} (original: ${orig.description})`,
       createdBy: reversedBy,
       totalAmountPaisa: orig.totalAmountPaisa,
+      entityId: orig.entityId,
       tenant: null,
       property: null,
       entries: origEntries.map((e) => ({
         accountCode: e.account.code,
-        // Swap debit ↔ credit
         debitAmountPaisa: e.creditAmountPaisa,
         creditAmountPaisa: e.debitAmountPaisa,
         description: `REVERSAL: ${e.description}`,
       })),
     };
 
-    // The idempotency guard keys on (referenceType, referenceId).
-    // Reversals share the same referenceId but have a different type — we need
-    // to bypass the guard for reversals. Pass a flag:
-    return this.postJournalEntry(reversalPayload, session, {
-      skipIdempotencyCheck: false,
-    });
+    return this.postJournalEntry(reversalPayload, session, orig.entityId);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Private helpers
+  // ─────────────────────────────────────────────────────────────────────────
+  _emptyLedger(filters) {
+    return {
+      entries: [],
+      summary: {
+        totalEntries: 0,
+        paisa: { totalDebit: 0, totalCredit: 0, netBalance: 0 },
+        totalDebit: 0,
+        totalCredit: 0,
+        netBalance: 0,
+        formatted: {
+          totalDebit: formatMoney(0),
+          totalCredit: formatMoney(0),
+          netBalance: formatMoney(0),
+        },
+      },
+      filters,
+    };
   }
 }
 

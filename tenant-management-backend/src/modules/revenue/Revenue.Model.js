@@ -142,6 +142,50 @@ const revenueSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Revenue",
     },
+
+    // ============================================
+    // MULTI-ENTITY SCOPE FIELDS
+    // ============================================
+    transactionScope: {
+      type: String,
+      enum: ["building", "split", "head_office"],
+      required: true,
+      default: "building",
+    },
+
+    // Always required — identifies the owning entity regardless of scope
+    // (building → property entity, head_office → HQ entity, split → primary entity)
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OwnershipEntity",
+      required: true,
+    },
+    propertyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Property",
+    },
+
+    // Populated when transactionScope === 'split'
+    splitAllocations: [
+      {
+        propertyId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Property",
+          required: true,
+        },
+        entityId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "OwnershipEntity",
+          required: true,
+        },
+        percentage: { type: Number, required: true },
+        amountPaisa: { type: Number, required: true },
+        ledgerEntryId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "LedgerEntry",
+        },
+      },
+    ],
   },
 
   { timestamps: true },
