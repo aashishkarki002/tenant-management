@@ -77,6 +77,6 @@ export async function seedSystemSettings() {
   }
 }
 
-if (process.argv[1].endsWith("systemSettingSeed.js")) {
+if (process.argv[1]?.endsWith("systemSettingSeed.js")) {
   seedSystemSettings().catch(() => process.exit(1));
 }

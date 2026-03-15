@@ -36,6 +36,7 @@ import ownershipRoute from "./modules/ownership/ownership.route.js";
 import { vendorRouter } from "./modules/vendors/vendor.route.js";
 import dailyChecksRoute from "./modules/dailyChecks/dailyChecksList.route.js";
 import loanRoute from "./modules/loans/Loan.route.js";
+import unitRoute from "./modules/units/unit.route.js";
 
 const app = express();
 
@@ -112,7 +113,7 @@ app.use("/api/ownership", ownershipRoute);
 app.use("/api/vendor", vendorRouter);
 app.use("/api/checklists", dailyChecksRoute);
 app.use("/api/loan", loanRoute);
-
+app.use("/api/unit", unitRoute);
 app.post("/send-notification", sendTestNotification);
 
 app.get("/api/health", (req, res) => res.status(200).json({ status: "ok" }));

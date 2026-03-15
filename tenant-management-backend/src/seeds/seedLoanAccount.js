@@ -131,7 +131,7 @@ export async function seedLoanLiabilitySource() {
 }
 
 // ── CLI entrypoint ─────────────────────────────────────────────────────────────
-if (process.argv[1].endsWith("seedLoanAccounts.js")) {
+if (process.argv[1]?.endsWith("seedLoanAccounts.js")) {
   const entityId = process.env.ENTITY_ID;
   if (!entityId) {
     console.error("Error: ENTITY_ID env var is required.");
