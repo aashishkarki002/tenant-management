@@ -159,17 +159,21 @@ const expenseSchema = new mongoose.Schema(
       ref: "OwnershipEntity",
       required: true,
     },
-    propertyId: {
+    blockId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Property",
+      ref: "Block",
+      required: function () {
+        return ["building", "split"].includes(this.transactionScope);
+      },
+      default: null,
     },
 
     // Used when transactionScope === "split"
     splitAllocations: [
       {
-        propertyId: {
+        blockId: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: "Property",
+          ref: "Block",
           required: true,
         },
         entityId: {

@@ -20,6 +20,7 @@ const notificationSchema = new mongoose.Schema(
         "MAINTENANCE_ASSIGNED",
         "MAINTENANCE_COMPLETED",
         "MAINTENANCE_CANCELLED",
+        "LOAN_EMI_REMINDER",
       ],
     },
     title: {

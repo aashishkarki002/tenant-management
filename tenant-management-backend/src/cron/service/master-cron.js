@@ -38,6 +38,7 @@ import handleMonthlyRents, {
 } from "../../modules/rents/rent.service.js";
 import { handleMonthlyCams } from "../../modules/cam/cam.service.js";
 import { applyLateFees } from "./lateFee.cron.js";
+import { applyLoanEmiReminders } from "./loanEmi.cron.js";
 import {
   getNepaliMonthDates,
   addNepaliMonths,
@@ -348,6 +349,23 @@ export async function masterCron({ forceRun = false } = {}) {
           nepaliMonth: todayMonth,
           failed: lateFeeResult.failed ?? 0,
         },
+      });
+    }
+    console.log("\n  🏦 [6] Loan EMI reminder run...");
+    const loanEmiResult = await applyLoanEmiReminders(adminIds); // ← ADD
+
+    if (loanEmiResult.processed > 0 || loanEmiResult.failed > 0) {
+      await CronLog.create({
+        type: "LOAN_EMI_REMINDER",
+        ranAt: startedAt,
+        message: loanEmiResult.message,
+        count: loanEmiResult.processed,
+        success: loanEmiResult.failed === 0,
+        error: loanEmiResult.errors?.length
+          ? loanEmiResult.errors
+              .map((e) => `${e.loanId}: ${e.error}`)
+              .join(" | ")
+          : null,
       });
     }
 

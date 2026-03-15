@@ -68,6 +68,8 @@ export async function updateMaintenanceStatusController(req, res) {
       allowOverpayment = false,
       paymentMethod,
       bankAccountId,
+      // Contractor is assigned when transitioning to IN_PROGRESS
+      contractor,
     } = req.body;
 
     const validStatuses = ["OPEN", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
@@ -92,6 +94,7 @@ export async function updateMaintenanceStatusController(req, res) {
         allowOverpayment,
         paymentMethod: paymentMethod || null,
         bankAccountId: bankAccountId || null,
+        contractor: contractor || null,
       },
     );
 

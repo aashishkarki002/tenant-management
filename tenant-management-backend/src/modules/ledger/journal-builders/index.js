@@ -34,3 +34,9 @@ export { buildExpenseJournal } from "./expense.js";
 
 // Security deposit
 export { buildSecurityDepositJournal } from "./securityDeposit.js";
+
+// Loans
+export {
+  buildLoanDisbursementJournal,
+  buildLoanPaymentJournal,
+} from "./loan.js";

@@ -153,24 +153,36 @@ const revenueSchema = new mongoose.Schema(
       default: "building",
     },
 
-    // Always required — identifies the owning entity regardless of scope
-    // (building → property entity, head_office → HQ entity, split → primary entity)
+    // Always required — identifies the owning entity regardless of scope.
+    // head_office → HQ/general entity
+    // building    → private or company entity that owns the block
+    // split       → primary entity (others listed in splitAllocations)
     entityId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "OwnershipEntity",
       required: true,
     },
-    propertyId: {
+
+    // Required when transactionScope === 'building' or 'split'.
+    // NULL for head_office revenue (parking vendors, ads, shared facilities)
+    // because those are not tied to any single block.
+    blockId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Property",
+      ref: "Block",
+      required: function () {
+        return ["building", "split"].includes(this.transactionScope);
+      },
+      default: null,
     },
 
     // Populated when transactionScope === 'split'
     splitAllocations: [
       {
-        propertyId: {
+        // Which block this slice belongs to.
+        // Required per allocation — split revenue always comes from specific blocks.
+        blockId: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: "Property",
+          ref: "Block",
           required: true,
         },
         entityId: {
@@ -192,3 +204,6 @@ const revenueSchema = new mongoose.Schema(
 );
 
 export const Revenue = mongoose.model("Revenue", revenueSchema);
+revenueSchema.index({ npYear: 1, npMonth: 1 });
+revenueSchema.index({ entityId: 1, npYear: 1, npMonth: 1 });
+revenueSchema.index({ blockId: 1, npYear: 1, npMonth: 1 });

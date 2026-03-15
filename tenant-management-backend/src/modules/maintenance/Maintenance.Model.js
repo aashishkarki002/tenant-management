@@ -27,6 +27,19 @@ const maintenanceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Block",
     },
+
+    // ============================================
+    // ENTITY TRACING
+    // Denormalized at write time by walking unit → InnerBlock → Block → OwnershipEntity.
+    // Stored here so expense creation and reporting never need to re-walk the hierarchy.
+    // ============================================
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OwnershipEntity",
+      // Not required — legacy tasks created before entity migration will be null.
+      // The expense service handles null gracefully via resolveTransactionScope.
+    },
+
     scheduledDate: {
       type: Date,
       required: true,
@@ -74,6 +87,18 @@ const maintenanceSchema = new mongoose.Schema(
     lastPaidBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
     attachments: [{ filename: String, url: String, mimetype: String }],
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+
+    // The external party who physically performs the work.
+    // assignedTo is the internal staff who oversees — contractor is who gets paid.
+    contractor: {
+      name: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      type: {
+        type: String,
+        enum: ["VENDOR", "CONTRACTOR", "UTILITY", "OTHER"],
+        default: "CONTRACTOR",
+      },
+    },
     completedAt: Date,
     completionNotes: String,
     recurring: { type: Boolean, default: false },
@@ -124,6 +149,7 @@ maintenanceSchema.virtual("paidAmount").get(function () {
 maintenanceSchema.index({ status: 1, priority: 1, scheduledDate: -1 });
 // Tenant and property lookups
 maintenanceSchema.index({ tenant: 1 });
+maintenanceSchema.index({ entityId: 1, scheduledDate: -1 });
 maintenanceSchema.index({ property: 1, unit: 1 });
 // Nepali calendar filters — the primary reason for denormalizing these fields.
 // Allows O(log n) queries like: find all tasks completed in Baisakh 2082.

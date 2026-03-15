@@ -14,6 +14,7 @@ const blockSchema = new mongoose.Schema(
     ownershipEntityId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "OwnershipEntity",
+      required: true,
       // NOT required at schema level — seed script populates all existing blocks
     },
 

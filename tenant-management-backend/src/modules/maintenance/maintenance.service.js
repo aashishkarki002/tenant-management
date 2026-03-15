@@ -7,6 +7,7 @@ import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
 import { sendMaintenanceAssignmentEmail } from "../../config/nodemailer.js";
 import { createAndEmitNotification } from "../notifications/notification.service.js";
+import mongoose from "mongoose";
 // ─── Helper ──────────────────────────────────────────────────────────────────
 function _notifyAssignedStaff(maintenance) {
   const staff = maintenance.assignedTo;
@@ -50,6 +51,67 @@ function _notifyAllAdmins({ type, title, message, data }) {
   );
 }
 
+// ─── Entity resolver ─────────────────────────────────────────────────────────
+/**
+ * Resolve the OwnershipEntity for a maintenance task by walking the hierarchy:
+ *   unit → InnerBlock → Block → OwnershipEntity
+ *   block → OwnershipEntity  (fallback when no unit)
+ *
+ * Returns the entityId ObjectId, or null if the hierarchy is incomplete
+ * (e.g. legacy data before entity migration). Never throws — callers handle null.
+ *
+ * @param {{ unitId?: string|ObjectId, blockId?: string|ObjectId }} params
+ * @returns {Promise<ObjectId|null>}
+ */
+async function resolveEntityFromHierarchy({ unitId, blockId }) {
+  // ── Path 1: unit → InnerBlock → Block → entityId ─────────────────────────
+  if (unitId) {
+    const Unit = mongoose.model("Unit");
+    const unit = await Unit.findById(unitId).select("innerBlock block").lean();
+
+    // Unit may reference an InnerBlock or directly a Block
+    const innerBlockId = unit?.innerBlock;
+    const directBlockId = unit?.block || blockId;
+
+    if (innerBlockId) {
+      const InnerBlock = mongoose.model("InnerBlock");
+      const innerBlock = await InnerBlock.findById(innerBlockId)
+        .select("block")
+        .lean();
+      if (innerBlock?.block) {
+        const Block = mongoose.model("Block");
+        const block = await Block.findById(innerBlock.block)
+          .select("ownershipEntityId")
+          .lean();
+        const eid = block?.ownershipEntityId;
+        if (eid) return eid;
+      }
+    }
+
+    // Unit references a Block directly (no InnerBlock layer)
+    if (directBlockId) {
+      const Block = mongoose.model("Block");
+      const block = await Block.findById(directBlockId)
+        .select("ownershipEntityId")
+        .lean();
+      const eid = block?.ownershipEntityId;
+      if (eid) return eid;
+    }
+  }
+
+  // ── Path 2: block → entityId (no unit provided) ───────────────────────────
+  if (blockId) {
+    const Block = mongoose.model("Block");
+    const block = await Block.findById(blockId)
+      .select("ownershipEntityId")
+      .lean();
+    const eid = block?.ownershipEntityId;
+    if (eid) return eid;
+  }
+
+  return null;
+}
+
 // ─── Service functions ────────────────────────────────────────────────────────
 
 export async function createMaintenance(maintenanceData) {
@@ -78,6 +140,17 @@ export async function createMaintenance(maintenanceData) {
       );
       maintenanceData.scheduledNepaliYear = npYear;
       maintenanceData.scheduledNepaliMonth = npMonth; // 1-based
+    }
+
+    // Resolve and denormalize entityId at write time by walking the hierarchy:
+    // unit → InnerBlock → Block → OwnershipEntity.
+    // Stored on the document so expense creation never needs to re-walk.
+    if (!maintenanceData.entityId) {
+      const resolvedEntityId = await resolveEntityFromHierarchy({
+        unitId: maintenanceData.unit,
+        blockId: maintenanceData.block,
+      });
+      if (resolvedEntityId) maintenanceData.entityId = resolvedEntityId;
     }
 
     const maintenance = await Maintenance.create(maintenanceData);
@@ -290,6 +363,7 @@ export async function updateMaintenanceStatus(
     allowOverpayment,
     paymentMethod: paymentMethodOption,
     bankAccountId: bankAccountIdOption,
+    contractor: contractorOption,
   } = options;
 
   // Coerce string values coming from req.body to numbers (express body-parser
@@ -317,6 +391,11 @@ export async function updateMaintenanceStatus(
     updateFields.paidAmountPaisa = finalPaidAmountPaisa;
   }
   if (lastPaidBy) updateFields.lastPaidBy = lastPaidBy;
+
+  // Stamp contractor when transitioning to IN_PROGRESS
+  if (status === "IN_PROGRESS" && contractorOption) {
+    updateFields.contractor = contractorOption;
+  }
 
   // Denormalize completion Nepali date when the task is being completed
   if (status === "COMPLETED") {
@@ -360,7 +439,27 @@ export async function updateMaintenanceStatus(
           );
         }
 
-        const payeeType = updatedTask.tenant ? "TENANT" : "EXTERNAL";
+        // Maintenance expenses are always EXTERNAL — the work is done by a
+        // contractor or vendor, never by the tenant or the assigned staff.
+        // assignedTo = internal overseer, tenant = affected party — neither is the payee.
+        const payeeType = "EXTERNAL";
+
+        // Re-resolve entityId if not already on the task (handles legacy docs
+        // created before entity migration, or if hierarchy walk failed at creation).
+        let resolvedEntityId = updatedTask.entityId;
+        if (!resolvedEntityId) {
+          resolvedEntityId = await resolveEntityFromHierarchy({
+            unitId: updatedTask.unit,
+            blockId: updatedTask.block,
+          });
+        }
+
+        if (!resolvedEntityId) {
+          throw new Error(
+            `Cannot create expense: maintenance task ${updatedTask._id} has no ` +
+              `resolvable entityId. Ensure the unit/block hierarchy is linked to an OwnershipEntity.`,
+          );
+        }
 
         const expenseData = {
           source: maintenanceSource._id,
@@ -373,7 +472,13 @@ export async function updateMaintenanceStatus(
           nepaliMonth: resolvedNepaliMonth,
           nepaliYear: resolvedNepaliYear,
           payeeType,
-          ...(payeeType === "TENANT" ? { tenant: updatedTask.tenant } : {}),
+          externalPayee: {
+            name: updatedTask.contractor?.name || "Contractor",
+            type: updatedTask.contractor?.type || "CONTRACTOR",
+            ...(updatedTask.contractor?.phone && {
+              contactInfo: updatedTask.contractor.phone,
+            }),
+          },
           referenceType: "MAINTENANCE",
           referenceId: updatedTask._id,
           status: "RECORDED",
@@ -382,6 +487,8 @@ export async function updateMaintenanceStatus(
             "Auto-created from maintenance completion",
           createdBy: adminId || updatedTask.createdBy,
           expenseCode: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE,
+          entityId: resolvedEntityId,
+          transactionScope: "building",
           ...(paymentMethodOption && { paymentMethod: paymentMethodOption }),
           ...(bankAccountIdOption && { bankAccountId: bankAccountIdOption }),
         };

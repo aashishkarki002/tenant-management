@@ -1,5 +1,5 @@
 import Property from "./Property.Model.js";
-
+import { Block } from "../blocks/Block.Model.js";
 export default async function getProperty(req, res) {
   try {
     const data = await Property.aggregate([
@@ -59,3 +59,20 @@ export default async function getProperty(req, res) {
     });
   }
 }
+async function getBuildings(req, res) {
+  try {
+    const data = await Block.find();
+    res.status(200).json({
+      success: true,
+      message: "Buildings fetched successfully",
+      buildings: data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Buildings fetching failed",
+      error,
+    });
+  }
+}
+export { getBuildings };
