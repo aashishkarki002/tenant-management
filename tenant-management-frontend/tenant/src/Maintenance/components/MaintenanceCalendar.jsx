@@ -209,7 +209,7 @@ export default function MaintenanceCalendar({ maintenance = [] }) {
         .fc-wrapper .fc-button-primary:not(:disabled).fc-button-active {
           background: var(--color-accent) !important;
           border-color: var(--color-accent) !important;
-            color: var(--color-surface-raised) !important;
+          color: var(--color-text-strong) !important;
         }
         .fc-wrapper .fc-col-header-cell {
           font-size: 0.7rem;

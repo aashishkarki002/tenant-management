@@ -6,10 +6,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import SettingTab from "./components/settingTab";
 import StaffDetail from "./components/staffDetail";
+import OrganizationStructure from "./components/OrganizationStructure";
 
 import useProperty from "@/hooks/use-property";
 import SystemSettingsTab from "./components/SystemSettingTab";
-import { Settings, Users, TrendingUp } from "lucide-react";
+import { Settings, Users, TrendingUp, Building2 } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 export default function Admin() {
@@ -165,9 +166,9 @@ export default function Admin() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 space-y-6">
+    <div className="p-4 sm:p-6 md:p-8 space-y-4">
       {/* Page header */}
-      <div className="space-y-1">
+      <div className="mb-4">
         <h1 className="text-xl sm:text-2xl font-bold text-foreground">Settings</h1>
         <p className="text-sm sm:text-base text-text-sub">
           Manage your account preferences, admin details, and financial settings
@@ -197,7 +198,7 @@ export default function Admin() {
           "
         >
           <TabsTrigger
-            value="settings"
+            value="general"
             className="
               flex items-center gap-2
               px-4 py-2
@@ -213,7 +214,7 @@ export default function Admin() {
             "
           >
             <Settings size={16} />
-            <span>Settings</span>
+            <span>General</span>
           </TabsTrigger>
 
           <TabsTrigger
@@ -255,10 +256,23 @@ export default function Admin() {
             <TrendingUp size={16} />
             <span>Rate &amp; Fees</span>
           </TabsTrigger>
+          <TabsTrigger
+            value="organizationStructure"
+            className="
+              flex items-center gap-2
+              px-4 py-2
+              rounded-md
+              text-sm font-medium
+              text-text-sub
+            "
+          >
+            <Building2 size={16} />
+            <span>Organization Structure</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* Tab content panels */}
-        <TabsContent value="settings">
+        <TabsContent value="general">
           <SettingTab
             user={user}
             bankAccounts={bankAccounts}
@@ -291,6 +305,9 @@ export default function Admin() {
 
         <TabsContent value="rentEscalation">
           <SystemSettingsTab propertyId={propertyId} />
+        </TabsContent>
+        <TabsContent value="organizationStructure">
+          <OrganizationStructure />
         </TabsContent>
       </Tabs>
     </div>

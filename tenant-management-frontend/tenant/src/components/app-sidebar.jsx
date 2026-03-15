@@ -1,6 +1,9 @@
+// app-sidebar.jsx — updated to include Loans under Money group
+// Only change: added { title: "Loans", url: "/loans", icon: Landmark } to the Money group
+
 import {
   LayoutDashboard, Users, Building2, DollarSign,
-  FileText, Wrench, Banknote, Zap, ChevronDown,
+  FileText, Wrench, Banknote, Zap, ChevronDown, Landmark,
 } from "lucide-react";
 
 import {
@@ -34,6 +37,7 @@ const NAV_GROUPS = [
     items: [
       { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
       { title: "Accounting", url: "/accounting", icon: FileText },
+      { title: "Loans", url: "/loans", icon: Landmark },          // ← NEW
       { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
     ],
   },
@@ -102,7 +106,6 @@ export default function AppSidebar() {
 
       {/* Navigation */}
       <SidebarContent className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
-
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             <p className="px-2 mb-1.5 text-[9px] font-medium tracking-[0.24em] uppercase opacity-60">
@@ -110,7 +113,6 @@ export default function AppSidebar() {
             </p>
 
             <nav className="flex flex-col gap-1">
-
               {group.items.map((item) => (
                 <NavLink
                   key={item.title}
@@ -134,9 +136,7 @@ export default function AppSidebar() {
                           : "bg-transparent"
                           }`}
                       />
-
                       <item.icon className="w-3.5 h-3.5 shrink-0" />
-
                       <span>{item.title}</span>
                     </>
                   )}
@@ -149,17 +149,13 @@ export default function AppSidebar() {
 
       {/* Footer */}
       <SidebarFooter className="p-3 border-t border-sidebar-border">
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-
             <button className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md hover:bg-sidebar-accent transition">
-
               <Avatar className="h-7 w-7 shrink-0">
                 {avatarSrc && (
                   <AvatarImage src={avatarSrc} alt={user?.name ?? "Profile"} />
                 )}
-
                 <AvatarFallback className="text-[11px] font-semibold bg-sidebar-accent">
                   {initials}
                 </AvatarFallback>
@@ -169,7 +165,6 @@ export default function AppSidebar() {
                 <span className="text-[13px] font-medium truncate">
                   {user?.name ?? "Admin"}
                 </span>
-
                 <span className="text-[11px] opacity-60 truncate">
                   {user?.email ?? "admin@sallyanhouse.com"}
                 </span>
@@ -177,14 +172,12 @@ export default function AppSidebar() {
 
               <ChevronDown className="w-3.5 h-3.5 opacity-60" />
             </button>
-
           </DropdownMenuTrigger>
 
           <DropdownMenuContent side="top" align="start" className="w-44">
             <DropdownMenuItem onClick={() => navigate("/admin")}>
               Account settings
             </DropdownMenuItem>
-
             <DropdownMenuItem
               onClick={SignOut}
               className="text-destructive"
@@ -192,9 +185,7 @@ export default function AppSidebar() {
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
-
         </DropdownMenu>
-
       </SidebarFooter>
     </Sidebar>
   );

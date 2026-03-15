@@ -24,6 +24,8 @@ import ViewDetail from "./ViewDetail/ViewDetail";
 import BroadCast from "./BroadCast";
 import Submeter from "./submeter/Submeter";
 import Generator from "./Generators/Generator";
+import DailyChecks from "./DailyChecks/dailyChecks";
+import Loans from "./Loans/loan";
 import { setupSwMessageListener } from "./hooks/usePushNotification";
 import Units from "./units/units";
 import api from "../plugins/axios";
@@ -146,6 +148,12 @@ export default function App() {
       />
       <Route path="/test"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Test /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/checklists"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ALL_ROLES}><DailyChecks /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/loans"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ALL_ROLES}><Loans /></RoleRoute></ProtectedRoutes>}
       />
     </Routes>
   );
