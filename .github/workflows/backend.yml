@@ -25,7 +25,7 @@ jobs:
           source: "tenant-management-backend/."
           target: "/home/sallyanh/api.sallyanhouse.com"
           strip_components: 1
-          timeout: 60
+          timeout: 60s
 
       # 3️⃣ Install dependencies and restart
       - name: Deploy Backend via SSH
