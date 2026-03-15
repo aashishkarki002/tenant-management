@@ -1,4 +1,4 @@
-import { Unit } from "./Unit.Model.js";
+import { Unit } from "./unit.model.js";
 import { connectDB } from "../../config/db.js";
 
 connectDB();

@@ -23,7 +23,7 @@ import { Cam } from "../modules/cam/cam.model.js";
 import { Property } from "../modules/property/property.Model.js";
 import { Block } from "../modules/blocks/block.Model.js";
 import { InnerBlock } from "../modules/innerBlocks/innerBlock.Model.js";
-import { Unit } from "../modules/units/Unit.Model.js";
+import { Unit } from "../modules/units/unit.model.js";
 
 describe("Tenant Search API", () => {
   let testProperty, testBlock, testInnerBlock, testUnit1, testUnit2;

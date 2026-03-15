@@ -15,7 +15,7 @@
 import mongoose from "mongoose";
 import { Tenant } from "./Tenant.Model.js";
 import tenantValidation from "../../validations/tenantValidation.js";
-import { Unit } from "../units/Unit.Model.js";
+import { Unit } from "../units/unit.model.js";
 import { sendWelcomeEmail } from "../../config/nodemailer.js";
 import { createTenantTransaction } from "./services/tenant.create.js";
 import { uploadSingleFile } from "./helpers/fileUploadHelper.js";

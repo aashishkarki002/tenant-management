@@ -19,7 +19,7 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 dotenv.config();
-import { Unit } from "../modules/units/Unit.Model.js"; // ← adjust path if needed
+import { Unit } from "../modules/units/unit.model.js";
 import { connectDB } from "../config/db.js"; // ← adjust path if needed
 
 // ─── IDs from live DB ────────────────────────────────────────────────────────

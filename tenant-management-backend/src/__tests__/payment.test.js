@@ -3,7 +3,11 @@ import request from "supertest";
 import mongoose from "mongoose";
 
 const applyPaymentToBankMock = jest.fn().mockResolvedValue({ _id: "bank-id" });
-const ledgerMock = { postJournalEntry: jest.fn().mockResolvedValue({ transaction: {}, ledgerEntries: [] }) };
+const ledgerMock = {
+  postJournalEntry: jest
+    .fn()
+    .mockResolvedValue({ transaction: {}, ledgerEntries: [] }),
+};
 const revenueMock = {
   recordRentRevenue: jest.fn().mockResolvedValue(),
   createRevenue: jest.fn().mockResolvedValue(),
@@ -21,7 +25,10 @@ jest.unstable_mockModule("../modules/banks/bank.domain.js", () => ({
 jest.unstable_mockModule("../modules/ledger/ledger.service.js", () => ({
   ledgerService: ledgerMock,
 }));
-jest.unstable_mockModule("../modules/revenue/revenue.service.js", () => revenueMock);
+jest.unstable_mockModule(
+  "../modules/revenue/revenue.service.js",
+  () => revenueMock,
+);
 jest.unstable_mockModule("../utils/payment.Notification.js", () => ({
   emitPaymentNotification: emitPaymentNotificationMock,
 }));
@@ -63,7 +70,10 @@ const InnerBlock = (await import("../modules/tenant/InnerBlock.Model.js"))
 describe("POST /api/payment/pay-rent", () => {
   it("records payment, updates rent totals, and stores payment record", async () => {
     const property = await Property.create({ name: "Payment Property" });
-    const block = await Block.create({ name: "Block B", property: property._id });
+    const block = await Block.create({
+      name: "Block B",
+      property: property._id,
+    });
     const innerBlock = await InnerBlock.create({
       name: "Inner B1",
       block: block._id,

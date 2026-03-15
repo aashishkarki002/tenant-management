@@ -1,5 +1,5 @@
 import { Tenant } from "../Tenant.Model.js";
-import { Unit } from "../../units/Unit.Model.js";
+import { Unit } from "../../units/unit.model.js";
 import { parseUnitIds, filterOccupiedUnits } from "../helpers/unit.helper.js";
 import {
   getNepaliMonthDates,

@@ -17,7 +17,7 @@ import mongoose from "mongoose";
 import { Electricity } from "./Electricity.Model.js";
 import { ElectricityRate } from "./ElectricityRate.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
-import { Unit } from "../units/Unit.Model.js";
+import { Unit } from "../units/unit.model.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import {
   buildElectricityChargeJournal,
