@@ -7,6 +7,8 @@ on:
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # opt-in Node.js 24
 
     steps:
       # 1️⃣ Checkout code
@@ -36,20 +38,29 @@ jobs:
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_SSH_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SERVER_SSH_KEY }}  # PRIVATE KEY
           port: 22
           script: |
             set -e
 
-            echo "Activating Node.js environment..."
-            source /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate
+            echo "✅ Connected to server successfully!"
 
-            echo "Navigating to project directory..."
+            # Activate Node.js venv
+            if [ -f /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate ]; then
+              echo "Activating Node.js environment..."
+              source /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate
+            else
+              echo "Node.js venv not found, skipping activation"
+            fi
+
+            # Go to project directory
             cd /home/sallyanh/api.sallyanhouse.com
 
+            # Install production dependencies
             echo "Installing production dependencies..."
             npm install --omit=dev
 
+            # Restart Passenger app
             echo "Restarting Passenger application..."
             mkdir -p tmp && touch tmp/restart.txt
 
