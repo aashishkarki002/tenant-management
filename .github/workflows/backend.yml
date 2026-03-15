@@ -2,33 +2,32 @@ name: Deploy Backend via SSH
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
     env:
-      # Opt into Node.js 24 for actions
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      # 1️⃣ Checkout your code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ Test SSH connection (optional but recommended)
-      - name: Test SSH connection
-        uses: appleboy/ssh-action@v0.1.9
+      # 2️⃣ Copy source files to server
+      - name: Copy files via SCP
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_SSH_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
-          script: |
-            echo "✅ SSH connection successful"
-            whoami
+          source: "tenant-management-backend/."
+          target: "/home/sallyanh/api.sallyanhouse.com"
+          strip_components: 1
+          timeout: 60
 
-      # 3️⃣ Deploy: Activate Node.js, install dependencies, restart Passenger
+      # 3️⃣ Install dependencies and restart
       - name: Deploy Backend via SSH
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -36,28 +35,13 @@ jobs:
           username: ${{ secrets.SERVER_SSH_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
+          timeout: 60
+          command_timeout: 5m
           script: |
             set -e
-
-            echo "✅ Connected to server, starting deployment..."
-
-            # Activate Node.js venv if it exists
-            if [ -f /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate ]; then
-              echo "Activating Node.js environment..."
-              source /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate
-            else
-              echo "Node.js venv not found, using system Node.js"
-            fi
-
-            # Go to project directory
+            source /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate
             cd /home/sallyanh/api.sallyanhouse.com
-
-            # Install production dependencies
-            echo "Installing production dependencies..."
             npm install --omit=dev
-
-            # Restart Passenger app
-            echo "Restarting Passenger application..."
+            test -d node_modules/dotenv || (echo "❌ dotenv missing after npm install" && exit 1)
             mkdir -p tmp && touch tmp/restart.txt
-
             echo "✅ Deployment completed successfully!"
