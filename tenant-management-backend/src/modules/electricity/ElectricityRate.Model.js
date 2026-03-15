@@ -96,8 +96,7 @@ electricityRateSchema.statics.resolveRate = async function (
   return override ?? config.currentRatePerUnitPaisa;
 };
 
-electricityRateSchema.index({ property: 1 });
-
+// property already has index: true; avoid duplicate index warning
 export const ElectricityRate = mongoose.model(
   "ElectricityRate",
   electricityRateSchema,

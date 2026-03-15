@@ -516,7 +516,7 @@ export async function updateGeneratorStatus(generatorId, status) {
   const generator = await Generator.findByIdAndUpdate(
     generatorId,
     { $set: { status } },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!generator)
     return { success: false, message: "Generator not found", data: null };

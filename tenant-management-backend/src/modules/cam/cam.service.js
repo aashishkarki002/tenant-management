@@ -54,12 +54,17 @@ export const handleMonthlyCams = async () => {
     englishYear,
   } = getNepaliMonthDates();
   try {
+    // Use $or for status to avoid Mongoose CastError when casting $in to string (older Mongoose)
     const overdueResult = await Cam.updateMany(
       {
-        status: { $in: ["pending", "partially_paid"] },
-        $or: [
-          { nepaliYear: { $lt: npYear } },
-          { nepaliYear: npYear, nepaliMonth: { $lt: npMonth } },
+        $and: [
+          { $or: [{ status: "pending" }, { status: "partially_paid" }] },
+          {
+            $or: [
+              { nepaliYear: { $lt: npYear } },
+              { nepaliYear: npYear, nepaliMonth: { $lt: npMonth } },
+            ],
+          },
         ],
       },
       { $set: { status: "overdue" } }

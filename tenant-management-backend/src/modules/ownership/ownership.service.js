@@ -45,7 +45,7 @@ export const updateEntity = async (id, data) => {
   return OwnershipEntity.findByIdAndUpdate(
     id,
     { $set: data },
-    { new: true, runValidators: true },
+    { returnDocument: "after", runValidators: true },
   ).lean();
 };
 

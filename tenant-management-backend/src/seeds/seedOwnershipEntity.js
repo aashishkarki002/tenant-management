@@ -107,7 +107,7 @@ async function seedOwnershipEntity() {
           partialPaymentThresholdPct: 0,
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: "after" },
     );
 
     console.log(

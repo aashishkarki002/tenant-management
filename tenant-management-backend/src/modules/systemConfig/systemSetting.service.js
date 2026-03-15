@@ -93,7 +93,7 @@ export async function saveEscalationSettings(settings, adminId) {
       },
       updatedBy: adminId ?? null,
     },
-    { upsert: true, new: true },
+    { upsert: true, returnDocument: "after" },
   );
 
   return { success: true, message: "Escalation defaults saved" };
@@ -262,7 +262,7 @@ export async function saveLateFeeSettings(settings, adminId) {
       },
       updatedBy: adminId ?? null,
     },
-    { upsert: true, new: true },
+    { upsert: true, returnDocument: "after" },
   );
 
   return { success: true, message: "Late fee policy saved" };

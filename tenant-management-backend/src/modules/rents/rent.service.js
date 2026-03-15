@@ -349,12 +349,17 @@ export async function handleMonthlyRents(adminId) {
 
   try {
     // Step 1: Mark overdue (all prior-period pending/partial rents)
+    // Use $or for status to avoid Mongoose CastError when casting $in to string (older Mongoose)
     const overdueResult = await Rent.updateMany(
       {
-        status: { $in: ["pending", "partially_paid"] },
-        $or: [
-          { nepaliYear: { $lt: npYear } },
-          { nepaliYear: npYear, nepaliMonth: { $lt: npMonth } },
+        $and: [
+          { $or: [{ status: "pending" }, { status: "partially_paid" }] },
+          {
+            $or: [
+              { nepaliYear: { $lt: npYear } },
+              { nepaliYear: npYear, nepaliMonth: { $lt: npMonth } },
+            ],
+          },
         ],
       },
       { $set: { status: "overdue" } },

@@ -181,3 +181,8 @@ app.use((err, req, res, next) => {
 // Connection is awaited in server.js before listen() to avoid "buffering timed out"
 
 export default app;
+
+// Support CommonJS loaders (e.g. production server using require())
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = app;
+}

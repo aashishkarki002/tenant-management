@@ -179,7 +179,7 @@ export const updateSubMeter = async (req, res) => {
     }
 
     const subMeter = await SubMeter.findByIdAndUpdate(id, allowedUpdates, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
 
@@ -213,7 +213,7 @@ export const deactivateSubMeter = async (req, res) => {
     const subMeter = await SubMeter.findByIdAndUpdate(
       id,
       { isActive: false },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!subMeter) {

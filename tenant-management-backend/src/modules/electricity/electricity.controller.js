@@ -554,7 +554,7 @@ export const deleteElectricityReading = async (req, res) => {
     const electricity = await Electricity.findByIdAndUpdate(
       id,
       { status: "cancelled" },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!electricity) {

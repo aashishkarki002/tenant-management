@@ -622,7 +622,7 @@ export const updateAdmin = async (req, res) => {
     const admin = await Admin.findByIdAndUpdate(
       adminId,
       { name, email, phone, address, company },
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
     return res
       .status(200)

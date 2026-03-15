@@ -305,14 +305,16 @@ tenantSchema.statics.findOverdue = function () {
     nextRentDueDate: { $lt: new Date() },
   });
 };
-// Cron query — uses the English Date index for performance
+// Cron query — uses the English Date index for performance.
+// Use .where().lte() to avoid Mongoose CastError casting $lte object as Date (older Mongoose).
 tenantSchema.statics.findDueForEscalation = function (asOf = new Date()) {
   return this.find({
     status: "active",
     isDeleted: false,
     "rentEscalation.enabled": true,
-    "rentEscalation.nextEscalationDate": { $lte: asOf },
-  });
+  })
+    .where("rentEscalation.nextEscalationDate")
+    .lte(asOf);
 };
 // ============================================
 // INDEXES

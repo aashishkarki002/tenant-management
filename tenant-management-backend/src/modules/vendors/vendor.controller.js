@@ -97,7 +97,7 @@ export const getVendorById = async (req, res) => {
 export const updateVendor = async (req, res) => {
   try {
     const vendor = await Vendor.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!vendor)
@@ -264,7 +264,7 @@ export const updatePersonnel = async (req, res) => {
     const personnel = await AssignedPersonnel.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
     if (!personnel)
       return res

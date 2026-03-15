@@ -111,7 +111,7 @@ export const createBankAccount = async (req, res) => {
           isActive: true,
         },
       },
-      { upsert: true, new: true, session },
+      { upsert: true, returnDocument: "after", session },
     );
 
     await session.commitTransaction();
@@ -246,7 +246,7 @@ export const deleteBankAccount = async (req, res) => {
     const bankAccount = await BankAccount.findByIdAndUpdate(
       id,
       { isDeleted: true },
-      { new: true, session },
+      { returnDocument: "after", session },
     );
 
     if (!bankAccount) {

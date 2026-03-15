@@ -517,7 +517,7 @@ export async function disableEscalation(tenantId) {
   const tenant = await Tenant.findByIdAndUpdate(
     tenantId,
     { $set: { "rentEscalation.enabled": false } },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!tenant) {
     return { success: false, message: "Tenant not found", statusCode: 404 };

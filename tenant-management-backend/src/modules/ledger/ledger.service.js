@@ -253,7 +253,10 @@ class LedgerService {
         const typeAccounts = await Account.find(typeFilter)
           .select("_id")
           .lean();
-        query.account = { $in: typeAccounts.map((a) => a._id) };
+        // Use $or to avoid Mongoose CastError casting $in object as ObjectId (older Mongoose)
+        const accountIds = typeAccounts.map((a) => a._id);
+        query.$or = accountIds.map((id) => ({ account: id }));
+        delete query.account; // type filter replaces any single-account filter
       }
 
       if (filters.propertyType) {

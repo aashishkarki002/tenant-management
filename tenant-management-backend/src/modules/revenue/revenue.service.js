@@ -791,7 +791,7 @@ export async function recordElectricityRevenue({
   const utilitySource = await RevenueSource.findOneAndUpdate(
     { code: "UTILITY" },
     { $setOnInsert: { code: "UTILITY", name: "Electricity / Utility" } },
-    { upsert: true, new: true, session },
+    { upsert: true, returnDocument: "after", session },
   );
 
   const [revenue] = await Revenue.create(

@@ -44,7 +44,7 @@ export const updateStaffService = async (staffId, staffData) => {
 
     const staff = await adminModel
       .findByIdAndUpdate(staffId, sanitized, {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       })
       .select("name email phone role profilePicture isActive");

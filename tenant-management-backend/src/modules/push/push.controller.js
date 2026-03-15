@@ -49,7 +49,7 @@ export const savePushSubscription = async (req, res) => {
     await PushSubscription.findOneAndUpdate(
       { "subscription.endpoint": subscription.endpoint },
       { admin: req.admin.id, subscription },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: "after" },
     );
 
     res.status(201).json({ success: true, message: "Push subscription saved" });
@@ -85,7 +85,7 @@ export const renewPushSubscription = async (req, res) => {
     const existing = await PushSubscription.findOneAndUpdate(
       { "subscription.endpoint": subscription.endpoint },
       { $set: { subscription } }, // only refresh the keys, admin field is untouched
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!existing) {

@@ -284,7 +284,7 @@ export async function updateTenant(tenantId, body, files) {
     const updatedTenant = await Tenant.findByIdAndUpdate(
       tenantId,
       { $set: updatedTenantData },
-      { new: true, session },
+      { returnDocument: "after", session },
     )
       .populate("property")
       .populate("block")
@@ -439,7 +439,7 @@ export async function restoreTenant(tenantId) {
   const restored = await Tenant.findByIdAndUpdate(
     tenantId,
     { isDeleted: false },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!restored)
     return { success: false, statusCode: 404, message: "Tenant not found" };

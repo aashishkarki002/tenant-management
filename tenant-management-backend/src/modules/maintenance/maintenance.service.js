@@ -408,7 +408,7 @@ export async function updateMaintenanceStatus(
   const updatedTask = await Maintenance.findByIdAndUpdate(
     id,
     { $set: updateFields },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   // ── Auto-create expense on COMPLETED + paid/overpaid ─────────────────────
@@ -546,7 +546,7 @@ export async function updateMaintenanceAssignedTo(id, assignedTo) {
   const updated = await Maintenance.findByIdAndUpdate(
     id,
     { $set: { assignedTo: assignedTo || null } },
-    { new: true },
+    { returnDocument: "after" },
   )
     .populate("assignedTo", "name email phone profilePicture")
     .populate("tenant")

@@ -150,7 +150,7 @@ export async function applyBalanceChange(
   const updated = await Account.findByIdAndUpdate(
     accountId,
     { $inc: { currentBalancePaisa: changePaisa } },
-    { new: true, session },
+    { returnDocument: "after", session },
   ).lean();
 
   if (!updated) throw new Error(`Account ${accountId} not found`);
@@ -224,7 +224,7 @@ export async function applyJournalBalances(entries, entityId, session = null) {
     Account.findByIdAndUpdate(
       accountId,
       { $inc: { currentBalancePaisa: change } },
-      { new: true, session },
+      { returnDocument: "after", session },
     ).lean(),
   );
 
