@@ -55,8 +55,13 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+    console.log("CORS request origin:", origin);
+
+    if (!origin) return callback(null, true); // non-browser requests
+    if (allowedOrigins.some((o) => origin.startsWith(o)))
+      return callback(null, true);
+
+    // optional: local override for development
     if (process.env.NODE_ENV !== "production") {
       try {
         const u = new URL(origin);
@@ -68,6 +73,8 @@ const corsOptions = {
         if (isLocal) return callback(null, true);
       } catch (_) {}
     }
+
+    console.log("❌ BLOCKED BY CORS:", origin);
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
