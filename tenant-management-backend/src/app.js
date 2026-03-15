@@ -1,4 +1,3 @@
-import "./config/loadEnv.js";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -6,16 +5,17 @@ import rateLimit from "express-rate-limit";
 import hpp from "hpp";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
+
+// Routes
 import authRoute from "./modules/auth/auth.route.js";
 import propertyRoute from "./modules/property/property.route.js";
 import tenantRoute from "./modules/tenant/tenant.route.js";
 import rentRoute from "./modules/rents/rent.route.js";
 import bankRoute from "./modules/banks/bank.route.js";
-import unitRoute from "./modules/units/unit.route.js";
+
 import notificationRoute from "./modules/notifications/notification.route.js";
 import paymentRoute from "./modules/payment/payment.route.js";
 import ledgerRoute from "./modules/ledger/ledger.route.js";
-import { connectDB } from "./config/db.js";
 import revenueRoute from "./modules/revenue/revenue.route.js";
 import accountingRoute from "./modules/accounting/accounting.route.js";
 import dashboardRoute from "./modules/dashboards/dashboard.route.js";
@@ -26,108 +26,70 @@ import maintenanceRoute from "./modules/maintenance/maintenance.route.js";
 import staffRoute from "./modules/staffs/staffs.route.js";
 import broadcastRoute from "./modules/broadcasts/broadcast.route.js";
 import escalationRoute from "./modules/tenant/escalation/rent.escalation.route.js";
-import { startEscalationCron } from "./modules/tenant/escalation/crons/rent.escalation.cron.js";
 import generatorRoute from "./modules/maintenance/generators/generator.route.js";
 import searchRoute from "./modules/search/search.route.js";
 import systemSettingRoute from "./modules/systemConfig/systemSetting.route.js";
-import { masterCron } from "./cron/service/master-cron.js";
 import pushRoute from "./modules/push/push.route.js";
-import { sendTestNotification } from "./modules/push/push.controller.js";
-import { initializeWebPush } from "./config/webpush.js";
+import { sendTestNotification } from "./modules/push/push.controller.js"; // ✅ added
 import transactionRoute from "./modules/ledger/transactions/transaction.route.js";
 import ownershipRoute from "./modules/ownership/ownership.route.js";
 import { vendorRouter } from "./modules/vendors/vendor.route.js";
 import dailyChecksRoute from "./modules/dailyChecks/dailyChecksList.route.js";
 import loanRoute from "./modules/loans/Loan.route.js";
-initializeWebPush();
-startEscalationCron();
-masterCron();
+
 const app = express();
+
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  "https://app.sallyanhouse.com",
-];
-
+// -------------------- CORS --------------------
 const corsOptions = {
-  origin: function (origin, callback) {
-    console.log("CORS request origin:", origin);
-
-    if (!origin) return callback(null, true); // non-browser requests
-    if (allowedOrigins.some((o) => origin.startsWith(o)))
-      return callback(null, true);
-
-    // optional: local override for development
-    if (process.env.NODE_ENV !== "production") {
-      try {
-        const u = new URL(origin);
-        const isLocal =
-          (u.hostname === "localhost" ||
-            u.hostname === "127.0.0.1" ||
-            u.hostname === "[::1]") &&
-          (u.protocol === "http:" || u.protocol === "https:");
-        if (isLocal) return callback(null, true);
-      } catch (_) {}
-    }
-
-    console.log("❌ BLOCKED BY CORS:", origin);
-    return callback(new Error("Not allowed by CORS"));
-  },
+  // ✅ defined before use
+  origin: true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  optionsSuccessStatus: 200,
 };
 
-// CORS must be first — handles OPTIONS preflight before anything else can block it
-app.options("/{*path}", cors(corsOptions));
+app.options("/{*splat}", cors(corsOptions));
 app.use(cors(corsOptions));
 
+// -------------------- MIDDLEWARE --------------------
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(hpp());
+app.use(cookieParser());
+app.use(express.json({ limit: "10kb" }));
+
 app.use(
-  helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" },
+  "/api/auth/login",
+  rateLimit({
+    max: 5,
+    windowMs: 15 * 60 * 1000,
+    message: "Too many login attempts, please try again later.",
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.use(
+  "/api",
+  rateLimit({
+    max: 100,
+    windowMs: 60 * 1000,
+    message: "Too many requests from this IP, please try again later.",
+    standardHeaders: true,
+    legacyHeaders: false,
   }),
 );
 
-// Login limiter before the global /api limiter
-const loginLimiter = rateLimit({
-  max: 5,
-  windowMs: 15 * 60 * 1000,
-  message: "Too many login attempts, please try again later.",
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use("/api/auth/login", loginLimiter);
+if (process.env.NODE_ENV === "development") app.use(morgan("dev"));
+else app.use(morgan("combined"));
 
-const limiter = rateLimit({
-  max: 100,
-  windowMs: 60 * 1000,
-  message: "Too many requests from this IP, please try again later.",
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use("/api", limiter);
-
-app.use(hpp());
-app.use(cookieParser());
-
-app.use(express.json({ limit: "10kb" }));
-
-if (process.env.NODE_ENV === "development") {
-  app.use(morgan("dev"));
-} else {
-  app.use(morgan("combined"));
-}
-
-/* -------------------- ROUTES -------------------- */
+// -------------------- ROUTES --------------------
 app.use("/api/auth", authRoute);
 app.use("/api/property", propertyRoute);
 app.use("/api/tenant", tenantRoute);
 app.use("/api/rent", rentRoute);
 app.use("/api/bank", bankRoute);
-app.use("/api/unit", unitRoute);
+
 app.use("/api/notification", notificationRoute);
 app.use("/api/payment", paymentRoute);
 app.use("/api/ledger", ledgerRoute);
@@ -150,24 +112,19 @@ app.use("/api/ownership", ownershipRoute);
 app.use("/api/vendor", vendorRouter);
 app.use("/api/checklists", dailyChecksRoute);
 app.use("/api/loan", loanRoute);
-/* -------------------- TEST: push notification (POST body: { title, body }) -------------------- */
-app.post("/send-notification", sendTestNotification);
-/* -------------------- HEALTH CHECK -------------------- */
-app.get("/api/health", (req, res) => {
-  res.status(200).json({ status: "ok" });
-});
 
-app.use((req, res) => {
-  res.status(404).json({ message: "Route not found" });
-});
+app.post("/send-notification", sendTestNotification);
+
+app.get("/api/health", (req, res) => res.status(200).json({ status: "ok" }));
+
+// -------------------- ERROR HANDLERS --------------------
+app.use((req, res) => res.status(404).json({ message: "Route not found" }));
 
 app.use((err, req, res, next) => {
   console.error("🔥 ERROR:", err.stack);
-
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({ message: "CORS error" });
   }
-
   res.status(500).json({
     message:
       process.env.NODE_ENV === "production"
@@ -176,12 +133,4 @@ app.use((err, req, res, next) => {
   });
 });
 
-/* -------------------- DB CONNECT -------------------- */
-// Connection is awaited in server.js before listen() to avoid "buffering timed out"
-
 export default app;
-
-// Support CommonJS loaders (e.g. production server using require())
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = app;
-}
