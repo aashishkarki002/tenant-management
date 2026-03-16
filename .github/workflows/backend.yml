@@ -71,13 +71,14 @@ jobs:
       # 8️⃣ Network reachability check
       - name: Debug - Network reachability
         run: |
-          echo "My runner IP:"
-          curl -s https://api.ipify.org
-          echo ""
-          echo "Testing port 22:"
-          nc -zv -w 5 ${{ secrets.SERVER_HOST }} 22 || echo "❌ Port 22 blocked"
-          echo "Testing port 2222:"
-          nc -zv -w 5 ${{ secrets.SERVER_HOST }} 2222 || echo "❌ Port 2222 blocked"
+          for port in 22 2222 2022 8022 222 26; do
+            result=$(nc -zv -w 3 ${{ secrets.SERVER_HOST }} $port 2>&1)
+            if echo "$result" | grep -q "succeeded"; then
+              echo "✅ Port $port: OPEN"
+            else
+              echo "❌ Port $port: blocked"
+            fi
+          done
 
       # 9️⃣ Test SSH connection
       - name: Debug - Test SSH connection
