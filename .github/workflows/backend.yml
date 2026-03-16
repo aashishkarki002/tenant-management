@@ -7,8 +7,8 @@ on:
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
-
     steps:
+
       # 1️⃣ Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
@@ -33,7 +33,6 @@ jobs:
           else
             echo "✅ BACKEND_FTP_HOST exists"
           fi
-
           if [ -z "${{ secrets.SERVER_HOST }}" ]; then
             echo "❌ SERVER_HOST is empty"
           else
@@ -69,7 +68,18 @@ jobs:
             *.zip
           dangerous-clean-slate: false
 
-      # 8️⃣ Test SSH connection
+      # 8️⃣ Network reachability check
+      - name: Debug - Network reachability
+        run: |
+          echo "My runner IP:"
+          curl -s https://api.ipify.org
+          echo ""
+          echo "Testing port 22:"
+          nc -zv -w 5 ${{ secrets.SERVER_HOST }} 22 || echo "❌ Port 22 blocked"
+          echo "Testing port 2222:"
+          nc -zv -w 5 ${{ secrets.SERVER_HOST }} 2222 || echo "❌ Port 2222 blocked"
+
+      # 9️⃣ Test SSH connection
       - name: Debug - Test SSH connection
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -82,7 +92,7 @@ jobs:
             pwd
             ls -la
 
-      # 9️⃣ SSH - Install deps & restart Passenger
+      # 🔟 SSH - Install deps & restart Passenger
       - name: Deploy Backend via SSH
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -92,17 +102,12 @@ jobs:
           port: 22
           script: |
             set -e
-
             echo "Activating Node.js environment..."
             source /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate
-
             echo "Navigating to project directory..."
             cd /home/sallyanh/api.sallyanhouse.com
-
             echo "Installing production dependencies..."
             npm install --omit=dev
-
             echo "Restarting Passenger application..."
             mkdir -p tmp && touch tmp/restart.txt
-
             echo "✅ Deployment completed successfully!"
