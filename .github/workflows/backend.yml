@@ -1,4 +1,4 @@
-name: Deploy Backend via FTP
+name: Deploy Backend
 
 on:
   push:
@@ -13,45 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ Verify repository files
-      - name: Debug - List repo files
-        run: |
-          echo "Listing repository files..."
-          ls -la
-
-      # 3️⃣ Check local deployment folder
-      - name: Debug - Check local deployment folder
-        run: |
-          echo "Checking tenant-management-backend folder..."
-          ls -la tenant-management-backend || echo "Folder not found!"
-
-      # 4️⃣ Check if secrets exist
-      - name: Debug - Check secrets exist
-        run: |
-          if [ -z "${{ secrets.BACKEND_FTP_HOST }}" ]; then
-            echo "❌ BACKEND_FTP_HOST is empty"
-          else
-            echo "✅ BACKEND_FTP_HOST exists"
-          fi
-          if [ -z "${{ secrets.DEPLOY_TOKEN }}" ]; then
-            echo "❌ DEPLOY_TOKEN is empty"
-          else
-            echo "✅ DEPLOY_TOKEN exists"
-          fi
-
-      # 5️⃣ DNS test for FTP server
-      - name: Debug - Test DNS resolution
-        run: |
-          echo "Testing DNS resolution..."
-          nslookup ${{ secrets.BACKEND_FTP_HOST }} || true
-
-      # 6️⃣ Test FTP port connectivity
-      - name: Debug - Test FTP port
-        run: |
-          echo "Testing FTP port 21..."
-          nc -zv ${{ secrets.BACKEND_FTP_HOST }} 21 || true
-
-      # 7️⃣ FTP Deploy
+      # 2️⃣ FTP Deploy
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -68,10 +30,9 @@ jobs:
             *.zip
           dangerous-clean-slate: false
 
-      # 8️⃣ Trigger npm install & Passenger restart via deploy.php
+      # 3️⃣ Restart Passenger & install dependencies
       - name: Restart Passenger & Install Dependencies
         run: |
-          echo "Triggering deploy script..."
           response=$(curl -s -w "\n%{http_code}" \
             "https://api.sallyanhouse.com/deploy.php?token=${{ secrets.DEPLOY_TOKEN }}")
           http_code=$(echo "$response" | tail -n1)
