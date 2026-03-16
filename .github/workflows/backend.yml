@@ -72,8 +72,8 @@ jobs:
       - name: Debug - Network reachability
         run: |
           for port in 22 2222 2022 8022 222 26; do
-            result=$(nc -zv -w 3 ${{ secrets.SERVER_HOST }} $port 2>&1)
-            if echo "$result" | grep -q "succeeded"; then
+            nc -zv -w 3 ${{ secrets.SERVER_HOST }} $port 2>&1
+           if [ $? -eq 0 ]; then
               echo "✅ Port $port: OPEN"
             else
               echo "❌ Port $port: blocked"
