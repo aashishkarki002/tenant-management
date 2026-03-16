@@ -1,4 +1,4 @@
-name: Deploy Backend via FTP + SSH
+name: Deploy Backend via FTP + SSH (Debug)
 
 on:
   push:
@@ -7,12 +7,52 @@ on:
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
+
     steps:
       # 1️⃣ Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ FTP Deploy
+      # 2️⃣ Verify repository files
+      - name: Debug - List repo files
+        run: |
+          echo "Listing repository files..."
+          ls -la
+
+      # 3️⃣ Check local deployment folder
+      - name: Debug - Check local deployment folder
+        run: |
+          echo "Checking tenant-management-backend folder..."
+          ls -la tenant-management-backend || echo "Folder not found!"
+
+      # 4️⃣ Check if secrets exist (safe check)
+      - name: Debug - Check secrets exist
+        run: |
+          if [ -z "${{ secrets.BACKEND_FTP_HOST }}" ]; then
+            echo "❌ BACKEND_FTP_HOST is empty"
+          else
+            echo "✅ BACKEND_FTP_HOST exists"
+          fi
+
+          if [ -z "${{ secrets.SERVER_HOST }}" ]; then
+            echo "❌ SERVER_HOST is empty"
+          else
+            echo "✅ SERVER_HOST exists"
+          fi
+
+      # 5️⃣ DNS test for FTP server
+      - name: Debug - Test DNS resolution
+        run: |
+          echo "Testing DNS resolution..."
+          nslookup ${{ secrets.BACKEND_FTP_HOST }} || true
+
+      # 6️⃣ Test FTP port connectivity
+      - name: Debug - Test FTP port
+        run: |
+          echo "Testing FTP port 21..."
+          nc -zv ${{ secrets.BACKEND_FTP_HOST }} 21 || true
+
+      # 7️⃣ FTP Deploy
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -29,7 +69,20 @@ jobs:
             *.zip
           dangerous-clean-slate: false
 
-      # 3️⃣ SSH - Install deps & restart Passenger
+      # 8️⃣ Test SSH connection
+      - name: Debug - Test SSH connection
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_SSH_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            echo "✅ SSH connection successful"
+            pwd
+            ls -la
+
+      # 9️⃣ SSH - Install deps & restart Passenger
       - name: Deploy Backend via SSH
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -39,12 +92,17 @@ jobs:
           port: 22
           script: |
             set -e
+
             echo "Activating Node.js environment..."
             source /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate
+
             echo "Navigating to project directory..."
             cd /home/sallyanh/api.sallyanhouse.com
+
             echo "Installing production dependencies..."
             npm install --omit=dev
+
             echo "Restarting Passenger application..."
             mkdir -p tmp && touch tmp/restart.txt
+
             echo "✅ Deployment completed successfully!"
