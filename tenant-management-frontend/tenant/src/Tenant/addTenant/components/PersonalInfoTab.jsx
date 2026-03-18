@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { TENANT_STATUS } from "../constants/tenant.constant";
 import { getAllBlocks } from "../utils/propertyHelper";
 
-export const PersonalInfoTab = ({ formik, property, onNext }) => {
+export const PersonalInfoTab = ({ formik, property, onNext, isNextDisabled = false }) => {
     const allBlocks = getAllBlocks(property);
 
     return (
@@ -107,7 +107,7 @@ export const PersonalInfoTab = ({ formik, property, onNext }) => {
                 </div>
 
                 <div className="flex justify-end mt-6">
-                    <Button type="button" onClick={onNext}>
+                    <Button type="button" onClick={onNext} disabled={isNextDisabled}>
                         Next
                     </Button>
                 </div>

@@ -19,26 +19,29 @@ export default function AppLayout({ children }) {
         <SidebarProvider>
           {isAdmin ? <AppSidebar /> : <StaffSidebar />}
 
-          <SidebarInset className="relative flex flex-col min-h-screen bg-background">
+          <SidebarInset className="relative flex flex-col min-h-screen bg-background overflow-x-hidden">
 
             {/* ── Top bar — sticky, minimal ── */}
             <header
-              className="sticky top-0 z-40 flex items-center gap-3 px-4 h-14 shrink-0
-                        border-b border-border bg-card/95
+              className="sticky top-0 z-40 flex items-center gap-3 px-4 min-h-14 shrink-0
+                        border-b border-border bg-card/95 overflow-hidden
                         backdrop-blur supports-[backdrop-filter]:bg-card/80"
             >
-              {/* Sidebar toggle */}
+              {/* Sidebar toggle — pinned to top so it stays aligned with sidebar logo row */}
               <SidebarTrigger
-                className="w-8 h-8 rounded-md flex items-center justify-center
+                className="w-8 h-8 rounded-md flex items-center justify-center self-start mt-3
                          border border-border bg-card
                          hover:bg-secondary text-accent
                          hover:text-primary transition-all shrink-0"
               />
 
-              {/* Thin brand accent divider */}
-              <div className="w-px h-5 mt-1.5 sm:mt-0 shrink-0 bg-secondary" />
+              {/* Vertical divider — full height so it always lines up with sidebar's right border */}
+              <div className="self-stretch w-px shrink-0 bg-border" />
 
-              <Header />
+              {/* Header fills remaining space; its toolbar scrolls internally */}
+              <div className="flex-1 min-w-0 overflow-hidden py-2.5">
+                <Header />
+              </div>
             </header>
 
             {/* ── Page content ── */}

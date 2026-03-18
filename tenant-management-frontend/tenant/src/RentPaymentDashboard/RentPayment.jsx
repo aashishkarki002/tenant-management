@@ -1,4 +1,9 @@
 // src/pages/rent/RentPayment.jsx
+//
+// Redesigned — Stripe / Linear aesthetic.
+// Pure Tailwind + shadcn throughout. No inline styles except:
+//   - Loading skeleton opacity ramp (runtime index computation)
+// Inline-style exceptions are annotated inline.
 import React, { useState, useMemo, useCallback } from "react";
 import { useRentData } from "./hooks/useRentData";
 import { usePaymentForm } from "./hooks/usePaymentForm";
@@ -11,24 +16,17 @@ import { RentFilter } from "./components/RentFilter";
 import { AdminRentAction } from "./components/AdminRentAction";
 import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDate";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
-import { Search, SlidersHorizontal, MoreVertical } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Search, SlidersHorizontal, MoreVertical, Receipt } from "lucide-react";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetFooter,
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
 } from "@/components/ui/sheet";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
-// ── Inline SVG icons ──────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────────
 const RefreshIcon = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className}
     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -36,7 +34,6 @@ const RefreshIcon = ({ className }) => (
       d="M4 4v5h.582M20 20v-5h-.582M4.582 9A8 8 0 0119.418 15M19.418 15A8 8 0 014.582 9" />
   </svg>
 );
-
 const MailIcon = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className}
     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -45,30 +42,105 @@ const MailIcon = ({ className }) => (
   </svg>
 );
 
-/**
- * SearchInput — plain <input> so we fully own every style token.
- * Using shadcn <Input> caused blue ring + white bg overrides from
- * --ring / --background CSS variables that Tailwind classes can't beat
- * without !important gymnastics.
- */
-const SearchInput = ({ placeholder, value, onChange }) => (
+// ── Minimal search input ───────────────────────────────────────────────────────
+// Plain <input> avoids shadcn white-bg / blue-ring overrides from --ring / --background.
+const SearchInput = ({ value, onChange, placeholder }) => (
   <div className="relative w-full">
-    <Search
-      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
-      style={{ color: "var(--color-text-sub)" }}
-    />
+    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
     <input
       type="text"
       placeholder={placeholder}
       value={value}
       onChange={onChange}
-      className="w-full h-8 sm:h-9 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors
-                 placeholder:text-text-sub focus:border-accent focus:ring-2 focus:ring-accent/30"
-      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-strong)" }}
+      className={cn(
+        "w-full h-8 pl-8 pr-3 text-xs rounded-lg border outline-none",
+        "bg-card border-border text-foreground placeholder:text-muted-foreground",
+        "transition-colors focus:border-primary/50 focus:ring-2 focus:ring-primary/20",
+      )}
     />
   </div>
 );
 
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+const LoadingSkeleton = () => (
+  <div className="space-y-4 animate-pulse">
+    <div className="h-[88px] rounded-xl bg-card border border-border" />
+    <div className="h-24 rounded-xl bg-card border border-border" />
+    <div className="space-y-2">
+      {/* ONLY inline style: runtime opacity ramp on skeleton rows */}
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-14 rounded-lg bg-card border border-border"
+          style={{ opacity: 1 - i * 0.13 }}
+        />
+      ))}
+    </div>
+  </div>
+);
+
+// ── Overdue nudge banner ──────────────────────────────────────────────────────
+const OverdueBanner = ({ count, monthName, year, onShowOverdue }) => (
+  <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-2.5">
+    <div className="flex items-center gap-2.5 min-w-0">
+      <span className="h-2 w-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-pulse" />
+      <p className="text-xs font-semibold text-[var(--color-danger)] whitespace-nowrap">
+        {count} overdue rent{count !== 1 ? "s" : ""} need attention
+      </p>
+      <span className="hidden sm:inline text-xs text-[var(--color-danger)] opacity-60">
+        · {monthName} {year}
+      </span>
+    </div>
+    <button
+      type="button"
+      onClick={onShowOverdue}
+      className="shrink-0 rounded-md border border-[var(--color-danger-border)] bg-card px-2.5 py-1 text-xs font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] transition-colors"
+    >
+      Show overdue
+    </button>
+  </div>
+);
+
+// ── Section header with record count ─────────────────────────────────────────
+const SectionHeader = ({ count, label = "record", loading }) => (
+  <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-border">
+    <span className="text-[11px] font-semibold uppercase tracking-[0.07em] text-muted-foreground tabular-nums">
+      {loading ? "Loading…" : `${count} ${label}${count !== 1 ? "s" : ""}`}
+    </span>
+  </div>
+);
+
+// ── Payments KPI strip (inline, lightweight) ──────────────────────────────────
+const PaymentsKpiStrip = ({ payments }) => {
+  if (!payments.length) return null;
+  const total = payments.reduce((s, p) => s + (p.amount || 0), 0);
+  const fmt = (n) => `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+  const kpis = [
+    { label: "Total Collected", value: fmt(total), valueClass: "text-emerald-600" },
+    { label: "Payments", value: payments.length, valueClass: "text-foreground" },
+    { label: "Avg. Payment", value: fmt(total / payments.length), valueClass: "text-foreground" },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {kpis.map(({ label, value, valueClass }) => (
+        <div key={label} className="rounded-xl border border-border bg-card px-4 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground mb-1.5">
+            {label}
+          </p>
+          <p className={cn("text-xl font-bold tracking-tight tabular-nums", valueClass)}>
+            {value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Main page component
+// ═════════════════════════════════════════════════════════════════════════════
 const RentPayment = () => {
   const {
     rents, payments, bankAccounts, cams, properties,
@@ -81,28 +153,27 @@ const RentPayment = () => {
     getRents, getPayments, fetchRentSummary, getCams,
   } = useRentData();
 
-  // Tab state lives here — no longer driven by shadcn Tabs
   const [activeTab, setActiveTab] = useState("rent");
   const [datePickerResetKey, setDatePickerResetKey] = useState(0);
   const [frequencyView, setFrequencyView] = useState("monthly");
   const [searchQuery, setSearchQuery] = useState("");
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
+  // ── Derived rents ──────────────────────────────────────────────────────────
   const frequencyFilteredRents = useMemo(
     () => rents.filter((r) => (r.rentFrequency || "monthly") === frequencyView),
     [rents, frequencyView],
   );
 
-  // Search filtering
-  const searchFilteredRents = useMemo(() => {
+  const displayRents = useMemo(() => {
     if (!searchQuery.trim()) return frequencyFilteredRents;
-    const query = searchQuery.toLowerCase();
-    return frequencyFilteredRents.filter((rent) => {
-      const tenantName = rent.tenantId?.name?.toLowerCase() || "";
-      const propertyName = rent.propertyId?.name?.toLowerCase() || "";
-      const unitNumber = rent.unitId?.unitNumber?.toLowerCase() || "";
-      return tenantName.includes(query) || propertyName.includes(query) || unitNumber.includes(query);
-    });
+    const q = searchQuery.toLowerCase();
+    return frequencyFilteredRents.filter(
+      (r) =>
+        r.tenant?.name?.toLowerCase().includes(q) ||
+        r.block?.name?.toLowerCase().includes(q) ||
+        r.units?.some((u) => u.name?.toLowerCase().includes(q)),
+    );
   }, [frequencyFilteredRents, searchQuery]);
 
   const overdueCount = useMemo(
@@ -110,29 +181,20 @@ const RentPayment = () => {
     [rents],
   );
 
-  // Count active filters
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (filterStatus !== "all") count++;
-    if (filterPropertyId) count++;
-    if (defaultRentMonth != null && filterRentMonth !== defaultRentMonth) count++;
-    if (defaultRentYear != null && filterRentYear !== defaultRentYear) count++;
-    return count;
-  }, [filterStatus, filterPropertyId, filterRentMonth, filterRentYear, defaultRentMonth, defaultRentYear]);
-
+  // ── KPIs scoped to frequency view ─────────────────────────────────────────
   const { frequencyTotalDue, frequencyTotalCollected } = useMemo(() => {
     return frequencyFilteredRents.reduce(
       (acc, rent) => {
         const { totalDue } = getPaymentAmounts(rent, cams);
-        const status = rent.status?.toLowerCase();
-        let collected = 0;
-        if (status === "paid") {
-          collected = totalDue;
-        } else if (status === "partially_paid" || status === "partial") {
-          collected = rent.paidAmountPaisa != null
-            ? rent.paidAmountPaisa / 100
-            : (rent.paidAmount ?? 0);
-        }
+        const s = rent.status?.toLowerCase();
+        const collected =
+          s === "paid"
+            ? totalDue
+            : s === "partially_paid" || s === "partial"
+              ? rent.paidAmountPaisa != null
+                ? rent.paidAmountPaisa / 100
+                : (rent.paidAmount ?? 0)
+              : 0;
         return {
           frequencyTotalDue: acc.frequencyTotalDue + totalDue,
           frequencyTotalCollected: acc.frequencyTotalCollected + collected,
@@ -142,19 +204,33 @@ const RentPayment = () => {
     );
   }, [frequencyFilteredRents, cams]);
 
+  // ── Active filter count (drives mobile badge) ──────────────────────────────
+  const activeFilterCount = useMemo(() => {
+    let c = 0;
+    if (filterStatus !== "all") c++;
+    if (filterPropertyId) c++;
+    if (defaultRentMonth != null && filterRentMonth !== defaultRentMonth) c++;
+    if (defaultRentYear != null && filterRentYear !== defaultRentYear) c++;
+    return c;
+  }, [filterStatus, filterPropertyId, filterRentMonth, filterRentYear, defaultRentMonth, defaultRentYear]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handlePaymentSuccess = useCallback(async () => {
     await Promise.all([getRents(), getPayments(), fetchRentSummary(), getCams()]);
   }, [getRents, getPayments, fetchRentSummary, getCams]);
 
   const paymentForm = usePaymentForm({ rents, cams, onSuccess: handlePaymentSuccess });
 
-  const handleSubmit = (e) => { e.preventDefault(); paymentForm.formik.handleSubmit(); };
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    paymentForm.formik.handleSubmit();
+  };
 
   const handleClearPaymentFilters = () => {
     setFilterStartDate("");
     setFilterEndDate("");
     setFilterPaymentMethod("all");
-    setDatePickerResetKey((prev) => prev + 1);
+    setDatePickerResetKey((k) => k + 1);
   };
 
   const handleClearRentFilters = () => {
@@ -164,219 +240,153 @@ const RentPayment = () => {
     setFilterPropertyId("");
   };
 
-  const currentMonthName = filterRentMonth != null ? NEPALI_MONTH_NAMES[filterRentMonth - 1] : "";
+  const currentMonthName =
+    filterRentMonth != null ? NEPALI_MONTH_NAMES[filterRentMonth - 1] : "";
 
-  // Handle admin actions
-  const { processMonthlyRents, sendRentReminders, processingRents, sendingEmails } = {
-    processMonthlyRents: () => console.log("Process rents"),
-    sendRentReminders: () => console.log("Send reminders"),
-    processingRents: false,
-    sendingEmails: false,
-  };
-
-  // ── Header slot ───────────────────────────────────────────────────────────
-  // Mobile-first responsive layout with filter drawer pattern
+  // ── Header slot ────────────────────────────────────────────────────────────
   useHeaderSlot(
     () => (
-      <div className="flex flex-col gap-y-2 w-full">
+      <div className="flex items-center gap-2 w-full min-w-0">
 
-        {/* ── Row 1: Tabs + Actions ── */}
-        <div className="flex items-center justify-between gap-x-2 w-full">
-
-          {/* Left: Brand + Tabs (Desktop) / Tabs only (Mobile) */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-
-            {/* Brand — desktop only */}
-            <div className="hidden sm:flex items-center gap-2 shrink-0">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-              <span className="text-sm font-semibold whitespace-nowrap text-text-strong">
-                Rent Management
-              </span>
-            </div>
-
-            {/* Divider — desktop only */}
-            <div className="hidden sm:block h-4 w-px shrink-0 border-border" />
-
-            {/* Tab nav */}
-            <nav className="flex items-center gap-0.5 shrink-0">
-              {[
-                { id: "rent", label: "Rent" },
-                { id: "payments", label: "Payments" },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setActiveTab(t.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold
-                             whitespace-nowrap transition-colors"
-                  style={
-                    activeTab === t.id
-                      ? { background: "var(--color-surface)", color: "var(--color-text-strong)" }
-                      : { color: "var(--color-text-sub)" }
-                  }
-                  onMouseEnter={(e) => {
-                    if (activeTab !== t.id) {
-                      e.currentTarget.style.background = "var(--color-surface)";
-                      e.currentTarget.style.color = "var(--color-text-strong)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeTab !== t.id) {
-                      e.currentTarget.style.background = "";
-                      e.currentTarget.style.color = "var(--color-text-sub)";
-                    }
-                  }}
-                >
-                  {t.label}
-                  {t.id === "rent" && overdueCount > 0 && (
-                    <span
-                      className="inline-flex items-center justify-center h-4 min-w-[16px] px-1
-                                 rounded-full text-white text-[9px] font-bold leading-none"
-                      style={{ background: "var(--color-danger)" }}
-                    >
-                      {overdueCount}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>
-
-            {/* Desktop: Search (inline after tabs) */}
-            <div className="hidden sm:block flex-1 min-w-0 max-w-[280px] ml-3">
-              <SearchInput
-                placeholder="Search tenants, properties…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Right: Filter + Menu (Mobile) / Admin Actions (Desktop) */}
-          <div className="flex items-center gap-2 shrink-0">
-
-            {/* Mobile: Filters button (only on rent tab) */}
-            {activeTab === "rent" && (
-              <button
-                type="button"
-                onClick={() => setIsFilterDrawerOpen(true)}
-                className="sm:hidden flex items-center gap-1.5 h-9 px-3 rounded-lg border 
-                           text-xs font-semibold transition-colors"
-                style={{
-                  background: activeFilterCount > 0 ? "var(--color-text-strong)" : "var(--color-surface)",
-                  borderColor: activeFilterCount > 0 ? "var(--color-text-strong)" : "var(--color-border)",
-                  color: activeFilterCount > 0 ? "var(--color-accent-light)" : "var(--color-text-sub)"
-                }}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                <span className="hidden xs:inline">Filters</span>
-                {activeFilterCount > 0 && (
-                  <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1
-                                    rounded-full text-text-strong text-[9px] font-bold leading-none"
-                    style={{ background: "var(--color-accent-light)" }}>
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
-            )}
-
-            {/* Mobile: Menu dropdown for admin actions */}
-            <div className="sm:hidden">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center justify-center h-9 w-9 rounded-lg border 
-                               transition-colors"
-
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem
-                    onClick={() => getRents()}
-                    disabled={processingRents}
-                    className="flex items-center gap-2"
-                  >
-                    <RefreshIcon className="h-4 w-4" />
-                    <span>Process Monthly Rents</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => getRents()}
-                    disabled={sendingEmails}
-                    className="flex items-center gap-2"
-                  >
-                    <MailIcon className="h-4 w-4" />
-                    <span>Send Rent Reminders</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            {/* Desktop: Admin action buttons */}
-            <div className="hidden sm:flex items-center gap-2">
-              <AdminRentAction onProcessSuccess={getRents} />
-            </div>
-          </div>
+        {/* Brand — desktop only */}
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+          <span className="text-sm font-semibold text-foreground whitespace-nowrap">
+            Rent Management
+          </span>
         </div>
+        <div className="hidden sm:block h-4 w-px bg-border shrink-0" />
 
-        {/* ── Row 2: Mobile search (full-width) ── */}
-        < div className="sm:hidden w-full" >
+        {/* Tab nav */}
+        <nav className="flex items-center gap-0.5 shrink-0">
+          {[
+            { id: "rent", label: "Rent" },
+            { id: "payments", label: "Payments" },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={cn(
+                "relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors",
+                activeTab === t.id
+                  ? "bg-card text-foreground shadow-sm border border-border"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card/60",
+              )}
+            >
+              {t.label}
+              {t.id === "rent" && overdueCount > 0 && (
+                <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-[var(--color-danger)] text-white text-[9px] font-bold leading-none">
+                  {overdueCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {/* Search — desktop */}
+        <div className="hidden sm:block flex-1 min-w-0 max-w-[280px] ml-2">
           <SearchInput
-            placeholder="Search tenants, properties, units…"
+            placeholder="Search tenants, properties…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-        </div >
+        </div>
 
-      </div >
+        {/* Spacer */}
+        <div className="flex-1 min-w-0 sm:hidden" />
+
+        {/* Right: mobile filter + kebab + desktop admin */}
+        <div className="flex items-center gap-2 shrink-0">
+
+          {/* Mobile filter button (rent tab only) */}
+          {activeTab === "rent" && (
+            <button
+              type="button"
+              onClick={() => setIsFilterDrawerOpen(true)}
+              className={cn(
+                "sm:hidden flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs font-semibold transition-colors",
+                activeFilterCount > 0
+                  ? "bg-primary border-primary text-primary-foreground"
+                  : "bg-card border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {activeFilterCount > 0 && (
+                <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-primary-foreground text-primary text-[9px] font-bold leading-none">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Mobile kebab */}
+          <div className="sm:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={getRents} className="flex items-center gap-2 text-xs">
+                  <RefreshIcon className="h-3.5 w-3.5" />
+                  Process Monthly Rents
+                </DropdownMenuItem>
+                <DropdownMenuItem className="flex items-center gap-2 text-xs">
+                  <MailIcon className="h-3.5 w-3.5" />
+                  Send Rent Reminders
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Desktop admin actions */}
+          <div className="hidden sm:flex">
+            <AdminRentAction onProcessSuccess={getRents} />
+          </div>
+        </div>
+      </div>
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeTab, overdueCount, searchQuery, activeFilterCount, getRents, processingRents, sendingEmails],
+    [activeTab, overdueCount, searchQuery, activeFilterCount, getRents],
   );
 
-  // ── Loading skeleton ──────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="animate-pulse space-y-4">
-        <div className="h-9 bg-surface rounded-xl w-full" />
-        <div className="h-24 bg-surface rounded-xl w-full" />
-        <div className="h-64 bg-surface rounded-xl w-full" />
-      </div>
-    );
-  }
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (loading) return <LoadingSkeleton />;
 
+  // ═══════════════════════════════════════════════════════════════════════════
   return (
     <form onSubmit={handleSubmit}>
 
-      {/* ══ RENT TAB ═════════════════════════════════════════════════════════ */}
+      {/* ── Mobile search — sticky sub-bar below the header ── */}
+      <div className="sm:hidden sticky top-14 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur border-b border-border mb-3">
+        <SearchInput
+          placeholder="Search tenants, properties, units…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
+      {/* ══ RENT TAB ═══════════════════════════════════════════════════════════ */}
       {activeTab === "rent" && (
         <div className="space-y-4">
 
-          {/* Overdue nudge banner */}
+          {/* Overdue nudge */}
           {overdueCount > 0 && filterStatus !== "overdue" && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-danger-border bg-danger-bg px-4 py-2.5">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="h-2 w-2 rounded-full bg-danger shrink-0 animate-pulse" />
-                <p className="text-xs font-semibold text-danger whitespace-nowrap">
-                  {overdueCount} overdue rent{overdueCount !== 1 ? "s" : ""} need attention
-                </p>
-                <span className="hidden sm:inline text-xs text-danger-sub">
-                  · {currentMonthName} {filterRentYear}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFilterStatus("overdue")}
-                className="shrink-0 rounded-md border border-danger-border bg-surface px-2.5 py-1 text-xs font-semibold text-danger hover:bg-danger-light transition-colors"
-              >
-                Show overdue
-              </button>
-            </div>
+            <OverdueBanner
+              count={overdueCount}
+              monthName={currentMonthName}
+              year={filterRentYear}
+              onShowOverdue={() => setFilterStatus("overdue")}
+            />
           )}
 
-          {/* Filters — scopes the KPIs below — Desktop only */}
-          <div className="hidden sm:block rounded-xl border border-border bg-surface px-4 sm:px-5 py-3.5">
+          {/* Filter bar — desktop */}
+          <div className="hidden sm:block rounded-xl border border-border bg-card px-5 py-4">
             <RentFilter
               month={filterRentMonth}
               year={filterRentYear}
@@ -395,7 +405,7 @@ const RentPayment = () => {
             />
           </div>
 
-          {/* KPI strip — answers the scoped question */}
+          {/* KPI strip — scoped to selected period + frequency */}
           <RentSummaryCard
             totalCollected={frequencyTotalCollected}
             totalDue={frequencyTotalDue}
@@ -404,16 +414,12 @@ const RentPayment = () => {
             currentYear={filterRentYear}
           />
 
-          {/* Rent table */}
-          <div className="rounded-xl border border-border bg-surface overflow-hidden">
-            <div className="flex items-center px-4 sm:px-5 py-3 border-b border-border">
-              <span className="text-[11px] font-semibold text-text-sub uppercase tracking-wide tabular-nums">
-                {searchFilteredRents.length} record{searchFilteredRents.length !== 1 ? "s" : ""}
-              </span>
-            </div>
+          {/* Rent table card */}
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <SectionHeader count={displayRents.length} loading={false} />
             <div className="px-4 sm:px-5 pt-2 pb-4">
               <RentTable
-                rents={searchFilteredRents}
+                rents={displayRents}
                 cams={cams}
                 bankAccounts={bankAccounts}
                 formik={paymentForm.formik}
@@ -432,92 +438,82 @@ const RentPayment = () => {
               />
             </div>
           </div>
+
         </div>
       )}
 
-      {/* ══ PAYMENTS TAB ═════════════════════════════════════════════════════ */}
+      {/* ══ PAYMENTS TAB ═══════════════════════════════════════════════════════ */}
       {activeTab === "payments" && (
         <div className="space-y-4">
+
+          {/* Page heading */}
           <div>
-            <h2 className="text-base font-semibold text-text-strong">Payment History</h2>
-            <p className="text-xs text-text-sub mt-0.5">
+            <h2 className="text-base font-semibold text-foreground">Payment History</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
               All recorded payments across tenants and billing periods
             </p>
           </div>
 
-          {/* KPI summary strip */}
-          {!paymentsLoading && payments.length > 0 && (() => {
-            const totalCollected = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-            return (
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: "Total Collected", value: `₹${totalCollected.toLocaleString()}` },
-                  { label: "Payments Count", value: payments.length },
-                  { label: "Records Shown", value: payments.length },
-                ].map((kpi) => (
-                  <div
-                    key={kpi.label}
-                    className="rounded-xl border border-border bg-surface px-4 py-3"
-                  >
-                    <p className="text-[11px] font-semibold text-text-sub uppercase tracking-wide">{kpi.label}</p>
-                    <p className="text-lg font-bold text-text-strong mt-0.5">{kpi.value}</p>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+          {/* KPI strip */}
+          {!paymentsLoading && <PaymentsKpiStrip payments={payments} />}
 
-          <div className="rounded-xl border border-border bg-surface px-4 sm:px-5 py-4">
-            <PaymentFilters
-              filterStartDate={filterStartDate}
-              filterEndDate={filterEndDate}
-              filterPaymentMethod={filterPaymentMethod}
-              setFilterStartDate={setFilterStartDate}
-              setFilterEndDate={setFilterEndDate}
-              setFilterPaymentMethod={setFilterPaymentMethod}
-              datePickerResetKey={datePickerResetKey}
-              onReset={handleClearPaymentFilters}
-            />
+          {/* Filter + table card */}
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="px-4 sm:px-5 pt-4 pb-2 border-b border-border">
+              <PaymentFilters
+                filterStartDate={filterStartDate}
+                filterEndDate={filterEndDate}
+                filterPaymentMethod={filterPaymentMethod}
+                setFilterStartDate={setFilterStartDate}
+                setFilterEndDate={setFilterEndDate}
+                setFilterPaymentMethod={setFilterPaymentMethod}
+                datePickerResetKey={datePickerResetKey}
+                onReset={handleClearPaymentFilters}
+              />
+            </div>
+
             {paymentsLoading ? (
-              <div className="space-y-3 pt-2">
-                {[...Array(5)].map((_, i) => (
+              <div className="px-4 sm:px-5 pt-4 pb-5 space-y-2 animate-pulse">
+                {Array.from({ length: 5 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-12 bg-surface rounded-lg animate-pulse"
+                    className="h-12 rounded-lg bg-border"
                     style={{ opacity: 1 - i * 0.15 }}
                   />
                 ))}
               </div>
             ) : (
-              <PaymentsTable payments={payments} />
+              <div className="px-4 sm:px-5 pt-2 pb-4">
+                <SectionHeader count={payments.length} label="payment" />
+                <PaymentsTable payments={payments} />
+              </div>
             )}
           </div>
+
         </div>
       )}
 
-      {/* ══ MOBILE FILTER DRAWER ═════════════════════════════════════════════ */}
+      {/* ══ MOBILE FILTER DRAWER ═══════════════════════════════════════════════ */}
       <Sheet open={isFilterDrawerOpen} onOpenChange={setIsFilterDrawerOpen}>
-        <SheetContent side="bottom" className="h-[85vh] p-0">
+        <SheetContent side="bottom" className="h-[85vh] p-0 rounded-t-2xl">
           <div className="flex flex-col h-full">
 
-            {/* Header */}
             <SheetHeader className="px-5 pt-5 pb-4 border-b border-border">
               <div className="flex items-center justify-between">
                 <div>
-                  <SheetTitle className="text-lg font-semibold text-text-strong">
+                  <SheetTitle className="text-base font-semibold text-foreground">
                     Filters
                   </SheetTitle>
                   {activeFilterCount > 0 && (
-                    <p className="text-xs mt-1 text-text-sub">
-                      {activeFilterCount} filter{activeFilterCount !== 1 ? "s" : ""} applied
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {activeFilterCount} filter{activeFilterCount !== 1 ? "s" : ""} active
                     </p>
                   )}
                 </div>
               </div>
             </SheetHeader>
 
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="flex-1 overflow-y-auto px-5 py-5">
               <RentFilter
                 month={filterRentMonth}
                 year={filterRentYear}
@@ -536,7 +532,6 @@ const RentPayment = () => {
               />
             </div>
 
-            {/* Footer with actions */}
             <SheetFooter className="px-5 py-4 border-t border-border flex-row gap-3">
               <Button
                 type="button"
@@ -544,7 +539,6 @@ const RentPayment = () => {
                 onClick={handleClearRentFilters}
                 disabled={!activeFilterCount}
                 className="flex-1 h-11 text-sm font-semibold"
-
               >
                 Clear All
               </Button>
@@ -552,7 +546,6 @@ const RentPayment = () => {
                 type="button"
                 onClick={() => setIsFilterDrawerOpen(false)}
                 className="flex-1 h-11 text-sm font-semibold"
-
               >
                 Apply Filters
               </Button>
@@ -560,8 +553,9 @@ const RentPayment = () => {
 
           </div>
         </SheetContent>
-      </Sheet >
-    </form >
+      </Sheet>
+
+    </form>
   );
 };
 

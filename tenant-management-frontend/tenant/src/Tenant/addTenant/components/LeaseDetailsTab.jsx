@@ -50,6 +50,7 @@ export const LeaseDetailsTab = ({
     property,
     onNext,
     onPrevious,
+    isNextDisabled = false,
 }) => {
     // Only vacant units are valid for a new lease.
     // Block filter is applied once the user selects a block in PersonalInfoTab.
@@ -267,7 +268,7 @@ export const LeaseDetailsTab = ({
                     <Button type="button" variant="outline" onClick={onPrevious}>
                         Previous
                     </Button>
-                    <Button type="button" onClick={onNext}>
+                    <Button type="button" onClick={onNext} disabled={isNextDisabled}>
                         Next
                     </Button>
                 </div>

@@ -21,6 +21,15 @@ import api from "../../../plugins/axios";
 import { Loader2 } from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
 
+function getOwnershipLabel(entity) {
+  if (!entity || typeof entity !== "object") return null;
+  if (entity.name) return entity.name;
+  if (entity.type === "head_office") return "HQ";
+  if (entity.type === "company") return "Company";
+  if (entity.type === "private") return "Private";
+  return null;
+}
+
 const getInitialValues = () => ({
   payerType: "tenant",
   tenantId: "",
@@ -293,7 +302,14 @@ export function AddRevenueDialog({
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          <p className="font-semibold text-foreground">{bank.bankName}</p>
+                          <div className="flex items-center gap-2">
+                            {getOwnershipLabel(bank.entityId) && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-border bg-muted/40 text-muted-foreground">
+                                {getOwnershipLabel(bank.entityId)}
+                              </span>
+                            )}
+                            <p className="font-semibold text-foreground">{bank.bankName}</p>
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             **** **** {bank.accountNumber?.slice(-4) || "****"}
                           </p>

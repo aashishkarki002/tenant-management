@@ -1,5 +1,10 @@
 // src/pages/rent/components/RentFilter.jsx
+//
+// Linear-style compact control bar.
+// Pure Tailwind + shadcn — zero inline styles.
+// Uses cn() for conditional class composition.
 import React from "react";
+import { cn } from "@/lib/utils";
 import {
     Select,
     SelectContent,
@@ -11,9 +16,33 @@ import {
     NEPALI_MONTH_NAMES,
     getNepaliYearOptions,
 } from "../../../utils/nepaliDate";
-import { Toggle } from "@/components/ui/toggle";
 
+// ── Status chip definitions ───────────────────────────────────────────────────
+const STATUS_CHIPS = [
+    { value: "all", label: "All" },
+    { value: "pending", label: "Pending" },
+    { value: "overdue", label: "Overdue", variant: "danger" },
+    { value: "partially_paid", label: "Partial" },
+    { value: "paid", label: "Paid", variant: "success" },
+];
 
+// ── Reusable compact Select ───────────────────────────────────────────────────
+const CompactSelect = ({ value, onValueChange, placeholder, className, children }) => (
+    <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger
+            className={cn(
+                "h-8 text-xs border-border bg-card text-foreground",
+                "focus:ring-2 focus:ring-primary/20 focus:border-primary/40",
+                className,
+            )}
+        >
+            <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>{children}</SelectContent>
+    </Select>
+);
+
+// ── Main export ───────────────────────────────────────────────────────────────
 export const RentFilter = ({
     month,
     year,
@@ -30,15 +59,9 @@ export const RentFilter = ({
     frequencyView = "monthly",
     onFrequencyChange,
 }) => {
-    const monthOptions = NEPALI_MONTH_NAMES.map((name, i) => ({
-        value: i + 1,
-        label: name,
-    }));
-
+    const monthOptions = NEPALI_MONTH_NAMES.map((name, i) => ({ value: i + 1, label: name }));
     const yearOptions = getNepaliYearOptions(2078).reverse();
 
-    // ── Correct active-filter detection ─────────────────────────────────────
-    // A filter is "active" if it differs from the default/neutral state.
     const hasActiveFilters =
         status !== "all" ||
         propertyId !== "" ||
@@ -48,283 +71,161 @@ export const RentFilter = ({
 
     const currentMonthName = month != null ? NEPALI_MONTH_NAMES[month - 1] : "—";
 
-    const statusChips = [
-        { value: "all", label: "All" },
-        { value: "pending", label: "Pending" },
-        { value: "overdue", label: "Overdue", danger: true },
-        { value: "partially_paid", label: "Partial" },
-        { value: "paid", label: "Paid" },
-    ];
-
-    const activeStatusChip = statusChips.find((c) => c.value === status);
-
-    // ── Shared Select trigger style — petrol palette, no shadcn white clash ─
-    const triggerCls =
-        "h-8 text-xs border-[var(--color-border)] bg-[var(--color-surface)] " +
-        "text-[var(--color-text-strong)] focus:ring-[var(--color-accent)]/20 " +
-        "focus:border-[var(--color-accent-mid)]";
-
     return (
         <div className="space-y-2.5">
 
-            {/* ── Row 1: period badge + active filter chips + reset ──────────── */}
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 flex-wrap min-w-0">
+            {/* ── Row 1: Frequency · Selects · Period badge · Reset ─────────────── */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
 
-                    {/* Period badge — petrol accent palette */}
-                    <div
-                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
-                                   text-[11px] font-semibold tracking-wide shrink-0"
-                        style={{
-                            background: "var(--color-accent-light)",
-                            color: "var(--color-accent)",
-                            border: "1px solid var(--color-accent-mid)",
-                        }}
-                    >
-                        <span style={{ opacity: 0.55 }}>Period</span>
-                        <span>{currentMonthName} {year}</span>
-                    </div>
-
-                    {/* Frequency chip — shown when quarterly is active */}
-                    {frequencyView === "quarterly" && (
-                        <span
-                            className="hidden sm:inline-flex items-center gap-1 rounded-md border
-                                       px-2 py-0.5 text-[11px] font-semibold"
-                            style={{
-                                background: "var(--color-accent-light)",
-                                borderColor: "var(--color-accent-mid)",
-                                color: "var(--color-accent)",
-                            }}
+                {/* Frequency segmented control */}
+                <div className="inline-flex items-center rounded-md border border-border bg-background p-0.5 gap-0.5 shrink-0">
+                    {["monthly", "quarterly"].map((freq) => (
+                        <button
+                            key={freq}
+                            type="button"
+                            onClick={() => onFrequencyChange?.(freq)}
+                            className={cn(
+                                "px-3 h-7 text-xs font-semibold capitalize rounded-sm transition-all duration-150 select-none",
+                                frequencyView === freq
+                                    ? "bg-card text-foreground shadow-sm border border-border"
+                                    : "text-muted-foreground hover:text-foreground",
+                            )}
                         >
-                            Quarterly
-                            <button
-                                type="button"
-                                onClick={() => onFrequencyChange?.("monthly")}
-                                className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
-                                aria-label="Switch back to monthly"
-                            >×</button>
-                        </span>
-                    )}
-
-                    {/* Active status chip — desktop only */}
-                    {status !== "all" && activeStatusChip && (
-                        <span
-                            className="hidden sm:inline-flex items-center gap-1 rounded-md border
-                                       px-2 py-0.5 text-[11px] font-semibold"
-                            style={
-                                activeStatusChip.danger
-                                    ? {
-                                        background: "var(--color-danger-bg)",
-                                        borderColor: "var(--color-danger-border)",
-                                        color: "var(--color-danger)",
-                                    }
-                                    : {
-                                        background: "var(--color-surface)",
-                                        borderColor: "var(--color-border)",
-                                        color: "var(--color-text-strong)",
-                                    }
-                            }
-                        >
-                            {activeStatusChip.label}
-                            <button
-                                type="button"
-                                onClick={() => onStatusChange?.("all")}
-                                className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
-                                aria-label="Remove status filter"
-                            >×</button>
-                        </span>
-                    )}
-
-                    {/* Active property chip — desktop only */}
-                    {propertyId && (
-                        <span
-                            className="hidden sm:inline-flex items-center gap-1 rounded-md border
-                                       px-2 py-0.5 text-[11px] font-semibold"
-                            style={{
-                                background: "var(--color-surface)",
-                                borderColor: "var(--color-border)",
-                                color: "var(--color-text-strong)",
-                            }}
-                        >
-                            {properties.find((p) => p._id === propertyId)?.name ?? "Property"}
-                            <button
-                                type="button"
-                                onClick={() => onPropertyChange?.("")}
-                                className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
-                                aria-label="Remove property filter"
-                            >×</button>
-                        </span>
-                    )}
+                            {freq}
+                        </button>
+                    ))}
                 </div>
 
-                {/* Reset — only enabled when filters differ from default */}
+                {/* Divider — desktop */}
+                <div className="hidden sm:block h-4 w-px bg-border shrink-0" />
+
+                {/* Month */}
+                <CompactSelect
+                    className="w-[118px]"
+                    value={month != null ? String(month) : undefined}
+                    onValueChange={(v) => onMonthChange?.(Number(v))}
+                    placeholder="Month"
+                >
+                    {monthOptions.map((m) => (
+                        <SelectItem key={m.value} value={String(m.value)} className="text-xs">
+                            {m.label}
+                        </SelectItem>
+                    ))}
+                </CompactSelect>
+
+                {/* Year */}
+                <CompactSelect
+                    className="w-[82px]"
+                    value={year != null ? String(year) : undefined}
+                    onValueChange={(v) => onYearChange?.(Number(v))}
+                    placeholder="Year"
+                >
+                    {yearOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={String(opt.value)} className="text-xs">
+                            {opt.label}
+                        </SelectItem>
+                    ))}
+                </CompactSelect>
+
+                {/* Property — desktop inline */}
+                {properties.length > 0 && (
+                    <div className="hidden sm:block">
+                        <CompactSelect
+                            className="w-[160px]"
+                            value={propertyId || "all"}
+                            onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
+                            placeholder="All Properties"
+                        >
+                            <SelectItem value="all" className="text-xs">All Properties</SelectItem>
+                            {properties.map((p) => (
+                                <SelectItem key={p._id} value={p._id} className="text-xs">
+                                    {p.name}
+                                </SelectItem>
+                            ))}
+                        </CompactSelect>
+                    </div>
+                )}
+
+                {/* Push right */}
+                <div className="flex-1 min-w-0 hidden sm:block" />
+
+                {/* Period badge */}
+                <span className="hidden sm:inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--color-accent-mid)] bg-[var(--color-accent-light)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-accent)]">
+                    <span className="opacity-60 font-medium">Period</span>
+                    <span>{currentMonthName} {year}</span>
+                </span>
+
+                {/* Reset */}
                 <button
                     type="button"
                     onClick={onReset}
                     disabled={!hasActiveFilters}
-                    className="shrink-0 text-[11px] font-semibold transition-colors whitespace-nowrap
-                               disabled:opacity-30 disabled:cursor-not-allowed"
-                    style={{ color: "var(--color-text-sub)" }}
+                    className="shrink-0 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
                 >
-                    Reset to current period
+                    Reset
                 </button>
             </div>
 
-            {/* ── Row 2: Frequency toggle + Month + Year + Property (desktop) ── */}
-            <div className="flex items-center gap-2">
-
-                {/* Frequency toggle — drives frequencyView prop, no local state */}
-                <div className="shrink-0">
-                    <div
-                        className="inline-flex items-center rounded-md p-0.5 gap-0.5"
-                        style={{
-                            border: "1px solid var(--color-border)",
-                            background: "color-mix(in srgb, var(--color-surface) 40%, transparent)",
-                        }}
+            {/* ── Property — mobile full-width ──────────────────────────────────── */}
+            {properties.length > 0 && (
+                <div className="sm:hidden">
+                    <CompactSelect
+                        className="w-full"
+                        value={propertyId || "all"}
+                        onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
+                        placeholder="All Properties"
                     >
-                        {["monthly", "quarterly"].map((freq) => (
-                            <Toggle
-                                key={freq}
-                                size="sm"
-                                pressed={frequencyView === freq}
-                                onPressedChange={(pressed) => {
-                                    // Only fire when toggling ON to avoid double-fire
-                                    if (pressed) onFrequencyChange?.(freq);
-                                }}
-                                className="
-                                    px-3 py-1 text-[11px] font-semibold capitalize rounded-sm
-                                    transition-all duration-150
-
-                                    text-[var(--color-text-sub)]
-                                    hover:bg-[var(--color-surface)]
-                                    hover:text-[var(--color-text-strong)]
-
-                                    data-[state=on]:bg-[var(--color-surface)]
-                                    data-[state=on]:text-[var(--color-text-strong)]
-                                    data-[state=on]:shadow-sm
-                                "
-                            >
-                                {freq}
-                            </Toggle>
+                        <SelectItem value="all" className="text-xs">All Properties</SelectItem>
+                        {properties.map((p) => (
+                            <SelectItem key={p._id} value={p._id} className="text-xs">
+                                {p.name}
+                            </SelectItem>
                         ))}
-                    </div>
+                    </CompactSelect>
                 </div>
+            )}
 
-                {/* Vertical divider — desktop only */}
-                <div
-                    className="hidden sm:block h-5 w-px shrink-0"
-                    style={{ background: "var(--color-border)" }}
-                />
-
-                {/* Month select */}
-                <Select
-                    value={month != null ? String(month) : undefined}
-                    onValueChange={(v) => onMonthChange?.(Number(v))}
-                >
-                    <SelectTrigger className={`${triggerCls} w-[116px]`}>
-                        <SelectValue placeholder="Month" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {monthOptions.map((m) => (
-                            <SelectItem key={m.value} value={String(m.value)}>
-                                {m.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
-                {/* Year select */}
-                <Select
-                    value={year != null ? String(year) : undefined}
-                    onValueChange={(v) => onYearChange?.(Number(v))}
-                >
-                    <SelectTrigger className={`${triggerCls} w-[80px]`}>
-                        <SelectValue placeholder="Year" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {yearOptions.map((opt) => (
-                            <SelectItem key={opt.value} value={String(opt.value)}>
-                                {opt.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
-                {/* Property — inline on desktop only */}
-                {properties.length > 0 && (
-                    <>
-                        <div
-                            className="hidden sm:block h-5 w-px shrink-0"
-                            style={{ background: "var(--color-border)" }}
-                        />
-                        <div className="hidden sm:block">
-                            <Select
-                                value={propertyId || "all"}
-                                onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
-                            >
-                                <SelectTrigger className={`${triggerCls} w-[148px]`}>
-                                    <SelectValue placeholder="All Properties" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Properties</SelectItem>
-                                    {properties.map((p) => (
-                                        <SelectItem key={p._id} value={p._id}>
-                                            {p.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            {/* ── Row 3: Status chips — scrollable on mobile ──────────────────── */}
-            <div
-                className="flex items-center gap-1.5 overflow-x-auto"
-                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-                {statusChips.map(({ value, label, danger }) => {
+            {/* ── Row 2: Status chips — horizontal scroll on mobile ─────────────── */}
+            <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                {STATUS_CHIPS.map(({ value, label, variant }) => {
                     const isActive = status === value;
+                    const isDanger = variant === "danger";
+                    const isSuccess = variant === "success";
+
                     return (
                         <button
                             key={value}
                             type="button"
                             onClick={() => onStatusChange?.(value)}
-                            className="h-8 inline-flex items-center gap-1.5 rounded-md border px-3
-                                       text-[11px] font-semibold transition-colors shrink-0"
-                            style={
-                                isActive && danger
-                                    ? {
-                                        background: "var(--color-danger)",
-                                        borderColor: "var(--color-danger)",
-                                        color: "#ffffff",
-                                    }
-                                    : isActive
-                                        ? {
-                                            background: "var(--color-accent)",
-                                            borderColor: "var(--color-accent)",
-                                            color: "#ffffff",
-                                        }
-                                        : danger
-                                            ? {
-                                                background: "var(--color-danger-bg)",
-                                                borderColor: "var(--color-danger-border)",
-                                                color: "var(--color-danger)",
-                                            }
-                                            : {
-                                                background: "var(--color-surface)",
-                                                borderColor: "var(--color-border)",
-                                                color: "var(--color-text-sub)",
-                                            }
-                            }
+                            className={cn(
+                                "h-7 inline-flex items-center gap-1.5 rounded-md border px-3 text-xs font-medium",
+                                "transition-colors shrink-0 whitespace-nowrap select-none",
+                                // active — danger
+                                isActive && isDanger
+                                    ? "bg-[var(--color-danger)] border-[var(--color-danger)] text-white"
+                                    // active — success
+                                    : isActive && isSuccess
+                                        ? "bg-emerald-600 border-emerald-600 text-white"
+                                        // active — default (petrol)
+                                        : isActive
+                                            ? "bg-primary border-primary text-primary-foreground"
+                                            // inactive — danger
+                                            : isDanger
+                                                ? "bg-[var(--color-danger-bg)] border-[var(--color-danger-border)] text-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white hover:border-[var(--color-danger)]"
+                                                // inactive — success
+                                                : isSuccess
+                                                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-600 hover:text-white hover:border-emerald-600"
+                                                    // inactive — default
+                                                    : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-accent",
+                            )}
                         >
-                            {danger && (
+                            {/* Danger dot */}
+                            {isDanger && (
                                 <span
-                                    className="h-1.5 w-1.5 rounded-full shrink-0"
-                                    style={{
-                                        background: isActive ? "#ffffff" : "var(--color-danger)",
-                                    }}
+                                    className={cn(
+                                        "h-1.5 w-1.5 rounded-full shrink-0 transition-colors",
+                                        isActive ? "bg-white" : "bg-[var(--color-danger)]",
+                                    )}
                                 />
                             )}
                             {label}
@@ -332,28 +233,6 @@ export const RentFilter = ({
                     );
                 })}
             </div>
-
-            {/* ── Row 4: Property select — mobile only, full width ─────────────── */}
-            {properties.length > 0 && (
-                <div className="sm:hidden">
-                    <Select
-                        value={propertyId || "all"}
-                        onValueChange={(v) => onPropertyChange?.(v === "all" ? "" : v)}
-                    >
-                        <SelectTrigger className={`${triggerCls} w-full`}>
-                            <SelectValue placeholder="All Properties" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Properties</SelectItem>
-                            {properties.map((p) => (
-                                <SelectItem key={p._id} value={p._id}>
-                                    {p.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
 
         </div>
     );

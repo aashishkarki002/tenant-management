@@ -537,11 +537,11 @@ export default function Header() {
   };
 
   return (
-    <header className="w-full py-1">
+    <header className="w-full py-1 px-4 sm:px-6">
       <div className="flex flex-col w-full gap-2">
         <PushNotificationBanner />
 
-        <div className="flex items-center w-full gap-2">
+        <div className="flex items-center w-full gap-2 min-w-0">
 
           {/* ── Search / page-injected slot ── */}
           <div className="flex-1 min-w-0">

@@ -27,6 +27,15 @@ import {
 import AddBankAccount from './AddBankAccount'
 import EditBankAccount from './EditBankAccount'
 
+function getOwnershipLabel(entity) {
+    if (!entity || typeof entity !== "object") return null
+    if (entity.name) return entity.name
+    if (entity.type === "head_office") return "HQ"
+    if (entity.type === "company") return "Company"
+    if (entity.type === "private") return "Private"
+    return null
+}
+
 // ─── Avatar with dropdown ─────────────────────────────────────────────────────
 function ProfileAvatar({ user, onUpdated }) {
     const fileInputRef = useRef(null)
@@ -476,6 +485,11 @@ function SettingTab({
                                         <Building className="w-5 h-5 text-text-sub" />
                                     </div>
                                     <div>
+                                        {getOwnershipLabel(account.entityId) && (
+                                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">
+                                                {getOwnershipLabel(account.entityId)}
+                                            </p>
+                                        )}
                                         <h5 className="font-medium text-foreground">{account.bankName}</h5>
                                         <p className="text-xs text-text-sub">
                                             {account.accountName} • {account.accountNumber}

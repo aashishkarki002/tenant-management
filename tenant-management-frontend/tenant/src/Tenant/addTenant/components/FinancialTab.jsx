@@ -26,12 +26,22 @@ import {
 import { PAYMENT_METHODS, SECURITY_DEPOSIT_MODES } from "../constants/tenant.constant";
 import { FinancialTotalsDisplay } from "./FinancialTotalsDisplay";
 
+function getOwnershipLabel(entity) {
+    if (!entity || typeof entity !== "object") return null;
+    if (entity.name) return entity.name;
+    if (entity.type === "head_office") return "HQ";
+    if (entity.type === "company") return "Company";
+    if (entity.type === "private") return "Private";
+    return null;
+}
+
 export const FinancialTab = ({
     formik,
     units,
     bankAccounts = [],
     onNext,
     onPrevious,
+    isNextDisabled = false,
 }) => {
     const selectedUnits = formik.values.unitNumber
         ?.map((unitId) => units.find((u) => u._id === unitId))
@@ -230,7 +240,9 @@ export const FinancialTab = ({
                                     {Array.isArray(bankAccounts) &&
                                         bankAccounts.map((bank) => (
                                             <SelectItem key={bank._id} value={bank._id}>
-                                                {bank.bankName} — {bank.accountName}
+                                                {getOwnershipLabel(bank.entityId)
+                                                    ? `${getOwnershipLabel(bank.entityId)} — ${bank.bankName} — ${bank.accountName}`
+                                                    : `${bank.bankName} — ${bank.accountName}`}
                                             </SelectItem>
                                         ))}
                                 </SelectContent>
@@ -259,7 +271,7 @@ export const FinancialTab = ({
                 {/* ── Navigation ───────────────────────────────────────────────── */}
                 <div className="flex justify-between mt-6">
                     <Button type="button" variant="outline" onClick={onPrevious}>Previous</Button>
-                    <Button type="button" onClick={onNext}>Next</Button>
+                    <Button type="button" onClick={onNext} disabled={isNextDisabled}>Next</Button>
                 </div>
 
             </CardContent>

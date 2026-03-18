@@ -40,6 +40,15 @@ function resolveId(val) {
   return val.toString();
 }
 
+function getOwnershipLabel(entity) {
+  if (!entity || typeof entity !== "object") return null;
+  if (entity.name) return entity.name;
+  if (entity.type === "head_office") return "HQ";
+  if (entity.type === "company") return "Company";
+  if (entity.type === "private") return "Private";
+  return null;
+}
+
 /**
  * Proportional allocation — mirrors allocatePaymentProportionally on the backend.
  * Allocates against rent principal only (not CAM or late fee).
@@ -821,7 +830,14 @@ export const PaymentDialog = ({
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <p className="font-semibold text-slate-900">{bank.bankName}</p>
+                        <div className="flex items-center gap-2">
+                          {getOwnershipLabel(bank.entityId) && (
+                            <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-600">
+                              {getOwnershipLabel(bank.entityId)}
+                            </span>
+                          )}
+                          <p className="font-semibold text-slate-900">{bank.bankName}</p>
+                        </div>
                         <p className="text-xs text-slate-500">
                           **** **** {bank.accountNumber?.slice(-4) || "****"}
                         </p>

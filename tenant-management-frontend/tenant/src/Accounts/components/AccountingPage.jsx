@@ -543,7 +543,7 @@ function CompareStatStrip({ stats, labelA, labelB, loading }) {
     ];
 
     return (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {items.map(({ key, label, positive }) => {
                 const s = stats[key] ?? {};
                 const pct = s.pct ?? null;
@@ -1095,33 +1095,35 @@ function AccountingHeaderSlot({
     }
 
     return (
-        <div className="flex items-center gap-2.5 flex-wrap relative">
+        <div className="flex items-center gap-2 min-w-0 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
+            {/* ── Add Revenue / Revenue View badge ── */}
             {activeTab !== "revenue" && (
                 <button
                     onClick={onAddRevenue}
-                    className="flex items-center gap-1.5 rounded-xl border-none text-sm font-bold cursor-pointer text-white transition-transform hover:-translate-y-px"
-                    style={{ padding: "7px 18px", background: C.forestLight, boxShadow: "0 2px 8px rgba(26,43,26,0.15)" }}
+                    className="flex items-center gap-1.5 rounded-xl border-none text-sm font-bold cursor-pointer text-white transition-transform hover:-translate-y-px shrink-0"
+                    style={{ padding: "7px 14px", background: C.forestLight, boxShadow: "0 2px 8px rgba(26,43,26,0.15)" }}
                 >
                     <PlusIcon size={15} strokeWidth={2.5} />Add Revenue
                 </button>
             )}
             {activeTab === "revenue" && (
-                <span className="text-[12px] font-semibold px-3 py-1.5 rounded-lg"
+                <span className="text-[12px] font-semibold px-3 py-1.5 rounded-lg shrink-0"
                     style={{ background: C.positiveBg, color: C.positive }}>
                     Revenue View
                 </span>
             )}
 
-            <div className="w-px h-7 mx-0.5" style={{ background: C.border }} />
+            <div className="w-px h-6 shrink-0" style={{ background: C.border }} />
 
-            <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: C.surfaceAlt }}>
+            {/* ── Granularity pills ── */}
+            <div className="flex gap-0.5 rounded-lg p-0.5 shrink-0" style={{ background: C.surfaceAlt }}>
                 {GRANULARITIES.map(g => (
                     <button
                         key={g.id}
                         onClick={() => handleGranularity(g.id)}
-                        className="rounded-md text-[12px] font-semibold cursor-pointer transition-all"
+                        className="rounded-md text-[12px] font-semibold cursor-pointer transition-all whitespace-nowrap"
                         style={{
-                            padding: "5px 12px",
+                            padding: "5px 10px",
                             background: filterGranularity === g.id ? C.surface : "transparent",
                             color: filterGranularity === g.id ? C.forest : C.textMuted,
                             boxShadow: filterGranularity === g.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
@@ -1133,37 +1135,163 @@ function AccountingHeaderSlot({
                 ))}
             </div>
 
-            <div className="relative">
-                {secondaryPicker()}
-            </div>
+            {/* ── Secondary picker — always in a dropdown to save space ── */}
+            {filterGranularity !== "custom" && (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            className="flex items-center gap-1.5 rounded-[9px] text-[12px] font-semibold cursor-pointer shrink-0 whitespace-nowrap"
+                            style={{
+                                padding: "5px 10px",
+                                border: `1.5px solid ${C.forest}`,
+                                background: C.forest + "0d",
+                                color: C.forest,
+                            }}
+                        >
+                            {filterGranularity === "year" && `FY ${selectedFiscalYear}/${String(selectedFiscalYear + 1).slice(2)}`}
+                            {filterGranularity === "quarter" && (selectedQuarter ? `Q${selectedQuarter} · ${QUARTER_MONTHS[selectedQuarter]}` : "Pick quarter")}
+                            {filterGranularity === "month" && (selectedMonth ? BS_MONTHS[selectedMonth - 1] : "Pick month")}
+                            <ChevronDownIcon size={11} style={{ opacity: .5 }} />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="rounded-2xl p-3 min-w-[200px]">
+                        {filterGranularity === "year" && (
+                            <>
+                                <div className="text-[10px] font-bold uppercase tracking-[0.1em] mb-2" style={{ color: C.textMuted }}>Fiscal Year</div>
+                                <div className="flex flex-col gap-1">
+                                    {FISCAL_YEARS.map(y => (
+                                        <DropdownMenuItem key={y} onClick={() => onFiscalYearChange(y)}
+                                            className="cursor-pointer rounded-lg"
+                                            style={{ fontWeight: y === selectedFiscalYear ? 700 : 400, color: y === selectedFiscalYear ? C.forest : C.textMid }}>
+                                            FY {y}/{String(y + 1).slice(2)}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                        {filterGranularity === "quarter" && (
+                            <>
+                                <div className="text-[10px] font-bold uppercase tracking-[0.1em] mb-2" style={{ color: C.textMuted }}>Quarter · FY {selectedFiscalYear}</div>
+                                <div className="flex flex-col gap-1">
+                                    {QUARTERS.filter(q => q.value !== null).map(q => (
+                                        <DropdownMenuItem key={q.value} onClick={() => onQuarterChange(q.value)}
+                                            className="cursor-pointer rounded-lg flex justify-between"
+                                            style={{ fontWeight: selectedQuarter === q.value ? 700 : 400, color: selectedQuarter === q.value ? C.forest : C.textMid }}>
+                                            <span>{q.label}</span>
+                                            <span className="text-[10px] opacity-60">{QUARTER_MONTHS[q.value]}</span>
+                                        </DropdownMenuItem>
+                                    ))}
+                                </div>
+                                <DropdownMenuSeparator />
+                                <FYPicker value={selectedFiscalYear} onChange={onFiscalYearChange} years={FISCAL_YEARS} />
+                            </>
+                        )}
+                        {filterGranularity === "month" && (
+                            <>
+                                <div className="text-[10px] font-bold uppercase tracking-[0.1em] mb-2" style={{ color: C.textMuted }}>Month · FY {selectedFiscalYear}</div>
+                                <div className="grid grid-cols-3 gap-1">
+                                    {BS_MONTHS.map((m, i) => (
+                                        <DropdownMenuItem key={i} onClick={() => onMonthChange(i + 1)}
+                                            className="cursor-pointer rounded-lg text-center justify-center text-[12px]"
+                                            style={{ fontWeight: selectedMonth === i + 1 ? 700 : 400, color: selectedMonth === i + 1 ? C.forest : C.textMid, background: selectedMonth === i + 1 ? C.forest + "0d" : "transparent" }}>
+                                            {m.slice(0, 3)}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </div>
+                                <DropdownMenuSeparator />
+                                <FYPicker value={selectedFiscalYear} onChange={onFiscalYearChange} years={FISCAL_YEARS} />
+                            </>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            )}
 
-            <div className="w-px h-7 mx-0.5" style={{ background: C.border }} />
+            {/* ── Custom date range ── */}
+            {filterGranularity === "custom" && (
+                <div className="relative shrink-0">
+                    {customStart && customEnd ? (
+                        <span
+                            className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border cursor-pointer whitespace-nowrap"
+                            style={{ borderColor: C.border, color: C.textMid, background: C.surface }}
+                            onClick={() => setShowCustom(true)}
+                        >
+                            {toBSShort(customStart)} → {toBSShort(customEnd)}
+                        </span>
+                    ) : (
+                        <button
+                            onClick={() => setShowCustom(true)}
+                            className="flex items-center gap-1.5 rounded-[9px] text-[12px] font-semibold cursor-pointer whitespace-nowrap"
+                            style={{ padding: "5px 12px", border: `1.5px dashed ${C.border}`, background: "transparent", color: C.textMuted }}
+                        >
+                            <CalendarIcon size={13} /> Set date range
+                        </button>
+                    )}
+                    {showCustom && (
+                        <div
+                            className="absolute top-full left-0 mt-2 z-50 rounded-2xl border shadow-xl p-5 min-w-[300px]"
+                            style={{ background: C.surface, borderColor: C.border }}
+                        >
+                            <div className="text-[10px] font-bold uppercase tracking-[0.1em] mb-3" style={{ color: C.textMuted }}>Custom Date Range</div>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <div className="text-[10px] font-semibold mb-1.5" style={{ color: C.textMuted }}>Start</div>
+                                    <DualCalendarTailwind value={customStart} onChange={v => onCustomStartChange(v ?? "")} />
+                                </div>
+                                <div>
+                                    <div className="text-[10px] font-semibold mb-1.5" style={{ color: C.textMuted }}>End</div>
+                                    <DualCalendarTailwind value={customEnd} onChange={v => onCustomEndChange(v ?? "")} />
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    disabled={!customStart || !customEnd}
+                                    onClick={handleApplyCustom}
+                                    className="flex-1 rounded-[9px] border-none text-[12px] font-bold cursor-pointer text-white"
+                                    style={{ padding: "8px 0", background: C.forest, opacity: (!customStart || !customEnd) ? .4 : 1 }}
+                                >
+                                    Apply
+                                </button>
+                                <button
+                                    onClick={() => setShowCustom(false)}
+                                    className="px-4 rounded-[9px] border text-[12px] font-semibold cursor-pointer"
+                                    style={{ borderColor: C.border, background: C.surface, color: C.textMid }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
+            <div className="w-px h-6 shrink-0" style={{ background: C.border }} />
+
+            {/* ── Compare toggle ── */}
             <button
                 onClick={onCompareModeToggle}
-                className="flex items-center gap-1.5 rounded-[9px] text-[13px] font-semibold cursor-pointer transition-all"
+                className="flex items-center gap-1.5 rounded-[9px] text-[12px] font-semibold cursor-pointer transition-all shrink-0 whitespace-nowrap"
                 style={{
-                    padding: "7px 14px",
+                    padding: "6px 12px",
                     border: `1.5px solid ${compareMode ? C.forest : C.border}`,
                     background: compareMode ? C.forest : "transparent",
                     color: compareMode ? "#fff" : C.textMid,
                 }}
             >
-                <GitCompareArrowsIcon size={14} strokeWidth={2.2} />
+                <GitCompareArrowsIcon size={13} strokeWidth={2.2} />
                 {compareMode ? "Comparing" : "Compare"}
             </button>
 
             {compareMode && (
                 <>
-                    <div className="text-xs font-semibold" style={{ color: C.textMuted }}>vs</div>
+                    <div className="text-xs font-semibold shrink-0" style={{ color: C.textMuted }}>vs</div>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button
-                                className="flex items-center gap-1.5 rounded-[9px] text-[13px] font-semibold cursor-pointer"
-                                style={{ padding: "7px 12px", border: `1.5px solid ${C.amber}`, background: C.amberBg, color: C.amber }}
+                                className="flex items-center gap-1.5 rounded-[9px] text-[12px] font-semibold cursor-pointer shrink-0 whitespace-nowrap"
+                                style={{ padding: "6px 10px", border: `1.5px solid ${C.amber}`, background: C.amberBg, color: C.amber }}
                             >
                                 Q{compareQuarter}
-                                <ChevronDownIcon size={12} style={{ opacity: .6 }} />
+                                <ChevronDownIcon size={11} style={{ opacity: .6 }} />
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" className="rounded-xl p-4 min-w-[200px]">
@@ -1190,15 +1318,16 @@ function AccountingHeaderSlot({
                 </>
             )}
 
-            <div className="flex-1 min-w-5" />
+            {/* ── Spacer + More menu (always last) ── */}
+            <div className="flex-1 min-w-2" />
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <button
-                        className="flex items-center gap-1.5 rounded-[9px] border text-[13px] font-semibold cursor-pointer"
-                        style={{ padding: "7px 14px", borderColor: C.border, background: C.surface, color: C.textMid }}
+                        className="flex items-center gap-1.5 rounded-[9px] border text-[12px] font-semibold cursor-pointer shrink-0 whitespace-nowrap"
+                        style={{ padding: "6px 12px", borderColor: C.border, background: C.surface, color: C.textMid }}
                     >
-                        <MoreVerticalIcon size={15} />More
+                        <MoreVerticalIcon size={14} />More
                     </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="rounded-xl min-w-[200px]">
@@ -1357,10 +1486,10 @@ export default function AccountingPage() {
         <div className="ap min-h-screen" style={{ background: C.bg }}>
             {/* ── Tab bar + period label ─────────────────────────────────────── */}
             <div
-                className="no-print flex items-center justify-between flex-wrap gap-2.5"
-                style={{ padding: "8px 28px 0" }}
+                className="no-print flex items-center justify-between flex-wrap gap-2.5 px-4 sm:px-7"
+                style={{ paddingTop: "8px" }}
             >
-                <div className="flex gap-0.5 rounded-xl p-0.5" style={{ background: C.surfaceAlt }}>
+                <div className="flex gap-0.5 rounded-xl p-0.5 overflow-x-auto" style={{ background: C.surfaceAlt }}>
                     {[
                         { id: "overview", l: "Overview" },
                         { id: "revenue", l: "Revenue" },
@@ -1370,7 +1499,7 @@ export default function AccountingPage() {
                         <button
                             key={t.id}
                             onClick={() => setActiveTab(t.id)}
-                            className="px-[18px] py-1.5 rounded-lg border-none cursor-pointer text-[13px] font-semibold transition-all"
+                            className="px-3 sm:px-[18px] py-1.5 rounded-lg border-none cursor-pointer text-[12px] sm:text-[13px] font-semibold transition-all whitespace-nowrap"
                             style={{
                                 background: activeTab === t.id ? C.forest : "transparent",
                                 color: activeTab === t.id ? "#fff" : C.textMid,
@@ -1391,19 +1520,32 @@ export default function AccountingPage() {
             </div>
 
             {/* ── Page body ─────────────────────────────────────────────────── */}
-            <div className="flex flex-col gap-[18px]" style={{ padding: "16px 28px 32px" }}>
+            <div className="flex flex-col gap-[18px] px-4 sm:px-7 pb-8 pt-4">
 
                 {activeTab === "overview" && (
-                    <div className="grid gap-3.5" style={{ gridTemplateColumns: "minmax(260px,auto) 1fr 1fr 1fr" }}>
-                        <DarkCard delay={0} style={{ padding: "22px 26px", minWidth: 260 }}>
+                    <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(260px,auto)_1fr_1fr_1fr]">
+                        <DarkCard delay={0} style={{ padding: "22px 26px", minWidth: 0 }}>
                             <Lbl light>Net Cash Position</Lbl>
                             {loadingSummary
                                 ? <div className="h-[54px] rounded-lg" style={{ background: "rgba(255,255,255,.08)", animation: "ap-pulse 1.5s infinite" }} />
-                                : <div className="ap-serif text-[52px] text-white leading-none" style={{ letterSpacing: "-0.02em" }}>
-                                    ₹{fmtN(Math.abs(totals.netCashFlow))}
-                                </div>
+                                : <>
+                                    <div
+                                        className="ap-serif text-white leading-none"
+                                        style={{
+                                            letterSpacing: "-0.02em",
+                                            fontSize: "clamp(28px, 4vw, 48px)",
+                                            wordBreak: "break-all",
+                                        }}
+                                    >
+                                        {totals.netCashFlow < 0 ? "−" : ""}₹{fmtK(Math.abs(totals.netCashFlow))}
+                                    </div>
+                                    {/* Full figure as a softer sub-label */}
+                                    <div className="text-[11px] mt-0.5 font-mono" style={{ color: "rgba(255,255,255,.35)" }}>
+                                        ₹{fmtN(Math.abs(totals.netCashFlow))}
+                                    </div>
+                                </>
                             }
-                            <div className="mt-2 flex items-center gap-2">
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
                                 <Delta value={netMargin} label={`${netMargin >= 0 ? "+" : ""}${netMargin.toFixed(1)}% margin`} />
                                 <span className="text-[11px]" style={{ color: "rgba(255,255,255,.4)" }}>
                                     {totals.netCashFlow >= 0 ? "Surplus" : "Deficit"}
@@ -1437,9 +1579,12 @@ export default function AccountingPage() {
                             <Lbl>Total Revenue</Lbl>
                             {loadingSummary
                                 ? <Skeleton h={40} />
-                                : <div className="ap-serif text-[40px] font-normal leading-none" style={{ color: C.forest, letterSpacing: "-0.02em" }}>
-                                    ₹{fmtN(totals.totalRevenue)}
-                                </div>
+                                : <>
+                                    <div className="ap-serif font-normal leading-none" style={{ color: C.forest, letterSpacing: "-0.02em", fontSize: "clamp(26px, 3.5vw, 40px)" }}>
+                                        ₹{fmtK(totals.totalRevenue)}
+                                    </div>
+                                    <div className="text-[10px] font-mono mt-0.5" style={{ color: C.textMuted }}>₹{fmtN(totals.totalRevenue)}</div>
+                                </>
                             }
                             <div className="mt-2.5">
                                 <Spark data={chartData.map(d => ({ v: d.revenue ?? 0 }))} color={C.forestLight} h={28} />
@@ -1453,9 +1598,12 @@ export default function AccountingPage() {
                             <Lbl>Total Expenses</Lbl>
                             {loadingSummary
                                 ? <Skeleton h={40} />
-                                : <div className="ap-serif text-[40px] font-normal leading-none" style={{ color: C.amber, letterSpacing: "-0.02em" }}>
-                                    ₹{fmtN(totals.totalExpenses)}
-                                </div>
+                                : <>
+                                    <div className="ap-serif font-normal leading-none" style={{ color: C.amber, letterSpacing: "-0.02em", fontSize: "clamp(26px, 3.5vw, 40px)" }}>
+                                        ₹{fmtK(totals.totalExpenses)}
+                                    </div>
+                                    <div className="text-[10px] font-mono mt-0.5" style={{ color: C.textMuted }}>₹{fmtN(totals.totalExpenses)}</div>
+                                </>
                             }
                             <div className="mt-2.5">
                                 <Spark data={chartData.map(d => ({ v: d.expenses ?? 0 }))} color={C.amber} h={28} />
@@ -1477,9 +1625,12 @@ export default function AccountingPage() {
                             </div>
                             {loadingSummary
                                 ? <Skeleton h={40} />
-                                : <div className="ap-serif text-[40px] font-normal leading-none mt-2" style={{ color: C.red, letterSpacing: "-0.02em" }}>
-                                    ₹{fmtN(totals.totalLiabilities)}
-                                </div>
+                                : <>
+                                    <div className="ap-serif font-normal leading-none mt-2" style={{ color: C.red, letterSpacing: "-0.02em", fontSize: "clamp(26px, 3.5vw, 40px)" }}>
+                                        ₹{fmtK(totals.totalLiabilities)}
+                                    </div>
+                                    <div className="text-[10px] font-mono mt-0.5" style={{ color: C.textMuted }}>₹{fmtN(totals.totalLiabilities)}</div>
+                                </>
                             }
                             <div className="mt-1 text-[11px]" style={{ color: C.textMuted }}>
                                 Deposits &amp; obligations held — not cash flow
@@ -1493,10 +1644,10 @@ export default function AccountingPage() {
 
                 {activeTab !== "overview" && (
                     <div
-                        className="flex items-center justify-between gap-4 px-4 py-2.5 rounded-xl border"
+                        className="flex items-start sm:items-center justify-between flex-wrap gap-2 px-4 py-2.5 rounded-xl border"
                         style={{ background: C.surfaceAlt, borderColor: C.border }}
                     >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                             <div className="flex items-center gap-1.5">
                                 <span className="text-[11px] font-bold uppercase tracking-[0.07em]" style={{ color: C.textMuted }}>Net</span>
                                 <span className="text-[14px] font-bold" style={{ color: totals.netCashFlow >= 0 ? C.positive : C.negative }}>
@@ -1554,7 +1705,7 @@ export default function AccountingPage() {
                             <CompareStatStrip stats={comparisonStats} labelA={labelA} labelB={labelB} loading={loadingChart} />
                         )}
 
-                        <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 290px" }}>
+                        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_290px]">
                             <Card delay={compareMode ? 2 : 0}>
                                 <div className="flex justify-between items-start mb-3">
                                     <div>
@@ -1573,7 +1724,7 @@ export default function AccountingPage() {
                             </Card>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Card delay={compareMode ? 4 : 2}>
                                 <div className="flex justify-between mb-2.5">
                                     <div>

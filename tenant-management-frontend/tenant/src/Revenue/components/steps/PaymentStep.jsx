@@ -9,6 +9,15 @@ import {
 } from "@/components/ui/select";
 import DualCalendarTailwind from "@/components/dualDate";
 
+function getOwnershipLabel(entity) {
+  if (!entity || typeof entity !== "object") return null;
+  if (entity.name) return entity.name;
+  if (entity.type === "head_office") return "HQ";
+  if (entity.type === "company") return "Company";
+  if (entity.type === "private") return "Private";
+  return null;
+}
+
 export function PaymentStep({ formik, bankAccounts }) {
   return (
     <div className="space-y-6">
@@ -27,7 +36,9 @@ export function PaymentStep({ formik, bankAccounts }) {
             {Array.isArray(bankAccounts) &&
               bankAccounts.map((bank) => (
                 <SelectItem key={bank._id} value={bank._id}>
-                  {bank.bankName}
+                  {getOwnershipLabel(bank.entityId)
+                    ? `${getOwnershipLabel(bank.entityId)} — ${bank.bankName}`
+                    : bank.bankName}
                 </SelectItem>
               ))}
           </SelectContent>
