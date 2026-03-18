@@ -4,7 +4,7 @@ import { buildSecurityDepositJournal } from "../ledger/journal-builders/index.js
 import { createLiability } from "../liabilities/liabilty.service.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 
-export async function createSd(sdData, createdBy, session = null) {
+export async function createSd(sdData, createdBy, session = null, entityId = null) {
   try {
     // ✅ Convert to paisa if needed
     if (!sdData.amountPaisa && sdData.amount) {
@@ -16,8 +16,13 @@ export async function createSd(sdData, createdBy, session = null) {
     const created = await Sd.create([sdData], opts);
     const sd = created[0];
     await sd.populate("tenant", "name");
-    const sdPayload = buildSecurityDepositJournal(sd, { createdBy });
-    await ledgerService.postJournalEntry(sdPayload, session);
+    // Pass payment routing details to the journal builder to avoid "Invalid payment method"
+    const sdPayload = buildSecurityDepositJournal(sd, {
+      createdBy,
+      paymentMethod: sdData.paymentMethod ?? sdData.mode,
+      bankAccountCode: sdData.bankAccountCode,
+    });
+    await ledgerService.postJournalEntry(sdPayload, session, entityId);
 
     // ✅ Use paisa for liability creation
     const amountPaisa = sd.amountPaisa || (sd.amount ? rupeesToPaisa(sd.amount) : 0);

@@ -210,12 +210,13 @@ function addNepaliMonths(npDate, months) {
  * @returns {number} Days difference (positive if npDate2 is later)
  */
 function diffNepaliDays(npDate1, npDate2) {
+  validateNepaliDateInstance(npDate1);
   validateNepaliDateInstance(npDate2);
-
-  const date2 = npDate2.getDateObject();
-
-  const diffMs = date2.getTime() - npDate1.getTime();
-  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+  const e1 = npDate1.getDateObject();
+  const e2 = npDate2.getDateObject();
+  const d1 = Date.UTC(e1.getFullYear(), e1.getMonth(), e1.getDate());
+  const d2 = Date.UTC(e2.getFullYear(), e2.getMonth(), e2.getDate());
+  return Math.round((d2 - d1) / 86_400_000);
 }
 
 // ============================================================================
@@ -424,6 +425,45 @@ function getNepalTime() {
 }
 
 /**
+ * Get a stable "today in Nepal" context correct regardless of server timezone.
+ * All crons must call this instead of new Date() or new NepaliDate() directly.
+ *
+ * Chain:
+ *   UTC now → add fixed +5:45 offset → extract Y/M/D via getUTC* methods
+ *   (server TZ never involved) → reconstruct UTC midnight → convert to BS
+ *
+ * @returns {{
+ *   englishToday: Date,    // UTC midnight of Nepal's calendar today — use for DB queries
+ *   npToday:      NepaliDate,
+ *   bsYear:       number,  // 1-based
+ *   bsMonth:      number,  // 1-based, matches DB storage
+ *   bsDay:        number,
+ * }}
+ */
+function getNepaliToday() {
+  const NPT_OFFSET_MS = (5 * 60 + 45) * 60 * 1000; // 20_700_000 ms — Nepal UTC+5:45
+
+  const nptNow = new Date(Date.now() + NPT_OFFSET_MS);
+  const y = nptNow.getUTCFullYear();
+  const m = nptNow.getUTCMonth();   // 0-based
+  const d = nptNow.getUTCDate();
+
+  // English midnight of Nepal's today, in UTC terms
+  const englishToday = new Date(Date.UTC(y, m, d));
+
+  // BS conversion — pass the UTC midnight Date, not new Date()
+  const npToday = new NepaliDate(englishToday);
+
+  return {
+    englishToday,
+    npToday,
+    bsYear:  npToday.getYear(),
+    bsMonth: npToday.getMonth() + 1,
+    bsDay:   npToday.getDate(),
+  };
+}
+
+/**
  * Create Date object at midnight Nepal time for a given Nepali date
  * Useful for database queries
  *
@@ -548,6 +588,7 @@ export {
   // Timezone
   getNepalTime,
   toNepalMidnight,
+  getNepaliToday,
 
   // Nepali date extraction
   getNepaliYearMonthFromDate,

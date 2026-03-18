@@ -100,6 +100,7 @@ export async function applyPaymentToBank({
   bankAccountId,
   amountPaisa,
   session,
+  entityId = null,
 }) {
   assertValidPaymentMethod(paymentMethod);
   assertIntegerPaisa(amountPaisa, "amountPaisa");
@@ -118,6 +119,20 @@ export async function applyPaymentToBank({
 
   // bank_transfer | cheque — increment the operational bank balance
   const bankAccount = await findActiveBankAccount(bankAccountId, session);
+
+  // Backward-compat: older BankAccount docs may be missing entityId.
+  // If the caller knows the entityId (most flows do), stamp it once so future
+  // saves don't fail validation.
+  if (!bankAccount.entityId) {
+    if (!entityId) {
+      throw new Error(
+        "BankAccount is missing entityId and none was provided. " +
+          "Pass entityId to applyPaymentToBank() or migrate existing BankAccount documents.",
+      );
+    }
+    bankAccount.entityId = new mongoose.Types.ObjectId(entityId);
+  }
+
   bankAccount.balancePaisa += amountPaisa;
   await bankAccount.save({ session });
   return bankAccount;

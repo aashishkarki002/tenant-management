@@ -31,6 +31,8 @@ import mongoose from "mongoose";
 import BankAccount from "./BankAccountModel.js";
 import { Account } from "../ledger/accounts/Account.Model.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { Payment } from "../payment/payment.model.js";
+import { LoanPayment } from "../loans/LoanPayment.model.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE
@@ -153,7 +155,59 @@ export const getBankAccounts = async (req, res) => {
     const filter = { isDeleted: false };
     if (entityId) filter.entityId = entityId;
 
-    const bankAccounts = await BankAccount.find(filter);
+    // Populate entity so UIs can label ownership (private/HQ/company)
+    const docs = await BankAccount.find(filter).populate("entityId", "name type");
+    const bankAccounts = docs.map((d) => d.toObject({ virtuals: true }));
+
+    // Optional usage stats (default: on). Can be disabled for lightweight calls.
+    const includeUsage =
+      String(req.query.includeUsage ?? "true").toLowerCase() !== "false";
+
+    if (includeUsage && bankAccounts.length) {
+      const bankIds = bankAccounts.map((b) => new mongoose.Types.ObjectId(b._id));
+      const bankCodes = bankAccounts
+        .map((b) => b.accountCode)
+        .filter(Boolean)
+        .map(String);
+
+      // Usage: Payment records store bankAccount as ObjectId reference
+      const paymentCounts = await Payment.aggregate([
+        { $match: { bankAccount: { $in: bankIds } } },
+        { $group: { _id: "$bankAccount", count: { $sum: 1 } } },
+      ]);
+      const paymentsByBankId = new Map(
+        paymentCounts.map((r) => [String(r._id), r.count]),
+      );
+
+      // Usage: Loan EMI payments store bankAccountCode (string)
+      const loanCounts =
+        bankCodes.length > 0
+          ? await LoanPayment.aggregate([
+              { $match: { bankAccountCode: { $in: bankCodes } } },
+              { $group: { _id: "$bankAccountCode", count: { $sum: 1 } } },
+            ])
+          : [];
+      const loansByCode = new Map(loanCounts.map((r) => [String(r._id), r.count]));
+
+      for (const b of bankAccounts) {
+        const paymentsCount = paymentsByBankId.get(String(b._id)) ?? 0;
+        const loanEmiCount = loansByCode.get(String(b.accountCode)) ?? 0;
+
+        const usedInForms = [];
+        if (paymentsCount > 0) {
+          // Payment collection is shared by rent/CAM payments and manual revenue payments.
+          usedInForms.push("Rent/CAM payments", "Manual revenue");
+        }
+        if (loanEmiCount > 0) usedInForms.push("Loan EMI");
+
+        b.usage = {
+          paymentsCount,
+          loanEmiCount,
+          usedInForms,
+        };
+      }
+    }
+
     return res.status(200).json({ success: true, bankAccounts });
   } catch (error) {
     console.error(error);

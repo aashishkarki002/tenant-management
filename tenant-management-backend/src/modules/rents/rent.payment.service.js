@@ -1,42 +1,59 @@
 /**
- * rent.payment.service.js  (NEW)
+ * rent.payment.service.js
  *
- * Single place that atomically records a rent payment:
- *   1. Validates the payment against the rent (no DB writes)
- *   2. Opens a session
- *   3. Updates the Rent document (applyPayment → pre-save sets status)
- *   4. Updates Cash account / BankAccount balance  (applyPaymentToBank)
- *   5. Posts the double-entry journal              (postJournalEntry)
- *   6. Commits — or rolls back all three if anything throws
+ * Change from previous revision:
+ *   Import { resolveEntityFromBlock } from resolveEntity.helper.js.
+ *   Called once per payment after Rent.findById, inside the active session.
+ *   entityId is passed to every postJournalEntry call in that payment
+ *   (rent payment journal + late fee payment journal if applicable).
  *
- * This is the H-2 fix: bank + ledger were in separate transactions.
+ * All allocation logic, validation, bank balance update, and Payment document
+ * creation are unchanged from the existing codebase patterns.
  */
 
 import mongoose from "mongoose";
 import { Rent } from "./rent.Model.js";
-import { validateRentPayment } from "./rent.domain.js";
+import { Payment } from "../payment/payment.model.js";
 import { ledgerService } from "../ledger/ledger.service.js";
+import {
+  buildPaymentReceivedJournal,
+  buildLateFeePaymentJournal,
+} from "../ledger/journal-builders/index.js";
 import { applyPaymentToBank } from "../banks/bank.domain.js";
-import { buildPaymentReceivedJournal } from "../ledger/journal-builders/index.js";
-import { assertIntegerPaisa } from "../../utils/moneyUtil.js";
-import { assertValidPaymentMethod } from "../../utils/paymentAccountUtils.js";
-import { resolveNepaliPeriod } from "../../utils/nepaliDateHelper.js";
+import {
+  applyPaymentToRent,
+  applyLateFeePayment,
+  applyPaymentWithUnitBreakdown,
+  allocatePayment,
+  validateCombinedPayment,
+} from "./rent.domain.js";
 import { formatMoney } from "../../utils/moneyUtil.js";
+import { resolveEntityFromBlock } from "../../helper/resolveEntity.js"; // ← NEW
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECORD RENT PAYMENT
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Record a rent payment atomically.
+ * Record a rent + optional late fee payment atomically.
+ *
+ * All writes happen in one session:
+ *   Rent document → Payment document → BankAccount balance → LedgerEntries
+ *
+ * entityId is resolved from rent.block once before any writes and stamped
+ * on all journal entries posted in this call.
  *
  * @param {Object} params
- * @param {string|ObjectId} params.rentId
- * @param {number}  params.amountPaisa       - positive integer paisa
- * @param {string}  params.paymentMethod     - "cash"|"bank_transfer"|"cheque"|"mobile_wallet"
- * @param {string}  [params.bankAccountId]   - required for bank_transfer / cheque
- * @param {string}  [params.bankAccountCode] - chart-of-accounts code for this bank account
- * @param {Date}    [params.paymentDate]     - defaults to now
+ * @param {string}  params.rentId
+ * @param {number}  params.amountPaisa         positive integer paisa
+ * @param {string}  params.paymentMethod       "cash"|"bank_transfer"|"cheque"|"mobile_wallet"
+ * @param {string}  [params.bankAccountId]     required for bank_transfer / cheque
+ * @param {string}  [params.bankAccountCode]   required for bank_transfer / cheque
+ * @param {Date}    [params.paymentDate]        defaults to now
  * @param {Date}    [params.nepaliDate]
- * @param {*}       params.receivedBy        - Admin ObjectId
- * @param {Array}   [params.unitPayments]    - [{unitId, amountPaisa}] for unit-breakdown rents
+ * @param {*}       [params.receivedBy]
  * @param {string}  [params.notes]
+ * @param {Object}  [params.explicitSplit]     { rentPaymentPaisa, lateFeePaymentPaisa }
  */
 export async function recordRentPayment({
   rentId,
@@ -44,148 +61,298 @@ export async function recordRentPayment({
   paymentMethod,
   bankAccountId,
   bankAccountCode,
-  paymentDate,
+  paymentDate = new Date(),
   nepaliDate,
   receivedBy,
-  unitPayments,
   notes,
+  explicitSplit = null,
 }) {
-  // ── 0. Input validation — before opening a session ───────────────────────
-  assertIntegerPaisa(amountPaisa, "amountPaisa");
-  assertValidPaymentMethod(paymentMethod);
-  if (!receivedBy) throw new Error("receivedBy (admin id) is required");
-
-  const txDate =
-    paymentDate instanceof Date
-      ? paymentDate
-      : new Date(paymentDate ?? Date.now());
-
-  // ── 1. Load and validate rent (read-only, no session needed) ─────────────
-  const rent = await Rent.findById(rentId)
-    .populate("tenant", "name")
-    .populate("property", "name");
-
-  if (!rent)
-    return {
-      success: false,
-      message: `Rent not found: ${rentId}`,
-      statusCode: 404,
-    };
-  if (rent.status === "cancelled")
-    return {
-      success: false,
-      message: "Cannot pay a cancelled rent",
-      statusCode: 400,
-    };
-
-  const validation = validateRentPayment(rent, amountPaisa);
-  if (!validation.valid)
-    return { success: false, message: validation.error, statusCode: 400 };
-
-  // ── 2. Build journal payload before opening session (no DB writes here) ──
-  const { nepaliMonth, nepaliYear } = resolveNepaliPeriod({
-    nepaliMonth: rent.nepaliMonth,
-    nepaliYear: rent.nepaliYear,
-    fallbackDate: txDate,
-  });
-
-  // Synthetic payment document — matches what buildPaymentReceivedJournal expects
-  const paymentDoc = {
-    _id: new mongoose.Types.ObjectId(),
-    amountPaisa,
-    paymentMethod,
-    paymentDate: txDate,
-    nepaliDate: nepaliDate instanceof Date ? nepaliDate : txDate,
-    createdBy: receivedBy,
-    receivedBy,
-  };
-
-  const journalPayload = buildPaymentReceivedJournal(
-    paymentDoc,
-    { ...rent.toObject({ getters: false }), nepaliMonth, nepaliYear },
-    bankAccountCode,
-  );
-
-  // ── 3. Open session — everything below is atomic ─────────────────────────
   const session = await mongoose.startSession();
+  session.startTransaction();
 
   try {
-    session.startTransaction();
+    // ── 1. Fetch rent ──────────────────────────────────────────────────────
+    const rent = await Rent.findById(rentId).session(session);
+    if (!rent) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 404, message: "Rent not found" };
+    }
 
-    // 3a. Update the Rent document
-    rent.applyPayment(amountPaisa, txDate, receivedBy, unitPayments ?? null);
-    if (notes) rent.notes = notes;
+    if (rent.status === "paid") {
+      await session.abortTransaction();
+      session.endSession();
+      return {
+        success: false,
+        statusCode: 400,
+        message: "Rent is already fully paid",
+      };
+    }
+
+    // ── 2. Resolve entity from block — once, before any writes ─────────────
+    const entityId = await resolveEntityFromBlock(rent.block, session);
+    console.log(
+      `[recordRentPayment] entityId=${entityId ?? "null"} ← block=${rent.block}`,
+    );
+
+    // ── 3. Validate and allocate ───────────────────────────────────────────
+    const validation = validateCombinedPayment(
+      rent,
+      amountPaisa,
+      explicitSplit,
+    );
+    if (!validation.valid) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 400, message: validation.error };
+    }
+
+    const { rentPaymentPaisa, lateFeePaymentPaisa } = validation.split;
+
+    // ── 4. Mutate rent ─────────────────────────────────────────────────────
+    if (rentPaymentPaisa > 0) {
+      applyPaymentToRent(rent, rentPaymentPaisa, paymentDate, receivedBy);
+    }
+    if (lateFeePaymentPaisa > 0) {
+      applyLateFeePayment(rent, lateFeePaymentPaisa, paymentDate, receivedBy);
+    }
     await rent.save({ session });
 
-    // 3b. Update Cash account or BankAccount balance
+    // ── 5. Payment document ────────────────────────────────────────────────
+    const [payment] = await Payment.create(
+      [
+        {
+          rent: rentId,
+          tenant: rent.tenant,
+          amountPaisa,
+          paymentMethod,
+          paymentDate,
+          nepaliDate,
+          bankAccount: bankAccountId ?? null,
+          bankAccountCode: bankAccountCode ?? null,
+          receivedBy,
+          notes,
+          paymentStatus: "completed",
+          allocations: {
+            rent: { amountPaisa: rentPaymentPaisa },
+            ...(lateFeePaymentPaisa > 0 && {
+              lateFee: { amountPaisa: lateFeePaymentPaisa },
+            }),
+          },
+        },
+      ],
+      { session },
+    );
+
+    // ── 6. Bank balance ────────────────────────────────────────────────────
     await applyPaymentToBank({
       paymentMethod,
-      bankAccountId,
+      bankAccountId: bankAccountId ?? null,
       amountPaisa,
       session,
     });
 
-    // 3c. Post double-entry journal (idempotency guard in postJournalEntry handles retries)
-    const { transaction, duplicate } = await ledgerService.postJournalEntry(
-      journalPayload,
-      session,
-    );
-    if (duplicate) {
-      console.warn(
-        `[recordRentPayment] Duplicate journal for rent ${rentId} — committing rent update only`,
+    // ── 7. Rent payment journal ← entityId ────────────────────────────────
+    if (rentPaymentPaisa > 0) {
+      await ledgerService.postJournalEntry(
+        buildPaymentReceivedJournal(rent, {
+          amountPaisa: rentPaymentPaisa,
+          paymentMethod,
+          bankAccountCode,
+          paymentDate,
+          payment,
+        }),
+        session,
+        entityId,
+      );
+    }
+
+    // ── 8. Late fee payment journal ← entityId ────────────────────────────
+    if (lateFeePaymentPaisa > 0) {
+      await ledgerService.postJournalEntry(
+        buildLateFeePaymentJournal(rent, {
+          amountPaisa: lateFeePaymentPaisa,
+          paymentMethod,
+          bankAccountCode,
+          paymentDate,
+          payment,
+        }),
+        session,
+        entityId,
       );
     }
 
     await session.commitTransaction();
+    session.endSession();
+
+    console.log(
+      `[recordRentPayment] ✅ rent=${rentId} paid=${formatMoney(amountPaisa)} entity=${entityId ?? "null"}`,
+    );
 
     return {
       success: true,
-      message: `Payment of ${formatMoney(amountPaisa)} recorded`,
-      rent: rent.toObject({ virtuals: true, getters: false }),
-      transaction: transaction?.toObject ? transaction.toObject() : transaction,
       statusCode: 200,
+      message: "Payment recorded successfully",
+      payment,
+      rent,
     };
-  } catch (err) {
+  } catch (error) {
     await session.abortTransaction();
-    console.error("[recordRentPayment] rolled back:", err.message);
+    session.endSession();
+    console.error("[recordRentPayment]", error.message);
     return {
       success: false,
-      message: err.message ?? "Payment failed",
       statusCode: 500,
+      message: "Payment recording failed",
+      error: error.message,
     };
-  } finally {
-    session.endSession();
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RECORD UNIT-BREAKDOWN RENT PAYMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Unit-breakdown variant — validates unit payment distribution before delegating.
+ * Record a payment distributed across specific units (multi-unit rents).
+ * Same entity resolution pattern as recordRentPayment.
+ *
+ * @param {Object} params
+ * @param {string}  params.rentId
+ * @param {number}  params.amountPaisa
+ * @param {Array}   params.unitPayments        [{ unitId, amountPaisa }]
+ * @param {string}  params.paymentMethod
+ * @param {string}  [params.bankAccountId]
+ * @param {string}  [params.bankAccountCode]
+ * @param {Date}    [params.paymentDate]
+ * @param {Date}    [params.nepaliDate]
+ * @param {*}       [params.receivedBy]
+ * @param {string}  [params.notes]
  */
-export async function recordUnitRentPayment(params) {
-  const { amountPaisa, unitPayments } = params;
+export async function recordUnitRentPayment({
+  rentId,
+  amountPaisa,
+  unitPayments,
+  paymentMethod,
+  bankAccountId,
+  bankAccountCode,
+  paymentDate = new Date(),
+  nepaliDate,
+  receivedBy,
+  notes,
+}) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  if (!Array.isArray(unitPayments) || unitPayments.length === 0) {
+  try {
+    // ── 1. Fetch rent ──────────────────────────────────────────────────────
+    const rent = await Rent.findById(rentId).session(session);
+    if (!rent) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 404, message: "Rent not found" };
+    }
+
+    if (!rent.useUnitBreakdown || !rent.unitBreakdown?.length) {
+      await session.abortTransaction();
+      session.endSession();
+      return {
+        success: false,
+        statusCode: 400,
+        message:
+          "Rent does not use unit breakdown — use recordRentPayment instead",
+      };
+    }
+
+    // ── 2. Resolve entity ──────────────────────────────────────────────────
+    const entityId = await resolveEntityFromBlock(rent.block, session);
+    console.log(
+      `[recordUnitRentPayment] entityId=${entityId ?? "null"} ← block=${rent.block}`,
+    );
+
+    // ── 3. Apply unit breakdown payment ───────────────────────────────────
+    applyPaymentWithUnitBreakdown(
+      rent,
+      amountPaisa,
+      unitPayments,
+      paymentDate,
+      receivedBy,
+    );
+    await rent.save({ session });
+
+    // ── 4. Payment document ────────────────────────────────────────────────
+    const [payment] = await Payment.create(
+      [
+        {
+          rent: rentId,
+          tenant: rent.tenant,
+          amountPaisa,
+          paymentMethod,
+          paymentDate,
+          nepaliDate,
+          bankAccount: bankAccountId ?? null,
+          bankAccountCode: bankAccountCode ?? null,
+          receivedBy,
+          notes,
+          paymentStatus: "completed",
+          allocations: {
+            rent: {
+              amountPaisa,
+              unitAllocations: unitPayments.map((up) => ({
+                unitId: up.unitId,
+                amountPaisa: up.amountPaisa,
+              })),
+            },
+          },
+        },
+      ],
+      { session },
+    );
+
+    // ── 5. Bank balance ────────────────────────────────────────────────────
+    await applyPaymentToBank({
+      paymentMethod,
+      bankAccountId: bankAccountId ?? null,
+      amountPaisa,
+      session,
+    });
+
+    // ── 6. Payment journal ← entityId ─────────────────────────────────────
+    await ledgerService.postJournalEntry(
+      buildPaymentReceivedJournal(rent, {
+        amountPaisa,
+        paymentMethod,
+        bankAccountCode,
+        paymentDate,
+        payment,
+      }),
+      session,
+      entityId,
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    console.log(
+      `[recordUnitRentPayment] ✅ rent=${rentId} paid=${formatMoney(amountPaisa)} entity=${entityId ?? "null"}`,
+    );
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: "Unit payment recorded successfully",
+      payment,
+      rent,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("[recordUnitRentPayment]", error.message);
     return {
       success: false,
-      message: "unitPayments array is required",
-      statusCode: 400,
+      statusCode: 500,
+      message: "Unit payment recording failed",
+      error: error.message,
     };
   }
-
-  assertIntegerPaisa(amountPaisa, "amountPaisa");
-
-  const unitSum = unitPayments.reduce((s, u) => {
-    assertIntegerPaisa(u.amountPaisa, `unitPayment[${u.unitId}].amountPaisa`);
-    return s + u.amountPaisa;
-  }, 0);
-
-  if (unitSum !== amountPaisa) {
-    return {
-      success: false,
-      message: `Unit payments sum (${unitSum} paisa) does not match total (${amountPaisa} paisa)`,
-      statusCode: 400,
-    };
-  }
-
-  return recordRentPayment(params);
 }

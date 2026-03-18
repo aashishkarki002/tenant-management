@@ -37,7 +37,7 @@ const paymentSchema = new mongoose.Schema(
       required: true,
     },
     nepaliDate: {
-      type: Date,
+      type: String,
       required: true,
     },
     paymentMethod: {

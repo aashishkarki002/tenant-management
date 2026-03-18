@@ -63,6 +63,8 @@ import {
   diffNepaliDays,
   getNepaliMonthDates,
   parseNepaliISO,
+  getNepaliToday,
+  formatNepaliISO,
 } from "../../utils/nepaliDateHelper.js";
 // ─── Policy loader ────────────────────────────────────────────────────────────
 
@@ -118,23 +120,10 @@ async function loadLateFeePolicy() {
  * @throws {Error}      if nepaliDueDate is invalid or out of range for nepali-datetime
  */
 function getEffectiveDaysLate(nepaliDueDate, gracePeriodDays) {
-  if (nepaliDueDate == null) {
-    throw new Error("nepaliDueDate is required");
-  }
-
-  // Parse the Nepali date string correctly
-  const dueDateNp = new NepaliDate(nepaliDueDate);
-
-  // Get today's Nepali date
-  const todayNp = new NepaliDate();
-
-  // Use your diffNepaliDays function
-  const totalDaysLate = diffNepaliDays(dueDateNp, todayNp);
-
-  console.log("dueDateNp", dueDateNp.toString());
-  console.log("todayNp", todayNp.toString());
-  console.log("totalDaysLate", totalDaysLate);
-
+  if (!nepaliDueDate) throw new Error("nepaliDueDate is required");
+  const dueDateNp = parseNepaliISO(nepaliDueDate);
+  const { npToday } = getNepaliToday();
+  const totalDaysLate = diffNepaliDays(dueDateNp, npToday);
   if (totalDaysLate <= 0) return 0;
   return Math.max(0, totalDaysLate - gracePeriodDays);
 }
@@ -315,7 +304,7 @@ async function processOneRent(rent, policy, adminId) {
     amountPaisa: journalAmountPaisa,
     nepaliMonth: rent.nepaliMonth,
     nepaliYear: rent.nepaliYear,
-    nepaliDate: new Date(),
+    nepaliDate: formatNepaliISO(getNepaliToday().npToday),
     chargedAt: new Date(),
     createdBy: adminId ?? null,
     tenant: rent.tenant,

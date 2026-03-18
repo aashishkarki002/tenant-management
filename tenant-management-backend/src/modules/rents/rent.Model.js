@@ -1,25 +1,3 @@
-/**
- * rent.Model.js
- *
- * Changes in this revision:
- *
- * NEW INDEX — { nepaliYear, nepaliMonth, status, property }:
- *   Every filtered call to GET /api/rent/get-rents uses some combination of
- *   these four fields. Without a covering compound index MongoDB performs a
- *   full collection scan on large datasets. The index is ordered so that:
- *     1. nepaliYear + nepaliMonth together select a narrow time slice first
- *        (highest cardinality pair for a monthly-billing system).
- *     2. status further trims the slice (e.g. overdue-only view).
- *     3. property is appended last for the property-dropdown filter; queries
- *        that omit it still benefit from the first three fields.
- *
- *   The pre-existing { tenant, nepaliMonth, nepaliYear } unique index is
- *   retained — it guards idempotency in handleMonthlyRents.
- *
- * All schema fields, virtuals, pre-save hook, and instance methods are
- * unchanged from the previous revision.
- */
-
 import mongoose from "mongoose";
 import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 
@@ -124,7 +102,7 @@ const rentSchema = new mongoose.Schema(
 
     nepaliMonth: { type: Number, required: true, min: 1, max: 12 },
     nepaliYear: { type: Number, required: true },
-    nepaliDate: { type: Date, required: true },
+    nepaliDate: { type: String, required: true },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -133,6 +111,7 @@ const rentSchema = new mongoose.Schema(
     },
 
     lateFeeDate: { type: Date, default: null },
+    nepaliLateFeeDate: { type: String, default: null },
     lateFeeApplied: { type: Boolean, default: false },
     lateFeeStatus: {
       type: String,
@@ -142,7 +121,7 @@ const rentSchema = new mongoose.Schema(
 
     lastPaidDate: { type: Date, default: null },
     englishDueDate: { type: Date, required: true },
-    nepaliDueDate: { type: Date, required: true },
+    nepaliDueDate: { type: String, required: true },
 
     emailReminderSent: { type: Boolean, default: false },
     lastPaidBy: {
@@ -328,7 +307,6 @@ rentSchema.index(
 rentSchema.index({ nepaliYear: 1, nepaliMonth: 1, status: 1, property: 1 });
 
 // Supporting indexes (retained from previous revision)
-rentSchema.index({ nepaliDueDate: 1 });
 rentSchema.index({ tenant: 1, status: 1 });
 rentSchema.index({ englishYear: 1, englishMonth: 1 });
 rentSchema.index({ englishDueDate: 1 });

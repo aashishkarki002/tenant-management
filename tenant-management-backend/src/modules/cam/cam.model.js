@@ -26,7 +26,7 @@ const camSchema = new mongoose.Schema(
     month: { type: Number, required: true, min: 1, max: 12 },
     nepaliMonth: { type: Number, required: true, min: 1, max: 12 },
     nepaliYear: { type: Number, required: true },
-    nepaliDate: { type: Date, required: true },
+    nepaliDate: { type: String, required: true },
     year: { type: Number, required: true },
 
     // ============================================
@@ -50,7 +50,7 @@ const camSchema = new mongoose.Schema(
       default: "pending",
     },
     englishDueDate: { type: Date, default: null },
-    nepaliDueDate: { type: Date, default: null },
+    nepaliDueDate: { type: String, default: null },
     paidDate: { type: Date, default: null },
     notes: { type: String, default: "" },
     emailReminderSent: {

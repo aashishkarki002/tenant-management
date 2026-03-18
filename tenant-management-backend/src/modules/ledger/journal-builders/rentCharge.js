@@ -26,11 +26,6 @@ import NepaliDate from "nepali-datetime";
  * @param {Date} fallback
  * @returns {string}  "YYYY-MM-DD" BS
  */
-function resolveNepaliDateString(raw, fallback) {
-  if (typeof raw === "string" && raw.length > 0) return raw;
-  const base = raw instanceof Date ? raw : fallback;
-  return formatNepaliISO(new NepaliDate(base));
-}
 
 /**
  * @param {Object} rent  - Rent document (Mongoose doc or plain object)
@@ -56,8 +51,10 @@ export function buildRentChargeJournal(rent) {
       ? rent.createdAt
       : new Date(rent.createdAt ?? Date.now());
 
-  // FIX: always a BS "YYYY-MM-DD" string
-  const nepaliDate = resolveNepaliDateString(rent.nepaliDate, transactionDate);
+  const nepaliDate =
+    typeof rent.nepaliDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(rent.nepaliDate)
+      ? rent.nepaliDate.slice(0, 10)
+      : formatNepaliISO(new NepaliDate(transactionDate));
 
   const { nepaliMonth, nepaliYear } = rent;
   const tenantName = rent.tenant?.name ?? "Tenant";

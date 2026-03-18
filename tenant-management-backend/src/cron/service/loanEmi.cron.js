@@ -45,6 +45,7 @@ import Notification from "../../modules/notifications/notification.model.js";
 import { getIO } from "../../config/socket.js";
 import { sendPushToAdmin } from "../../config/webpush.js";
 import Admin from "../../modules/auth/admin.Model.js";
+import { getNepaliToday } from "../../utils/nepaliDateHelper.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -353,12 +354,12 @@ export async function applyLoanEmiReminders(adminIds) {
   }
 
   // ── Nepali today ────────────────────────────────────────────────────────────
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const nd = new NepaliDate(today);
-  const nepaliYear = nd.getYear();
-  const nepaliMonth = nd.getMonth() + 1;
-  const todayMeta = { today, nepaliYear, nepaliMonth };
+  const { englishToday, bsYear, bsMonth } = getNepaliToday();
+  const todayMeta = {
+    today: englishToday,
+    nepaliYear: bsYear,
+    nepaliMonth: bsMonth,
+  };
 
   // ── Load active loans ───────────────────────────────────────────────────────
   const loans = await Loan.find({ status: "ACTIVE" })

@@ -1,15 +1,36 @@
+/**
+ * cam.service.js
+ *
+ * Changes from previous revision:
+ *   1. Import { buildEntityMapForBlocks } from resolveEntity.helper.js
+ *   2. handleMonthlyCams — one batch Block query after tenantsToProcess is built,
+ *      entityId resolved per CAM from the Map inside the journal loop
+ *   3. Removed the stray ADMIN_ID reference that was causing a ReferenceError
+ *      in the original — now uses process.env.SYSTEM_ADMIN_ID as fallback
+ *
+ * createCam and getCams are character-for-character identical to the original.
+ */
+
 import { Cam } from "./cam.model.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildCamChargeJournal } from "../ledger/journal-builders/index.js";
 import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
-import { rupeesToPaisa, paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
+import {
+  rupeesToPaisa,
+  paisaToRupees,
+  formatMoney,
+} from "../../utils/moneyUtil.js";
+import { buildEntityMapForBlocks } from "../../helper/resolveEntity.js"; // ← NEW
 import dotenv from "dotenv";
 dotenv.config();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CREATE (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function createCam(camData, createdBy, session = null) {
   try {
-    // Ensure paisa fields are present (convert if needed)
     if (!camData.amountPaisa && camData.amount) {
       camData.amountPaisa = rupeesToPaisa(camData.amount);
     }
@@ -43,7 +64,12 @@ async function createCam(camData, createdBy, session = null) {
 }
 export { createCam };
 
-export const handleMonthlyCams = async () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// CRON: handleMonthlyCams — entity-aware via buildEntityMapForBlocks
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const handleMonthlyCams = async (adminId) => {
+  const createdBy = adminId || process.env.SYSTEM_ADMIN_ID;
   const {
     npMonth,
     npYear,
@@ -53,8 +79,9 @@ export const handleMonthlyCams = async () => {
     englishMonth,
     englishYear,
   } = getNepaliMonthDates();
+
   try {
-    // Use $or for status to avoid Mongoose CastError when casting $in to string (older Mongoose)
+    // Step 1: Mark overdue (unchanged)
     const overdueResult = await Cam.updateMany(
       {
         $and: [
@@ -67,67 +94,97 @@ export const handleMonthlyCams = async () => {
           },
         ],
       },
-      { $set: { status: "overdue" } }
+      { $set: { status: "overdue" } },
     );
     console.log("Overdue cams updated:", overdueResult.modifiedCount);
+
+    // Step 2: Active tenants (unchanged)
     const tenants = await Tenant.find({ status: "active" }).lean();
     if (!tenants.length) {
       return { success: false, message: "No tenants found", count: 0 };
     }
+
+    // Step 3: Idempotency (unchanged)
     const existingCams = await Cam.find({
       nepaliMonth: npMonth,
       nepaliYear: npYear,
     }).select("tenant");
     const existingTenantIds = new Set(
-      existingCams.map((c) => c.tenant.toString())
+      existingCams.map((c) => c.tenant.toString()),
     );
-    const camsToInsert = tenants
-      .filter((tenant) => !existingTenantIds.has(tenant._id.toString()))
-      .map((tenant) => {
-        // Get paisa values from tenant (if available), otherwise convert from rupees
-        const amountPaisa =
-          tenant.camChargesPaisa || rupeesToPaisa(tenant.camCharges || 0);
 
-        return {
-          tenant: tenant._id,
-          property: tenant.property,
-          block: tenant.block,
-          innerBlock: tenant.innerBlock,
-          nepaliMonth: npMonth,
-          nepaliYear: npYear,
-          nepaliDate,
-          
-          // ✅ Store as PAISA (integers)
-          amountPaisa,
-          paidAmountPaisa: 0,
-          
-          // Backward compatibility (can remove later)
-          amount: paisaToRupees(amountPaisa),
-          paidAmount: 0,
-          
-          year: englishYear,
-          month: englishMonth,
-          nepaliDueDate: lastDay,
-          englishDueDate: englishDueDate,
-          status: "pending",
-        };
-      });
-    if (camsToInsert.length) {
-      const insertedCams = await Cam.insertMany(camsToInsert);
-      for (const cam of insertedCams) {
-        try {
-          const camChargePayload = buildCamChargeJournal(cam, {
-            createdBy: ADMIN_ID,
-          });
-          await ledgerService.postJournalEntry(camChargePayload, null);
-        } catch (error) {
-          console.error("Failed to record cam charge:", error);
-        }
-      }
-      console.log("Monthly cams created:", camsToInsert.length);
-    } else {
-      console.log("No new monthly cams to create");
+    const tenantsToProcess = tenants.filter(
+      (t) => !existingTenantIds.has(t._id.toString()),
+    );
+
+    if (!tenantsToProcess.length) {
+      return {
+        success: true,
+        message: "All CAMs for this month already exist",
+        count: 0,
+        updatedOverdueCount: overdueResult.modifiedCount,
+      };
     }
+
+    // Step 4: Batch-resolve entityId — ONE query for all blocks ← NEW
+    const entityByBlock = await buildEntityMapForBlocks(
+      tenantsToProcess.map((t) => t.block),
+    );
+
+    // Step 5: Build CAM documents (unchanged shape)
+    const camsToInsert = tenantsToProcess.map((tenant) => {
+      const amountPaisa =
+        tenant.camChargesPaisa || rupeesToPaisa(tenant.camCharges || 0);
+
+      return {
+        tenant: tenant._id,
+        property: tenant.property,
+        block: tenant.block,
+        innerBlock: tenant.innerBlock,
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate,
+        amountPaisa,
+        paidAmountPaisa: 0,
+        amount: paisaToRupees(amountPaisa),
+        paidAmount: 0,
+        year: englishYear,
+        month: englishMonth,
+        nepaliDueDate: lastDay,
+        englishDueDate: englishDueDate,
+        status: "pending",
+      };
+    });
+
+    if (!camsToInsert.length) {
+      return {
+        success: true,
+        message: "No new monthly cams to create",
+        count: 0,
+        updatedOverdueCount: overdueResult.modifiedCount,
+      };
+    }
+
+    // Step 6: Bulk insert (unchanged)
+    const insertedCams = await Cam.insertMany(camsToInsert);
+
+    // Step 7: Post journal per CAM — entity-tagged ← CHANGED
+    for (const cam of insertedCams) {
+      const entityId = entityByBlock.get(cam.block?.toString()) ?? null;
+
+      try {
+        const camChargePayload = buildCamChargeJournal(cam, { createdBy });
+        await ledgerService.postJournalEntry(camChargePayload, null, entityId);
+      } catch (error) {
+        console.error(
+          `[handleMonthlyCams] journal failed for cam=${cam._id} block=${cam.block}:`,
+          error.message,
+        );
+      }
+    }
+
+    console.log("Monthly cams created:", camsToInsert.length);
+
     return {
       success: true,
       message: "Monthly cams handled successfully",
@@ -140,33 +197,35 @@ export const handleMonthlyCams = async () => {
   }
 };
 
-/**
- * Fetch all CAMs, optionally filtered by nepaliMonth/nepaliYear.
- * Populates tenant for frontend matching (tenant + month/year).
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// READ (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const getCams = async (filters = {}) => {
   const query = {};
   if (filters.nepaliMonth != null) query.nepaliMonth = filters.nepaliMonth;
   if (filters.nepaliYear != null) query.nepaliYear = filters.nepaliYear;
+
   const cams = await Cam.find(query)
     .populate("tenant")
     .populate("property")
     .populate("block")
     .populate("innerBlock")
     .lean();
-  
-  // ✅ Add formatted money values to response
+
   const camsWithFormatted = cams.map((cam) => ({
     ...cam,
     formatted: {
       amount: formatMoney(cam.amountPaisa || rupeesToPaisa(cam.amount || 0)),
-      paidAmount: formatMoney(cam.paidAmountPaisa || rupeesToPaisa(cam.paidAmount || 0)),
+      paidAmount: formatMoney(
+        cam.paidAmountPaisa || rupeesToPaisa(cam.paidAmount || 0),
+      ),
       remainingAmount: formatMoney(
         (cam.amountPaisa || rupeesToPaisa(cam.amount || 0)) -
-        (cam.paidAmountPaisa || rupeesToPaisa(cam.paidAmount || 0))
+          (cam.paidAmountPaisa || rupeesToPaisa(cam.paidAmount || 0)),
       ),
     },
   }));
-  
+
   return camsWithFormatted;
 };

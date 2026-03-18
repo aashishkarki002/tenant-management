@@ -218,7 +218,7 @@ export async function recordRentPaymentController(req, res) {
       bankAccountId,
       bankAccountCode,
       paymentDate: paymentDate ? new Date(paymentDate) : undefined,
-      nepaliDate: nepaliDate ? new Date(nepaliDate) : undefined,
+      nepaliDate: nepaliDate ?? undefined,
       receivedBy: req.admin?._id ?? req.admin?.id,
       unitPayments,
       notes,

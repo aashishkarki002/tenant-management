@@ -21,16 +21,16 @@ import {
   divideMoney,
 } from "../../../utils/moneyUtil.js";
 import { createCam } from "../../cam/cam.service.js";
-
 import {
   calculateMultiUnitLease,
   buildUnitBreakdown,
 } from "../domain/rent.calculator.service.js";
+import { resolveEntityFromBlock } from "../../../helper/resolveEntity.js"; // ← NEW
 
-/**
- * Flatten unit IDs from various shapes (array, { $in: [...] }, mixed).
- * Prevents CastError when client accidentally sends MongoDB query shape.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIVATE HELPERS (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
+
 function normalizeUnitIdsArray(input) {
   if (!input) return [];
   const arr = Array.isArray(input) ? input : [input];
@@ -45,23 +45,15 @@ function normalizeUnitIdsArray(input) {
   return result;
 }
 
-/**
- * ✅ REFACTORED: Calculate multi-unit lease financials using rent.calculator.service
- * Converts results to PAISA for storage
- */
 function calculateMultiUnitLeaseInPaisa(unitLeaseConfigs, tdsPercentage) {
-  // Use the calculator service (works in rupees)
   const calculation = calculateMultiUnitLease(unitLeaseConfigs, tdsPercentage);
 
-  // Convert all amounts to paisa and add paisa fields
   const calculatedUnits = calculation.units.map((unit) => ({
     unitId: unit.unitId,
     sqft: unit.sqft,
     pricePerSqft: unit.pricePerSqft,
     camRatePerSqft: unit.camRatePerSqft,
     securityDeposit: unit.securityDeposit,
-
-    // ✅ Store as PAISA (integers - source of truth)
     grossMonthlyPaisa: rupeesToPaisa(unit.grossMonthly),
     totalTdsPaisa: rupeesToPaisa(unit.totalTds),
     rentMonthlyPaisa: rupeesToPaisa(unit.rentMonthly),
@@ -70,8 +62,6 @@ function calculateMultiUnitLeaseInPaisa(unitLeaseConfigs, tdsPercentage) {
     securityDepositPaisa: rupeesToPaisa(unit.securityDeposit),
     pricePerSqftPaisa: rupeesToPaisa(unit.pricePerSqft),
     camRatePerSqftPaisa: rupeesToPaisa(unit.camRatePerSqft),
-
-    // For logging only (from calculator service)
     grossMonthly: unit.grossMonthly,
     totalTds: unit.totalTds,
     rentMonthly: unit.rentMonthly,
@@ -79,23 +69,16 @@ function calculateMultiUnitLeaseInPaisa(unitLeaseConfigs, tdsPercentage) {
     netMonthly: unit.netMonthly,
   }));
 
-  // Convert totals to paisa
   const totals = {
     sqft: calculation.totals.sqft,
-
-    // Integer sums in paisa (no accumulation errors)
     grossMonthlyPaisa: rupeesToPaisa(calculation.totals.grossMonthly),
     totalTdsPaisa: rupeesToPaisa(calculation.totals.totalTds),
     rentMonthlyPaisa: rupeesToPaisa(calculation.totals.rentMonthly),
     camMonthlyPaisa: rupeesToPaisa(calculation.totals.camMonthly),
     netMonthlyPaisa: rupeesToPaisa(calculation.totals.netMonthly),
     securityDepositPaisa: rupeesToPaisa(calculation.totals.securityDeposit),
-
-    // Weighted averages (from calculator service)
     weightedPricePerSqft: calculation.totals.weightedPricePerSqft,
     weightedCamRate: calculation.totals.weightedCamRate,
-
-    // Rupee values for logging/backward compatibility
     grossMonthly: calculation.totals.grossMonthly,
     totalTds: calculation.totals.totalTds,
     rentMonthly: calculation.totals.rentMonthly,
@@ -107,10 +90,6 @@ function calculateMultiUnitLeaseInPaisa(unitLeaseConfigs, tdsPercentage) {
   return { units: calculatedUnits, totals };
 }
 
-/**
- * ✅ SIMPLIFIED: Calculate rent by frequency using DIRECT INTEGER MATH
- * No precision loss from paisa→rupees→paisa conversions
- */
 function calculateRentByFrequencyInPaisa(
   monthlyRentPaisa,
   frequency,
@@ -122,26 +101,21 @@ function calculateRentByFrequencyInPaisa(
   console.log(`└─ Frequency Months: ${frequencyMonths}`);
 
   if (frequency === "quarterly") {
-    // ✅ SIMPLE INTEGER MULTIPLICATION - No precision loss!
     const chargeAmountPaisa = monthlyRentPaisa * frequencyMonths;
-
     console.log(`\n✅ Quarterly Calculation:`);
     console.log(
       `├─ ${monthlyRentPaisa} × ${frequencyMonths} = ${chargeAmountPaisa} paisa`,
     );
     console.log(`└─ Display: ${formatMoney(chargeAmountPaisa)}`);
-
     return {
-      chargeAmountPaisa, // Integer - exact!
-      chargeAmount: paisaToRupees(chargeAmountPaisa), // For display
+      chargeAmountPaisa,
+      chargeAmount: paisaToRupees(chargeAmountPaisa),
       periodMonths: frequencyMonths,
     };
   }
 
-  // Monthly - just return the same amount
   console.log(`\n✅ Monthly Calculation:`);
   console.log(`└─ Charge Amount: ${formatMoney(monthlyRentPaisa)}`);
-
   return {
     chargeAmountPaisa: monthlyRentPaisa,
     chargeAmount: paisaToRupees(monthlyRentPaisa),
@@ -149,34 +123,27 @@ function calculateRentByFrequencyInPaisa(
   };
 }
 
-/**
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN TRANSACTION
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function createTenantTransaction(body, files, adminId, session) {
-  // ============================================
-  // 1-2. PARSE INPUT & VALIDATE (unchanged)
-  // ============================================
   const {
     npMonth,
     npYear,
-    nepaliDate,
+    firstDayNepali,
+    lastDayNepali,
     englishMonth,
     englishYear,
-    lastDay,
-    nepaliDueDate,
   } = getNepaliMonthDates();
 
   if (body.unitNumber && !body.units) {
-    // Normalize unitNumber -> units
-    // - If unitNumber is already an array of IDs, use it directly
-    // - If it's a single string, wrap it in an array
     body.units = Array.isArray(body.unitNumber)
       ? body.unitNumber
       : [body.unitNumber];
   }
-  // ✅ Normalize unit IDs (support string | array | unitLeases)
-  // Guard: unwrap accidental { $in: [ids] } from client/query leakage
-  let unitIds = [];
 
+  let unitIds = [];
   if (Array.isArray(body.unitLeases)) {
     const idsFromLeases = body.unitLeases.map((ul) => ul.unitId);
     unitIds = parseUnitIds(normalizeUnitIdsArray(idsFromLeases));
@@ -188,29 +155,22 @@ export async function createTenantTransaction(body, files, adminId, session) {
     unitIds = parseUnitIds(flatIds);
   }
 
-  if (unitIds.length === 0) {
+  if (unitIds.length === 0)
     throw new Error("At least one unit must be selected");
-  }
 
   const usePerUnitConfig = Array.isArray(body.unitLeases);
-  let unitLeaseConfigs = [];
-
-  if (usePerUnitConfig) {
-    unitLeaseConfigs = body.unitLeases;
-  } else {
-    // ✅ Build default unit lease configs from shared values
-    unitLeaseConfigs = unitIds.map((unitId) => ({
-      unitId,
-      leasedSquareFeet: body.leasedSquareFeet,
-      pricePerSqft: body.pricePerSqft,
-      camRatePerSqft: body.camRatePerSqft,
-    }));
-  }
+  const unitLeaseConfigs = usePerUnitConfig
+    ? body.unitLeases
+    : unitIds.map((unitId) => ({
+        unitId,
+        leasedSquareFeet: body.leasedSquareFeet,
+        pricePerSqft: body.pricePerSqft,
+        camRatePerSqft: body.camRatePerSqft,
+      }));
 
   const units = await Unit.find({ _id: { $in: unitIds } }).session(session);
-  if (units.length !== unitIds.length) {
+  if (units.length !== unitIds.length)
     throw new Error("One or more units not found");
-  }
 
   const occupied = filterOccupiedUnits(units);
   if (occupied.length) {
@@ -219,12 +179,13 @@ export async function createTenantTransaction(body, files, adminId, session) {
     );
   }
 
-  // ============================================
-  // 3. ✅ CALCULATE ALL FINANCIALS IN PAISA
-  // ============================================
-  const tdsPercentage = 10;
+  // ── Resolve entity once — all three journal posts below use this value ─────
+  const entityId = await resolveEntityFromBlock(body.block, session);
+  console.log(
+    `[createTenantTransaction] entityId=${entityId ?? "null"} ← block=${body.block}`,
+  );
 
-  // ✅ Use calculator service, then convert to paisa
+  const tdsPercentage = 10;
   const originalCalculation = calculateMultiUnitLease(
     unitLeaseConfigs,
     tdsPercentage,
@@ -235,9 +196,6 @@ export async function createTenantTransaction(body, files, adminId, session) {
   );
   const { units: calculatedUnits, totals } = leaseCalculation;
 
-  // ============================================
-  // 4. CALCULATE RENT CYCLE DATES (unchanged)
-  // ============================================
   const isQuarterly = body.rentPaymentFrequency === "quarterly";
   const frequencyMonths =
     isQuarterly && Number.isFinite(Number(body.frequencyMonths))
@@ -267,13 +225,11 @@ export async function createTenantTransaction(body, files, adminId, session) {
       },
     };
   } else {
-    // Monthly rent: due date is 1st of next month
     const monthlyDueDates = getRentCycleDates({
       startYear: npYear,
       startMonth: npMonth,
-      frequencyMonths: 1, // ← Monthly = 1 month frequency
+      frequencyMonths: 1,
     });
-
     rentCycleData = {
       chargeDate: {
         nepali: `${npYear}-${String(npMonth).padStart(2, "0")}-01`,
@@ -282,43 +238,32 @@ export async function createTenantTransaction(body, files, adminId, session) {
         month: npMonth,
       },
       dueDate: {
-        nepali: monthlyDueDates.rentDueNp, // ← 1st of next month
-        english: monthlyDueDates.rentDueDate, // ← English Date for 1st of next month
-        year: monthlyDueDates.nepaliDueYear, // ← Next month's year
-        month: monthlyDueDates.nepaliDueMonth, // ← Next month (1-based)
+        nepali: monthlyDueDates.rentDueNp,
+        english: monthlyDueDates.rentDueDate,
+        year: monthlyDueDates.nepaliDueYear,
+        month: monthlyDueDates.nepaliDueMonth,
       },
     };
   }
 
-  // ============================================
-  // 5. PROCESS FILE UPLOADS (unchanged)
-  // ============================================
   const documents = await buildDocumentsFromFiles(files);
 
-  // ============================================
-  // 6. ✅ CREATE TENANT WITH PAISA VALUES
-  // ============================================
   const tenant = await Tenant.create(
     [
       {
         ...body,
         units: unitIds,
         documents,
-
-        // ✅ CRITICAL: Store as PAISA (integers)
         leasedSquareFeet: totals.sqft,
-        totalRentPaisa: totals.rentMonthlyPaisa, // ← Integer!
-        camChargesPaisa: totals.camMonthlyPaisa, // ← Integer!
-        netAmountPaisa: totals.netMonthlyPaisa, // ← Integer!
-        securityDepositPaisa: totals.securityDepositPaisa, // ← Integer!
-        grossAmountPaisa: totals.grossMonthlyPaisa, // ← Integer!
-        tdsPaisa: divideMoney(totals.totalTdsPaisa, totals.sqft), // ← TDS per sqft in paisa (integer)
-        rentalRatePaisa: divideMoney(totals.rentMonthlyPaisa, totals.sqft), // ← Rate in paisa (integer)
+        totalRentPaisa: totals.rentMonthlyPaisa,
+        camChargesPaisa: totals.camMonthlyPaisa,
+        netAmountPaisa: totals.netMonthlyPaisa,
+        securityDepositPaisa: totals.securityDepositPaisa,
+        grossAmountPaisa: totals.grossMonthlyPaisa,
+        tdsPaisa: divideMoney(totals.totalTdsPaisa, totals.sqft),
+        rentalRatePaisa: divideMoney(totals.rentMonthlyPaisa, totals.sqft),
         pricePerSqftPaisa: rupeesToPaisa(totals.weightedPricePerSqft),
         camRatePerSqftPaisa: rupeesToPaisa(totals.weightedCamRate),
-
-        // ✅ BACKWARD COMPATIBILITY: Keep old rupee fields (optional)
-        // These can be removed after migration is complete
         totalRent: totals.rentMonthly,
         camCharges: totals.camMonthly,
         netAmount: totals.netMonthly,
@@ -328,18 +273,15 @@ export async function createTenantTransaction(body, files, adminId, session) {
         rentalRate: totals.rentMonthly / totals.sqft,
         pricePerSqft: totals.weightedPricePerSqft,
         camRatePerSqft: totals.weightedCamRate,
-
         tdsPercentage,
         cam: { ratePerSqft: totals.weightedCamRate },
         isDeleted: false,
         isActive: true,
         status: "active",
         useUnitBreakdown: true,
-
-        // ✅ Quarterly in paisa
         ...(isQuarterly && {
           quarterlyRentAmountPaisa: totals.rentMonthlyPaisa * frequencyMonths,
-          quarterlyRentAmount: totals.rentMonthly * frequencyMonths, // Backward compat
+          quarterlyRentAmount: totals.rentMonthly * frequencyMonths,
           nextRentDueDate: rentCycleData.dueDate.english,
           lastRentChargedDate: rentCycleData.chargeDate.english,
         }),
@@ -348,19 +290,13 @@ export async function createTenantTransaction(body, files, adminId, session) {
     { session },
   );
 
-  // ============================================
-  // 7. OCCUPY UNITS (unchanged)
-  // ============================================
   for (let i = 0; i < units.length; i++) {
-    const unit = units[i];
-    const unitCalc = calculatedUnits[i];
-
-    await unit.occupy({
+    await units[i].occupy({
       tenant: tenant[0]._id,
-      leaseSquareFeet: unitCalc.sqft,
-      pricePerSqft: unitCalc.pricePerSqft,
-      camRatePerSqft: unitCalc.camRatePerSqft,
-      securityDeposit: unitCalc.securityDeposit,
+      leaseSquareFeet: calculatedUnits[i].sqft,
+      pricePerSqft: calculatedUnits[i].pricePerSqft,
+      camRatePerSqft: calculatedUnits[i].camRatePerSqft,
+      securityDeposit: calculatedUnits[i].securityDeposit,
       leaseStartDate: body.leaseStartDate,
       leaseEndDate: body.leaseEndDate,
       dateOfAgreementSigned: body.dateOfAgreementSigned,
@@ -369,20 +305,13 @@ export async function createTenantTransaction(body, files, adminId, session) {
       notes: body.notes || "",
     });
   }
-
   await Promise.all(units.map((u) => u.save({ session })));
 
   const rentFrequencyCalc = calculateRentByFrequencyInPaisa(
-    totals.rentMonthlyPaisa, // ← Pass paisa, not rupees!
+    totals.rentMonthlyPaisa,
     body.rentPaymentFrequency,
     frequencyMonths,
   );
-
-  // ============================================
-  // 9. ✅ CREATE RENT RECORD WITH PAISA
-  // ============================================
-
-  // ✅ Calculate TDS for the period (SIMPLE INTEGER MULTIPLICATION)
   const periodTdsPaisa = totals.totalTdsPaisa * rentFrequencyCalc.periodMonths;
 
   console.log("\n📊 Rent Record Payload:");
@@ -390,53 +319,49 @@ export async function createTenantTransaction(body, files, adminId, session) {
   console.log(`├─ tdsAmountPaisa: ${periodTdsPaisa}`);
   console.log(`└─ paidAmountPaisa: 0`);
 
-  const rentPayload = {
-    tenant: tenant[0]._id,
-    innerBlock: tenant[0].innerBlock,
-    block: tenant[0].block,
-    property: tenant[0].property,
-
-    // ✅ Store as PAISA (integer)
-    rentAmountPaisa: rentFrequencyCalc.chargeAmountPaisa,
-    tdsAmountPaisa: periodTdsPaisa,
-    paidAmountPaisa: 0,
-
-    rentFrequency: body.rentPaymentFrequency,
-    status: "pending",
-    createdBy: adminId,
-    units: unitIds,
-    nepaliMonth: rentCycleData.chargeDate.month,
-    nepaliYear: rentCycleData.chargeDate.year,
-    nepaliDate: nepaliDate,
-    englishMonth: isQuarterly
-      ? rentCycleData.chargeDate.english.getMonth() + 1
-      : englishMonth,
-    englishYear: isQuarterly
-      ? rentCycleData.chargeDate.english.getFullYear()
-      : englishYear,
-    nepaliDueDate: rentCycleData.dueDate.nepali,
-    englishDueDate: rentCycleData.dueDate.english,
-    lateFee: 0,
-    useUnitBreakdown: true,
-
-    unitBreakdown: calculatedUnits.map((u) => ({
-      unit: u.unitId,
-      rentAmountPaisa: u.rentMonthlyPaisa * rentFrequencyCalc.periodMonths,
-      tdsAmountPaisa: u.totalTdsPaisa * rentFrequencyCalc.periodMonths,
+  const rentResult = await createNewRent(
+    {
+      tenant: tenant[0]._id,
+      innerBlock: tenant[0].innerBlock,
+      block: tenant[0].block,
+      property: tenant[0].property,
+      rentAmountPaisa: rentFrequencyCalc.chargeAmountPaisa,
+      tdsAmountPaisa: periodTdsPaisa,
       paidAmountPaisa: 0,
-    })),
-  };
+      rentFrequency: body.rentPaymentFrequency,
+      status: "pending",
+      createdBy: adminId,
+      units: unitIds,
+      nepaliMonth: rentCycleData.chargeDate.month,
+      nepaliYear: rentCycleData.chargeDate.year,
+      nepaliDate: rentCycleData.chargeDate.nepali,
+      englishMonth: isQuarterly
+        ? rentCycleData.chargeDate.english.getMonth() + 1
+        : englishMonth,
+      englishYear: isQuarterly
+        ? rentCycleData.chargeDate.english.getFullYear()
+        : englishYear,
+      nepaliDueDate: rentCycleData.dueDate.nepali,
+      englishDueDate: rentCycleData.dueDate.english,
+      lateFee: 0,
+      useUnitBreakdown: true,
+      unitBreakdown: calculatedUnits.map((u) => ({
+        unit: u.unitId,
+        rentAmountPaisa: u.rentMonthlyPaisa * rentFrequencyCalc.periodMonths,
+        tdsAmountPaisa: u.totalTdsPaisa * rentFrequencyCalc.periodMonths,
+        paidAmountPaisa: 0,
+      })),
+    },
+    session,
+  );
+  if (!rentResult.success) throw new Error(rentResult.message);
 
-  const rentResult = await createNewRent(rentPayload, session);
-  if (!rentResult.success) {
-    throw new Error(rentResult.message);
-  }
-
-  // ============================================
-  // 10-12. LEDGER, CAM, SD (use paisa values)
-  // ============================================
-  const rentChargePayload = buildRentChargeJournal(rentResult.data);
-  await ledgerService.postJournalEntry(rentChargePayload, session);
+  // ── Journal 1: Rent charge ─────────────────────────────────────────────────
+  await ledgerService.postJournalEntry(
+    buildRentChargeJournal(rentResult.data),
+    session,
+    entityId,
+  );
 
   const camResult = await createCam(
     {
@@ -446,12 +371,9 @@ export async function createTenantTransaction(body, files, adminId, session) {
       innerBlock: tenant[0].innerBlock,
       nepaliMonth: npMonth,
       nepaliYear: npYear,
-      nepaliDate,
-
-      // ✅ Store CAM in paisa
+      nepaliDate: firstDayNepali,
       amountPaisa: totals.camMonthlyPaisa,
-      amount: totals.camMonthly, // Backward compat
-
+      amount: totals.camMonthly,
       status: "pending",
       year: englishYear,
       month: englishMonth,
@@ -461,20 +383,15 @@ export async function createTenantTransaction(body, files, adminId, session) {
     adminId,
     session,
   );
+  if (!camResult.success) throw new Error(camResult.message);
 
-  if (!camResult.success) {
-    throw new Error(camResult.message);
-  }
+  // ── Journal 2: CAM charge ──────────────────────────────────────────────────
+  await ledgerService.postJournalEntry(
+    buildCamChargeJournal(camResult.data, { createdBy: adminId }),
+    session,
+    entityId,
+  );
 
-  const camChargePayload = buildCamChargeJournal(camResult.data, {
-    createdBy: adminId,
-  });
-  await ledgerService.postJournalEntry(camChargePayload, session);
-
-  // ============================================
-  // 11. ✅ CREATE SECURITY DEPOSIT (IN PAISA)
-  //     Follow same pattern as CAM/Rent
-  // ============================================
   const hasSecurityDepositAmount =
     body.securityDepositAmount != null &&
     body.securityDepositAmount !== "" &&
@@ -485,7 +402,6 @@ export async function createTenantTransaction(body, files, adminId, session) {
       ? Number(body.securityDepositAmount)
       : totals.securityDeposit || 0;
 
-  // FIX: frontend sends "securityDepositPaymentMethod" (formDataBuilder.js line 82)
   const sdPaymentMethod = body.securityDepositPaymentMethod;
   const hasSecurityDeposit =
     sdPaymentMethod &&
@@ -501,23 +417,23 @@ export async function createTenantTransaction(body, files, adminId, session) {
       property: tenant[0].property,
       block: tenant[0].block,
       innerBlock: tenant[0].innerBlock,
-
-      // ✅ Store SD in paisa (source of truth)
       amountPaisa: rupeesToPaisa(baseSecurityDeposit),
-      amount: baseSecurityDeposit, // Backward compat (rupees)
-
+      amount: baseSecurityDeposit,
       status: mode === "bank_guarantee" ? "held_as_bg" : "paid",
       paidDate: new Date(),
       year: englishYear,
       month: englishMonth,
       nepaliMonth: npMonth,
       nepaliYear: npYear,
-      nepaliDate: nepaliDate,
+      nepaliDate: firstDayNepali,
       createdBy: adminId,
+      // Keep backward compat with older SD records that stored method as "mode",
+      // but also set the canonical field used by journal builders/services.
       mode,
+      paymentMethod: mode,
+      bankAccountCode: body.securityDepositBankAccountCode ?? null,
     };
 
-    // Allow overriding amount for all cash-received modes
     if (
       ["cash", "bank_transfer", "cheque"].includes(mode) &&
       hasSecurityDepositAmount
@@ -525,7 +441,6 @@ export async function createTenantTransaction(body, files, adminId, session) {
       sdPayload.amountPaisa = rupeesToPaisa(Number(body.securityDepositAmount));
       sdPayload.amount = Number(body.securityDepositAmount);
     }
-
     if (mode === "cheque") {
       sdPayload.chequeDetails = {
         chequeNumber: body.chequeNumber,
@@ -533,7 +448,6 @@ export async function createTenantTransaction(body, files, adminId, session) {
         bankName: body.bankName,
       };
     }
-
     if (mode === "bank_guarantee") {
       sdPayload.bankGuaranteeDetails = {
         bgNumber: body.bgNumber,
@@ -543,54 +457,50 @@ export async function createTenantTransaction(body, files, adminId, session) {
       };
     }
 
-    // ── A. Persist the SD document ─────────────────────────────────────────
-    const sd = await createSd(sdPayload, adminId, session);
-    if (!sd.success) {
-      throw new Error(sd.message);
-    }
+    const sd = await createSd(sdPayload, adminId, session, entityId);
+    if (!sd.success) throw new Error(sd.message);
     const sdDoc = sd.data;
 
-    // ── B. Post double-entry journal (DR Cash/Bank · CR Security Deposit Liability)
-    //      Industry rule: journal fires for EVERY mode except bank_guarantee
-    //      (BG is a contingent liability — it's off-balance-sheet until drawn).
     if (mode !== "bank_guarantee") {
-      // Determine which Cash/Bank account to debit based on payment mode
-      // bank_transfer & cheque → ACCOUNT_CODES.CASH_BANK (1000)
-      // cash                   → ACCOUNT_CODES.CASH        (1100)
-      // The builder default is CASH_BANK; pass the cash code explicitly for cash.
       const { ACCOUNT_CODES } = await import("../../ledger/config/accounts.js");
       const drAccountCode =
         mode === "cash" ? ACCOUNT_CODES.CASH : ACCOUNT_CODES.CASH_BANK;
 
-      const sdJournalPayload = buildSecurityDepositJournal(
-        sdDoc,
-        {
-          createdBy: adminId,
-          nepaliMonth: npMonth,
-          nepaliYear: npYear,
-          tenantName: tenant[0].name,
-        },
+      // ── Journal 3: Security deposit ────────────────────────────────────────
+      console.log("[SD Journal] context:", {
+        mode,
+        paymentMethod: mode,
         drAccountCode,
+        bankAccountId: body.securityDepositBankAccountId ?? null,
+        bankAccountCode: body.securityDepositBankAccountCode ?? null,
+      });
+      await ledgerService.postJournalEntry(
+        buildSecurityDepositJournal(
+          sdDoc,
+          {
+            createdBy: adminId,
+            nepaliMonth: npMonth,
+            nepaliYear: npYear,
+            tenantName: tenant[0].name,
+            paymentMethod: mode,
+            bankAccountCode: body.securityDepositBankAccountCode ?? null,
+          },
+          drAccountCode,
+        ),
+        session,
+        entityId,
       );
-      await ledgerService.postJournalEntry(sdJournalPayload, session);
 
-      // ── C. Update the physical balance of the account that received the money
-      //      Must run inside the SAME session as postJournalEntry (atomicity).
       await applyPaymentToBank({
-        paymentMethod: mode, // "cash" | "bank_transfer" | "cheque"
-        bankAccountId: body.securityDepositBankAccountId ?? null, // FIX: matches formDataBuilder.js
+        paymentMethod: mode,
+        bankAccountId: body.securityDepositBankAccountId ?? null,
         amountPaisa: sdDoc.amountPaisa,
         session,
+        entityId,
       });
     }
-
-    // ── D. LIABILITY record is created inside createSd — do not call createLiability here.
-    //      Calling it again would produce a duplicate record for every tenant creation.
   }
 
-  // ============================================
-  // 13. ✅ FINAL SUMMARY
-  // ============================================
   console.log("\n" + "=".repeat(60));
   console.log("✅ TENANT CREATION COMPLETED SUCCESSFULLY");
   console.log("=".repeat(60));
@@ -599,6 +509,10 @@ export async function createTenantTransaction(body, files, adminId, session) {
   console.log("├─ Units:", unitIds.length);
   console.log("├─ Total Sqft:", totals.sqft);
   console.log("├─ Frequency:", body.rentPaymentFrequency);
+  console.log(
+    "├─ Entity ID:",
+    entityId?.toString() ?? "null (implicit private)",
+  );
   console.log("│");
   console.log("├─ 💰 TENANT (Monthly Values):");
   console.log("│  ├─ Monthly Rent:", formatMoney(totals.rentMonthlyPaisa));

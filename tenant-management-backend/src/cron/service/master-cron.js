@@ -42,6 +42,7 @@ import { applyLoanEmiReminders } from "./loanEmi.cron.js";
 import {
   getNepaliMonthDates,
   addNepaliMonths,
+  getNepaliToday,
 } from "../../utils/nepaliDateHelper.js";
 import dotenv from "dotenv";
 dotenv.config();
@@ -105,18 +106,14 @@ async function notifyAdmins({ type, title, message, data, adminIds }) {
 // ─── Nepali today ─────────────────────────────────────────────────────────────
 
 function getTodayNepali() {
-  const today = new NepaliDate();
-  const todayDay = today.getDate();
-  const todayMonth = today.getMonth() + 1; // 1-based
-  const todayYear = today.getYear();
-  const lastDayOfMonth = NepaliDate.getDaysOfMonth(todayYear, today.getMonth());
+  const { npToday, bsYear, bsMonth, bsDay } = getNepaliToday();
+  const lastDayOfMonth = NepaliDate.getDaysOfMonth(bsYear, npToday.getMonth());
   const reminderDay = lastDayOfMonth - 7;
-
   return {
-    today,
-    todayDay,
-    todayMonth,
-    todayYear,
+    today: npToday,
+    todayDay: bsDay,
+    todayMonth: bsMonth,
+    todayYear: bsYear,
     lastDayOfMonth,
     reminderDay,
   };

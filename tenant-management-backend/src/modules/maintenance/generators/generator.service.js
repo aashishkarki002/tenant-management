@@ -341,12 +341,12 @@ export async function recordFuelRefill(generatorId, refillData, adminId) {
           source: sourceId,
           amountPaisa: costPaisa,
           EnglishDate: new Date(),
-          nepaliDate: new Date(nepaliDate),
+          nepaliDate: nepaliDate,
           nepaliMonth: Number(nepaliMonth),
           nepaliYear: Number(nepaliYear),
           payeeType: "EXTERNAL",
           referenceType: "UTILITY",
-          referenceId: generator._id, // link back to the generator
+          referenceId: generator._id,
           notes:
             notes ??
             `Fuel refill — ${liters}L` +
@@ -355,10 +355,8 @@ export async function recordFuelRefill(generatorId, refillData, adminId) {
           createdBy: adminId,
           paymentMethod: paymentMethod ?? "bank_transfer",
           bankAccountId,
-          // expenseCode left undefined — expense.service will resolve via
-          // ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_SOURCE_CODE mapping or default 5200
         },
-        session, // pass the open session so it participates in the same transaction
+        session,
       );
 
       if (!expenseResult.success) {
@@ -471,7 +469,7 @@ export async function recordServiceLog(generatorId, serviceData, adminId) {
           source: sourceId,
           amountPaisa: costPaisa,
           EnglishDate: new Date(),
-          nepaliDate: new Date(nepaliDate),
+          nepaliDate: nepaliDate,
           nepaliMonth: Number(nepaliMonth),
           nepaliYear: Number(nepaliYear),
           payeeType: "EXTERNAL",
@@ -481,7 +479,6 @@ export async function recordServiceLog(generatorId, serviceData, adminId) {
           createdBy: adminId,
           paymentMethod: paymentMethod ?? "bank_transfer",
           bankAccountId,
-          // expense.service maps MAINTENANCE source → ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE
         },
         session,
       );

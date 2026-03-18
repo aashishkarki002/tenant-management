@@ -27,7 +27,7 @@ const sdSchema = new mongoose.Schema(
     month: { type: Number, required: true, min: 1, max: 12 },
     nepaliMonth: { type: Number, required: true, min: 1, max: 12 },
     nepaliYear: { type: Number, required: true },
-    nepaliDate: { type: Date, required: true },
+    nepaliDate: { type: String, required: true },
     year: { type: Number, required: true },
 
     // ============================================

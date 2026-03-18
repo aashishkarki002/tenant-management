@@ -34,6 +34,7 @@ import Admin from "../../modules/auth/admin.Model.js";
 import { Generator } from "../../modules/maintenance/generators/Generator.Model.js";
 import { sendPushToAdmin } from "../../config/webpush.js";
 import { CronLog } from "../model/CronLog.js";
+import { getNepaliToday } from "../../utils/nepaliDateHelper.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,8 +65,7 @@ async function getTargetAdminIds(scope = "all") {
  * @returns {Promise<Array<{_id, name}>>}
  */
 async function getUncheckedGenerators() {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0); // midnight local server time (NPT)
+  const { englishToday: startOfToday } = getNepaliToday();
 
   return Generator.find(
     {
