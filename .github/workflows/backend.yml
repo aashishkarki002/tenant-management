@@ -1,47 +1,46 @@
-name: Deploy Backend via SSH
+name: Deploy Backend
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
+
+      # 1️⃣ Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2️⃣ Copy source files to server
-      - name: Copy files via SCP
-        uses: appleboy/scp-action@v0.1.7
+      # 2️⃣ FTP Deploy
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_SSH_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          source: "tenant-management-backend/."
-          target: "/home/sallyanh/api.sallyanhouse.com"
-          strip_components: 1
-          timeout: 60s
+          server: ${{ secrets.BACKEND_FTP_HOST }}
+          username: ${{ secrets.BACKEND_FTP_USER }}
+          password: ${{ secrets.BACKEND_FTP_PASSWORD }}
+          port: 21
+          local-dir: tenant-management-backend/
+          server-dir: /api.sallyanhouse.com/
+          exclude: |
+            **/node_modules/**
+            .github/**
+            *.log
+            *.zip
+          dangerous-clean-slate: false
 
-      # 3️⃣ Install dependencies and restart
-      - name: Deploy Backend via SSH
-        uses: appleboy/ssh-action@v0.1.9
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_SSH_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          timeout: 1m
-          command_timeout: 5m
-          script: |
-            set -e
-            source /home/sallyanh/nodevenv/api.sallyanhouse.com/20/bin/activate
-            cd /home/sallyanh/api.sallyanhouse.com
-            npm install --omit=dev
-            test -d node_modules/dotenv || (echo "❌ dotenv missing after npm install" && exit 1)
-            mkdir -p tmp && touch tmp/restart.txt
+      # 3️⃣ Restart Passenger & install dependencies
+      - name: Restart Passenger & Install Dependencies
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            "https://api.sallyanhouse.com/deploy.php?token=${{ secrets.DEPLOY_TOKEN }}")
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n1)
+          echo "Response: $body"
+          if [ "$http_code" = "200" ]; then
             echo "✅ Deployment completed successfully!"
+          else
+            echo "❌ Deploy script failed with HTTP $http_code"
+            exit 1
+          fi
