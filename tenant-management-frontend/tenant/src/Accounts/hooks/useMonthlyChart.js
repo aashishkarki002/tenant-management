@@ -19,14 +19,16 @@ function sum(arr, key) {
  *
  * @param selectedQuarter  Primary period  (null = last 5 months, or allYear if fiscalYear set)
  * @param compareQuarter   Secondary period (null = compare off)
- * @param fiscalYear       BS year override — when set with no quarter, sends allYear=true
+ * @param fiscalYear       BS year override
  * @param allYear          Force allYear mode (12-month fiscal year view)
+ * @param entityId         Entity scope — null=merged, "private"=private only, <id>=specific entity
  */
 export function useMonthlyChart(
   selectedQuarter,
   compareQuarter = null,
   fiscalYear = null,
   allYear = false,
+  entityId = null, // NEW
 ) {
   const [chartData, setChartData] = useState([]);
   const [compareData, setCompareData] = useState([]);
@@ -41,9 +43,9 @@ export function useMonthlyChart(
     if (quarter) {
       params.quarter = quarter;
     } else if (allYear || fiscalYear) {
-      // When viewing a full fiscal year (no specific quarter), request all 12 months
       params.allYear = true;
     }
+    if (entityId) params.entityId = entityId; // NEW
     return params;
   };
 
@@ -113,7 +115,7 @@ export function useMonthlyChart(
       setLoadingChart(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedQuarter, compareQuarter, fiscalYear, allYear]);
+  }, [selectedQuarter, compareQuarter, fiscalYear, allYear, entityId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,7 +136,7 @@ export function useMonthlyChart(
   return { chartData, compareData, comparisonStats, loadingChart };
 }
 
-// ─── Quarter label constants (re-exported for use in AccountingPage) ──────────
+// ─── Quarter label constants ──────────────────────────────────────────────────
 export const QUARTER_LABELS = {
   1: "Q1 (Shrawan–Ashwin)",
   2: "Q2 (Kartik–Poush)",

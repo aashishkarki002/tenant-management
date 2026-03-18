@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import NepaliDate from "nepali-datetime";
 import {
     GitCompareArrowsIcon, CalendarIcon, ChevronDownIcon,
@@ -28,6 +28,8 @@ import DualCalendarTailwind from "../../components/dualDate";
 import LedgerTable from "./LedgerTable";
 import RevenueBreakDown from "./RevenueBreakDown";
 import ExpenseBreakDown from "./ExpenseBreakDown";
+import api from "../../../plugins/axios";
+import EntityContextBand from "../components/EntityContextBand";
 
 // ─── Nepali calendar constants ────────────────────────────────────────────────
 const BS_MONTHS = [
@@ -1375,6 +1377,46 @@ export default function AccountingPage() {
     const [activeTab, setActiveTab] = useState("overview");
     const [pendingAction, setPendingAction] = useState(null);
 
+    // ── Entity scope state ────────────────────────────────────────────────────
+    // null           = All entities / merged view (default)
+    // "private"      = Private entity only (legacy null records included)
+    // <ObjectId str> = Specific company entity
+    const [activeEntityId, setActiveEntityId] = useState(null);
+    const [entities, setEntities] = useState([]);
+    const [loadingEntities, setLoadingEntities] = useState(false);
+
+    // Fetch entities once — only if user is super_admin (role check via AuthContext)
+    // In private mode with one entity there's nothing to switch, but we fetch anyway
+    // so the band can hide itself gracefully.
+    useEffect(() => {
+        let cancelled = false;
+        setLoadingEntities(true);
+        api
+            .get("/api/ownership")
+            .then((res) => {
+                if (!cancelled) setEntities(res.data.data ?? []);
+            })
+            .catch(() => {
+                // Non-super_admin will get 403 — silently ignore, band stays hidden
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingEntities(false);
+            });
+        return () => { cancelled = true; };
+    }, []);
+
+    // Resolve the entityId value that all hooks receive:
+    // When user selects a specific entity, pass its _id string.
+    // When user selects All (null), pass null — service treats null as merged.
+    // Special case: if the entity type is "private" (not an ObjectId),
+    // pass the sentinel string "private" so the service uses the $or null filter.
+    const resolvedEntityId = useMemo(() => {
+        if (!activeEntityId) return null; // merged
+        const entity = entities.find((e) => e._id === activeEntityId);
+        if (entity?.type === "private") return "private";
+        return activeEntityId;
+    }, [activeEntityId, entities]);
+
     const resolvedFilter = useMemo(() => {
         if (filterGranularity === "custom" && customStart && customEnd) {
             return { quarter: null, month: null, startDate: customStart, endDate: customEnd, fiscalYear: selectedFiscalYear };
@@ -1408,6 +1450,7 @@ export default function AccountingPage() {
             resolvedFilter.endDate,
             resolvedFilter.month,
             resolvedFilter.fiscalYear,
+            resolvedEntityId, // NEW — entity scope
         );
 
     const { bankAccounts } = useBankAccounts();
@@ -1419,6 +1462,7 @@ export default function AccountingPage() {
             activeCompareQuarter,
             selectedFiscalYear,
             chartAllYear,
+            resolvedEntityId, // NEW — entity scope
         );
 
     const totals = summary?.totals ?? { totalRevenue: 0, totalExpenses: 0, totalLiabilities: 0, netCashFlow: 0 };
@@ -1480,10 +1524,19 @@ export default function AccountingPage() {
         compareQuarter,
         customStartDate: resolvedFilter.startDate,
         customEndDate: resolvedFilter.endDate,
+        entityId: resolvedEntityId, // NEW — forwarded to RevenueBreakDown / ExpenseBreakDown
     };
 
     return (
         <div className="ap min-h-screen" style={{ background: C.bg }}>
+            {/* ── Entity context band ───────────────────────────────────────── */}
+            <EntityContextBand
+                entities={entities}
+                activeEntityId={activeEntityId}
+                onSelect={setActiveEntityId}
+                systemMode={entities.length > 1 ? "merged" : "private"}      // from EntityContext when wired; pass "merged" as fallback
+                loading={loadingEntities}
+            />
             {/* ── Tab bar + period label ─────────────────────────────────────── */}
             <div
                 className="no-print flex items-center justify-between flex-wrap gap-2.5 px-4 sm:px-7"

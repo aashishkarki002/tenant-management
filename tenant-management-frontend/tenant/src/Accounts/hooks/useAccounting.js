@@ -8,8 +8,13 @@ import api from "../../../plugins/axios";
  *
  * Priority (mirrors service layer):
  *   startDate+endDate > month > quarter > fiscalYear (all-year)
+ *
+ * entityId:
+ *   null / undefined  → omitted from params (merged view)
+ *   "private"         → "private" (private-only sentinel)
+ *   <ObjectId string> → specific entity
  */
-function buildParams(quarter, startDate, endDate, month, fiscalYear) {
+function buildParams(quarter, startDate, endDate, month, fiscalYear, entityId) {
   const params = {};
   if (fiscalYear) params.fiscalYear = fiscalYear;
   if (startDate) params.startDate = startDate;
@@ -18,6 +23,7 @@ function buildParams(quarter, startDate, endDate, month, fiscalYear) {
     if (month) params.month = month;
     else if (quarter) params.quarter = quarter;
   }
+  if (entityId) params.entityId = entityId;
   return params;
 }
 
@@ -34,13 +40,21 @@ export function useAccounting(
   endDate = "",
   month = null,
   fiscalYear = null,
+  entityId = null, // NEW — null = merged/all, "private" = private only, <id> = specific entity
 ) {
   const [summary, setSummary] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [ledgerEntries, setLedgerEntries] = useState([]);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
-  const params = buildParams(quarter, startDate, endDate, month, fiscalYear);
+  const params = buildParams(
+    quarter,
+    startDate,
+    endDate,
+    month,
+    fiscalYear,
+    entityId,
+  );
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -53,7 +67,7 @@ export function useAccounting(
       setLoadingSummary(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quarter, startDate, endDate, month, fiscalYear]);
+  }, [quarter, startDate, endDate, month, fiscalYear, entityId]);
 
   const fetchLedger = useCallback(async () => {
     try {
@@ -74,7 +88,7 @@ export function useAccounting(
       setLoadingLedger(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quarter, ledgerType, startDate, endDate, month, fiscalYear]);
+  }, [quarter, ledgerType, startDate, endDate, month, fiscalYear, entityId]);
 
   useEffect(() => {
     fetchSummary();
@@ -93,22 +107,26 @@ export function useAccounting(
 
 // ─── useRevenueSummary ────────────────────────────────────────────────────────
 
-/**
- * Fetches the full revenue breakdown from /api/accounting/revenue-summary.
- * Returns pre-aggregated data — frontend only formats for display.
- */
 export function useRevenueSummary(
   quarter,
   startDate = "",
   endDate = "",
   month = null,
   fiscalYear = null,
+  entityId = null, // NEW
 ) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const params = buildParams(quarter, startDate, endDate, month, fiscalYear);
+  const params = buildParams(
+    quarter,
+    startDate,
+    endDate,
+    month,
+    fiscalYear,
+    entityId,
+  );
 
   const fetch = useCallback(async () => {
     try {
@@ -125,7 +143,7 @@ export function useRevenueSummary(
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quarter, startDate, endDate, month, fiscalYear]);
+  }, [quarter, startDate, endDate, month, fiscalYear, entityId]);
 
   useEffect(() => {
     fetch();
@@ -136,22 +154,26 @@ export function useRevenueSummary(
 
 // ─── useExpenseSummary ────────────────────────────────────────────────────────
 
-/**
- * Fetches the full expense breakdown from /api/accounting/expense-summary.
- * Returns pre-aggregated data — frontend only formats for display.
- */
 export function useExpenseSummary(
   quarter,
   startDate = "",
   endDate = "",
   month = null,
   fiscalYear = null,
+  entityId = null, // NEW
 ) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const params = buildParams(quarter, startDate, endDate, month, fiscalYear);
+  const params = buildParams(
+    quarter,
+    startDate,
+    endDate,
+    month,
+    fiscalYear,
+    entityId,
+  );
 
   const fetch = useCallback(async () => {
     try {
@@ -168,7 +190,7 @@ export function useExpenseSummary(
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quarter, startDate, endDate, month, fiscalYear]);
+  }, [quarter, startDate, endDate, month, fiscalYear, entityId]);
 
   useEffect(() => {
     fetch();
