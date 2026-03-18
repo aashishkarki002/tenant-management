@@ -40,3 +40,6 @@ export {
   buildLoanDisbursementJournal,
   buildLoanPaymentJournal,
 } from "./loan.js";
+
+// Security deposit refund
+export { buildSdRefundJournal } from "./sdRefund.js";

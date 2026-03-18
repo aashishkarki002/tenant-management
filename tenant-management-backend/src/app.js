@@ -37,7 +37,9 @@ import { vendorRouter } from "./modules/vendors/vendor.route.js";
 import dailyChecksRoute from "./modules/dailyChecks/dailyChecksList.route.js";
 import loanRoute from "./modules/loans/Loan.route.js";
 import unitRoute from "./modules/units/unit.route.js";
-
+import blocksRoute from "./modules/blocks/blocks.route.js";
+import sdRefundRoute from "./modules/securityDeposits/sdRefund.route.js";
+import sdRoute from "./modules/securityDeposits/sd.route.js";
 const app = express();
 
 app.disable("x-powered-by");
@@ -114,8 +116,10 @@ app.use("/api/vendor", vendorRouter);
 app.use("/api/checklists", dailyChecksRoute);
 app.use("/api/loan", loanRoute);
 app.use("/api/unit", unitRoute);
+app.use("/api/blocks", blocksRoute);
 app.post("/send-notification", sendTestNotification);
-
+app.use("/api/sd-refund", sdRefundRoute);
+app.use("/api/sd", sdRoute);
 app.get("/api/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 // -------------------- ERROR HANDLERS --------------------

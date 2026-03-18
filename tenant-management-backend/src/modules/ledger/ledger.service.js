@@ -376,8 +376,18 @@ class LedgerService {
       if (filters.tenantId)
         query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
       if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
-      if (filters.entityId)
-        query.entityId = new mongoose.Types.ObjectId(filters.entityId);
+      if (filters.entityId) {
+        if (filters.entityId === "private") {
+          // Private entity: include legacy entries with null/missing entityId
+          query.$or = [{ entityId: null }, { entityId: { $exists: false } }];
+        } else {
+          try {
+            query.entityId = new mongoose.Types.ObjectId(filters.entityId);
+          } catch {
+            // If parsing fails, fall back to merged (safe default)
+          }
+        }
+      }
 
       if (filters.quarter) {
         const months = getMonthsInQuarter(parseInt(filters.quarter));

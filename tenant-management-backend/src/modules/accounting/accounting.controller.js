@@ -11,24 +11,33 @@ import {
  *
  * Supported params:
  *   quarter    (1-4)          — BS fiscal quarter
- *   month      (1-12)         — single BS month (NEW)
- *   fiscalYear (BS year)      — e.g. 2081 (NEW, replaces/supplements nepaliYear)
+ *   month      (1-12)         — single BS month
+ *   fiscalYear (BS year)      — e.g. 2081
  *   startDate  (ISO string)   — explicit range start
  *   endDate    (ISO string)   — explicit range end
- *   allYear    ("true"|"1")   — return all 12 months for fiscalYear (NEW, chart only)
+ *   allYear    ("true"|"1")   — return all 12 months for fiscalYear (chart only)
+ *   entityId   (string)       — OwnershipEntity _id, "private" sentinel, or omit for merged view
+ *
+ * entityId behaviour:
+ *   omitted / null  → merged view (all entities, including legacy null entries)
+ *   "private"       → private entity only (records with entityId=null + explicit private)
+ *   <ObjectId str>  → specific company entity only
  *
  * Filter priority in service layer:
  *   startDate+endDate > month > quarter > all-time
  */
 function extractFilters(query) {
-  const { quarter, month, startDate, endDate, fiscalYear, allYear } = query;
+  const { quarter, month, startDate, endDate, fiscalYear, allYear, entityId } =
+    query;
   return {
     quarter: quarter ? Number(quarter) : null,
-    month: month ? Number(month) : null, // NEW
+    month: month ? Number(month) : null,
     startDate: startDate || null,
     endDate: endDate || null,
     fiscalYear: fiscalYear ? Number(fiscalYear) : null,
-    allYear: allYear === "true" || allYear === "1", // NEW
+    allYear: allYear === "true" || allYear === "1",
+    // Pass through as-is — service layer interprets "private" sentinel and ObjectId strings
+    entityId: entityId || null,
   };
 }
 
@@ -36,15 +45,15 @@ function extractFilters(query) {
 
 export async function getAccountingSummaryController(req, res) {
   try {
-    const { quarter, month, startDate, endDate, fiscalYear } = extractFilters(
-      req.query,
-    );
+    const { quarter, month, startDate, endDate, fiscalYear, entityId } =
+      extractFilters(req.query);
     const data = await getAccountingSummary({
       quarter,
       month,
       startDate,
       endDate,
       fiscalYear,
+      entityId,
     });
     res.json({ success: true, data });
   } catch (err) {
@@ -57,8 +66,15 @@ export async function getAccountingSummaryController(req, res) {
 
 export async function getMonthlyChartController(req, res) {
   try {
-    const { quarter, fiscalYear, allYear } = extractFilters(req.query);
-    const data = await getMonthlyChartData({ quarter, fiscalYear, allYear });
+    const { quarter, fiscalYear, allYear, entityId } = extractFilters(
+      req.query,
+    );
+    const data = await getMonthlyChartData({
+      quarter,
+      fiscalYear,
+      allYear,
+      entityId,
+    });
     res.json({ success: true, data });
   } catch (err) {
     console.error("[accounting] monthly-chart error:", err);
@@ -70,15 +86,15 @@ export async function getMonthlyChartController(req, res) {
 
 export async function getRevenueBreakdownController(req, res) {
   try {
-    const { quarter, month, startDate, endDate, fiscalYear } = extractFilters(
-      req.query,
-    );
+    const { quarter, month, startDate, endDate, fiscalYear, entityId } =
+      extractFilters(req.query);
     const data = await getRevenueBreakdownSummary({
       quarter,
       month,
       startDate,
       endDate,
       fiscalYear,
+      entityId,
     });
     res.json({ success: true, data });
   } catch (err) {
@@ -91,15 +107,15 @@ export async function getRevenueBreakdownController(req, res) {
 
 export async function getExpenseBreakdownController(req, res) {
   try {
-    const { quarter, month, startDate, endDate, fiscalYear } = extractFilters(
-      req.query,
-    );
+    const { quarter, month, startDate, endDate, fiscalYear, entityId } =
+      extractFilters(req.query);
     const data = await getExpenseBreakdownSummary({
       quarter,
       month,
       startDate,
       endDate,
       fiscalYear,
+      entityId,
     });
     res.json({ success: true, data });
   } catch (err) {
