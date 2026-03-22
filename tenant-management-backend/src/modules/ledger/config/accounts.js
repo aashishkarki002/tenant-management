@@ -128,4 +128,6 @@ export const ACCOUNT_CODES = {
    * @reserved do not use until Account "5400" is seeded.
    */
   BANK_CHARGES: "5400",
+  ELECTRICITY_EXPENSE_NEA: "5610", // or whatever code fits your chart
+  NEA_PAYABLE: "2050", // or whatever liability code fits
 };

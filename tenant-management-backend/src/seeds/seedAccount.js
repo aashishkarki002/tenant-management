@@ -121,6 +121,16 @@ function getChartOfAccounts() {
       description: "Amounts owed to vendors and suppliers.",
     },
     {
+      code: "2050",
+      name: "NEA Electricity Payable",
+      type: "LIABILITY",
+      description:
+        "Amount owed to Nepal Electricity Authority (NEA) for electricity consumed " +
+        "but not yet paid. CR when an NEA bill is posted via buildElectricityNeaCostJournal; " +
+        "DR when the NEA invoice is settled (owner pays NEA). " +
+        "String key referenced in journal builder as 'NEA_PAYABLE'.",
+    },
+    {
       code: "2100",
       name: "Security Deposits Held",
       type: "LIABILITY",
@@ -222,7 +232,16 @@ function getChartOfAccounts() {
       description: "Water, electricity, gas — costs borne by the owner.",
     },
     {
-      // FIX BUG 2: Salaries moved here from 5100.
+      code: "5610",
+      name: "NEA Electricity Expense",
+      type: "EXPENSE",
+      description:
+        "Electricity cost billed by Nepal Electricity Authority (NEA) for common areas " +
+        "and owner-borne meters. DR when an NEA bill is posted (paired with CR to NEA_PAYABLE / 2050). " +
+        "This is a sub-account of Utilities (5600). " +
+        "String key referenced in journal builder as 'ELECTRICITY_EXPENSE_NEA'.",
+    },
+    {
       code: "5700",
       name: "Salaries & Wages",
       type: "EXPENSE",
@@ -423,6 +442,25 @@ export function assertNoDuplicateCodes() {
           error: `Code ${code} is ACCOUNT_CODES.${key} but seeded as "${seeded}"`,
         });
       }
+    }
+  }
+
+  // Electricity accounts are NOT in ACCOUNT_CODES — the journal builder resolves them
+  // by string key ("ELECTRICITY_EXPENSE_NEA" → "5610", "NEA_PAYABLE" → "2050").
+  // Those codes ARE seeded above, so we just verify they exist in the chart:
+  const ELECTRICITY_CODES = {
+    ELECTRICITY_EXPENSE_NEA: "5610",
+    NEA_PAYABLE: "2050",
+  };
+  for (const [builderKey, code] of Object.entries(ELECTRICITY_CODES)) {
+    if (!seen.has(code)) {
+      collisions.push({
+        code,
+        semanticMismatch: true,
+        accountCodesKey: builderKey,
+        seededName: null,
+        error: `Builder key "${builderKey}" expects code ${code} but it is NOT in getChartOfAccounts(). Add it.`,
+      });
     }
   }
 

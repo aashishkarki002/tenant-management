@@ -1,7 +1,13 @@
 /**
  * Electricity.Model.js — updated
  *
-
+ * Key addition: dual-rate billing fields
+ *
+ *   ratePerUnitPaisa     → custom rate (what tenant pays) — was already here
+ *   neaRatePerUnitPaisa  → NEA cost rate (what owner pays NEA) — NEW
+ *   totalAmountPaisa     → consumption × customRate  (tenant invoice amount)
+ *   neaCostPaisa         → consumption × neaRate     (owner's actual NEA cost) — NEW
+ *   marginPaisa          → totalAmountPaisa - neaCostPaisa  (owner's profit) — NEW
  *
  * Billing responsibility (enforced by pre-save):
  *   meterType "unit"        → billTo "tenant",   tenant + unit required
@@ -24,15 +30,12 @@ const electricitySchema = new mongoose.Schema(
     // ── Meter classification ─────────────────────────────────────────────────
     meterType: {
       type: String,
-      enum: Object.values(METER_TYPES), // "unit" | "common_area" | "parking" | "sub_meter"
+      enum: Object.values(METER_TYPES),
       default: METER_TYPES.UNIT,
       required: true,
       index: true,
     },
 
-    // Who pays this bill — set automatically in pre-save based on meterType.
-    // Stored explicitly so queries like "all property-account charges this month"
-    // are a single index scan, not a $in on meterType.
     billTo: {
       type: String,
       enum: ["tenant", "property"],
@@ -41,30 +44,24 @@ const electricitySchema = new mongoose.Schema(
     },
 
     // ── References (conditional) ──────────────────────────────────────────────
-    // Required only when meterType === "unit". Validated in pre-save.
     tenant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Tenant",
       default: null,
       index: true,
     },
-
     unit: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Unit",
       default: null,
       index: true,
     },
-
-    // Required when meterType !== "unit". Validated in pre-save.
     subMeter: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubMeter",
       default: null,
       index: true,
     },
-
-    // Always required — every reading belongs to a property.
     property: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Property",
@@ -73,86 +70,49 @@ const electricitySchema = new mongoose.Schema(
     },
 
     // ── Meter readings ────────────────────────────────────────────────────────
-    previousReading: {
-      type: Number,
-      required: [true, "previousReading is required"],
-      min: 0,
-    },
+    previousReading: { type: Number, required: true, min: 0 },
+    currentReading: { type: Number, required: true, min: 0 },
+    consumption: { type: Number, required: true, min: 0 }, // set in pre-save
 
-    currentReading: {
-      type: Number,
-      required: [true, "currentReading is required"],
-      min: 0,
-    },
+    // ── Financial — all stored as PAISA (integers) ────────────────────────────
 
-    // Calculated: currentReading - previousReading. Set in pre-save.
-    consumption: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-
-    // ── Financial — stored as PAISA (integers) ───────────────────────────────
-    //
-    // Industry standard: never store money as floating-point.
-    // All arithmetic is integer paisa. Rupee values are virtuals (read-only).
-    //
-    // 1 rupee = 100 paisa.  Rs 12.50 → 1250 paisa.
-
+    // Custom rate: what you charge the tenant (source: ElectricityRate.customRatePerUnitPaisa)
     ratePerUnitPaisa: {
       type: Number,
       required: [true, "ratePerUnitPaisa is required"],
       min: 1,
-      // Source of truth — set by service from ElectricityRate config.
-      // Never accepted directly from client.
     },
 
-    totalAmountPaisa: {
+    // NEA rate: what NEA charges the building owner (source: ElectricityRate.neaRatePerUnitPaisa)
+    // null = NEA rate not configured at time of reading, margin not tracked.
+    neaRatePerUnitPaisa: {
       type: Number,
-      required: true,
-      min: 0,
-      // Calculated in pre-save: Math.round(consumption * ratePerUnitPaisa)
+      default: null,
+      min: 1,
     },
 
-    paidAmountPaisa: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+    // Tenant invoice total = consumption × ratePerUnitPaisa
+    totalAmountPaisa: { type: Number, required: true, min: 0 },
+
+    // Owner's actual NEA cost = consumption × neaRatePerUnitPaisa
+    // null when neaRatePerUnitPaisa is null.
+    neaCostPaisa: { type: Number, default: null, min: 0 },
+
+    // Margin = totalAmountPaisa - neaCostPaisa
+    // null when neaCostPaisa is null.
+    marginPaisa: { type: Number, default: null },
+
+    paidAmountPaisa: { type: Number, default: 0, min: 0 },
 
     // ── Nepali date ───────────────────────────────────────────────────────────
-    nepaliMonth: {
-      type: Number,
-      required: true,
-      min: 1,
-      max: 12,
-    },
-    nepaliYear: {
-      type: Number,
-      required: true,
-    },
-    nepaliDate: {
-      type: String,
-      required: true,
-      // Human-readable, e.g. "Ashwin 2081"
-    },
+    nepaliMonth: { type: Number, required: true, min: 1, max: 12 },
+    nepaliYear: { type: Number, required: true },
+    nepaliDate: { type: String, required: true }, // e.g. "Ashwin 2081"
 
     // ── English date ──────────────────────────────────────────────────────────
-    englishMonth: {
-      type: Number,
-      required: true,
-      min: 1,
-      max: 12,
-    },
-    englishYear: {
-      type: Number,
-      required: true,
-    },
-    readingDate: {
-      type: Date,
-      required: true,
-      default: Date.now,
-    },
+    englishMonth: { type: Number, required: true, min: 1, max: 12 },
+    englishYear: { type: Number, required: true },
+    readingDate: { type: Date, required: true, default: Date.now },
 
     // ── Payment status ────────────────────────────────────────────────────────
     status: {
@@ -161,11 +121,7 @@ const electricitySchema = new mongoose.Schema(
       default: "pending",
       index: true,
     },
-
-    paidDate: {
-      type: Date,
-      default: null,
-    },
+    paidDate: { type: Date, default: null },
 
     // ── Receipt ───────────────────────────────────────────────────────────────
     receipt: {
@@ -174,17 +130,9 @@ const electricitySchema = new mongoose.Schema(
       generatedAt: { type: Date, default: null },
     },
 
-    // ── Tenant transition tracking (unit readings only) ───────────────────────
-    isInitialReading: {
-      type: Boolean,
-      default: false,
-      // True for the very first reading on a unit (no previous record exists).
-    },
-    isTenantTransition: {
-      type: Boolean,
-      default: false,
-      // True when the unit changed tenants since the last reading.
-    },
+    // ── Tenant transition tracking ────────────────────────────────────────────
+    isInitialReading: { type: Boolean, default: false },
+    isTenantTransition: { type: Boolean, default: false },
     previousTenant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Tenant",
@@ -194,16 +142,10 @@ const electricitySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Electricity",
       default: null,
-      // Points to the last reading for this unit/sub-meter.
     },
 
     // ── Misc ──────────────────────────────────────────────────────────────────
-    notes: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
+    notes: { type: String, default: "", trim: true },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
@@ -212,37 +154,39 @@ const electricitySchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true }, // virtuals included in res.json()
-    toObject: { virtuals: true }, // virtuals included in .toObject()
-    // Note: .lean() does NOT include virtuals — the service handles
-    // paisa→rupees conversion manually for lean queries.
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   },
 );
 
 // ─── Virtuals (rupee views — READ ONLY) ──────────────────────────────────────
-//
-// These replace the original type:Number+getter pattern which was broken
-// for .lean() queries. Use these when rendering to the frontend.
-// In aggregations or .lean() calls, divide paisa fields by 100 directly.
 
 electricitySchema.virtual("ratePerUnit").get(function () {
   return this.ratePerUnitPaisa != null
     ? paisaToRupees(this.ratePerUnitPaisa)
     : null;
 });
-
+electricitySchema.virtual("neaRatePerUnit").get(function () {
+  return this.neaRatePerUnitPaisa != null
+    ? paisaToRupees(this.neaRatePerUnitPaisa)
+    : null;
+});
 electricitySchema.virtual("totalAmount").get(function () {
   return this.totalAmountPaisa != null
     ? paisaToRupees(this.totalAmountPaisa)
     : null;
 });
-
+electricitySchema.virtual("neaCost").get(function () {
+  return this.neaCostPaisa != null ? paisaToRupees(this.neaCostPaisa) : null;
+});
+electricitySchema.virtual("margin").get(function () {
+  return this.marginPaisa != null ? paisaToRupees(this.marginPaisa) : null;
+});
 electricitySchema.virtual("paidAmount").get(function () {
   return this.paidAmountPaisa != null
     ? paisaToRupees(this.paidAmountPaisa)
     : null;
 });
-
 electricitySchema.virtual("remainingAmount").get(function () {
   if (this.totalAmountPaisa == null || this.paidAmountPaisa == null)
     return null;
@@ -251,40 +195,39 @@ electricitySchema.virtual("remainingAmount").get(function () {
   );
 });
 
-// Formatted display strings (same pattern as Rent module)
+// Formatted display strings
 electricitySchema.virtual("ratePerUnitFormatted").get(function () {
   return this.ratePerUnitPaisa != null
     ? formatMoney(this.ratePerUnitPaisa)
     : null;
 });
-
 electricitySchema.virtual("totalAmountFormatted").get(function () {
   return this.totalAmountPaisa != null
     ? formatMoney(this.totalAmountPaisa)
     : null;
 });
-
+electricitySchema.virtual("neaCostFormatted").get(function () {
+  return this.neaCostPaisa != null ? formatMoney(this.neaCostPaisa) : null;
+});
+electricitySchema.virtual("marginFormatted").get(function () {
+  return this.marginPaisa != null
+    ? formatMoney(Math.abs(this.marginPaisa))
+    : null;
+});
 electricitySchema.virtual("paidAmountFormatted").get(function () {
   return this.paidAmountPaisa != null
     ? formatMoney(this.paidAmountPaisa)
     : null;
 });
-
 electricitySchema.virtual("remainingAmountFormatted").get(function () {
   if (this.totalAmountPaisa == null || this.paidAmountPaisa == null)
     return null;
-  const remainingPaisa = Math.max(
-    0,
-    this.totalAmountPaisa - this.paidAmountPaisa,
-  );
-  return formatMoney(remainingPaisa);
+  return formatMoney(Math.max(0, this.totalAmountPaisa - this.paidAmountPaisa));
 });
 
-// Convenience for frontend display
 electricitySchema.virtual("isFullyPaid").get(function () {
   return this.paidAmountPaisa >= this.totalAmountPaisa;
 });
-
 electricitySchema.virtual("isSubMeterReading").get(function () {
   return this.meterType !== METER_TYPES.UNIT;
 });
@@ -296,11 +239,8 @@ electricitySchema.pre("save", async function () {
 
   // 2. Conditional reference validation
   if (this.meterType === METER_TYPES.UNIT) {
-    // tenant is nullable — a unit can be vacant (tenant moved out) or in transition.
-    // The service sets isTenantTransition = true in those cases for audit purposes.
-    // We only hard-require `unit` since we always need to know which meter was read.
     if (!this.unit) throw new Error("unit is required for meterType 'unit'");
-    this.subMeter = null; // ensure no subMeter ref on unit readings
+    this.subMeter = null;
   } else {
     if (!this.subMeter) {
       throw new Error(
@@ -308,7 +248,7 @@ electricitySchema.pre("save", async function () {
           `Create a SubMeter document first and pass its _id.`,
       );
     }
-    this.tenant = null; // ensure no tenant on sub-meter readings
+    this.tenant = null;
     this.unit = null;
   }
 
@@ -320,34 +260,44 @@ electricitySchema.pre("save", async function () {
     );
   }
 
-  // 4. Recalculate consumption (always recompute — never trust caller)
+  // 4. Recalculate consumption
   this.consumption = this.currentReading - this.previousReading;
 
-  // 5. Validate ratePerUnitPaisa is a positive integer
+  // 5. Validate ratePerUnitPaisa (custom rate — tenant billing)
   if (!Number.isInteger(this.ratePerUnitPaisa) || this.ratePerUnitPaisa < 1) {
     throw new Error(
       `ratePerUnitPaisa must be a positive integer (paisa). ` +
         `Got: ${this.ratePerUnitPaisa}. ` +
-        `Convert rupees to paisa before saving (e.g. Rs 12.50 → 1250 paisa).`,
+        `Convert rupees to paisa before saving (e.g. Rs 20 → 2000 paisa).`,
     );
   }
 
-  // 6. Recalculate total amount in paisa
+  // 6. Recalculate tenant invoice total
   this.totalAmountPaisa = Math.round(this.consumption * this.ratePerUnitPaisa);
 
-  if (!Number.isInteger(this.totalAmountPaisa)) {
-    throw new Error(
-      `totalAmountPaisa must be an integer. Got: ${this.totalAmountPaisa}`,
-    );
+  // 7. Recalculate NEA cost and margin if NEA rate is set
+  if (this.neaRatePerUnitPaisa != null) {
+    if (
+      !Number.isInteger(this.neaRatePerUnitPaisa) ||
+      this.neaRatePerUnitPaisa < 1
+    ) {
+      throw new Error(
+        `neaRatePerUnitPaisa must be a positive integer (paisa). Got: ${this.neaRatePerUnitPaisa}.`,
+      );
+    }
+    this.neaCostPaisa = Math.round(this.consumption * this.neaRatePerUnitPaisa);
+    this.marginPaisa = this.totalAmountPaisa - this.neaCostPaisa;
+  } else {
+    this.neaCostPaisa = null;
+    this.marginPaisa = null;
   }
 
-  // 7. Validate paidAmountPaisa
+  // 8. Validate paidAmountPaisa
   if (!Number.isInteger(this.paidAmountPaisa)) {
     throw new Error(
       `paidAmountPaisa must be an integer. Got: ${this.paidAmountPaisa}`,
     );
   }
-
   if (this.paidAmountPaisa > this.totalAmountPaisa) {
     throw new Error(
       `Paid amount (Rs ${this.paidAmountPaisa / 100}) exceeds total ` +
@@ -355,8 +305,7 @@ electricitySchema.pre("save", async function () {
     );
   }
 
-  // 8. Auto-update payment status based on paisa comparison
-  //    Only auto-update if not manually set to "overdue"
+  // 9. Auto-update payment status
   if (this.status !== "overdue") {
     if (
       this.paidAmountPaisa >= this.totalAmountPaisa &&
@@ -366,20 +315,11 @@ electricitySchema.pre("save", async function () {
     } else if (this.paidAmountPaisa > 0) {
       this.status = "partially_paid";
     }
-    // "pending" stays as-is if paidAmountPaisa === 0
   }
 });
 
 // ─── Static helpers ───────────────────────────────────────────────────────────
 
-/**
- * Get the last reading for a unit OR sub-meter.
- * Used by the service to auto-fill previousReading on new entries.
- *
- * @param {"unit"|"subMeter"} refType
- * @param {string} refId
- * @param {mongoose.ClientSession} [session]
- */
 electricitySchema.statics.getLastReading = async function (
   refType,
   refId,
@@ -391,13 +331,6 @@ electricitySchema.statics.getLastReading = async function (
   return query.lean();
 };
 
-/**
- * Summarise readings for a given query (used by service layer).
- * Returns paisa totals — callers divide by 100 for rupee display.
- *
- * @param {Object} filter  - Mongoose query filter
- * @returns {{ totalAmountPaisa, totalPaidPaisa, totalConsumption, count }}
- */
 electricitySchema.statics.summarise = async function (filter) {
   const [result] = await this.aggregate([
     { $match: filter },
@@ -406,6 +339,8 @@ electricitySchema.statics.summarise = async function (filter) {
         _id: null,
         totalAmountPaisa: { $sum: "$totalAmountPaisa" },
         totalPaidPaisa: { $sum: "$paidAmountPaisa" },
+        totalNeaCostPaisa: { $sum: { $ifNull: ["$neaCostPaisa", 0] } },
+        totalMarginPaisa: { $sum: { $ifNull: ["$marginPaisa", 0] } },
         totalConsumption: { $sum: "$consumption" },
         count: { $sum: 1 },
       },
@@ -415,6 +350,8 @@ electricitySchema.statics.summarise = async function (filter) {
     result ?? {
       totalAmountPaisa: 0,
       totalPaidPaisa: 0,
+      totalNeaCostPaisa: 0,
+      totalMarginPaisa: 0,
       totalConsumption: 0,
       count: 0,
     }
@@ -422,49 +359,27 @@ electricitySchema.statics.summarise = async function (filter) {
 };
 
 // ─── Indexes ──────────────────────────────────────────────────────────────────
-//
-// Compound index strategy: most queries filter by property + period,
-// then optionally by meterType or billTo.
 
-// Unit reading queries (tenant billing)
 electricitySchema.index({ tenant: 1, nepaliYear: -1, nepaliMonth: -1 });
 electricitySchema.index({ unit: 1, nepaliYear: -1, nepaliMonth: -1 });
-
-// Sub-meter reading queries (property billing)
 electricitySchema.index({ subMeter: 1, nepaliYear: -1, nepaliMonth: -1 });
-
-// Property-level dashboard queries (all readings for a property in a period)
 electricitySchema.index({ property: 1, nepaliYear: -1, nepaliMonth: -1 });
-
-// Filter by meterType within a property + period (breakdown bar on dashboard)
 electricitySchema.index({
   property: 1,
   meterType: 1,
   nepaliYear: -1,
   nepaliMonth: -1,
 });
-
-// Billing target queries (e.g. "all property-account charges this month")
 electricitySchema.index({
   property: 1,
   billTo: 1,
   nepaliYear: -1,
   nepaliMonth: -1,
 });
-
-// Payment status queries (overdue/pending follow-ups)
 electricitySchema.index({ status: 1, readingDate: -1 });
 electricitySchema.index({ property: 1, status: 1 });
 
-// ── Duplicate-reading prevention (DB-level safety net) ────────────────────────
-//
-// Industry standard: enforce business constraints at BOTH the service layer
-// (clear error messages) AND the DB layer (prevents race conditions).
-//
-// partial + unique: only enforce uniqueness among non-cancelled readings.
-// This lets admins cancel + re-record a reading in the same month if needed.
-//
-// Unit readings: one non-cancelled reading per unit per nepali month/year.
+// Duplicate-reading prevention
 electricitySchema.index(
   { unit: 1, nepaliYear: 1, nepaliMonth: 1 },
   {
@@ -477,7 +392,6 @@ electricitySchema.index(
   },
 );
 
-// Sub-meter readings: one non-cancelled reading per subMeter per nepali month/year.
 electricitySchema.index(
   { subMeter: 1, nepaliYear: 1, nepaliMonth: 1 },
   {

@@ -672,6 +672,14 @@ export { getRevenueSource };
 // PAYMENT-SERVICE HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+function resolveBlockObjectId(blockRef) {
+  const id = blockRef?._id ?? blockRef;
+  if (!id) return null;
+  return id instanceof mongoose.Types.ObjectId
+    ? id
+    : new mongoose.Types.ObjectId(id);
+}
+
 export async function recordRentRevenue({
   amountPaisa,
   amount,
@@ -681,6 +689,7 @@ export async function recordRentRevenue({
   note,
   adminId,
   entityId,
+  blockId,
   session = null,
 }) {
   try {
@@ -696,6 +705,8 @@ export async function recordRentRevenue({
     }).session(session);
     if (!rentRevenueSource)
       throw new Error("Revenue source RENT not configured");
+
+    const resolvedBlockId = resolveBlockObjectId(blockId);
 
     const revenue = await Revenue.create(
       [
@@ -713,6 +724,7 @@ export async function recordRentRevenue({
           notes: note,
           createdBy: new mongoose.Types.ObjectId(adminId),
           ...(entityId && { entityId: new mongoose.Types.ObjectId(entityId) }),
+          ...(resolvedBlockId && { blockId: resolvedBlockId }),
         },
       ],
       { session },
@@ -734,6 +746,7 @@ export async function recordCamRevenue({
   note,
   adminId,
   entityId,
+  blockId,
   session = null,
 }) {
   try {
@@ -748,6 +761,8 @@ export async function recordCamRevenue({
       code: "CAM",
     }).session(session);
     if (!camRevenueSource) throw new Error("Revenue source CAM not configured");
+
+    const resolvedBlockId = resolveBlockObjectId(blockId);
 
     const revenue = await Revenue.create(
       [
@@ -765,6 +780,7 @@ export async function recordCamRevenue({
           notes: note,
           createdBy: new mongoose.Types.ObjectId(adminId),
           ...(entityId && { entityId: new mongoose.Types.ObjectId(entityId) }),
+          ...(resolvedBlockId && { blockId: resolvedBlockId }),
         },
       ],
       { session },
@@ -825,6 +841,7 @@ export async function recordLateFeeRevenue({
   note,
   adminId,
   entityId,
+  blockId,
   session = null,
 }) {
   try {
@@ -833,6 +850,8 @@ export async function recordLateFeeRevenue({
     }).session(session);
     if (!lateFeeRevenueSource)
       throw new Error("Revenue source LATE_FEE not configured");
+
+    const resolvedBlockId = resolveBlockObjectId(blockId);
 
     const revenue = await Revenue.create(
       [
@@ -849,6 +868,7 @@ export async function recordLateFeeRevenue({
           notes: note,
           createdBy: new mongoose.Types.ObjectId(adminId),
           ...(entityId && { entityId: new mongoose.Types.ObjectId(entityId) }),
+          ...(resolvedBlockId && { blockId: resolvedBlockId }),
         },
       ],
       { session },

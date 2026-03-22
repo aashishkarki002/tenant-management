@@ -1,15 +1,19 @@
 /**
- * electricity.rate.controller.js
+ * electricity.rate.controller.js — updated
  *
- * Endpoints for the property owner to configure electricity rates.
- * Kept separate from electricity.controller.js for clarity.
+ * Dual-rate system:
+ *   neaRatePerUnit    → what NEA charges the building (your cost)
+ *   customRatePerUnit → what you charge tenants (your revenue)
+ *
+ * Both rates are stored in ElectricityRate. The margin is auto-computed
+ * on each reading and surfaces cleanly in the accounting P&L.
  */
 
 import { electricityService } from "./electricity.service.js";
 
 /**
  * GET /api/electricity/rate/:propertyId
- * Returns current rate + full history for the owner dashboard.
+ * Returns current rates + full history for the owner dashboard.
  */
 export const getElectricityRate = async (req, res) => {
   try {
@@ -24,39 +28,76 @@ export const getElectricityRate = async (req, res) => {
 
 /**
  * POST /api/electricity/rate/:propertyId
+ *
  * Body: {
- *   ratePerUnit:    number   (rupees, e.g. 12.50)
- *   note:           string   optional — "NEA revision Q1 2082"
- *   meterTypeRates: {        optional per-type overrides (rupees)
+ *   customRatePerUnit:  number   (rupees — what you charge tenants, e.g. 20)
+ *   neaRatePerUnit?:    number   (rupees — what NEA charges you, e.g. 15)
+ *   note?:              string   optional — "NEA revision Q1 2082"
+ *   meterTypeRates?: {           optional per-type custom rate overrides (rupees)
  *     common_area?: number
  *     parking?:     number
  *     sub_meter?:   number
  *   }
  * }
  *
- * Validates: rate > 0, integer paisa after conversion.
+ * Backward-compat: if body has `ratePerUnit` (old field) and no
+ * `customRatePerUnit`, treat `ratePerUnit` as `customRatePerUnit`.
+ *
+ * Validates: rates > 0, neaRate < customRate (warns if not — not blocked).
  * Appends to rate history — old rates are never overwritten (audit trail).
  */
 export const setElectricityRate = async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const { ratePerUnit, note, meterTypeRates } = req.body;
+    const { neaRatePerUnit, note, meterTypeRates } = req.body;
+
+    // Backward-compat: accept either customRatePerUnit or legacy ratePerUnit
+    const customRatePerUnit =
+      req.body.customRatePerUnit ?? req.body.ratePerUnit;
 
     if (
-      !ratePerUnit ||
-      isNaN(parseFloat(ratePerUnit)) ||
-      parseFloat(ratePerUnit) <= 0
+      !customRatePerUnit ||
+      isNaN(parseFloat(customRatePerUnit)) ||
+      parseFloat(customRatePerUnit) <= 0
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "ratePerUnit is required and must be a positive number (e.g. 12.50)",
+          "customRatePerUnit is required and must be a positive number (e.g. 20). " +
+          "This is what you charge tenants per kWh.",
       });
+    }
+
+    // neaRatePerUnit is optional — margin tracking is disabled when absent
+    const parsedNeaRate =
+      neaRatePerUnit != null && neaRatePerUnit !== ""
+        ? parseFloat(neaRatePerUnit)
+        : null;
+
+    if (parsedNeaRate !== null && parsedNeaRate <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "neaRatePerUnit must be a positive number (e.g. 15).",
+      });
+    }
+
+    // Warn (not block) if NEA rate >= custom rate — legitimate in some cases
+    // but usually indicates a data entry error.
+    const warnings = [];
+    if (
+      parsedNeaRate !== null &&
+      parsedNeaRate >= parseFloat(customRatePerUnit)
+    ) {
+      warnings.push(
+        `NEA rate (Rs ${parsedNeaRate}) is >= custom rate (Rs ${customRatePerUnit}). ` +
+          `This means no margin or a loss on electricity billing. Please verify.`,
+      );
     }
 
     const result = await electricityService.setPropertyRate(
       propertyId,
-      parseFloat(ratePerUnit),
+      parseFloat(customRatePerUnit),
+      parsedNeaRate,
       req.admin.id,
       note ?? "",
       meterTypeRates ?? {},
@@ -64,7 +105,12 @@ export const setElectricityRate = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Rate set to Rs ${parseFloat(ratePerUnit).toFixed(2)} / kWh`,
+      message:
+        `Custom rate set to Rs ${parseFloat(customRatePerUnit).toFixed(2)} / kWh` +
+        (parsedNeaRate
+          ? `. NEA cost rate: Rs ${parsedNeaRate.toFixed(2)} / kWh.`
+          : "."),
+      warnings: warnings.length ? warnings : undefined,
       data: result,
     });
   } catch (error) {

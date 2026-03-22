@@ -1,16 +1,19 @@
 /**
  * electricity.service.js — updated
  *
- * Key changes vs original:
- *   1. createElectricityReading now auto-resolves ratePerUnitPaisa from the
- *      owner's ElectricityRate config. A passed-in ratePerUnit is ignored
- *      (callers no longer need to supply it).
- *   2. Revenue note: recordElectricityCharge posts to an INCOME account
- *      (Electricity Revenue) owned by the property. The journal builder
- *      is responsible for the CR side — see comments below.
- *   3. setPropertyRate / getPropertyRate let the owner manage rates.
- *   4. getPropertyRate now exposes the "unit" per-type override so the
- *      dashboard can display and the rate dialog can pre-populate it.
+ * Key changes:
+ *   1. createElectricityReading resolves BOTH customRate and neaRate from
+ *      ElectricityRate.resolveRates(). Both are snapshotted on the reading doc.
+ *   2. recordElectricityCharge posts TWO journal entries:
+ *        DR  Accounts Receivable  |  CR  Electricity Revenue   (tenant charge)
+ *        DR  NEA Payable Expense  |  CR  NEA Payable            (owner's NEA cost)
+ *      Margin (Rs 500 on a Rs 2000/Rs 1500 example) shows cleanly in P&L.
+ *   3. setPropertyRate now accepts neaRatePerUnit in addition to customRatePerUnit.
+ *   4. getPropertyRate exposes both rates + margin.
+ *   5. Fixed: updateElectricityReading must use ratePerUnitPaisa not ratePerUnit
+ *      (ratePerUnit is a read-only virtual — setting it has no effect).
+ *   6. recordElectricityCharge checks totalAmountPaisa (not totalAmount virtual)
+ *      for the > 0 guard, which is safe whether doc is lean or not.
  */
 
 import mongoose from "mongoose";
@@ -22,6 +25,7 @@ import { ledgerService } from "../ledger/ledger.service.js";
 import {
   buildElectricityChargeJournal,
   buildElectricityPaymentJournal,
+  buildElectricityNeaCostJournal,
 } from "../ledger/journal-builders/electricity.js";
 import { Revenue } from "../revenue/Revenue.Model.js";
 import { RevenueSource } from "../revenue/RevenueSource.Model.js";
@@ -39,10 +43,7 @@ class ElectricityService {
 
   /**
    * Get the current rate config for a property.
-   * Returns the full document (currentRate + history + per-type overrides).
-   *
-   * meterTypeRates now includes "unit" so the dashboard can show the
-   * tenant-billed unit rate separately from sub-meter rates.
+   * Exposes both customRate, neaRate, and computed margin.
    */
   async getPropertyRate(propertyId) {
     const config = await ElectricityRate.findOne({ property: propertyId })
@@ -50,14 +51,29 @@ class ElectricityService {
       .lean();
 
     if (!config) {
-      return { configured: false, currentRatePerUnit: null, rateHistory: [] };
+      return {
+        configured: false,
+        currentCustomRatePerUnit: null,
+        rateHistory: [],
+      };
     }
+
+    const neaRate = config.currentNeaRatePerUnitPaisa;
+    const customRate = config.currentCustomRatePerUnitPaisa;
+    const marginPaisa = neaRate != null ? customRate - neaRate : null;
 
     return {
       configured: true,
-      currentRatePerUnit: config.currentRatePerUnitPaisa / 100,
-      currentRatePerUnitPaisa: config.currentRatePerUnitPaisa,
-      // All four meter-type overrides exposed (null = falls back to default)
+      // Custom rate (what tenants pay)
+      currentCustomRatePerUnit: customRate / 100,
+      currentCustomRatePerUnitPaisa: customRate,
+      // NEA rate (what owner pays NEA)
+      currentNeaRatePerUnit: neaRate != null ? neaRate / 100 : null,
+      currentNeaRatePerUnitPaisa: neaRate ?? null,
+      // Margin per unit
+      currentMarginPerUnit: marginPaisa != null ? marginPaisa / 100 : null,
+      currentMarginPerUnitPaisa: marginPaisa,
+      // Per-type overrides (custom rate only, all in rupees)
       meterTypeRates: {
         unit: config.meterTypeRates?.unit
           ? config.meterTypeRates.unit / 100
@@ -74,49 +90,68 @@ class ElectricityService {
       },
       rateHistory: (config.rateHistory ?? []).map((h) => ({
         ...h,
-        ratePerUnit: h.ratePerUnitPaisa / 100,
+        customRatePerUnit: h.customRatePerUnitPaisa / 100,
+        neaRatePerUnit:
+          h.neaRatePerUnitPaisa != null ? h.neaRatePerUnitPaisa / 100 : null,
+        marginPerUnit:
+          h.neaRatePerUnitPaisa != null
+            ? (h.customRatePerUnitPaisa - h.neaRatePerUnitPaisa) / 100
+            : null,
       })),
     };
   }
 
   /**
-   * Set (or update) the rate for a property.
+   * Set (or update) rates for a property.
    * Appends to rateHistory — existing entries are never modified.
    *
    * @param {string}  propertyId
-   * @param {number}  ratePerUnit        - in rupees (e.g. 12.50)
+   * @param {number}  customRatePerUnit   - rupees (what you charge tenants, e.g. 20)
+   * @param {number|null} neaRatePerUnit  - rupees (what NEA charges you, e.g. 15), null = disable margin tracking
    * @param {string}  setBy              - admin id
-   * @param {string}  [note]             - reason / reference (e.g. "NEA tariff Q1 2082")
-   * @param {Object}  [meterTypeRates]   - { unit, common_area, parking, sub_meter } in rupees
-   *                                       Pass null/undefined for a type to clear its override.
+   * @param {string}  [note]
+   * @param {Object}  [meterTypeRates]   - { unit, common_area, parking, sub_meter } in rupees (custom rate overrides only)
    */
   async setPropertyRate(
     propertyId,
-    ratePerUnit,
+    customRatePerUnit,
+    neaRatePerUnit = null,
     setBy,
     note = "",
     meterTypeRates = {},
   ) {
-    const ratePerUnitPaisa = rupeesToPaisa(ratePerUnit);
-
-    if (!Number.isInteger(ratePerUnitPaisa) || ratePerUnitPaisa < 1) {
+    const customRatePerUnitPaisa = rupeesToPaisa(customRatePerUnit);
+    if (
+      !Number.isInteger(customRatePerUnitPaisa) ||
+      customRatePerUnitPaisa < 1
+    ) {
       throw new Error(
-        "Rate must be a positive value (e.g. 12.50 rupees per kWh).",
+        "Custom rate must be a positive value (e.g. 20 rupees per kWh).",
       );
     }
 
+    let neaRatePerUnitPaisa = null;
+    if (neaRatePerUnit != null) {
+      neaRatePerUnitPaisa = rupeesToPaisa(neaRatePerUnit);
+      if (!Number.isInteger(neaRatePerUnitPaisa) || neaRatePerUnitPaisa < 1) {
+        throw new Error(
+          "NEA rate must be a positive value (e.g. 15 rupees per kWh).",
+        );
+      }
+    }
+
     const newEntry = {
-      ratePerUnitPaisa,
+      customRatePerUnitPaisa,
+      neaRatePerUnitPaisa,
       effectiveFrom: new Date(),
       effectiveTo: null,
       note,
       setBy,
     };
 
-    // Convert supplied rupee overrides to paisa. Supported types include "unit".
+    // Convert per-type custom rate overrides to paisa
     const SUPPORTED_TYPES = ["unit", "common_area", "parking", "sub_meter"];
     const meterTypeRatesPaisa = {};
-
     for (const type of SUPPORTED_TYPES) {
       const val = meterTypeRates[type];
       if (val != null && val !== "" && parseFloat(val) > 0) {
@@ -125,21 +160,19 @@ class ElectricityService {
           throw new Error(`Invalid rate for meter type "${type}"`);
         meterTypeRatesPaisa[type] = paisa;
       } else if (type in meterTypeRates) {
-        // Explicitly passed null / empty string → clear the override
-        meterTypeRatesPaisa[type] = null;
+        meterTypeRatesPaisa[type] = null; // explicitly cleared
       }
     }
 
     const config = await ElectricityRate.findOne({ property: propertyId });
 
     if (config) {
-      // Close out the previous active entry
       const prev = config.rateHistory.find((h) => h.effectiveTo === null);
       if (prev) prev.effectiveTo = new Date();
 
-      config.currentRatePerUnitPaisa = ratePerUnitPaisa;
+      config.currentCustomRatePerUnitPaisa = customRatePerUnitPaisa;
+      config.currentNeaRatePerUnitPaisa = neaRatePerUnitPaisa;
 
-      // Merge overrides — only update keys that were explicitly supplied
       const existing = config.meterTypeRates.toObject?.() ?? {
         ...config.meterTypeRates,
       };
@@ -150,13 +183,22 @@ class ElectricityService {
     } else {
       await ElectricityRate.create({
         property: propertyId,
-        currentRatePerUnitPaisa: ratePerUnitPaisa,
+        currentCustomRatePerUnitPaisa: customRatePerUnitPaisa,
+        currentNeaRatePerUnitPaisa: neaRatePerUnitPaisa,
         meterTypeRates: meterTypeRatesPaisa,
         rateHistory: [newEntry],
       });
     }
 
-    return { success: true, ratePerUnit, ratePerUnitPaisa };
+    return {
+      success: true,
+      customRatePerUnit,
+      customRatePerUnitPaisa,
+      neaRatePerUnit,
+      neaRatePerUnitPaisa,
+      marginPerUnit:
+        neaRatePerUnit != null ? customRatePerUnit - neaRatePerUnit : null,
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -175,45 +217,32 @@ class ElectricityService {
   /**
    * Create a new electricity reading.
    *
-   * Rate is resolved automatically from the owner's ElectricityRate config.
-   * For unit (tenant) readings, the "unit" per-type override is checked first,
-   * then falls back to the property default.
-   *
-   * Revenue accounting (handled by buildElectricityChargeJournal):
-   *   DR  Tenant Receivable (asset ↑)
-   *   CR  Electricity Revenue – [Property]  (income ↑ → owner's revenue)
+   * Both customRate and neaRate are resolved from ElectricityRate and
+   * snapshotted onto the reading document. This ensures historical readings
+   * are never affected by future rate changes.
    */
   async createElectricityReading(data, session = null) {
     const isUnitMeter = data.meterType === "unit";
 
-    // ── Branch 1: Unit (tenant-billed or vacant) ───────────────────────────────
+    // ── Branch 1: Unit (tenant-billed) ────────────────────────────────────────
     if (isUnitMeter) {
       const unit = await Unit.findById(data.unitId).session(session);
       if (!unit) throw new Error("Unit not found");
 
-      // Resolve tenantId from request or from unit's current lease
       const tenantIdResolved =
         data.tenantId ??
         unit.currentLease?.tenant?.toString?.() ??
         unit.currentLease?.tenant ??
         null;
 
-      // Pre-declare transition flags — they may be set during tenant resolution
-      // (stale-ref path) OR during last-reading comparison below.
       let isTenantTransition = false;
       let previousTenant = null;
-
-      // ── Tenant resolution with transition support ─────────────────────────────
-      // A tenantId may be supplied but point to a tenant who has already moved
-      // out (their doc was deleted or reassigned). In that case we look up the
-      // unit's CURRENT active tenant and mark this reading as a transition.
       let tenant = null;
+
       if (tenantIdResolved) {
         tenant = await Tenant.findById(tenantIdResolved).session(session);
 
         if (!tenant) {
-          // Supplied tenantId not found — stale reference (tenant moved out).
-          // Try to find whoever is currently occupying this unit instead.
           console.warn(
             `Tenant _id="${tenantIdResolved}" not found — likely moved out. ` +
               `Looking up current occupant of unit ${data.unitId}.`,
@@ -224,45 +253,27 @@ class ElectricityService {
           }).session(session);
 
           if (currentOccupant) {
-            console.log(
-              `Found current occupant: ${currentOccupant._id} — ` +
-                `flagging as tenant transition.`,
-            );
-            // Keep the stale id as previousTenant; new tenant is currentOccupant
             isTenantTransition = true;
-            previousTenant = tenantIdResolved; // the moved-out tenant's id
+            previousTenant = tenantIdResolved;
             tenant = currentOccupant;
           } else {
-            // Unit is vacant — no active tenant found.
-            console.warn(
-              `No active tenant found for unit ${data.unitId}. ` +
-                `Recording as vacant-unit reading.`,
-            );
             tenant = null;
           }
         }
-        // NOTE: We intentionally skip the strict tenant.units ownership check.
-        // The Unit↔Tenant relationship is authoritative on the Tenant.units array,
-        // but during a transition the old tenant has already been removed and the
-        // new tenant may not yet have this unit in their array.
       }
+
       const effectiveTenantId = tenant?._id ?? null;
 
-      // Resolve previous reading from the unit's history
       const lastReading = await this.getLastReadingForUnit(
         data.unitId,
         session,
       );
       let previousReading = 0;
       let isInitialReading = false;
-      // isTenantTransition / previousTenant may already be set above (stale-ref path).
-      // Only reset them here if they haven't been set yet.
       let previousRecord = null;
 
       if (lastReading) {
         const lastTenantId = lastReading.tenant?.toString?.() ?? null;
-        // Detect transition from last reading: different tenant, or moving from
-        // a tenanted reading to a vacant one and vice-versa.
         if (!isTenantTransition) {
           if (
             effectiveTenantId &&
@@ -291,11 +302,19 @@ class ElectricityService {
         );
       }
 
-      // Resolve rate (use unit's property when no tenant)
-      const ratePerUnitPaisa = await ElectricityRate.resolveRate(
-        tenant?.property ?? unit.property,
-        "unit",
-      );
+      // Resolve BOTH rates — snapshot them on the document
+      const { customRatePerUnitPaisa, neaRatePerUnitPaisa } =
+        await ElectricityRate.resolveRates(
+          tenant?.property ?? unit.property,
+          "unit",
+        );
+
+      const consumption = data.currentReading - previousReading;
+      const totalAmountPaisa = Math.round(consumption * customRatePerUnitPaisa);
+      const neaCostPaisa =
+        neaRatePerUnitPaisa != null
+          ? Math.round(consumption * neaRatePerUnitPaisa)
+          : null;
 
       const [electricity] = await Electricity.create(
         [
@@ -307,11 +326,13 @@ class ElectricityService {
             subMeter: null,
             previousReading,
             currentReading: data.currentReading,
-            consumption: data.currentReading - previousReading, // pre-save also recalculates
-            ratePerUnitPaisa,
-            totalAmountPaisa: Math.round(
-              (data.currentReading - previousReading) * ratePerUnitPaisa,
-            ),
+            consumption,
+            ratePerUnitPaisa: customRatePerUnitPaisa, // what tenant pays
+            neaRatePerUnitPaisa: neaRatePerUnitPaisa, // what NEA charges (snapshot)
+            totalAmountPaisa,
+            neaCostPaisa,
+            marginPaisa:
+              neaCostPaisa != null ? totalAmountPaisa - neaCostPaisa : null,
             paidAmountPaisa: 0,
             nepaliMonth: data.nepaliMonth,
             nepaliYear: data.nepaliYear,
@@ -330,12 +351,6 @@ class ElectricityService {
         { session },
       );
 
-      // NOTE: Revenue is intentionally NOT recorded here.
-      // Revenue and payment records are created only when the user
-      // explicitly records a payment via recordElectricityPayment().
-      // Creating a reading merely establishes the charge (accounts receivable);
-      // it does not represent cash received.
-
       return {
         success: true,
         message: isTenantTransition
@@ -346,14 +361,12 @@ class ElectricityService {
     }
 
     // ── Branch 2: Sub-meter (property-billed) ─────────────────────────────────
-    // No tenant or unit involved. Rate resolved from meterType-specific override.
     const { SubMeter } = await import("./SubMeter.Model.js");
 
     const subMeter = await SubMeter.findById(data.subMeterId).session(session);
     if (!subMeter) throw new Error("Sub-meter not found");
     if (!subMeter.isActive) throw new Error("Sub-meter is deactivated");
 
-    // Resolve previous reading from sub-meter history
     const lastReading = await Electricity.getLastReading(
       "subMeter",
       data.subMeterId,
@@ -370,11 +383,17 @@ class ElectricityService {
       );
     }
 
-    // Rate is resolved from the meter-type override (e.g. common_area, parking, sub_meter)
-    const ratePerUnitPaisa = await ElectricityRate.resolveRate(
-      data.propertyId,
-      data.meterType,
-    );
+    // For sub-meters (common_area, parking, etc.) resolve the custom rate override
+    // NEA rate is property-wide — no per-type override for it.
+    const { customRatePerUnitPaisa, neaRatePerUnitPaisa } =
+      await ElectricityRate.resolveRates(data.propertyId, data.meterType);
+
+    const consumption = data.currentReading - previousReading;
+    const totalAmountPaisa = Math.round(consumption * customRatePerUnitPaisa);
+    const neaCostPaisa =
+      neaRatePerUnitPaisa != null
+        ? Math.round(consumption * neaRatePerUnitPaisa)
+        : null;
 
     const [electricity] = await Electricity.create(
       [
@@ -387,11 +406,13 @@ class ElectricityService {
           property: data.propertyId,
           previousReading,
           currentReading: data.currentReading,
-          consumption: data.currentReading - previousReading,
-          ratePerUnitPaisa,
-          totalAmountPaisa: Math.round(
-            (data.currentReading - previousReading) * ratePerUnitPaisa,
-          ),
+          consumption,
+          ratePerUnitPaisa: customRatePerUnitPaisa,
+          neaRatePerUnitPaisa: neaRatePerUnitPaisa,
+          totalAmountPaisa,
+          neaCostPaisa,
+          marginPaisa:
+            neaCostPaisa != null ? totalAmountPaisa - neaCostPaisa : null,
           paidAmountPaisa: 0,
           nepaliMonth: data.nepaliMonth,
           nepaliYear: data.nepaliYear,
@@ -406,7 +427,6 @@ class ElectricityService {
       { session },
     );
 
-    // Optionally sync lastReading on the SubMeter document for dashboard display
     await SubMeter.findByIdAndUpdate(data.subMeterId, {
       "lastReading.value": data.currentReading,
       "lastReading.readingDate": data.readingDate,
@@ -423,27 +443,55 @@ class ElectricityService {
   /**
    * Record electricity charge in ledger.
    *
-   * This posts electricity as REVENUE for the property owner.
-   * The journal builder (buildElectricityChargeJournal) must produce:
-   *   DR  accounts_receivable   (tenant owes money)
-   *   CR  electricity_revenue   (income account — owner earns revenue)
+   * For unit readings (tenant-billed), posts TWO journal entries:
    *
-   * This is the correct treatment: electricity is a utility income stream,
-   * not a contra-expense. The owner buys bulk from NEA and resells per-unit.
+   *   Entry 1 — Tenant charge (revenue):
+   *     DR  Accounts Receivable       totalAmountPaisa   (tenant owes you)
+   *     CR  Electricity Revenue       totalAmountPaisa   (your income)
+   *
+   *   Entry 2 — NEA cost (expense, only when neaCostPaisa is set):
+   *     DR  Electricity Expense (NEA) neaCostPaisa       (your cost from NEA)
+   *     CR  NEA Payable               neaCostPaisa       (you owe NEA)
+   *
+   * The margin (totalAmountPaisa - neaCostPaisa) flows through naturally in P&L:
+   *   Electricity Revenue Rs 2000 - Electricity Expense Rs 1500 = Net Rs 500
+   *
+   * For sub-meter readings (property-billed):
+   *   DR  Property Electricity Expense  totalAmountPaisa
+   *   CR  NEA Payable / Electricity Payable
    */
   async recordElectricityCharge(electricityId, session = null) {
     const electricity = await Electricity.findById(electricityId)
       .populate("tenant")
-      .populate("unit")
+      .populate("property")
+      .populate({
+        path: "unit",
+        populate: {
+          path: "block",
+          select: "name ownershipEntityId",
+          populate: { path: "ownershipEntityId", select: "_id type" },
+        },
+      })
       .session(session);
 
     if (!electricity) throw new Error("Electricity record not found");
 
-    const payload = buildElectricityChargeJournal(electricity);
+    // Guard: skip journal if zero consumption
+    if (electricity.totalAmountPaisa <= 0)
+      return { success: true, skipped: true };
+
+    // Entry 1: Tenant charge → Revenue
+    const chargePayload = buildElectricityChargeJournal(electricity);
     const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
-      payload,
+      chargePayload,
       session,
     );
+
+    // Entry 2: NEA cost → Expense (only when NEA rate was configured at read time)
+    if (electricity.neaCostPaisa != null && electricity.neaCostPaisa > 0) {
+      const neaExpensePayload = buildElectricityNeaCostJournal(electricity);
+      await ledgerService.postJournalEntry(neaExpensePayload, session);
+    }
 
     return { success: true, transaction, ledgerEntries };
   }
@@ -451,19 +499,13 @@ class ElectricityService {
   /**
    * Record electricity payment.
    *
-   * Mirrors the rent payment flow:
+   * Flow:
    *   1. Update Electricity document (paidAmountPaisa, status, paidDate)
    *   2. Post double-entry journal  →  DR Cash/Bank  |  CR Accounts Receivable
-   *   3. Create a Revenue record so the accounting dashboard includes it
+   *   3. Create Revenue record (unit meter, tenant-billed only)
    *   4. Increment BankAccount.balance for bank_transfer / cheque payments
-   *
-   * @param {Object} paymentData - { electricityId, amountPaisa|amount, paymentDate,
-   *   nepaliDate, createdBy, paymentMethod, bankAccountId, receipt?, publicId? }
-   * @param {Object|null} session - Mongoose session for transactions
    */
   async recordElectricityPayment(paymentData, session = null) {
-    // ── 1. Load electricity record ───────────────────────────────────────────
-    // Load with populate for display, but also get raw tenant ID for revenue creation
     const electricity = await Electricity.findById(paymentData.electricityId)
       .populate("tenant", "name")
       .populate("property", "name")
@@ -471,8 +513,6 @@ class ElectricityService {
 
     if (!electricity) throw new Error("Electricity record not found");
 
-    // Get raw tenant ID from document (works whether populated or not)
-    // Use get() with getters: false to get the raw ObjectId value
     const rawTenantId = electricity.get("tenant", null, { getters: false });
 
     const paymentAmountPaisa =
@@ -486,7 +526,7 @@ class ElectricityService {
       );
     }
 
-    // ── 2. Update electricity record ─────────────────────────────────────────
+    // 1. Update electricity record
     electricity.paidAmountPaisa = newPaidPaisa;
     electricity.status =
       electricity.paidAmountPaisa >= electricity.totalAmountPaisa
@@ -504,100 +544,60 @@ class ElectricityService {
 
     await electricity.save({ session });
 
-    // ── 3. Post double-entry journal  (DR Cash/Bank | CR AR) ─────────────────
-    // Use buildElectricityPaymentJournal — NOT the rent-specific builder.
+    // 2. Post journal: DR Cash/Bank | CR AR
     const journalPayload = buildElectricityPaymentJournal(
       paymentData,
       electricity,
     );
-
     const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
       journalPayload,
       session,
     );
 
-    // ── 4. Create Revenue record (only for tenant-billed charges) ─────────────
-    // Property-billed charges (common_area, parking, sub_meter) are expenses,
-    // not revenue, so we only create Revenue records for tenant payments.
-    // Use rawTenantId extracted earlier (works whether tenant is populated or not)
-    const tenantId = rawTenantId;
-
-    // Only create revenue for unit meter types (tenant-billed)
-    if (electricity.meterType === "unit" && tenantId) {
+    // 3. Create Revenue record for tenant-billed payments only
+    if (electricity.meterType === "unit" && rawTenantId) {
       try {
-        // Mirrors how rent payments write to Revenue so accounting_service.js
-        // aggregates electricity income alongside rent/CAM revenue.
-        // Resolve (or lazily create) the UTILITY revenue source.
         let utilitySource = await RevenueSource.findOne({
           code: "UTILITY",
         }).session(session);
         if (!utilitySource) {
-          // Auto-create so the system is self-healing on first run
           [utilitySource] = await RevenueSource.create(
             [{ code: "UTILITY", name: "Electricity / Utility" }],
             { session },
           );
         }
 
-        // Ensure tenantId is an ObjectId instance (handle string IDs)
         const tenantObjectId =
-          tenantId instanceof mongoose.Types.ObjectId
-            ? tenantId
-            : new mongoose.Types.ObjectId(tenantId);
+          rawTenantId instanceof mongoose.Types.ObjectId
+            ? rawTenantId
+            : new mongoose.Types.ObjectId(rawTenantId);
 
-        const revenueData = {
-          source: utilitySource._id,
-          amountPaisa: paymentAmountPaisa,
-          date: paymentData.paymentDate ?? new Date(),
-          payerType: "TENANT",
-          tenant: tenantObjectId,
-          referenceType: "ELECTRICITY",
-          referenceId: electricity._id,
-          createdBy: paymentData.createdBy,
-          notes: `Electricity payment – ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
-        };
-
-        const [revenue] = await Revenue.create([revenueData], { session });
-
-        // Log for debugging
-        console.log("✅ Revenue created for electricity payment:", {
-          revenueId: revenue._id,
-          amountPaisa: paymentAmountPaisa,
-          tenantId: tenantObjectId.toString(),
-          electricityId: electricity._id.toString(),
-        });
-      } catch (error) {
-        // Log error but don't fail the transaction - revenue creation is important but shouldn't block payment
-        console.error(
-          "❌ Failed to create revenue record for electricity payment:",
-          {
-            error: error.message,
-            electricityId: electricity._id.toString(),
-            tenantId: tenantId?.toString(),
-            stack: error.stack,
-          },
+        await Revenue.create(
+          [
+            {
+              source: utilitySource._id,
+              amountPaisa: paymentAmountPaisa,
+              date: paymentData.paymentDate ?? new Date(),
+              payerType: "TENANT",
+              tenant: tenantObjectId,
+              referenceType: "ELECTRICITY",
+              referenceId: electricity._id,
+              createdBy: paymentData.createdBy,
+              notes: `Electricity payment – ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
+            },
+          ],
+          { session },
         );
-        // Re-throw to abort transaction if revenue creation fails
-        throw error;
+      } catch (error) {
+        console.error(
+          "Failed to create revenue record for electricity payment:",
+          error.message,
+        );
+        throw error; // abort transaction
       }
-    } else if (electricity.meterType === "unit" && !tenantId) {
-      // Log warning if unit meter type but no tenant found
-      console.warn(
-        "⚠️ Warning: Unit meter type electricity payment but no tenant found:",
-        {
-          electricityId: electricity._id.toString(),
-          meterType: electricity.meterType,
-          tenant: electricity.tenant,
-        },
-      );
     }
 
-    // ── 5. Update bank account balance ───────────────────────────────────────
-    // Only for bank_transfer and cheque — cash doesn't track a BankAccount doc.
-    // Delegates to bank.domain — handles method validation, account lookup,
-    // and balancePaisa increment. Returns null for cash (no-op).
-    // Default to "bank_transfer" if payment method not provided, but only if bankAccountId exists
-    // Otherwise default to "cash" to avoid requiring bank account
+    // 4. Update bank balance
     const bankAccountId = paymentData.bankAccountId ?? paymentData.bankAccount;
     const paymentMethod =
       paymentData.paymentMethod || (bankAccountId ? "bank_transfer" : "cash");
@@ -609,44 +609,33 @@ class ElectricityService {
       session,
     });
 
-    return {
-      success: true,
-      electricity,
-      transaction,
-      ledgerEntries,
-    };
+    return { success: true, electricity, transaction, ledgerEntries };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // QUERIES (unchanged from original, kept for completeness)
+  // QUERIES
   // ─────────────────────────────────────────────────────────────────────────
 
   async getElectricityReadings(filters = {}) {
     const query = {};
 
-    // Basic filters
     if (filters.tenantId) query.tenant = filters.tenantId;
     if (filters.unitId) query.unit = filters.unitId;
     if (filters.propertyId) query.property = filters.propertyId;
     if (filters.nepaliYear) query.nepaliYear = filters.nepaliYear;
     if (filters.nepaliMonth) query.nepaliMonth = filters.nepaliMonth;
-    if (filters.status && filters.status !== "all") {
+    if (filters.status && filters.status !== "all")
       query.status = filters.status;
-    }
+    if (filters.meterType) query.meterType = filters.meterType;
 
     if (
       (filters.blockId && filters.blockId !== "all") ||
       filters.innerBlockId
     ) {
       const unitQuery = {};
-
-      if (filters.blockId && filters.blockId !== "all") {
+      if (filters.blockId && filters.blockId !== "all")
         unitQuery.block = filters.blockId;
-      }
-
-      if (filters.innerBlockId) {
-        unitQuery.innerBlock = filters.innerBlockId;
-      }
+      if (filters.innerBlockId) unitQuery.innerBlock = filters.innerBlockId;
 
       const units = await Unit.find(unitQuery).select("_id").lean();
       const unitIds = units.map((u) => u._id);
@@ -660,22 +649,23 @@ class ElectricityService {
       ];
     }
 
+    // Server-side text search using regex (avoids full collection load)
+    if (filters.searchQuery) {
+      const re = new RegExp(filters.searchQuery.trim(), "i");
+      // Add to query — match against notes field; tenant/unit names need lookup
+      // Keep client-side fallback below for populated fields
+      query.$or = [...(query.$or ?? []), { notes: re }];
+    }
+
     if (filters.startDate || filters.endDate) {
       query.readingDate = {};
-
-      if (filters.startDate) {
+      if (filters.startDate)
         query.readingDate.$gte = new Date(filters.startDate);
-      }
-
       if (filters.endDate) {
         const end = new Date(filters.endDate);
         end.setHours(23, 59, 59, 999);
         query.readingDate.$lte = end;
       }
-    }
-
-    if (filters.meterType) {
-      query.meterType = filters.meterType;
     }
 
     let readings = await Electricity.find(query)
@@ -692,27 +682,24 @@ class ElectricityService {
       .populate("previousTenant", "name")
       .sort({ readingDate: -1, createdAt: -1 });
 
+    // Client-side refinement for populated fields (tenant name, block name, etc.)
     if (filters.searchQuery) {
       const searchLower = filters.searchQuery.toLowerCase();
       readings = readings.filter((reading) => {
         const unitName = (
           reading.unit?.name ??
           reading.unit?.unitName ??
-          reading.subMeter?.name ??
           ""
         ).toLowerCase();
         const meterType = (reading.meterType ?? "").toLowerCase();
         const status = (reading.status ?? "").toLowerCase();
         const blockName = (reading.unit?.block?.name ?? "").toLowerCase();
-        const innerBlockName = (reading.unit?.innerBlock?.name ?? "").toLowerCase();
         const tenantName = (reading.tenant?.name ?? "").toLowerCase();
-
         return (
           unitName.includes(searchLower) ||
           meterType.includes(searchLower) ||
           status.includes(searchLower) ||
           blockName.includes(searchLower) ||
-          innerBlockName.includes(searchLower) ||
           tenantName.includes(searchLower)
         );
       });
@@ -722,36 +709,52 @@ class ElectricityService {
       r.toObject({ virtuals: true }),
     );
 
-    // ── Group by meterType ────────────────────────────────────────────────────
-    const METER_TYPES = ["unit", "common_area", "parking", "sub_meter"];
+    const METER_TYPES_LIST = ["unit", "common_area", "parking", "sub_meter"];
 
     const grouped = Object.fromEntries(
-      METER_TYPES.map((type) => {
+      METER_TYPES_LIST.map((type) => {
         const bucket = readingsForResponse.filter((r) => r.meterType === type);
         const totalAmountPaisa = bucket.reduce(
           (s, r) => s + (r.totalAmountPaisa ?? 0),
           0,
         );
-        const totalUnits = bucket.reduce((s, r) => s + (r.consumption ?? 0), 0); // ← key fix
+        const totalNeaCostPaisa = bucket.reduce(
+          (s, r) => s + (r.neaCostPaisa ?? 0),
+          0,
+        );
+        const totalMarginPaisa = bucket.reduce(
+          (s, r) => s + (r.marginPaisa ?? 0),
+          0,
+        );
+        const totalUnits = bucket.reduce((s, r) => s + (r.consumption ?? 0), 0);
         return [
           type,
           {
             readings: bucket,
             totalAmount: paisaToRupees(totalAmountPaisa),
-            totalUnits, // consumption in kWh
+            totalNeaCost: paisaToRupees(totalNeaCostPaisa),
+            totalMargin: paisaToRupees(totalMarginPaisa),
+            totalUnits,
             count: bucket.length,
           },
         ];
       }),
     );
 
-    // ✅ Use readingsForResponse — plain objects with virtuals already resolved
     const totalAmountPaisa = readingsForResponse.reduce(
       (s, r) => s + (r.totalAmountPaisa ?? 0),
       0,
     );
     const totalPaidPaisa = readingsForResponse.reduce(
       (s, r) => s + (r.paidAmountPaisa ?? 0),
+      0,
+    );
+    const totalNeaCostPaisa = readingsForResponse.reduce(
+      (s, r) => s + (r.neaCostPaisa ?? 0),
+      0,
+    );
+    const totalMarginPaisa = readingsForResponse.reduce(
+      (s, r) => s + (r.marginPaisa ?? 0),
       0,
     );
     const grandTotalUnits = readingsForResponse.reduce(
@@ -762,13 +765,15 @@ class ElectricityService {
     return {
       success: true,
       data: {
-        grouped, // ← new: what ElectricitySummaryCards needs
-        readings: readingsForResponse, // keep for any table views
+        grouped,
+        readings: readingsForResponse,
         summary: {
           totalReadings: readings.length,
           grandTotalUnits,
           grandTotalAmount: paisaToRupees(totalAmountPaisa),
-          totalConsumption: grandTotalUnits, // alias for backward compat
+          grandTotalNeaCost: paisaToRupees(totalNeaCostPaisa),
+          grandTotalMargin: paisaToRupees(totalMarginPaisa),
+          totalConsumption: grandTotalUnits,
           totalAmount: paisaToRupees(totalAmountPaisa),
           totalPaid: paisaToRupees(totalPaidPaisa),
           totalPending: paisaToRupees(
@@ -783,6 +788,8 @@ class ElectricityService {
             totalPending: formatMoney(
               Math.max(0, totalAmountPaisa - totalPaidPaisa),
             ),
+            totalNeaCost: formatMoney(totalNeaCostPaisa),
+            totalMargin: formatMoney(totalMarginPaisa),
           },
         },
       },
@@ -795,10 +802,10 @@ class ElectricityService {
       .sort({ readingDate: -1 })
       .limit(limit);
 
-    const historyForResponse = history.map((doc) =>
-      doc.toObject({ virtuals: true }),
-    );
-    return { success: true, data: historyForResponse };
+    return {
+      success: true,
+      data: history.map((doc) => doc.toObject({ virtuals: true })),
+    };
   }
 }
 

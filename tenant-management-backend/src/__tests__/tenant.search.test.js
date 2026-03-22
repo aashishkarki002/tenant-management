@@ -21,8 +21,8 @@ import { Tenant } from "../modules/tenant/Tenant.Model.js";
 import { Rent } from "../modules/rents/rent.Model.js";
 import { Cam } from "../modules/cam/cam.model.js";
 import { Property } from "../modules/property/property.Model.js";
-import { Block } from "../modules/blocks/block.Model.js";
-import { InnerBlock } from "../modules/innerBlocks/innerBlock.Model.js";
+import { Block } from "../modules/blocks/Block.Model.js";
+import { InnerBlock } from "../modules/blocks/innerBlocks/InnerBlock.Model.js";
 import { Unit } from "../modules/units/unit.model.js";
 
 describe("Tenant Search API", () => {

@@ -48,7 +48,14 @@ export async function payRentAndCam(req, res) {
       allocations,
       allocationStrategy,
     } = req.body;
-
+    const normalizedMethod = (paymentMethod ?? "").toLowerCase().trim();
+    const VALID_METHODS = ["cash", "bank_transfer", "cheque", "mobile_wallet"];
+    if (!normalizedMethod || !VALID_METHODS.includes(normalizedMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: `paymentMethod is required. Must be one of: ${VALID_METHODS.join(", ")}`,
+      });
+    }
     // Support both bankAccountId and bankAccount field names
     const bankAccountId = bodyBankAccountId || bodyBankAccount;
 
@@ -67,7 +74,7 @@ export async function payRentAndCam(req, res) {
       amount,
       paymentDate,
       nepaliDate,
-      paymentMethod,
+      paymentMethod: normalizedMethod,
       paymentStatus: paymentStatus || "paid",
       note: note || "",
       receivedBy: req.admin.id,

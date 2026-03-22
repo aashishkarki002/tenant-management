@@ -225,10 +225,9 @@ rentSchema.virtual("paidAmountFormatted").get(function () {
 rentSchema.set("toJSON", { virtuals: true, getters: false });
 rentSchema.set("toObject", { virtuals: true, getters: false });
 
-// ── Pre-save hook ─────────────────────────────────────────────────────────────
-
-rentSchema.pre("save", function () {
-  // Coerce to integers (safety net)
+// ── Pre-validate hook ─────────────────────────────────────────────────────────
+// BUG-10 FIX: Round paisa values BEFORE validation runs
+rentSchema.pre("validate", function () {
   for (const field of [
     "rentAmountPaisa",
     "tdsAmountPaisa",
@@ -240,7 +239,22 @@ rentSchema.pre("save", function () {
       this[field] = Math.round(this[field]);
     }
   }
+  
+  // Also round unit breakdown paisa values
+  if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
+    this.unitBreakdown.forEach((ub) => {
+      for (const field of ["rentAmountPaisa", "tdsAmountPaisa", "paidAmountPaisa"]) {
+        if (ub[field] != null && !Number.isInteger(ub[field])) {
+          ub[field] = Math.round(ub[field]);
+        }
+      }
+    });
+  }
+});
 
+// ── Pre-save hook ─────────────────────────────────────────────────────────────
+
+rentSchema.pre("save", function () {
   // Sync root fields from unit breakdown
   if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
     this.rentAmountPaisa = this.unitBreakdown.reduce(
@@ -264,16 +278,31 @@ rentSchema.pre("save", function () {
     });
   }
 
-  // Rent status
+  // BUG-04 FIX: Calculate rent status but handle 'overdue' carefully
   const effectiveRentPaisa = this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
-  if (this.paidAmountPaisa === 0) this.status = "pending";
-  else if (this.paidAmountPaisa >= effectiveRentPaisa) this.status = "paid";
-  else this.status = "partially_paid";
+  const remainingRentPaisa = effectiveRentPaisa - this.paidAmountPaisa;
+  const remainingLateFee = (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
+  const totalDue = remainingRentPaisa + remainingLateFee;
+  
+  // Calculate the new status based on payment state
+  if (totalDue <= 0) {
+    // Everything paid (rent + late fees)
+    this.status = "paid";
+  } else if (this.paidAmountPaisa === 0 && this.status !== 'overdue') {
+    // Nothing paid yet and not already marked overdue
+    this.status = "pending";
+  } else if (this.status === 'overdue' && remainingRentPaisa > 0 && this.paidAmountPaisa === 0) {
+    // BUG-04: Preserve 'overdue' when no payment has been made on an overdue rent
+    // (keep status as 'overdue')
+  } else if (remainingRentPaisa > 0) {
+    // Some rent still unpaid but some payment made
+    this.status = this.status === 'overdue' ? 'overdue' : "partially_paid";
+  } else if (remainingLateFee > 0) {
+    // Rent fully paid but late fees remain
+    this.status = "partially_paid";
+  }
 
   // Late fee status
-  const remainingLateFee =
-    (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
-
   if (!this.lateFeePaisa || this.lateFeePaisa === 0) {
     this.lateFeeStatus = "pending";
     this.lateFeeApplied = false;

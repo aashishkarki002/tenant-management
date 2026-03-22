@@ -1,24 +1,21 @@
-import { electricityService } from "./electricity.service.js";
-import mongoose from "mongoose";
+/**
+ * electricity.controller.js — updated
+ *
+ * Changes vs original:
+ *   1. updateElectricityReading: was setting `electricity.ratePerUnit` (a read-only
+ *      virtual) — corrected to `electricity.ratePerUnitPaisa` (the actual field).
+ *   2. createElectricityReading: guards on `totalAmountPaisa` (not `totalAmount`)
+ *      before calling recordElectricityCharge — safe whether doc is lean or not.
+ *   3. recordElectricityPayment: passes `amountPaisa` to the service
+ *      (avoids double conversion rupees→paisa in the service layer).
+ */
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+import { electricityService } from "./electricity.service.js";
+import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import mongoose from "mongoose";
 
 const VALID_METER_TYPES = ["unit", "common_area", "parking", "sub_meter"];
 
-/**
- * Groups a flat readings array into keyed buckets by meterType.
- * Each bucket carries its own subtotal so the frontend never has to
- * re-aggregate. This is the "BFF (Backend for Frontend)" pattern —
- * shape the response to match what the UI actually renders.
- *
- * Output shape:
- * {
- *   unit:        { readings: [...], totalAmount, totalUnits, count }
- *   common_area: { readings: [...], totalAmount, totalUnits, count }
- *   parking:     { readings: [...], totalAmount, totalUnits, count }
- *   sub_meter:   { readings: [...], totalAmount, totalUnits, count }
- * }
- */
 const groupReadingsByMeterType = (readings = []) => {
   const buckets = Object.fromEntries(
     VALID_METER_TYPES.map((type) => [
@@ -29,7 +26,7 @@ const groupReadingsByMeterType = (readings = []) => {
 
   for (const reading of readings) {
     const bucket = buckets[reading.meterType];
-    if (!bucket) continue; // guard against unknown types in DB
+    if (!bucket) continue;
 
     bucket.readings.push(reading);
     bucket.totalAmount += reading.totalAmount ?? 0;
@@ -42,20 +39,6 @@ const groupReadingsByMeterType = (readings = []) => {
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 
-/**
- * Create a new electricity reading.
- * POST /api/electricity/create-reading
- *
- * Supports two billing paths determined by meterType:
- *
- *   meterType "unit"  → tenant-billed
- *     Required: tenantId, unitId, currentReading, nepali date fields
- *
- *   meterType "common_area" | "parking" | "sub_meter"  → property-billed
- *     Required: subMeterId, propertyId, currentReading, nepali date fields
- *     Note: ratePerUnit is resolved server-side from ElectricityRate config —
- *     the client never sends a rate directly (prevents rate tampering).
- */
 export const createElectricityReading = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -63,13 +46,10 @@ export const createElectricityReading = async (req, res) => {
   try {
     const {
       meterType = "unit",
-      // Unit path
       tenantId,
       unitId,
-      // Sub-meter path
       subMeterId,
       propertyId,
-      // Shared
       currentReading,
       nepaliMonth,
       nepaliYear,
@@ -93,10 +73,9 @@ export const createElectricityReading = async (req, res) => {
     if (!currentReading) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "currentReading is required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "currentReading is required" });
     }
 
     if (!nepaliMonth || !nepaliYear || !nepaliDate) {
@@ -109,17 +88,17 @@ export const createElectricityReading = async (req, res) => {
       });
     }
 
-    // ── Path-specific validation ──────────────────────────────────────────────
     if (meterType === "unit") {
       if (!unitId) {
         await session.abortTransaction();
         session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: "unitId is required for unit readings",
-        });
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "unitId is required for unit readings",
+          });
       }
-      // tenantId is optional; service will resolve from unit.currentLease.tenant when missing
     } else {
       if (!subMeterId || !propertyId) {
         await session.abortTransaction();
@@ -131,7 +110,6 @@ export const createElectricityReading = async (req, res) => {
       }
     }
 
-    // ── Delegate to service ───────────────────────────────────────────────────
     const result = await electricityService.createElectricityReading(
       {
         meterType,
@@ -155,12 +133,8 @@ export const createElectricityReading = async (req, res) => {
       session,
     );
 
-    /**
-     * Record ledger entry if a charge was generated.
-     * unit readings      → debit tenant's receivable account
-     * sub-meter readings → debit property's operating expense account
-     */
-    if (result.data.totalAmount > 0) {
+    // FIX: check totalAmountPaisa (integer field), not totalAmount (virtual)
+    if (result.data.totalAmountPaisa > 0) {
       await electricityService.recordElectricityCharge(
         result.data._id,
         session,
@@ -170,54 +144,22 @@ export const createElectricityReading = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.status(201).json({
-      success: true,
-      message: result.message,
-      data: result.data,
-    });
+    res
+      .status(201)
+      .json({ success: true, message: result.message, data: result.data });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.error("Error creating electricity reading:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to create electricity reading",
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to create electricity reading",
+      });
   }
 };
 
-/**
- * Get electricity readings with filters — grouped by meterType.
- * GET /api/electricity/get-readings
- *
- * Query params:
- *   tenantId, unitId, subMeterId, propertyId, blockId, innerBlockId,
- *   nepaliYear, nepaliMonth, status, startDate, endDate, meterType, billTo
- *
- * Response shape (no meterType filter → grouped):
- * {
- *   success: true,
- *   data: {
- *     grouped: {
- *       unit:        { readings, totalAmount, totalUnits, count }
- *       common_area: { readings, totalAmount, totalUnits, count }
- *       parking:     { readings, totalAmount, totalUnits, count }
- *       sub_meter:   { readings, totalAmount, totalUnits, count }
- *     },
- *     summary: { totalReadings, grandTotalAmount, grandTotalUnits }
- *   }
- * }
- *
- * Response shape (meterType filter supplied → flat, same as before):
- * {
- *   success: true,
- *   data: { readings: [...], summary: { ... } }
- * }
- *
- * Industry standard: when a client passes meterType they already know what
- * category they want (e.g. a parking dashboard). Skip the grouping overhead
- * and return a flat list for that specific type only.
- */
 export const getElectricityReadings = async (req, res) => {
   try {
     const {
@@ -232,12 +174,11 @@ export const getElectricityReadings = async (req, res) => {
       status,
       startDate,
       endDate,
-      meterType, // optional filter
+      meterType,
       billTo,
       searchQuery,
     } = req.query;
 
-    // Validate meterType if supplied
     if (meterType && !VALID_METER_TYPES.includes(meterType)) {
       return res.status(400).json({
         success: false,
@@ -264,10 +205,8 @@ export const getElectricityReadings = async (req, res) => {
 
     const readings = result.data?.readings ?? [];
 
-    // ── Grouped response (no specific meterType requested) ────────────────────
     if (!meterType) {
       const grouped = groupReadingsByMeterType(readings);
-
       const grandTotalAmount = readings.reduce(
         (sum, r) => sum + (r.totalAmount ?? 0),
         0,
@@ -290,28 +229,21 @@ export const getElectricityReadings = async (req, res) => {
       });
     }
 
-    // ── Flat response (specific meterType requested) ───────────────────────────
     return res.status(200).json({
       success: true,
-      data: {
-        meterType,
-        readings,
-        summary: result.data?.summary ?? {},
-      },
+      data: { meterType, readings, summary: result.data?.summary ?? {} },
     });
   } catch (error) {
     console.error("Error getting electricity readings:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to get electricity readings",
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to get electricity readings",
+      });
   }
 };
 
-/**
- * Get electricity reading by ID.
- * GET /api/electricity/get-reading/:id
- */
 export const getElectricityReadingById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -320,28 +252,23 @@ export const getElectricityReadingById = async (req, res) => {
     });
 
     if (!reading.data.readings || reading.data.readings.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Electricity reading not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Electricity reading not found" });
     }
 
     res.status(200).json({ success: true, data: reading.data.readings[0] });
   } catch (error) {
     console.error("Error getting electricity reading:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to get electricity reading",
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to get electricity reading",
+      });
   }
 };
 
-/**
- * Record electricity payment.
- * POST /api/electricity/record-payment
- * Body: { electricityId, amount, paymentDate?, nepaliDate?, paymentMethod?, bankAccountId? }
- * File: receiptImage (optional, multipart)
- */
 export const recordElectricityPayment = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -359,10 +286,12 @@ export const recordElectricityPayment = async (req, res) => {
     if (!electricityId || !amount) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "electricityId and amount are required",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "electricityId and amount are required",
+        });
     }
 
     let receiptImageUrl = null;
@@ -398,7 +327,8 @@ export const recordElectricityPayment = async (req, res) => {
     const result = await electricityService.recordElectricityPayment(
       {
         electricityId,
-        amount: parseFloat(amount),
+        // Pass as paisa directly to avoid double-conversion in the service
+        amountPaisa: rupeesToPaisa(parseFloat(amount)),
         paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
         nepaliDate,
         paymentMethod: paymentMethod || undefined,
@@ -417,17 +347,15 @@ export const recordElectricityPayment = async (req, res) => {
     await session.abortTransaction();
     session.endSession();
     console.error("Error recording electricity payment:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to record electricity payment",
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to record electricity payment",
+      });
   }
 };
 
-/**
- * Get unit consumption history.
- * GET /api/electricity/unit-history/:unitId
- */
 export const getUnitConsumptionHistory = async (req, res) => {
   try {
     const { unitId } = req.params;
@@ -441,17 +369,15 @@ export const getUnitConsumptionHistory = async (req, res) => {
     res.status(200).json(result);
   } catch (error) {
     console.error("Error getting unit consumption history:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to get unit consumption history",
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to get unit consumption history",
+      });
   }
 };
 
-/**
- * Get tenant electricity summary.
- * GET /api/electricity/tenant-summary/:tenantId
- */
 export const getTenantElectricitySummary = async (req, res) => {
   try {
     const { tenantId } = req.params;
@@ -464,23 +390,25 @@ export const getTenantElectricitySummary = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: {
-        readings: result.data.readings,
-        summary: result.data.summary,
-      },
+      data: { readings: result.data.readings, summary: result.data.summary },
     });
   } catch (error) {
     console.error("Error getting tenant electricity summary:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to get tenant electricity summary",
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to get tenant electricity summary",
+      });
   }
 };
 
 /**
  * Update electricity reading.
  * PUT /api/electricity/update-reading/:id
+ *
+ * FIX: was setting `electricity.ratePerUnit` (read-only virtual — has no effect).
+ * Corrected to `electricity.ratePerUnitPaisa` (the actual stored field).
  */
 export const updateElectricityReading = async (req, res) => {
   const session = await mongoose.startSession();
@@ -490,16 +418,15 @@ export const updateElectricityReading = async (req, res) => {
     const { id } = req.params;
     const { currentReading, ratePerUnit, notes, status } = req.body;
 
-    const Electricity = (await import("./Electricity.Model.js")).Electricity;
+    const { Electricity } = await import("./Electricity.Model.js");
     const electricity = await Electricity.findById(id).session(session);
 
     if (!electricity) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "Electricity reading not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Electricity reading not found" });
     }
 
     if (currentReading !== undefined) {
@@ -514,8 +441,11 @@ export const updateElectricityReading = async (req, res) => {
       electricity.currentReading = parseFloat(currentReading);
     }
 
-    if (ratePerUnit !== undefined)
-      electricity.ratePerUnit = parseFloat(ratePerUnit);
+    // FIX: must set the paisa field, not the rupee virtual
+    if (ratePerUnit !== undefined) {
+      electricity.ratePerUnitPaisa = rupeesToPaisa(parseFloat(ratePerUnit));
+    }
+
     if (notes !== undefined) electricity.notes = notes;
     if (status !== undefined) electricity.status = status;
 
@@ -526,31 +456,26 @@ export const updateElectricityReading = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Electricity reading updated successfully",
-      data: electricity,
+      data: electricity.toObject({ virtuals: true }),
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.error("Error updating electricity reading:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to update electricity reading",
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to update electricity reading",
+      });
   }
 };
 
-/**
- * Soft-delete electricity reading.
- * DELETE /api/electricity/delete-reading/:id
- *
- * Industry pattern: never hard-delete financial records.
- * Set status to "cancelled" so audits remain intact.
- */
 export const deleteElectricityReading = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const Electricity = (await import("./Electricity.Model.js")).Electricity;
+    const { Electricity } = await import("./Electricity.Model.js");
     const electricity = await Electricity.findByIdAndUpdate(
       id,
       { status: "cancelled" },
@@ -558,10 +483,9 @@ export const deleteElectricityReading = async (req, res) => {
     );
 
     if (!electricity) {
-      return res.status(404).json({
-        success: false,
-        message: "Electricity reading not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Electricity reading not found" });
     }
 
     res.status(200).json({
@@ -571,9 +495,11 @@ export const deleteElectricityReading = async (req, res) => {
     });
   } catch (error) {
     console.error("Error deleting electricity reading:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to delete electricity reading",
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to delete electricity reading",
+      });
   }
 };

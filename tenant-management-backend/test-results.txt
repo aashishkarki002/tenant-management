@@ -1,0 +1,1266 @@
+﻿
+> tenant-management-backend@1.0.0 test
+> cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --verbose
+
+
+­ƒöº MongoDB Memory Server started: mongodb://127.0.0.1:56332/
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: ­ƒôí add observability to secrets: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (20) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env -- tip: ÔÜÖ´©Å  write to custom object with { processEnv: myObject }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+npm : (node:2780) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+At C:\Users\User\AppData\Local\Temp\ps-script-75c74709-f15b-4516-bdab-15aa7d4db5fa.ps1:83 char:1
++ npm test -- --verbose 2>&1 | Out-File -FilePath test-results.txt -Enc ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:2780) Exp...nge at any time:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-warnings ...` to show where the warning was created)
+  console.error
+    [handleMonthlyRents] Client must be connected before running operations
+
+      446 |     };
+      447 |   } catch (error) {
+    > 448 |     console.error("[handleMonthlyRents]", error.message);
+          |             ^
+      449 |     return {
+      450 |       success: false,
+      451 |       message: "Rents processing failed",
+
+      at handleMonthlyRents (src/modules/rents/rent.service.js:448:13)
+      at Object.<anonymous> (tests/integration/handleMonthlyRents.test.js:394:24)
+
+FAIL tests/integration/handleMonthlyRents.test.js
+  handleMonthlyRents - Integration Tests
+    Rent creation on first day of month
+      ├ù creates one rent per active tenant (73 ms)
+      ├ù is idempotent ÔÇö second run does not create duplicates (29 ms)
+      ├ù skips inactive tenants (35 ms)
+      ├ù skips deleted tenants (17 ms)
+      ÔêÜ handles no active tenants gracefully (31 ms)
+    Overdue marking
+      ├ù marks previous month pending rents as overdue (17 ms)
+      ├ù marks partially_paid rents as overdue (16 ms)
+      ├ù does not mark paid rents as overdue (17 ms)
+    Rent document structure
+      ├ù sets all required fields correctly (10 ms)
+      ├ù handles tenants with zero TDS (8 ms)
+      ├ù preserves tenant references (5 ms)
+    Month boundary handling
+      ├ù creates rents for year-end month (Chaitra) (5 ms)
+      ├ù creates rents for new year (Baisakh) (3 ms)
+    Error handling
+      ÔêÜ handles database connection errors gracefully (40 ms)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Rent creation on first day of month ÔÇ║ creates one rent per active 
+tenant
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Rent creation on first day of month ÔÇ║ is idempotent ÔÇö second run 
+does not create duplicates
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Rent creation on first day of month ÔÇ║ skips inactive tenants
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Rent creation on first day of month ÔÇ║ skips deleted tenants
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Overdue marking ÔÇ║ marks previous month pending rents as overdue
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Overdue marking ÔÇ║ marks partially_paid rents as overdue
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Overdue marking ÔÇ║ does not mark paid rents as overdue
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Rent document structure ÔÇ║ sets all required fields correctly
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Rent document structure ÔÇ║ handles tenants with zero TDS
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Rent document structure ÔÇ║ preserves tenant references
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Month boundary handling ÔÇ║ creates rents for year-end month (Chaitra)
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  ÔùÅ handleMonthlyRents - Integration Tests ÔÇ║ Month boundary handling ÔÇ║ creates rents for new year (Baisakh)
+
+    ValidationError: Tenant validation failed: camRatePerSqftPaisa: Path `camRatePerSqftPaisa` is required., 
+pricePerSqftPaisa: Path `pricePerSqftPaisa` is required., securityDepositPaisa: Path `securityDepositPaisa` is 
+required., keyHandoverDate: Path `keyHandoverDate` is required., leaseEndDate: Path `leaseEndDate` is required., 
+leaseStartDate: Path `leaseStartDate` is required., dateOfAgreementSigned: Path `dateOfAgreementSigned` is required., 
+camRatePerSqft: Path `camRatePerSqft` is required., leasedSquareFeet: Path `leasedSquareFeet` is required., 
+pricePerSqft: Path `pricePerSqft` is required., address: Path `address` is required., phone: Path `phone` is required.
+
+      at model.Document.invalidate (node_modules/mongoose/lib/document.js:3370:32)
+      at validatePath (node_modules/mongoose/lib/document.js:3145:13)
+          at async Promise.all (index 0)
+      at model.$__validate (node_modules/mongoose/lib/document.js:3086:3)
+      at model.validate (node_modules/mongoose/lib/document.js:2663:5)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: ÔÜÖ´©Å  write to custom object with { processEnv: myObject }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: fixed Rs500, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: fixed Rs500, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: fixed Rs1000, grace=5d (Nepali), cap=Rs500
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+
+  ÔùÅ  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "Email server is ready to send emails".
+
+      24 |     console.log("Email verification error:", error);
+      25 |   } else {
+    > 26 |     console.log("Email server is ready to send emails");
+         |             ^
+      27 |   }
+      28 | });
+      29 |
+
+      at console.log (node_modules/@jest/console/build/index.js:311:10)
+      at src/config/nodemailer.js:26:13
+      at finalize (node_modules/nodemailer/lib/smtp-pool/index.js:612:24)
+      at node_modules/nodemailer/lib/smtp-pool/index.js:632:25
+      at SMTPConnection._actionAUTHComplete (node_modules/nodemailer/lib/smtp-connection/index.js:1609:9)
+      at SMTPConnection.<anonymous> (node_modules/nodemailer/lib/smtp-connection/index.js:556:26)
+      at SMTPConnection._processResponse (node_modules/nodemailer/lib/smtp-connection/index.js:993:20)
+      at SMTPConnection._onData (node_modules/nodemailer/lib/smtp-connection/index.js:774:14)
+      at TLSSocket.SMTPConnection._onSocketData (node_modules/nodemailer/lib/smtp-connection/index.js:195:44)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: flat 2% once, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: flat 2% once, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: simple daily 2%/day, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: simple daily 2%/day, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: compound 2%/day, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: compound 2%/day, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+    [lateFee.cron] lateFeePolicy disabled or missing ÔÇö skipping
+
+      at loadLateFeePolicy (src/cron/service/lateFee.cron.js:75:13)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: fixed Rs500, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+           ÔåÆ No eligible overdue rents
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:406:13)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: fixed Rs500, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+           ÔåÆ No eligible overdue rents
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:406:13)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: fixed Rs500, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: fixed Rs500, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+  console.log
+    
+      ­ƒÆ© [lateFee.cron] Starting late fee run...
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:359:11)
+
+  console.log
+           ÔåÆ Policy: simple daily 2%/day, grace=5d (Nepali)
+
+      at applyLateFees (src/cron/service/lateFee.cron.js:385:11)
+
+FAIL tests/integration/applyLateFees.test.js
+  applyLateFees - Integration Tests
+    Fixed fee policy
+      ├ù charges flat fee once and then becomes idempotent (102 ms)
+      ├ù respects grace period (20 ms)
+      ├ù applies maxLateFeeAmount cap (23 ms)
+    Flat percentage policy (non-compounding)
+      ├ù charges percentage once (17 ms)
+      ├ù is idempotent after first charge (17 ms)
+    Simple daily policy (linear growth)
+      ├ù grows linearly with each day (18 ms)
+      ├ù is idempotent within same day (14 ms)
+    Compound daily policy (exponential growth)
+      ├ù grows exponentially with each day (15 ms)
+      ├ù delta calculation is correct across days (16 ms)
+    Policy scope filtering
+      ÔêÜ skips when policy is disabled (14 ms)
+      ├ù processes multiple overdue rents (16 ms)
+      ÔêÜ skips paid rents (12 ms)
+      ├ù skips rents with no outstanding balance (15 ms)
+    CronLog creation
+      ├ù creates log entry after successful run (12 ms)
+      ├ù logs errors when rent processing fails (13 ms)
+    Real-world scenarios
+      ├ù Scenario: Rs 50,000 rent, 15 days overdue, 2% simple daily (14 ms)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Fixed fee policy ÔÇ║ charges flat fee once and then becomes idempotent
+
+    MissingSchemaError: Schema hasn't been registered for model "Tenant".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:55:22)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Fixed fee policy ÔÇ║ respects grace period
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:93:24)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Fixed fee policy ÔÇ║ applies maxLateFeeAmount cap
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:122:24)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Flat percentage policy (non-compounding) ÔÇ║ charges percentage once
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:152:24)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Flat percentage policy (non-compounding) ÔÇ║ is idempotent after first 
+charge
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:180:9)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Simple daily policy (linear growth) ÔÇ║ grows linearly with each day
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:210:22)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Simple daily policy (linear growth) ÔÇ║ is idempotent within same day
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:248:22)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Compound daily policy (exponential growth) ÔÇ║ grows exponentially with 
+each day
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:278:24)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Compound daily policy (exponential growth) ÔÇ║ delta calculation is 
+correct across days
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:308:22)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Policy scope filtering ÔÇ║ processes multiple overdue rents
+
+    MongoBulkWriteError: E11000 duplicate key error collection: test.rents index: tenant_1_nepaliMonth_1_nepaliYear_1 
+dup key: { tenant: ObjectId('74656e616e74000000000000'), nepaliMonth: 4, nepaliYear: 2081 }
+
+      355 |         await SystemConfig.create(lateFeeFixtures.fixed);
+      356 |         
+    > 357 |         await Rent.insertMany([
+          |         ^
+      358 |           createRentFixture({ _id: createTestId('r', 1), status: 'overdue', nepaliDueDate: '2081-04-30' }),
+      359 |           createRentFixture({ _id: createTestId('r', 2), status: 'overdue', nepaliDueDate: '2081-04-30' }),
+      360 |           createRentFixture({ _id: createTestId('r', 3), status: 'overdue', nepaliDueDate: '2081-04-30' }),
+
+      at OrderedBulkOperation.handleWriteError (node_modules/mongoose/node_modules/mongodb/src/bulk/common.ts:1205:13)
+      at executeCommands (node_modules/mongoose/node_modules/mongodb/src/bulk/common.ts:589:19)
+      at node_modules/mongoose/node_modules/mongodb/src/bulk/common.ts:1188:16
+      at MongoClient.withSession (node_modules/mongoose/node_modules/mongodb/src/mongo_client.ts:923:14)
+      at OrderedBulkOperation.execute (node_modules/mongoose/node_modules/mongodb/src/bulk/common.ts:1187:14)
+      at Collection.bulkWrite (node_modules/mongoose/node_modules/mongodb/src/collection.ts:391:12)
+      at Collection.insertMany (node_modules/mongoose/node_modules/mongodb/src/collection.ts:324:19)
+      at Function.insertMany (node_modules/mongoose/lib/model.js:3052:11)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:357:9)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Policy scope filtering ÔÇ║ skips rents with no outstanding balance
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      415 |         // Outstanding = 0
+      416 |         expect(result.processed).toBe(0);
+    > 417 |         expect(result.skipped).toBe(1);
+          |                                ^
+      418 |       } finally {
+      419 |         restore();
+      420 |       }
+
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:417:32)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ CronLog creation ÔÇ║ creates log entry after successful run
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:438:9)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ CronLog creation ÔÇ║ logs errors when rent processing fails
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:463:24)
+
+  ÔùÅ applyLateFees - Integration Tests ÔÇ║ Real-world scenarios ÔÇ║ Scenario: Rs 50,000 rent, 15 days overdue, 2% 
+simple daily
+
+    MissingSchemaError: Schema hasn't been registered for model "Property".
+    Use mongoose.model(name, schema)
+
+      399 |     : { status: "overdue", lateFeeApplied: { $ne: true } };
+      400 |
+    > 401 |   const overdueRents = await Rent.find(query)
+          |                        ^
+      402 |     .populate("tenant", "name email")
+      403 |     .populate("property", "name");
+      404 |
+
+      at NativeConnection.model (node_modules/mongoose/lib/connection.js:1497:13)
+      at _getModelFromConn (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:587:15)
+      at addModelNamesToMap (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:515:17)
+      at getModelsMapForPopulate (node_modules/mongoose/lib/helpers/populate/getModelsMapForPopulate.js:208:7)
+      at _populatePath (node_modules/mongoose/lib/model.js:4314:21)
+      at Function.populate (node_modules/mongoose/lib/model.js:4281:21)
+      at model.Query._find (node_modules/mongoose/lib/query.js:2462:20)
+      at model.Query.exec (node_modules/mongoose/lib/query.js:4627:63)
+      at applyLateFees (src/cron/service/lateFee.cron.js:401:24)
+      at Object.<anonymous> (tests/integration/applyLateFees.test.js:490:24)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: ­ƒöæ add access controls to secrets: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (20) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env -- tip: ­ƒæÑ sync secrets across teammates & machines: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env -- tip: ÔÜÖ´©Å  write to custom object with { processEnv: myObject }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+(node:2780) [MONGOOSE] Warning: Duplicate schema index on {"accountCode":1} found. This is often due to declaring an 
+index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+FAIL src/__tests__/tenant.array-params.test.js
+  Array Parameter Handling
+    ├ù should handle bracket notation (status[]) (1 ms)
+    ├ù should handle repeated parameters
+    ├ù should handle mixed formats
+    ├ù should reject unknown parameters with brackets (1 ms)
+
+  ÔùÅ Array Parameter Handling ÔÇ║ should handle bracket notation (status[])
+
+    ReferenceError: jest is not defined
+
+      16 |     
+      17 |     const mockRes = {
+    > 18 |       status: jest.fn().mockReturnThis(),
+         |               ^
+      19 |       json: jest.fn(),
+      20 |     };
+      21 |     
+
+      at Object.<anonymous> (src/__tests__/tenant.array-params.test.js:18:15)
+
+  ÔùÅ Array Parameter Handling ÔÇ║ should handle repeated parameters
+
+    ReferenceError: jest is not defined
+
+      37 |     
+      38 |     const mockRes = {
+    > 39 |       status: jest.fn().mockReturnThis(),
+         |               ^
+      40 |       json: jest.fn(),
+      41 |     };
+      42 |     
+
+      at Object.<anonymous> (src/__tests__/tenant.array-params.test.js:39:15)
+
+  ÔùÅ Array Parameter Handling ÔÇ║ should handle mixed formats
+
+    ReferenceError: jest is not defined
+
+      56 |     
+      57 |     const mockRes = {
+    > 58 |       status: jest.fn().mockReturnThis(),
+         |               ^
+      59 |       json: jest.fn(),
+      60 |     };
+      61 |     
+
+      at Object.<anonymous> (src/__tests__/tenant.array-params.test.js:58:15)
+
+  ÔùÅ Array Parameter Handling ÔÇ║ should reject unknown parameters with brackets
+
+    ReferenceError: jest is not defined
+
+      73 |     
+      74 |     const mockRes = {
+    > 75 |       status: jest.fn().mockReturnThis(),
+         |               ^
+      76 |       json: jest.fn(),
+      77 |     };
+      78 |     
+
+      at Object.<anonymous> (src/__tests__/tenant.array-params.test.js:75:15)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: ­ƒæÑ sync secrets across teammates & machines: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+(node:2780) V8: D:\tenant-managment\tenant-management-backend\tests\unit\nepaliDateHelper.test.js:15 'assert' is 
+deprecated in import statements and support will be removed in a future version; use 'with' instead
+FAIL tests/unit/nepaliDateHelper.test.js
+  nepaliDateHelper - Pure Function Tests
+    diffNepaliDays
+      ÔêÜ returns correct count within same month (3 ms)
+      ÔêÜ returns correct count across month boundary (1 ms)
+      ÔêÜ returns negative for past dates (1 ms)
+      ÔêÜ returns 0 for same date
+      ÔêÜ handles year boundary (1 ms)
+      ÔêÜ handles long date ranges (1 ms)
+    addNepaliDays
+      ÔêÜ adds days within same month (1 ms)
+      ÔêÜ adds days across month boundary
+      ÔêÜ subtracts days (negative) (1 ms)
+      ÔêÜ adds 0 days returns same date
+      ÔêÜ handles year boundary
+    addNepaliMonths
+      ÔêÜ adds months within same year
+      ÔêÜ adds months across year boundary
+      ÔêÜ clamps day at month end (1 ms)
+      ÔêÜ clamps day when target month is shorter (1 ms)
+      ÔêÜ subtracts months (negative)
+      ÔêÜ adds 0 months returns same date (1 ms)
+      ÔêÜ handles large month offsets (1 ms)
+    formatNepaliISO & parseNepaliISO
+      ÔêÜ formats NepaliDate to ISO string
+      ÔêÜ formats with zero-padding for single digits (1 ms)
+      ÔêÜ parses ISO string back to NepaliDate
+      ÔêÜ round-trip: format then parse (1 ms)
+      ÔêÜ throws on invalid ISO format (4 ms)
+      ÔêÜ throws on invalid date components (1 ms)
+    getNepaliToday with mocked time
+      ÔêÜ returns correct BS date for known English date
+      ÔêÜ englishToday is UTC midnight (1 ms)
+    getNepaliMonthDates
+      ÔêÜ returns comprehensive month info for current month (1 ms)
+      ÔêÜ firstDay is always day 1
+      ÔêÜ reminderDay is 7 days before last day (1 ms)
+      ÔêÜ handles months with different day counts
+    Golden reference dataset validation
+      ÔêÜ 2024-04-13 ÔåÆ BS 2081-1-1 (Baisakh)
+      ├ù 2024-05-13 ÔåÆ BS 2081-2-1 (Jestha) (2 ms)
+      ├ù 2024-06-14 ÔåÆ BS 2081-3-1 (Ashadh) (1 ms)
+      ÔêÜ 2024-07-16 ÔåÆ BS 2081-4-1 (Shrawan)
+      ÔêÜ 2024-08-17 ÔåÆ BS 2081-5-1 (Bhadra) (1 ms)
+      ÔêÜ 2024-09-17 ÔåÆ BS 2081-6-1 (Ashwin)
+      ÔêÜ 2024-10-17 ÔåÆ BS 2081-7-1 (Kartik)
+      ÔêÜ 2024-11-16 ÔåÆ BS 2081-8-1 (Mangsir) (4 ms)
+      ÔêÜ 2024-12-16 ÔåÆ BS 2081-9-1 (Poush) (1 ms)
+      ÔêÜ 2025-01-14 ÔåÆ BS 2081-10-1 (Magh)
+      ├ù 2025-02-12 ÔåÆ BS 2081-11-1 (Falgun) (1 ms)
+      ÔêÜ 2025-03-14 ÔåÆ BS 2081-12-1 (Chaitra) (1 ms)
+      ├ù 2024-05-12 ÔåÆ BS 2081-1-31 (Baisakh)
+      ├ù 2024-07-15 ÔåÆ BS 2081-3-32 (Ashadh) (1 ms)
+      ÔêÜ 2025-04-12 ÔåÆ BS 2081-12-30 (Chaitra)
+    Month-shape matrix testing
+      ÔêÜ BS 2081 month 1 has 31 days
+      ÔêÜ BS 2081 month 1 last day never overflows
+      ÔêÜ BS 2081 month 2 has 32 days
+      ÔêÜ BS 2081 month 2 last day never overflows
+      ÔêÜ BS 2081 month 3 has 31 days
+      ÔêÜ BS 2081 month 3 last day never overflows
+      ÔêÜ BS 2081 month 4 has 32 days
+      ÔêÜ BS 2081 month 4 last day never overflows
+      ÔêÜ BS 2081 month 5 has 31 days
+      ÔêÜ BS 2081 month 5 last day never overflows (1 ms)
+      ÔêÜ BS 2081 month 6 has 30 days
+      ÔêÜ BS 2081 month 6 last day never overflows
+      ÔêÜ BS 2081 month 7 has 30 days
+      ÔêÜ BS 2081 month 7 last day never overflows (1 ms)
+      ÔêÜ BS 2081 month 8 has 30 days
+      ÔêÜ BS 2081 month 8 last day never overflows
+      ÔêÜ BS 2081 month 9 has 29 days
+      ÔêÜ BS 2081 month 9 last day never overflows
+      ÔêÜ BS 2081 month 10 has 30 days
+      ÔêÜ BS 2081 month 10 last day never overflows
+      ÔêÜ BS 2081 month 11 has 29 days (1 ms)
+      ÔêÜ BS 2081 month 11 last day never overflows
+      ÔêÜ BS 2081 month 12 has 31 days
+      ÔêÜ BS 2081 month 12 last day never overflows
+    Edge cases and error handling
+      ÔêÜ throws on invalid NepaliDate instance for diffNepaliDays
+      ÔêÜ throws on non-integer inputs for addNepaliDays
+      ÔêÜ throws on non-integer inputs for addNepaliMonths (1 ms)
+      ÔêÜ handles extreme date differences (1 ms)
+
+  ÔùÅ nepaliDateHelper - Pure Function Tests ÔÇ║ Golden reference dataset validation ÔÇ║ 2024-05-13 ÔåÆ BS 2081-2-1 
+(Jestha)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 2
+    Received: 1
+
+      271 |         
+      272 |         expect(np.getYear()).toBe(bs_year);
+    > 273 |         expect(np.getMonth() + 1).toBe(bs_month); // +1 because getMonth() is 0-based
+          |                                   ^
+      274 |         expect(np.getDate()).toBe(bs_day);
+      275 |       }
+      276 |     );
+
+      at tests/unit/nepaliDateHelper.test.js:273:35
+
+  ÔùÅ nepaliDateHelper - Pure Function Tests ÔÇ║ Golden reference dataset validation ÔÇ║ 2024-06-14 ÔåÆ BS 2081-3-1 
+(Ashadh)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 3
+    Received: 2
+
+      271 |         
+      272 |         expect(np.getYear()).toBe(bs_year);
+    > 273 |         expect(np.getMonth() + 1).toBe(bs_month); // +1 because getMonth() is 0-based
+          |                                   ^
+      274 |         expect(np.getDate()).toBe(bs_day);
+      275 |       }
+      276 |     );
+
+      at tests/unit/nepaliDateHelper.test.js:273:35
+
+  ÔùÅ nepaliDateHelper - Pure Function Tests ÔÇ║ Golden reference dataset validation ÔÇ║ 2025-02-12 ÔåÆ BS 2081-11-1 
+(Falgun)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 11
+    Received: 10
+
+      271 |         
+      272 |         expect(np.getYear()).toBe(bs_year);
+    > 273 |         expect(np.getMonth() + 1).toBe(bs_month); // +1 because getMonth() is 0-based
+          |                                   ^
+      274 |         expect(np.getDate()).toBe(bs_day);
+      275 |       }
+      276 |     );
+
+      at tests/unit/nepaliDateHelper.test.js:273:35
+
+  ÔùÅ nepaliDateHelper - Pure Function Tests ÔÇ║ Golden reference dataset validation ÔÇ║ 2024-05-12 ÔåÆ BS 2081-1-31 
+(Baisakh)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 31
+    Received: 30
+
+      272 |         expect(np.getYear()).toBe(bs_year);
+      273 |         expect(np.getMonth() + 1).toBe(bs_month); // +1 because getMonth() is 0-based
+    > 274 |         expect(np.getDate()).toBe(bs_day);
+          |                              ^
+      275 |       }
+      276 |     );
+      277 |   });
+
+      at tests/unit/nepaliDateHelper.test.js:274:30
+
+  ÔùÅ nepaliDateHelper - Pure Function Tests ÔÇ║ Golden reference dataset validation ÔÇ║ 2024-07-15 ÔåÆ BS 2081-3-32 
+(Ashadh)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 32
+    Received: 31
+
+      272 |         expect(np.getYear()).toBe(bs_year);
+      273 |         expect(np.getMonth() + 1).toBe(bs_month); // +1 because getMonth() is 0-based
+    > 274 |         expect(np.getDate()).toBe(bs_day);
+          |                              ^
+      275 |       }
+      276 |     );
+      277 |   });
+
+      at tests/unit/nepaliDateHelper.test.js:274:30
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: ­ƒöä add secrets lifecycle management: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+PASS tests/smoke/rentModel.smoke.test.js
+  Rent Model - Pre-save Hook Tests
+    Status calculation
+      ÔêÜ sets status=pending on zero paidAmount (70 ms)
+      ÔêÜ sets status=partially_paid when partially paid (19 ms)
+      ÔêÜ sets status=paid when fully paid (9 ms)
+      ÔêÜ accounts for TDS in effective rent calculation (8 ms)
+      ÔêÜ preserves overdue status after partial payment (13 ms)
+      ÔêÜ changes overdue to paid when fully paid (11 ms)
+      ÔêÜ handles late fees in status calculation (6 ms)
+      ÔêÜ status=paid when rent + late fee fully paid (6 ms)
+    Paisa integer enforcement
+      ÔêÜ rounds paisa values to integers (6 ms)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: ÔÜÖ´©Å  write to custom object with { processEnv: myObject }
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (20) from .env -- tip: ­ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env -- tip: ­ƒæÑ sync secrets across teammates & machines: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+PASS tests/sanity/moduleResolution.test.js
+  Module Resolution Sanity Check
+    ÔêÜ can import rent.service.js (324 ms)
+    ÔêÜ can import Rent model
+    ÔêÜ can import lateFee.cron.js (4 ms)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+PASS tests/unit/computeLateFee.test.js
+  computeLateFee - Pure Function Unit Tests
+    Fixed fee type
+      ÔêÜ always returns flat amount regardless of days (3 ms)
+      ÔêÜ applies maxLateFeeAmount cap (1 ms)
+      ÔêÜ returns 0 for zero days late
+      ÔêÜ returns 0 for zero balance (1 ms)
+    Flat percentage type (non-compounding)
+      ÔêÜ calculates percentage of balance once
+      ÔêÜ applies cap correctly
+      ÔêÜ works with different balance amounts
+    Simple daily type (linear growth)
+      ÔêÜ grows linearly with days
+      ÔêÜ applies maxLateFeeAmount cap
+      ÔêÜ handles fractional percentages (1 ms)
+    Compound daily type (exponential growth)
+      ÔêÜ grows exponentially with days (1 ms)
+      ÔêÜ applies maxLateFeeAmount cap (1 ms)
+      ÔêÜ compound grows faster than simple
+      ÔêÜ handles small daily rates
+    Edge cases
+      ÔêÜ handles zero effective days
+      ÔêÜ handles negative days (should return 0)
+      ÔêÜ handles zero balance
+      ÔêÜ handles negative balance (should return 0) (1 ms)
+      ÔêÜ cap of 0 means no cap
+      ÔêÜ rounds to nearest paisa (integer)
+    Real-world scenarios
+      ÔêÜ Scenario: Rs 50,000 rent, 15 days late, 2% simple daily
+      ÔêÜ Scenario: Rs 25,000 rent, 7 days late, Rs 1,000 fixed fee, capped at Rs 500
+      ÔêÜ Scenario: Rs 100,000 rent, 20 days late, 1.5% compound daily (1 ms)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: Ô£à audit secrets and track compliance: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+FAIL src/__tests__/tenant.search.test.js
+  ÔùÅ Test suite failed to run
+
+    SyntaxError: The requested module '../modules/blocks/innerBlocks/InnerBlock.Model.js' does not provide an export 
+named 'InnerBlock'
+
+      at Runtime.linkAndEvaluateModule (node_modules/jest-runtime/build/index.js:684:5)
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: Ô£à audit secrets and track compliance: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+FAIL src/__tests__/tenant.test.js
+  ÔùÅ Test suite failed to run
+
+    Cannot find module '../modules/tenant/cam/cam.service.js' from 'src/__tests__/tenant.test.js'
+
+      24 |   ledgerService: ledgerMock,
+      25 | }));
+    > 26 | jest.unstable_mockModule("../modules/tenant/cam/cam.service.js", () => ({
+         |      ^
+      27 |   createCam: createCamMock,
+      28 | }));
+      29 | jest.unstable_mockModule(
+
+      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/index.js:863:11)
+      at src/__tests__/tenant.test.js:26:6
+
+  console.log
+    [dotenv@17.2.3] injecting env (0) from .env.test -- tip: ­ƒôí add observability to secrets: https://dotenvx.com/ops
+
+      at _log (node_modules/dotenv/lib/main.js:142:11)
+
+FAIL src/__tests__/payment.test.js
+  ÔùÅ Test suite failed to run
+
+    SyntaxError: The requested module '../../config/nodemailer.js' does not provide an export named 'sendWelcomeEmail'
+
+      58 | }));
+      59 |
+    > 60 | const { default: app } = await import("../app.js");
+         |                          ^
+      61 | const { Tenant } = await import("../modules/tenant/Tenant.Model.js");
+      62 | const { Rent } = await import("../modules/rents/rent.Model.js");
+      63 | const { Payment } = await import("../modules/payment/payment.model.js");
+
+      at Runtime.linkAndEvaluateModule (node_modules/jest-runtime/build/index.js:684:5)
+      at src/__tests__/payment.test.js:60:26
+
+Test Suites: 7 failed, 3 passed, 10 total
+Tests:       35 failed, 107 passed, 142 total
+Snapshots:   0 total
+Time:        6.055 s
+Ran all test suites.
+
+Ô£à MongoDB Memory Server stopped
+
+  ÔùÅ  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "Email server is ready to send emails".
+
+      24 |     console.log("Email verification error:", error);
+      25 |   } else {
+    > 26 |     console.log("Email server is ready to send emails");
+         |             ^
+      27 |   }
+      28 | });
+      29 |
+
+      at console.log (node_modules/@jest/console/build/index.js:311:10)
+      at src/config/nodemailer.js:26:13
+      at finalize (node_modules/nodemailer/lib/smtp-pool/index.js:612:24)
+      at node_modules/nodemailer/lib/smtp-pool/index.js:632:25
+      at SMTPConnection._actionAUTHComplete (node_modules/nodemailer/lib/smtp-connection/index.js:1609:9)
+      at SMTPConnection.<anonymous> (node_modules/nodemailer/lib/smtp-connection/index.js:556:26)
+      at SMTPConnection._processResponse (node_modules/nodemailer/lib/smtp-connection/index.js:993:20)
+      at SMTPConnection._onData (node_modules/nodemailer/lib/smtp-connection/index.js:774:14)
+      at TLSSocket.SMTPConnection._onSocketData (node_modules/nodemailer/lib/smtp-connection/index.js:195:44)
+
+Jest did not exit one second after the test run has completed.
+
+'This usually means that there are asynchronous operations that weren't stopped in your tests. Consider running Jest 
+with `--detectOpenHandles` to troubleshoot this issue.
+
+  ÔùÅ  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "Email server is ready to send emails".
+
+      24 |     console.log("Email verification error:", error);
+      25 |   } else {
+    > 26 |     console.log("Email server is ready to send emails");
+         |             ^
+      27 |   }
+      28 | });
+      29 |
+
+      at console.log (node_modules/@jest/console/build/index.js:311:10)
+      at src/config/nodemailer.js:26:13
+      at finalize (node_modules/nodemailer/lib/smtp-pool/index.js:612:24)
+      at node_modules/nodemailer/lib/smtp-pool/index.js:632:25
+      at SMTPConnection._actionAUTHComplete (node_modules/nodemailer/lib/smtp-connection/index.js:1609:9)
+      at SMTPConnection.<anonymous> (node_modules/nodemailer/lib/smtp-connection/index.js:556:26)
+      at SMTPConnection._processResponse (node_modules/nodemailer/lib/smtp-connection/index.js:993:20)
+      at SMTPConnection._onData (node_modules/nodemailer/lib/smtp-connection/index.js:774:14)
+      at TLSSocket.SMTPConnection._onSocketData (node_modules/nodemailer/lib/smtp-connection/index.js:195:44)
+

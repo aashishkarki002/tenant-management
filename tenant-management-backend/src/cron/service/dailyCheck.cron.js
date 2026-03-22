@@ -315,8 +315,8 @@ export async function createAndNotifyMorning() {
 
   // ── Load all active properties ─────────────────────────────────────────────
   const properties = await Property.find(
-    { isActive: true, isDeleted: { $ne: true } },
-    { _id: 1, name: 1, buildingConfig: 1 },
+    {}, // filter (empty = get all)
+    { _id: 1, name: 1, buildingConfig: 1 }, // projection
   ).lean();
 
   if (!properties.length) {

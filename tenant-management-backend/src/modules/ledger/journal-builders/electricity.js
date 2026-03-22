@@ -8,15 +8,22 @@
  *   CR  Utility Revenue        (REVENUE ↑ — income earned)
  *
  * buildElectricityPaymentJournal  — payment received from tenant
- *   DR  Cash / Bank sub-account  (ASSET ↑  — money in, routed to correct account)
+ *   DR  Cash / Bank sub-account  (ASSET ↑  — money in)
  *   CR  Accounts Receivable      (ASSET ↓  — tenant owes less)
  *
- * FIX (this commit):
- *   buildElectricityPaymentJournal previously hardcoded ACCOUNT_CODES.CASH_BANK
- *   ("1000") as the DR account and had no bankAccountCode parameter. It now
- *   accepts paymentMethod + bankAccountCode and routes through
- *   getDebitAccountForPayment(), matching the pattern in paymentReceived.js,
- *   camPaymentReceived.js, and lateFee.js.
+ * buildElectricityNeaCostJournal  — NEA cost recognised at time of charge (NEW)
+ *   DR  Electricity Expense – NEA  (EXPENSE ↑ — owner's cost from NEA)
+ *   CR  NEA Payable                (LIABILITY ↑ — owner owes NEA)
+ *
+ * Changes in this update:
+ *   1. All three builders now carry unit, block, and entityId on the payload
+ *      so LedgerEntry documents are fully scoped for per-entity reporting.
+ *   2. buildElectricityNeaCostJournal is a new export — was previously an
+ *      inline helper in electricity.service.js using string account codes.
+ *      Moved here and wired to real ACCOUNT_CODES constants.
+ *   3. buildElectricityChargeJournal and buildElectricityPaymentJournal accept
+ *      the electricity doc's unit and block references (resolved from the
+ *      populated Unit document) and the ownershipEntityId from the Block.
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
@@ -44,17 +51,53 @@ function resolvePaisa(doc, paisaKey, rupeesKey) {
   return 0;
 }
 
+/**
+ * Resolve unit, block, and entityId from the electricity document.
+ *
+ * The electricity document carries:
+ *   electricity.unit      → Unit ObjectId or populated Unit doc
+ *   electricity.unit.block → Block ObjectId or populated Block doc (when populated)
+ *   electricity.unit.block.ownershipEntityId → OwnershipEntity ObjectId (when populated)
+ *
+ * The service populates unit → block → ownershipEntityId before calling
+ * these builders. If not populated, we fall back to null gracefully —
+ * never throw here, the ledger service handles null entityId (treats as private).
+ */
+function resolveScope(electricity) {
+  const unitId = electricity.unit?._id ?? electricity.unit ?? null;
+
+  // block may be nested on the populated unit, or top-level on the doc
+  const block =
+    electricity.unit?.block ?? // populated path: unit.block
+    electricity.block ?? // flat path if service attaches it directly
+    null;
+
+  const blockId = block?._id ?? block ?? null;
+
+  // ownershipEntityId lives on the Block document
+  const entityId =
+    block?.ownershipEntityId?._id ??
+    block?.ownershipEntityId ??
+    electricity.entityId ?? // fallback if service passes it directly
+    null;
+
+  return { unitId, blockId, entityId };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Charge journal  (no bank side)
+// 1. Charge journal
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * @param {Object} electricity
- *   Must have:  _id, readingDate, nepaliDate, nepaliMonth, nepaliYear,
- *               consumption, totalAmountPaisa (or totalAmount), createdBy,
- *               tenant, property
- *   Optional:   ratePerUnitPaisa (or ratePerUnit)
- * @returns {Object} Journal payload
+ * Build journal payload for an electricity charge raised against a tenant.
+ *
+ * @param {Object} electricity  — Mongoose document or plain object
+ *   Required: _id, readingDate, nepaliDate, nepaliMonth, nepaliYear,
+ *             consumption, totalAmountPaisa (or totalAmount), createdBy,
+ *             tenant (populated or ObjectId), property
+ *   Expected populated: unit.block.ownershipEntityId
+ *
+ * @returns {Object} Journal payload for ledgerService.postJournalEntry()
  */
 export function buildElectricityChargeJournal(electricity) {
   const transactionDate = electricity.readingDate || new Date();
@@ -78,6 +121,8 @@ export function buildElectricityChargeJournal(electricity) {
   const tenantId = electricity.tenant?._id ?? electricity.tenant;
   const propertyId = electricity.property?._id ?? electricity.property;
 
+  const { unitId, blockId, entityId } = resolveScope(electricity);
+
   const description = [
     `Electricity charge for ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
     `${electricity.consumption} units`,
@@ -99,6 +144,9 @@ export function buildElectricityChargeJournal(electricity) {
     totalAmountPaisa,
     tenant: tenantId,
     property: propertyId,
+    unit: unitId, // ← NEW: scoped to unit
+    block: blockId, // ← NEW: scoped to block (building)
+    entityId, // ← NEW: scoped to ownership entity
     entries: [
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
@@ -117,23 +165,22 @@ export function buildElectricityChargeJournal(electricity) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Payment journal  (has bank side — fixed)
+// 2. Payment journal
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Build journal payload for an electricity payment received from a tenant.
+ *
  * @param {Object} paymentData
- *   Must have:  electricityId, amountPaisa (or amount), paymentDate,
- *               nepaliDate, createdBy, paymentMethod
- *   Optional:   bankAccountCode — required when paymentMethod is
- *               "bank_transfer" or "cheque"; omit for "cash"
+ *   Required: electricityId, amountPaisa (or amount), paymentDate,
+ *             nepaliDate, createdBy, paymentMethod
+ *   Optional: bankAccountCode — required for bank_transfer / cheque
  *
  * @param {Object} electricity
- *   Must have:  tenant, property, nepaliMonth, nepaliYear
+ *   Required: tenant, property, nepaliMonth, nepaliYear
+ *   Expected populated: unit.block.ownershipEntityId
  *
- * @param {string} [bankAccountCode]
- *   Chart-of-accounts code for the destination bank (e.g. "1010-SANIMA").
- *   Can be passed as the 3rd argument OR embedded in paymentData for
- *   convenience — the 3rd argument takes precedence.
+ * @param {string} [bankAccountCode]  — 3rd arg takes precedence over paymentData.bankAccountCode
  *
  * @returns {Object} Journal payload
  */
@@ -142,13 +189,10 @@ export function buildElectricityPaymentJournal(
   electricity,
   bankAccountCode,
 ) {
-  // Resolve bankAccountCode: explicit 3rd arg wins, then paymentData field
   const resolvedBankCode = bankAccountCode ?? paymentData.bankAccountCode;
 
-  // Validate early — throws on unknown paymentMethod before any DB work
   assertValidPaymentMethod(paymentData.paymentMethod);
 
-  // Routes to the correct sub-account; throws if bank code is missing
   const drAccountCode = getDebitAccountForPayment(
     paymentData.paymentMethod,
     resolvedBankCode,
@@ -166,6 +210,8 @@ export function buildElectricityPaymentJournal(
   const tenantName = electricity?.tenant?.name;
   const tenantId = electricity.tenant?._id ?? electricity.tenant;
   const propertyId = electricity.property?._id ?? electricity.property;
+
+  const { unitId, blockId, entityId } = resolveScope(electricity);
 
   const description = [
     `Electricity payment — ${nepaliMonth}/${nepaliYear}`,
@@ -187,9 +233,12 @@ export function buildElectricityPaymentJournal(
     totalAmountPaisa: amountPaisa,
     tenant: tenantId,
     property: propertyId,
+    unit: unitId, // ← NEW
+    block: blockId, // ← NEW
+    entityId, // ← NEW
     entries: [
       {
-        accountCode: drAccountCode, // ← specific bank or CASH, never "1000" default
+        accountCode: drAccountCode,
         debitAmountPaisa: amountPaisa,
         creditAmountPaisa: 0,
         description,
@@ -199,6 +248,83 @@ export function buildElectricityPaymentJournal(
         debitAmountPaisa: 0,
         creditAmountPaisa: amountPaisa,
         description,
+      },
+    ],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. NEA cost journal  (NEW)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build journal payload for the owner's NEA electricity cost.
+ * Posted at the same time as the charge journal, in the same session.
+ *
+ * This is what creates the margin in P&L:
+ *   Electricity Revenue  (CR from charge journal)   Rs 2,000
+ *   Electricity Expense  (DR from this journal)     Rs 1,500
+ *   ───────────────────────────────────────────────────────
+ *   Net margin                                       Rs   500
+ *
+ * Only called when electricity.neaCostPaisa is set (i.e. NEA rate was
+ * configured at time of reading). The service guards this before calling.
+ *
+ * @param {Object} electricity
+ *   Required: _id, neaCostPaisa, neaRatePerUnitPaisa, consumption,
+ *             nepaliMonth, nepaliYear, readingDate, nepaliDate,
+ *             createdBy, property
+ *   Expected populated: unit.block.ownershipEntityId
+ *
+ * @returns {Object} Journal payload
+ */
+export function buildElectricityNeaCostJournal(electricity) {
+  const transactionDate = electricity.readingDate || new Date();
+  const nepaliDate = resolveNepaliDateString(
+    electricity.nepaliDate,
+    transactionDate,
+  );
+  const neaCostPaisa = electricity.neaCostPaisa;
+  const neaRateDisplay = electricity.neaRatePerUnitPaisa
+    ? paisaToRupees(electricity.neaRatePerUnitPaisa)
+    : "?";
+
+  const propertyId = electricity.property?._id ?? electricity.property;
+  const { unitId, blockId, entityId } = resolveScope(electricity);
+
+  const description =
+    `NEA electricity cost — ${electricity.consumption} units @ Rs.${neaRateDisplay} ` +
+    `(${electricity.nepaliMonth}/${electricity.nepaliYear})`;
+
+  return {
+    transactionType: "ELECTRICITY_NEA_COST",
+    referenceType: "Electricity",
+    referenceId: electricity._id,
+    transactionDate,
+    nepaliDate,
+    nepaliMonth: electricity.nepaliMonth,
+    nepaliYear: electricity.nepaliYear,
+    description,
+    createdBy: electricity.createdBy,
+    totalAmountPaisa: neaCostPaisa,
+    property: propertyId,
+    unit: unitId, // ← scoped to unit
+    block: blockId, // ← scoped to block
+    entityId, // ← scoped to ownership entity
+    entries: [
+      {
+        // DR  Electricity Expense – NEA  (expense rises — owner pays NEA)
+        accountCode: ACCOUNT_CODES.ELECTRICITY_EXPENSE_NEA,
+        debitAmountPaisa: neaCostPaisa,
+        creditAmountPaisa: 0,
+        description: `NEA cost — ${electricity.consumption} units @ Rs.${neaRateDisplay}`,
+      },
+      {
+        // CR  NEA Payable  (liability rises — owner owes NEA)
+        accountCode: ACCOUNT_CODES.NEA_PAYABLE,
+        debitAmountPaisa: 0,
+        creditAmountPaisa: neaCostPaisa,
+        description: `NEA payable — ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
       },
     ],
   };

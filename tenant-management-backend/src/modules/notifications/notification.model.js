@@ -21,6 +21,9 @@ const notificationSchema = new mongoose.Schema(
         "MAINTENANCE_COMPLETED",
         "MAINTENANCE_CANCELLED",
         "LOAN_EMI_REMINDER",
+        "DAILY_CHECKLIST_MORNING",
+        "DAILY_CHECKLIST_ESCALATION",
+        "DAILY_CHECKLIST_EOD_WARNING",
       ],
     },
     title: {

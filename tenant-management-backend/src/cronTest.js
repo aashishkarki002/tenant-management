@@ -3,7 +3,7 @@ import { Worker, isMainThread, parentPort } from "worker_threads";
 
 if (isMainThread) {
   console.log("Main thread: Starting worker...");
-  const worker = new Worker(__filename); // runs the same file as a worker
+  const worker = new Worker(); // runs the same file as a worker
   worker.on("message", (msg) => {
     console.log(`Main thread received: ${msg}`);
   });

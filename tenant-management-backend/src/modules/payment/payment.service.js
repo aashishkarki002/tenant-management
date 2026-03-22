@@ -49,7 +49,7 @@ import {
   calculateRentRemaining,
   getUnitPaymentDetails,
 } from "./helpers/rent-payment.helper.js";
-
+import { resolveEntityFromBlock } from "../../helper/resolveEntity.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE PAYMENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,19 +65,6 @@ import {
  *                                              to the correct ledger account.
  */
 export async function createPayment(paymentData) {
-  console.log(
-    "createPayment RAW INPUT:",
-    JSON.stringify(
-      {
-        paymentMethod: paymentData.paymentMethod,
-        bankAccountId: paymentData.bankAccountId,
-        bankAccountCode: paymentData.bankAccountCode,
-        allocations: paymentData.allocations,
-      },
-      null,
-      2,
-    ),
-  );
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -277,6 +264,13 @@ export async function createPayment(paymentData) {
       await cam.save({ session });
     }
 
+    const blockIdForEntity = rent?.block ?? cam?.block ?? null;
+    const entityId =
+      paymentData.entityId ??
+      (blockIdForEntity
+        ? await resolveEntityFromBlock(blockIdForEntity, session)
+        : null);
+
     // ── Step 5: Update bank account balance ───────────────────────────────────
     // FIX: calculateTotalAmountFromAllocations already sums rent + CAM + lateFee.
     // The old code added lateFeePaisaForBank on top — causing a double-count.
@@ -354,12 +348,18 @@ export async function createPayment(paymentData) {
 
     // ── Step 7: Ledger entries ────────────────────────────────────────────────
     if (rent) {
-      const rentJournalPayload = buildPaymentReceivedJournal(
-        payment,
-        rent,
+      const rentJournalPayload = buildPaymentReceivedJournal(rent, {
+        amountPaisa: allocations.rent.amountPaisa,
+        paymentMethod: paymentData.paymentMethod,
         bankAccountCode,
+        paymentDate: paymentData.paymentDate,
+        payment,
+      });
+      await ledgerService.postJournalEntry(
+        rentJournalPayload,
+        session,
+        entityId,
       );
-      await ledgerService.postJournalEntry(rentJournalPayload, session);
     }
 
     if (cam) {
@@ -368,7 +368,11 @@ export async function createPayment(paymentData) {
         cam,
         bankAccountCode,
       );
-      await ledgerService.postJournalEntry(camJournalPayload, session);
+      await ledgerService.postJournalEntry(
+        camJournalPayload,
+        session,
+        entityId,
+      );
     }
 
     // FIX: post ledger entry for late fee when present, same pattern as rent/CAM
@@ -382,7 +386,11 @@ export async function createPayment(paymentData) {
         rent,
         bankAccountCode,
       );
-      await ledgerService.postJournalEntry(lateFeeJournalPayload, session);
+      await ledgerService.postJournalEntry(
+        lateFeeJournalPayload,
+        session,
+        entityId,
+      );
     }
 
     // ── Step 8: Revenue recording ─────────────────────────────────────────────
@@ -394,6 +402,8 @@ export async function createPayment(paymentData) {
         rentId: rent._id,
         note: payment.note,
         adminId: payment.createdBy,
+        entityId,
+        blockId: rent.block,
         session,
       });
     }
@@ -405,6 +415,8 @@ export async function createPayment(paymentData) {
         camId: cam._id,
         note: payment.note,
         adminId: payment.createdBy,
+        entityId,
+        blockId: cam.block,
         session,
       });
     }
@@ -417,6 +429,8 @@ export async function createPayment(paymentData) {
         rentId: rent._id, // late fee is always tied to a rent document
         note: payment.note,
         adminId: payment.createdBy,
+        entityId,
+        blockId: rent.block,
         session,
       });
     }

@@ -1,0 +1,111 @@
+[
+  {
+    "english": "2024-04-13",
+    "bs_year": 2081,
+    "bs_month": 1,
+    "bs_day": 1,
+    "month_name": "Baisakh",
+    "comment": "New year day"
+  },
+  {
+    "english": "2024-05-13",
+    "bs_year": 2081,
+    "bs_month": 2,
+    "bs_day": 1,
+    "month_name": "Jestha"
+  },
+  {
+    "english": "2024-06-14",
+    "bs_year": 2081,
+    "bs_month": 3,
+    "bs_day": 1,
+    "month_name": "Ashadh"
+  },
+  {
+    "english": "2024-07-16",
+    "bs_year": 2081,
+    "bs_month": 4,
+    "bs_day": 1,
+    "month_name": "Shrawan"
+  },
+  {
+    "english": "2024-08-17",
+    "bs_year": 2081,
+    "bs_month": 5,
+    "bs_day": 1,
+    "month_name": "Bhadra"
+  },
+  {
+    "english": "2024-09-17",
+    "bs_year": 2081,
+    "bs_month": 6,
+    "bs_day": 1,
+    "month_name": "Ashwin"
+  },
+  {
+    "english": "2024-10-17",
+    "bs_year": 2081,
+    "bs_month": 7,
+    "bs_day": 1,
+    "month_name": "Kartik"
+  },
+  {
+    "english": "2024-11-16",
+    "bs_year": 2081,
+    "bs_month": 8,
+    "bs_day": 1,
+    "month_name": "Mangsir"
+  },
+  {
+    "english": "2024-12-16",
+    "bs_year": 2081,
+    "bs_month": 9,
+    "bs_day": 1,
+    "month_name": "Poush"
+  },
+  {
+    "english": "2025-01-14",
+    "bs_year": 2081,
+    "bs_month": 10,
+    "bs_day": 1,
+    "month_name": "Magh"
+  },
+  {
+    "english": "2025-02-12",
+    "bs_year": 2081,
+    "bs_month": 11,
+    "bs_day": 1,
+    "month_name": "Falgun"
+  },
+  {
+    "english": "2025-03-14",
+    "bs_year": 2081,
+    "bs_month": 12,
+    "bs_day": 1,
+    "month_name": "Chaitra"
+  },
+  {
+    "english": "2024-05-12",
+    "bs_year": 2081,
+    "bs_month": 1,
+    "bs_day": 31,
+    "month_name": "Baisakh",
+    "comment": "Last day of Baisakh - 31 days"
+  },
+  {
+    "english": "2024-07-15",
+    "bs_year": 2081,
+    "bs_month": 3,
+    "bs_day": 32,
+    "month_name": "Ashadh",
+    "comment": "Last day of Ashadh - 32 days"
+  },
+  {
+    "english": "2025-04-12",
+    "bs_year": 2081,
+    "bs_month": 12,
+    "bs_day": 30,
+    "month_name": "Chaitra",
+    "comment": "Last day of year - 30 days"
+  }
+]

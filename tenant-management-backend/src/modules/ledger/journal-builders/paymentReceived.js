@@ -1,14 +1,22 @@
 /**
- * paymentReceived.js  (FIXED)
+ * paymentReceived.js
  *
  * Builds the journal payload for a rent payment received.
+ *
+ * Signature updated to match rent.payment.service.js:
+ *   buildPaymentReceivedJournal(rent, options)
+ *
+ *   options: {
+ *     amountPaisa:      number   — integer paisa
+ *     paymentMethod:    string
+ *     bankAccountCode:  string | undefined
+ *     paymentDate:      Date
+ *     payment:          Payment document
+ *   }
  *
  * Correct double-entry:
  *   DR  Cash / Bank Account   (ASSET ↑ — money received)
  *   CR  Accounts Receivable   (ASSET ↓ — tenant owes less)
- *
- * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
- *      never as a raw Date object.
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
@@ -31,32 +39,41 @@ function resolveNepaliDateString(raw, fallback) {
 }
 
 /**
- * @param {Object} payment  - Payment document
- *   Must have:  _id, amountPaisa (integer), paymentMethod
- *   Optional:   paymentDate, nepaliDate, createdBy / receivedBy
+ * @param {Object} rent      - Rent document
+ *   Must have: nepaliMonth, nepaliYear
+ *   Optional:  tenant, property, block
  *
- * @param {Object} rent     - Rent document (for context)
- *   Must have:  nepaliMonth, nepaliYear
- *   Optional:   tenant, property
- *
- * @param {string} [bankAccountCode]
+ * @param {Object} options
+ * @param {number}  options.amountPaisa       integer paisa
+ * @param {string}  options.paymentMethod
+ * @param {string}  [options.bankAccountCode]
+ * @param {Date}    [options.paymentDate]
+ * @param {Object}  options.payment           Payment document (_id, receivedBy, nepaliDate)
  *
  * @returns {Object} Canonical journal payload
  */
-export function buildPaymentReceivedJournal(payment, rent, bankAccountCode) {
+export function buildPaymentReceivedJournal(rent, options) {
+  const {
+    amountPaisa,
+    paymentMethod,
+    bankAccountCode,
+    paymentDate = new Date(),
+    payment,
+  } = options;
+
   // ── 1. Validate ───────────────────────────────────────────────────────────
-  assertValidPaymentMethod(payment.paymentMethod);
-  assertIntegerPaisa(payment.amountPaisa, "payment.amountPaisa");
+  assertValidPaymentMethod(paymentMethod);
+  assertIntegerPaisa(amountPaisa, "amountPaisa");
 
   // ── 2. Dates ──────────────────────────────────────────────────────────────
   const transactionDate =
-    payment.paymentDate instanceof Date
-      ? payment.paymentDate
-      : new Date(payment.paymentDate ?? Date.now());
+    paymentDate instanceof Date
+      ? paymentDate
+      : new Date(paymentDate ?? Date.now());
 
-  // FIX: always a BS "YYYY-MM-DD" string
+  // Always store BS date as "YYYY-MM-DD" string
   const nepaliDate = resolveNepaliDateString(
-    payment.nepaliDate,
+    payment?.nepaliDate,
     transactionDate,
   );
 
@@ -69,7 +86,7 @@ export function buildPaymentReceivedJournal(payment, rent, bankAccountCode) {
 
   // ── 4. Determine DR account ───────────────────────────────────────────────
   const drAccountCode = getDebitAccountForPayment(
-    payment.paymentMethod,
+    paymentMethod,
     bankAccountCode,
   );
 
@@ -78,31 +95,31 @@ export function buildPaymentReceivedJournal(payment, rent, bankAccountCode) {
     `Rent payment received for ${nepaliMonth}/${nepaliYear}` +
     (tenantName ? ` — ${tenantName}` : "");
 
-  // ── 5. Build canonical payload ───────────────────────────────────────────
+  // ── 5. Build canonical payload ────────────────────────────────────────────
   return buildJournalPayload({
     transactionType: "RENT_PAYMENT_RECEIVED",
     referenceType: "RentPayment",
-    referenceId: payment._id,
+    referenceId: payment?._id,
     transactionDate,
     nepaliDate,
     nepaliMonth,
     nepaliYear,
     description,
-    createdBy: payment.createdBy ?? payment.receivedBy ?? null,
-    totalAmountPaisa: payment.amountPaisa,
+    createdBy: payment?.receivedBy ?? null,
+    totalAmountPaisa: amountPaisa,
     tenant: rent?.tenant,
     property: rent?.property,
     entries: [
       {
         accountCode: drAccountCode,
-        debitAmountPaisa: payment.amountPaisa,
+        debitAmountPaisa: amountPaisa,
         creditAmountPaisa: 0,
         description,
       },
       {
         accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
         debitAmountPaisa: 0,
-        creditAmountPaisa: payment.amountPaisa,
+        creditAmountPaisa: amountPaisa,
         description,
       },
     ],
