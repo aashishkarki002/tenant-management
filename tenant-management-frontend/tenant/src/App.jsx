@@ -27,6 +27,7 @@ import Generator from "./Generators/Generator";
 import DailyChecks from "./DailyChecks/dailyChecks";
 import Loans from "./Loans/loan";
 import { setupSwMessageListener } from "./hooks/usePushNotification";
+import AdminDailyChecks from "./adminDailyChecks/dailychecks";
 import Units from "./units/units";
 import api from "../plugins/axios";
 import { useAuth } from "./context/AuthContext";
@@ -154,6 +155,9 @@ export default function App() {
       />
       <Route path="/loans"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ALL_ROLES}><Loans /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/admin-daily-checks"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><AdminDailyChecks /></RoleRoute></ProtectedRoutes>}
       />
     </Routes>
   );

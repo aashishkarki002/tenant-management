@@ -5,9 +5,9 @@ import {
   Search, Plus, ArrowDown,
   Users, CheckCircle2, X,
   ChevronDown, Filter, Banknote, CalendarClock,
-  LayoutGrid, List, AlertTriangle, DollarSign,
+  AlertTriangle, DollarSign,
   MoreVertical, Eye, CreditCard, Bell, Pencil, XCircle,
-  Phone, Mail, Upload, SlidersHorizontal,
+  Phone, Mail, Upload, SlidersHorizontal, LayoutGrid, List as ListIcon,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent,
@@ -106,59 +106,61 @@ function hasActiveFilters(f) {
   );
 }
 
-// ─── Stat Card ─────────────────────────────────────────────────────────────────
+// ─── KPI Strip ────────────────────────────────────────────────────────────────
 //
-// Industry standard (Linear, Stripe): clean number-first layout, muted icon,
-// semantic left-border accent instead of colored icon containers.
-// Avoids the "4 colorful boxes" AI-generated pattern.
+// A single horizontal bar replaces four tall cards.
+// Each cell earns a semantic background only when it actually demands attention.
 //
-const ACCENT_COLORS = {
-  default: "var(--color-border)",
-  success: "var(--color-success)",
-  warning: "var(--color-warning)",
-  danger: "var(--color-danger)",
-  accent: "var(--color-accent)",
-};
-
-function StatCard({ icon: Icon, label, value, description, accent = "default" }) {
-  const borderAccent = ACCENT_COLORS[accent] ?? ACCENT_COLORS.default;
-
+function KpiStrip({ items }) {
   return (
     <div
-      className="rounded-xl border shadow-[var(--shadow-card)] px-4 py-3.5 flex items-start gap-3 relative overflow-hidden"
+      className="flex items-stretch rounded-xl border overflow-hidden mb-6 shadow-[var(--shadow-card)]"
       style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
     >
-      {/* Thin left accent stripe — the only semantic color signal */}
-      <div
-        className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full"
+      {items.map((item, idx) => {
+        const isLast = idx === items.length - 1;
+        const bgStyle =
+          item.urgency === "danger"
+            ? { background: "var(--color-danger-bg)", borderLeft: "2px solid var(--color-danger)" }
+            : item.urgency === "warning"
+              ? { background: "var(--color-warning-bg)", borderLeft: "2px solid var(--color-warning)" }
+              : {};
+        const valueColor =
+          item.urgency === "danger"
+            ? "var(--color-danger)"
+            : item.urgency === "warning"
+              ? "var(--color-warning)"
+              : "var(--color-text-strong)";
 
-      />
-
-      <div className="pl-2.5 flex-1 min-w-0">
-        <p
-          className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 font-sans"
-          style={{ color: "var(--color-text-weak)" }}
-        >
-          {label}
-        </p>
-        <p
-          className="text-2xl font-bold leading-none font-mono tabular-nums"
-          style={{ color: "var(--color-text-strong)" }}
-        >
-          {value}
-        </p>
-        {description && (
-          <p className="text-[11px] mt-1.5 truncate" style={{ color: "var(--color-text-sub)" }}>
-            {description}
-          </p>
-        )}
-      </div>
-
-      {/* Icon: always muted — decorative only */}
-      <Icon
-        className="w-4 h-4 mt-0.5 shrink-0"
-        style={{ color: "var(--color-text-weak)" }}
-      />
+        return (
+          <div
+            key={item.label}
+            className="flex-1 px-4 py-3 min-w-0"
+            style={{
+              borderRight: isLast ? "none" : "1px solid var(--color-border)",
+              ...bgStyle,
+            }}
+          >
+            <p
+              className="text-[9px] font-semibold uppercase tracking-widest mb-1 truncate"
+              style={{ color: "var(--color-text-weak)" }}
+            >
+              {item.label}
+            </p>
+            <p
+              className="text-base font-bold font-mono tabular-nums leading-none"
+              style={{ color: valueColor }}
+            >
+              {item.value}
+            </p>
+            {item.sub && (
+              <p className="text-[10px] mt-1 truncate" style={{ color: "var(--color-text-sub)" }}>
+                {item.sub}
+              </p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -215,188 +217,153 @@ function FilterChip({ label, dot, onRemove }) {
 
 // ─── Filter Group Button ───────────────────────────────────────────────────────
 function FilterGroupButton({ group, selectedValues, onToggle }) {
-  const [open, setOpen] = useState(false);
   const Icon = group.icon;
   const activeCount = selectedValues.length;
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors shrink-0"
-        style={activeCount > 0 ? {
-          background: "var(--color-accent)",
-          color: "#ffffff",
-          borderColor: "var(--color-accent)",
-        } : {
-          background: "var(--color-surface)",
-          color: "var(--color-text-body)",
-          borderColor: "var(--color-border)",
-        }}
-      >
-        <Icon className="w-3.5 h-3.5 shrink-0" />
-        <span className="hidden md:inline">{group.label}</span>
-        {activeCount > 0 && (
-          <span className="bg-white/30 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">
-            {activeCount}
-          </span>
-        )}
-        <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            className="absolute top-11 left-0 z-50 rounded-xl border shadow-[var(--shadow-modal)] p-1 min-w-[160px]"
-            style={{ background: "var(--color-surface-raised)", borderColor: "var(--color-border)" }}
-          >
-            {group.options.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => onToggle(group.key, opt.value)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors"
-                style={selectedValues.includes(opt.value) ? {
-                  background: "var(--color-accent-light)",
-                  color: "var(--color-accent)",
-                  fontWeight: 500,
-                } : { color: "var(--color-text-body)" }}
-                onMouseEnter={e => { if (!selectedValues.includes(opt.value)) e.currentTarget.style.background = "var(--color-surface)"; }}
-                onMouseLeave={e => { if (!selectedValues.includes(opt.value)) e.currentTarget.style.background = ""; }}
-              >
-                {opt.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dot}`} />}
-                <span className="flex-1">{opt.label}</span>
-                {selectedValues.includes(opt.value) && (
-                  <span className="ml-auto text-xs" style={{ color: "var(--color-accent)" }}>✓</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors shrink-0 outline-none"
+          style={activeCount > 0 ? {
+            background: "var(--color-accent)",
+            color: "#ffffff",
+            borderColor: "var(--color-accent)",
+          } : {
+            background: "var(--color-surface)",
+            color: "var(--color-text-body)",
+            borderColor: "var(--color-border)",
+          }}
+        >
+          <Icon className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden md:inline">{group.label}</span>
+          {activeCount > 0 && (
+            <span className="bg-white/30 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">
+              {activeCount}
+            </span>
+          )}
+          <ChevronDown className="w-3 h-3 shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-[160px] p-1">
+        {group.options.map(opt => {
+          const isSelected = selectedValues.includes(opt.value);
+          return (
+            <DropdownMenuItem
+              key={opt.value}
+              onSelect={(e) => { e.preventDefault(); onToggle(group.key, opt.value); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs cursor-pointer"
+              style={isSelected ? {
+                background: "var(--color-accent-light)",
+                color: "var(--color-accent)",
+                fontWeight: 500,
+              } : { color: "var(--color-text-body)" }}
+            >
+              {opt.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dot}`} />}
+              <span className="flex-1">{opt.label}</span>
+              {isSelected && <span className="ml-auto text-xs" style={{ color: "var(--color-accent)" }}>✓</span>}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 // ─── Advanced Filters Popover ──────────────────────────────────────────────────
 function AdvancedFiltersPopover({ filters, onFilterToggle }) {
-  const [open, setOpen] = useState(false);
-
   const advancedActiveCount = ADVANCED_FILTERS.reduce(
     (count, group) => count + (filters[group.key]?.length ?? 0),
     0
   );
 
   return (
-    <div className="relative shrink-0">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors"
-        style={advancedActiveCount > 0 ? {
-          background: "var(--color-accent)",
-          color: "#ffffff",
-          borderColor: "var(--color-accent)",
-        } : {
-          background: "var(--color-surface)",
-          color: "var(--color-text-body)",
-          borderColor: "var(--color-border)",
-        }}
-      >
-        <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-        <span className="hidden md:inline whitespace-nowrap">More Filters</span>
-        {advancedActiveCount > 0 && (
-          <span className="bg-white/30 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">
-            {advancedActiveCount}
-          </span>
-        )}
-      </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors shrink-0 outline-none"
+          style={advancedActiveCount > 0 ? {
+            background: "var(--color-accent)",
+            color: "#ffffff",
+            borderColor: "var(--color-accent)",
+          } : {
+            background: "var(--color-surface)",
+            color: "var(--color-text-body)",
+            borderColor: "var(--color-border)",
+          }}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden md:inline whitespace-nowrap">More Filters</span>
+          {advancedActiveCount > 0 && (
+            <span className="bg-white/30 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">
+              {advancedActiveCount}
+            </span>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64 p-0 overflow-hidden">
+        <div className="px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+          <h3 className="text-xs font-semibold" style={{ color: "var(--color-text-strong)" }}>Advanced Filters</h3>
+        </div>
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            className="absolute top-11 right-0 z-50 rounded-xl border shadow-[var(--shadow-modal)] w-68 overflow-hidden"
-            style={{ background: "var(--color-surface-raised)", borderColor: "var(--color-border)" }}
-          >
-            <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: "var(--color-border)" }}>
-              <h3 className="text-xs font-semibold" style={{ color: "var(--color-text-strong)" }}>Advanced Filters</h3>
-              <button
-                onClick={() => setOpen(false)}
-                className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors"
-                style={{ color: "var(--color-text-sub)" }}
-                onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface)"}
-                onMouseLeave={e => e.currentTarget.style.background = ""}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="p-3 space-y-3 max-h-80 overflow-y-auto">
-              {ADVANCED_FILTERS.map(group => {
-                const Icon = group.icon;
-                const selectedValues = filters[group.key] ?? [];
-                return (
-                  <div key={group.key}>
-                    <label
-                      className="flex items-center gap-1.5 text-[10px] font-semibold mb-2 px-1 uppercase tracking-widest"
-                      style={{ color: "var(--color-text-sub)" }}
-                    >
-                      <Icon className="w-3 h-3" />
-                      {group.label}
-                    </label>
-                    <div className="space-y-1">
-                      {group.options.map(opt => {
-                        const isSelected = selectedValues.includes(opt.value);
-                        return (
-                          <button
-                            key={opt.value}
-                            onClick={() => onFilterToggle(group.key, opt.value)}
-                            className="w-full text-left px-3 py-2 rounded-lg border transition-all flex items-center gap-2 text-xs"
-                            style={isSelected ? {
-                              background: "var(--color-accent-light)",
-                              color: "var(--color-accent)",
-                              borderColor: "var(--color-accent-mid)",
-                              fontWeight: 500,
-                            } : {
-                              background: "var(--color-surface-raised)",
-                              color: "var(--color-text-body)",
-                              borderColor: "var(--color-border)",
-                            }}
-                          >
-                            <span className="flex-1">{opt.label}</span>
-                            {isSelected && (
-                              <span style={{ color: "var(--color-accent)" }}>✓</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {advancedActiveCount > 0 && (
-              <div className="px-3 py-2.5 border-t" style={{ borderColor: "var(--color-border)" }}>
-                <button
-                  onClick={() => {
-                    ADVANCED_FILTERS.forEach(group => {
-                      (filters[group.key] ?? []).forEach(value => onFilterToggle(group.key, value));
-                    });
-                  }}
-                  className="w-full text-[11px] font-medium py-1.5 rounded-lg transition-colors"
+        <div className="p-3 space-y-3 max-h-80 overflow-y-auto">
+          {ADVANCED_FILTERS.map(group => {
+            const Icon = group.icon;
+            const selectedValues = filters[group.key] ?? [];
+            return (
+              <div key={group.key}>
+                <label
+                  className="flex items-center gap-1.5 text-[10px] font-semibold mb-2 px-1 uppercase tracking-widest"
                   style={{ color: "var(--color-text-sub)" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface)"}
-                  onMouseLeave={e => e.currentTarget.style.background = ""}
                 >
-                  Clear advanced filters
-                </button>
+                  <Icon className="w-3 h-3" />
+                  {group.label}
+                </label>
+                <div className="space-y-1">
+                  {group.options.map(opt => {
+                    const isSelected = selectedValues.includes(opt.value);
+                    return (
+                      <DropdownMenuItem
+                        key={opt.value}
+                        onSelect={(e) => { e.preventDefault(); onFilterToggle(group.key, opt.value); }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs cursor-pointer"
+                        style={isSelected ? {
+                          background: "var(--color-accent-light)",
+                          color: "var(--color-accent)",
+                          fontWeight: 500,
+                        } : {
+                          color: "var(--color-text-body)",
+                        }}
+                      >
+                        <span className="flex-1">{opt.label}</span>
+                        {isSelected && <span style={{ color: "var(--color-accent)" }}>✓</span>}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </div>
               </div>
-            )}
+            );
+          })}
+        </div>
+
+        {advancedActiveCount > 0 && (
+          <div className="px-3 py-2.5 border-t" style={{ borderColor: "var(--color-border)" }}>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                ADVANCED_FILTERS.forEach(group => {
+                  (filters[group.key] ?? []).forEach(value => onFilterToggle(group.key, value));
+                });
+              }}
+              className="w-full justify-center text-[11px] font-medium py-1.5 rounded-lg cursor-pointer"
+              style={{ color: "var(--color-text-sub)" }}
+            >
+              Clear advanced filters
+            </DropdownMenuItem>
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -553,13 +520,17 @@ function MobileFilterDrawer({ isOpen, onClose, filters, allBlocks, onBlockChange
 
 // ─── Contextual Header Slot ────────────────────────────────────────────────────
 //
-// FIX: Desktop filter row overflow at intermediate viewport widths (laptop).
-// - Search: flex-1 with min/max constraints instead of fixed w-56 shrink-0
-// - FilterGroupButtons: text label hidden below md (icon-only on cramped screens)
-// - AdvancedFiltersPopover: shrink-0 so it never gets squeezed out of shape
+// Layout: [Search] [Block▾] | [Status] [Payment] [Filters▾] ··· [Grid|Table] [+ Add Tenant]
+//
+// Design decisions:
+// - "Send Message" removed from header — it's a per-tenant action, lives in TenantCard ••• menu
+// - View toggle (Grid/Table) moved here so the page body stays clean
+// - Divider separates location filter from status/payment filters (different filter categories)
+// - Only one filled button (Add Tenant) — everything else is flat/outline
 //
 function TenantHeaderSlot({
   filters, allBlocks, onSearchChange, onBlockChange, onFilterToggle, onNavigate, onClearAll,
+  viewMode, onViewModeChange,
 }) {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
@@ -641,19 +612,13 @@ function TenantHeaderSlot({
 
         {/* ── Desktop ─────────────────────────────────────────────────────────── */}
         {/*
-          Layout: [Search — flex-1] [Block▾] [Status] [Payment] [More▾] ··· | [Send] [+ Add]
-          
-          Key fixes vs. old code:
-          1. Search is now flex-1 min-w-[120px] max-w-[200px] — shrinks/grows
-             with available space instead of fixed w-56 that caused overflow.
-          2. Filter group labels hide below md breakpoint (icon-only mode) so
-             buttons don't overflow when sidebar is open on 1280px screens.
-          3. AdvancedFiltersPopover has shrink-0 — won't get compressed.
-          4. Outer div has min-w-0 — prevents flex children from overflowing parent.
+          Left cluster: Search + Block (location context)
+          Middle cluster: Status + Payment + More Filters (tenant state)
+          Right cluster: view toggle + Add Tenant (only primary CTA)
         */}
         <div className="hidden sm:flex items-center gap-1.5 w-full min-w-0">
 
-          {/* Search — flexible width */}
+          {/* Search */}
           <div className="relative flex-1 min-w-[120px] max-w-[200px] shrink">
             <Search
               className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
@@ -661,7 +626,7 @@ function TenantHeaderSlot({
             />
             <input
               type="text"
-              placeholder="Search tenant…"
+              placeholder="Search tenants…"
               value={filters.search}
               onChange={e => onSearchChange(e.target.value)}
               className="w-full h-9 pl-8 pr-3 text-xs rounded-lg border outline-none transition-colors font-sans"
@@ -719,10 +684,10 @@ function TenantHeaderSlot({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Divider */}
+          {/* Divider — separates location from state filters */}
           <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
 
-          {/* Essential filters */}
+          {/* Essential filters: Status + Payment */}
           {ESSENTIAL_FILTERS.map(group => (
             <FilterGroupButton
               key={group.key}
@@ -732,16 +697,47 @@ function TenantHeaderSlot({
             />
           ))}
 
-          {/* Advanced filters */}
+          {/* Advanced filters collapsed into one button */}
           <AdvancedFiltersPopover filters={filters} onFilterToggle={onFilterToggle} />
 
-          {/* Push CTAs to right */}
+          {/* Spacer — pushes right cluster to the end */}
           <div className="flex-1" />
+
+          {/* View toggle — Grid / Table */}
+          <div
+            className="flex items-center rounded-lg p-0.5 border shrink-0"
+            style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+          >
+            <button
+              onClick={() => onViewModeChange("grid")}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
+              style={viewMode === "grid" ? {
+                background: "var(--color-surface-raised)",
+                color: "var(--color-text-strong)",
+                boxShadow: "var(--shadow-card)",
+              } : { color: "var(--color-text-sub)" }}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Grid</span>
+            </button>
+            <button
+              onClick={() => onViewModeChange("table")}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
+              style={viewMode === "table" ? {
+                background: "var(--color-surface-raised)",
+                color: "var(--color-text-strong)",
+                boxShadow: "var(--shadow-card)",
+              } : { color: "var(--color-text-sub)" }}
+            >
+              <ListIcon className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Table</span>
+            </button>
+          </div>
 
           {/* Divider */}
           <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
 
-          {/* CTA: Add Tenant — primary */}
+          {/* Add Tenant — sole primary CTA */}
           <Button
             onClick={onNavigate.toAdd}
             className="h-9 px-3 text-xs font-semibold text-white shrink-0 flex items-center gap-1.5"
@@ -751,20 +747,6 @@ function TenantHeaderSlot({
             Add Tenant
           </Button>
 
-          {/* CTA: Send Message — secondary */}
-          <Button
-            variant="outline"
-            onClick={onNavigate.toMessage}
-            className="h-9 px-3 text-xs font-semibold shrink-0 flex items-center gap-1.5"
-            style={{
-              background: "var(--color-surface)",
-              borderColor: "var(--color-border)",
-              color: "var(--color-text-body)",
-            }}
-          >
-            <Bell className="w-3.5 h-3.5" />
-            <span className="hidden lg:inline">Send Message</span>
-          </Button>
         </div>
 
       </div>
@@ -955,9 +937,11 @@ export default function Tenants() {
         onFilterToggle={toggleMultiFilter}
         onNavigate={navCallbacks}
         onClearAll={clearAllFilters}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
     ),
-    [filters, allBlocks]
+    [filters, allBlocks, viewMode]
   );
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
@@ -1004,75 +988,42 @@ export default function Tenants() {
         </div>
 
         {/* ── KPI strip ─────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <StatCard
-            icon={Users}
-            label="Total Tenants"
-            value={totalCount ?? tenants.length}
-            description="All registered"
-            accent="accent"
-          />
-          <StatCard
-            icon={CheckCircle2}
-            label="Active"
-            value={activeTenants}
-            description="Currently occupying"
-            accent="success"
-          />
-          <StatCard
-            icon={DollarSign}
-            label="Outstanding"
-            value={outstandingRent > 0 ? `Rs ${outstandingRent.toLocaleString()}` : "Rs 0"}
-            description="Unpaid balances"
-            accent={outstandingRent > 0 ? "danger" : "default"}
-          />
-          <StatCard
-            icon={AlertTriangle}
-            label="Needs Attention"
-            value={attentionCount}
-            description="Overdue or lease expiring"
-            accent={attentionCount > 0 ? "warning" : "default"}
-          />
-        </div>
+        <KpiStrip
+          items={[
+            {
+              label: "Total Tenants",
+              value: totalCount ?? tenants.length,
+              sub: `${activeTenants} active`,
+            },
+            {
+              label: "Outstanding",
+              value: outstandingRent > 0 ? `Rs ${outstandingRent.toLocaleString()}` : "Rs 0",
+              sub: "Unpaid balances",
+              urgency: outstandingRent > 0 ? "warning" : undefined,
+            },
+            {
+              label: "Due this week",
+              value: tenants.filter(t => getPaymentStatus(t) === "due_soon").length,
+              sub: "Tenants",
+            },
+            {
+              label: "Needs Attention",
+              value: attentionCount > 0 ? attentionCount : "None",
+              sub: attentionCount > 0 ? "Overdue or lease expiring" : "All clear",
+              urgency: attentionCount > 0 ? "danger" : undefined,
+            },
+          ]}
+        />
 
-        {/* ── View toggle + count ────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="min-h-[18px]">
-            {showingFiltered && !loading && (
-              <p className="text-xs" style={{ color: "var(--color-text-sub)" }}>
-                Showing{" "}
-                <span className="font-semibold" style={{ color: "var(--color-text-body)" }}>{tenants.length}</span>
-                {totalCount != null && ` of ${totalCount}`} tenants
-              </p>
-            )}
-          </div>
-          <div
-            className="flex items-center rounded-lg p-0.5 border"
-            style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-          >
-            <button
-              onClick={() => setViewMode("grid")}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-              style={viewMode === "grid" ? {
-                background: "var(--color-surface-raised)",
-                color: "var(--color-text-strong)",
-                boxShadow: "var(--shadow-card)",
-              } : { color: "var(--color-text-sub)" }}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" /> Grid
-            </button>
-            <button
-              onClick={() => setViewMode("table")}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-              style={viewMode === "table" ? {
-                background: "var(--color-surface-raised)",
-                color: "var(--color-text-strong)",
-                boxShadow: "var(--shadow-card)",
-              } : { color: "var(--color-text-sub)" }}
-            >
-              <List className="w-3.5 h-3.5" /> Table
-            </button>
-          </div>
+        {/* ── filter result count ───────────────────────────────────────────── */}
+        <div className="min-h-[18px] mb-4">
+          {showingFiltered && !loading && (
+            <p className="text-xs" style={{ color: "var(--color-text-sub)" }}>
+              Showing{" "}
+              <span className="font-semibold" style={{ color: "var(--color-text-body)" }}>{tenants.length}</span>
+              {totalCount != null && ` of ${totalCount}`} tenants
+            </p>
+          )}
         </div>
 
         {/* ── Content ───────────────────────────────────────────────────────── */}

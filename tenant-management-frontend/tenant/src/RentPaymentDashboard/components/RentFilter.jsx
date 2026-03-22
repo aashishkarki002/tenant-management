@@ -149,12 +149,6 @@ export const RentFilter = ({
                 {/* Push right */}
                 <div className="flex-1 min-w-0 hidden sm:block" />
 
-                {/* Period badge */}
-                <span className="hidden sm:inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--color-accent-mid)] bg-[var(--color-accent-light)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-accent)]">
-                    <span className="opacity-60 font-medium">Period</span>
-                    <span>{currentMonthName} {year}</span>
-                </span>
-
                 {/* Reset */}
                 <button
                     type="button"
@@ -185,8 +179,8 @@ export const RentFilter = ({
                 </div>
             )}
 
-            {/* ── Row 2: Status chips — horizontal scroll on mobile ─────────────── */}
-            <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            {/* ── Row 2: Status filter strip — separated from period controls ─────── */}
+            <div className="flex items-center gap-1.5 pt-2 border-t border-border overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {STATUS_CHIPS.map(({ value, label, variant }) => {
                     const isActive = status === value;
                     const isDanger = variant === "danger";

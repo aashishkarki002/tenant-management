@@ -1,9 +1,17 @@
 /**
  * PaymentDialog.jsx
  *
- * Updated to support late fee allocation as a separate revenue bucket.
+ * REDESIGN: Two-column split layout (desktop) / single-column stacked layout (mobile).
+ *   Desktop (≥768px):
+ *     Left  (scrollable) — What you're paying: Due summary, unit picker, allocation.
+ *     Right (fixed)      — How you're paying:  Method, bank, date, ref/note.
+ *     Right footer       — Always-visible totals + Submit. No scrolling required.
+ *   Mobile (<768px):
+ *     Single scrollable column — left content stacks above right content.
+ *     Sticky footer            — totals + Submit pinned to viewport bottom.
+ *     Full-screen sheet        — 100dvh, no border-radius on dialog edges.
  *
- * Late fee changes:
+ * Late fee changes (unchanged from original):
  *   - Due summary shows Rent / CAM / Late Fee as three distinct line items
  *   - Auto mode: amount fills rent → CAM → late fee (full-or-nothing on late fee)
  *   - Manual mode: third input for late fee allocation; full-or-nothing enforced in UI
@@ -19,7 +27,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -31,6 +38,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DualCalendarTailwind from "../../components/dualDate";
 import { getPaymentAmounts, normalizeStatus } from "../utils/paymentUtil";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,12 +60,10 @@ function getOwnershipLabel(entity) {
 /**
  * Proportional allocation — mirrors allocatePaymentProportionally on the backend.
  * Allocates against rent principal only (not CAM or late fee).
- *
- * FIX: remaining = (rentAmountPaisa - tdsAmountPaisa) - paidAmountPaisa
  */
 function proportionalAllocate(unitBreakdown, totalRupees) {
   const totalEffectiveRemainingPaisa = unitBreakdown.reduce((sum, u) => {
-    const effective = (u.rentAmountPaisa || 0)
+    const effective = (u.rentAmountPaisa || 0);
     return sum + Math.max(0, effective - (u.paidAmountPaisa || 0));
   }, 0);
 
@@ -66,13 +72,13 @@ function proportionalAllocate(unitBreakdown, totalRupees) {
   const totalPaymentPaisa = Math.round(totalRupees * 100);
   let remaining = totalPaymentPaisa;
   const unpaidUnits = unitBreakdown.filter((u) => {
-    const eff = (u.rentAmountPaisa || 0)
+    const eff = (u.rentAmountPaisa || 0);
     return eff - (u.paidAmountPaisa || 0) > 0;
   });
   const result = [];
 
   unpaidUnits.forEach((u, idx) => {
-    const unitEffectivePaisa = (u.rentAmountPaisa || 0)
+    const unitEffectivePaisa = (u.rentAmountPaisa || 0);
     const unitRemainingPaisa = unitEffectivePaisa - (u.paidAmountPaisa || 0);
 
     let alloc;
@@ -92,6 +98,23 @@ function proportionalAllocate(unitBreakdown, totalRupees) {
   });
 
   return result;
+}
+
+// ─── Section Label ────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }) {
+  return (
+    <p style={{
+      color: "var(--color-text-weak)",
+      fontSize: "10px",
+      fontWeight: 600,
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      marginBottom: "10px",
+    }}>
+      {children}
+    </p>
+  );
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -114,6 +137,8 @@ export const PaymentDialog = ({
   handleAmountChange,
   onClose,
 }) => {
+  const isMobile = useIsMobile();
+
   const {
     rentAmount, camAmount, lateFeeAmount, totalDue,
     tdsAmountPaisa, hasLateFee, remainingLateFeePaisa,
@@ -132,7 +157,6 @@ export const PaymentDialog = ({
     );
   }, [cams, rent]);
 
-
   const units = React.useMemo(() => {
     const hasBreakdown =
       rent?.useUnitBreakdown &&
@@ -143,7 +167,6 @@ export const PaymentDialog = ({
       return rent.unitBreakdown.map((ub) => {
         const unit = ub.unit;
         const id = resolveId(unit);
-
         const effectivePaisa = ub.rentAmountPaisa || 0;
         const rentDue = effectivePaisa / 100;
         const paidSoFar = (ub.paidAmountPaisa || 0) / 100;
@@ -164,7 +187,6 @@ export const PaymentDialog = ({
       });
     }
 
-    // Single-unit fallback — use effective rent from getPaymentAmounts()
     const paidSoFar = (rent?.paidAmountPaisa || 0) / 100;
     return [
       {
@@ -209,8 +231,6 @@ export const PaymentDialog = ({
   const balanceOwed = totalDue - totalAllocated;
   const isOverAllocated = totalAllocated > paymentAmount && paymentAmount > 0;
 
-  // Partial late fee guard: if lateFeeAllocation is set it must equal the full
-  // remaining late fee (backend enforces this — show error in UI preemptively)
   const lateFeeRemaining = remainingLateFeePaisa / 100;
   const isPartialLateFee =
     (lateFeeAllocation || 0) > 0 &&
@@ -244,7 +264,7 @@ export const PaymentDialog = ({
         ? new Date(formik.values.paymentDate).toISOString().split("T")[0]
         : null,
       nepaliDate: formik.values?.nepaliDate || null,
-      paymentMethod: formik.values?.paymentMethod,
+      paymentMethod: (formik.values?.paymentMethod || "").toLowerCase().trim(),
       paymentStatus: "paid",
       note: formik.values?.note || "",
       bankAccountId: formik.values?.bankAccountId || null,
@@ -253,10 +273,8 @@ export const PaymentDialog = ({
       allocations: {},
     };
 
-    // Rent allocation
     if (rentAllocation > 0) {
       const rentEntry = { rentId: rent._id, amount: rentAllocation };
-
       if (isMultiUnit) {
         const unitAllocations =
           allocationMode === "manual"
@@ -264,25 +282,17 @@ export const PaymentDialog = ({
               .map((u) => ({ unitId: u.id, amount: parseFloat(unitRentAllocations[u.id]) || 0 }))
               .filter((a) => a.amount > 0)
             : autoUnitAllocations.filter((a) => selectedUnitIds.includes(a.unitId));
-
         if (unitAllocations.length > 0) rentEntry.unitAllocations = unitAllocations;
       }
-
       payload.allocations.rent = rentEntry;
     }
 
-    // CAM allocation
     if (camAllocation > 0 && matchingCam?._id) {
       payload.allocations.cam = { camId: matchingCam._id, paidAmount: camAllocation };
     }
 
-    // Late fee allocation — separate revenue bucket (LATE_FEE_PAYMENT_RECEIVED journal)
-    // Backend: writes to latePaidAmountPaisa, NOT paidAmountPaisa
     if ((lateFeeAllocation || 0) > 0) {
-      payload.allocations.lateFee = {
-        rentId: rent._id,
-        amount: lateFeeAllocation,
-      };
+      payload.allocations.lateFee = { rentId: rent._id, amount: lateFeeAllocation };
     }
 
     return payload;
@@ -304,724 +314,999 @@ export const PaymentDialog = ({
     unitAllocationMismatch;
 
   // ── Summary tone ──────────────────────────────────────────────────────────
-  const summaryTone =
-    balanceOwed === 0
-      ? { container: "border-emerald-200 bg-emerald-50", accent: "text-emerald-700" }
-      : balanceOwed > 0
-        ? { container: "border-amber-200 bg-amber-50", accent: "text-amber-700" }
-        : { container: "border-rose-200 bg-rose-50", accent: "text-rose-700" };
+  const summaryState =
+    balanceOwed === 0 ? "full"
+      : balanceOwed > 0 ? "partial"
+        : "over";
 
   const portalContainerRef = React.useRef(null);
 
+  // ── Inline style tokens ───────────────────────────────────────────────────
+  const S = {
+    surface: { backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)" },
+    surfaceRaised: { backgroundColor: "var(--color-surface-raised)", border: "1px solid var(--color-border)" },
+    textStrong: { color: "var(--color-text-strong)" },
+    textBody: { color: "var(--color-text-body)" },
+    textSub: { color: "var(--color-text-sub)" },
+    textWeak: { color: "var(--color-text-weak)" },
+    accentText: { color: "var(--color-accent)" },
+    accentBg: { backgroundColor: "var(--color-accent-light)", border: "1px solid var(--color-accent-mid)" },
+    danger: { color: "var(--color-danger)" },
+    dangerBg: { backgroundColor: "var(--color-danger-bg)", border: "1px solid var(--color-danger-border)" },
+    warning: { color: "var(--color-warning)" },
+    warningBg: { backgroundColor: "var(--color-warning-bg)", border: "1px solid var(--color-warning-border)" },
+    success: { color: "var(--color-success)" },
+    successBg: { backgroundColor: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" },
+    border: { border: "1px solid var(--color-border)" },
+    divider: { borderTop: "1px solid var(--color-border)" },
+  };
+
   return (
-    <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto bg-slate-50">
+    <DialogContent
+      style={{
+        maxWidth: "860px",
+        width: "100%",
+        padding: 0,
+        overflow: "hidden",
+        maxHeight: isMobile ? "100dvh" : "90vh",
+        height: isMobile ? "100dvh" : "auto",
+        margin: isMobile ? "0" : undefined,
+        borderRadius: isMobile ? "0" : undefined,
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: "var(--color-bg)",
+      }}
+    >
       <div ref={portalContainerRef} />
-      <DialogHeader className="pb-4">
-        <DialogTitle className="text-2xl font-semibold text-slate-900">
-          Record Payment
-        </DialogTitle>
-        <p className="text-sm text-slate-500 mt-1">
-          Billing Period: {rent.nepaliMonth} {rent.nepaliYear}
-        </p>
-      </DialogHeader>
 
-      {/* ── Due summary ──────────────────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm space-y-4">
-        <div className={`grid gap-4 ${hasLateFee ? "grid-cols-3" : "grid-cols-2"}`}>
-          {/* Rent */}
-          <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wide">
-              Rent Due (net of TDS)
-            </p>
-            <p className="text-2xl font-semibold text-slate-900">
-              ₹{rentAmount.toLocaleString()}
-            </p>
-            {tdsAmountPaisa > 0 && (
-              <p className="text-xs text-amber-600 mt-0.5">
-                TDS: ₹{(tdsAmountPaisa / 100).toLocaleString()} withheld
-              </p>
+      {/* ── Dialog Header ─────────────────────────────────────────────────── */}
+      <div style={{
+        padding: isMobile ? "14px 16px 12px" : "20px 24px 16px",
+        borderBottom: "1px solid var(--color-border)",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        flexShrink: 0,
+        backgroundColor: "var(--color-surface-raised)",
+      }}>
+        <div>
+          <h2 style={{ ...S.textStrong, fontSize: "18px", fontWeight: 700, margin: 0 }}>
+            Record Payment
+          </h2>
+          <p style={{ ...S.textSub, fontSize: "13px", marginTop: "2px" }}>
+            {rent.nepaliMonth} {rent.nepaliYear}
+            {rent?.tenant?.name && (
+              <span style={{ ...S.textWeak }}> · {rent.tenant.name}</span>
             )}
-          </div>
-
-          {/* CAM */}
-          <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase mb-2 tracking-wide">
-              CAM Due
-            </p>
-            <p className="text-2xl font-semibold text-slate-900">
-              ₹{camAmount.toLocaleString()}
-            </p>
-          </div>
-
-          {/* Late fee — only shown when charged */}
-          {hasLateFee && (
-            <div>
-              <p className="text-xs font-semibold text-rose-500 uppercase mb-2 tracking-wide flex items-center gap-1.5">
-                Late Fee
-                <Badge className="text-[10px] px-1.5 py-0 bg-rose-100 text-rose-700 border border-rose-200">
-                  Penalty
-                </Badge>
-              </p>
-              <p className="text-2xl font-semibold text-rose-700">
-                ₹{lateFeeAmount.toLocaleString()}
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Separate revenue · full payment required
-              </p>
-            </div>
-          )}
-        </div>
-
-        <Separator />
-
-        <div className="flex justify-between items-center">
-          <p className="text-sm font-medium text-slate-900">Total Due</p>
-          <p className="text-3xl font-semibold text-slate-900">
-            ₹{totalDue.toLocaleString()}
           </p>
         </div>
       </div>
 
-      {/* ── 1️⃣ Select Units ─────────────────────────────────────────────── */}
-      <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Select Units</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Choose one or more units to include in this payment.
-            </p>
-          </div>
-          <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 rounded border-slate-300 accent-slate-900 cursor-pointer"
-              checked={allSelected}
-              onChange={(e) =>
-                setSelectedUnitIds(e.target.checked ? units.map((u) => u.id) : [])
-              }
-            />
-            Select all units
-          </label>
-        </div>
+      {/* ── Two-column body (desktop) / single-column body (mobile) ─────── */}
+      <div style={{ display: "flex", flex: 1, overflow: isMobile ? "auto" : "hidden", minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
 
-        <div className="space-y-3">
-          {units.map((unit) => {
-            const selected = selectedUnitIds.includes(unit.id);
-            return (
-              <button
-                key={unit.id}
-                type="button"
-                onClick={() =>
-                  setSelectedUnitIds((prev) =>
-                    prev.includes(unit.id)
-                      ? prev.filter((id) => id !== unit.id)
-                      : [...prev, unit.id],
-                  )
-                }
-                className={`w-full text-left rounded-xl border-2 px-4 py-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${selected
-                  ? "border-slate-900/80 bg-slate-900/[0.02]"
-                  : "border-slate-200 hover:border-slate-300 bg-white"
-                  }`}
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex items-center justify-center w-5 h-5 rounded-full border-2 ${selected
-                        ? "border-slate-900 bg-slate-900"
-                        : "border-slate-300 bg-white"
-                        }`}
-                    >
-                      {selected && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{unit.name}</p>
-                      {unit.label && (
-                        <p className="text-xs text-slate-500 mt-0.5">{unit.label}</p>
-                      )}
-                      {unit.hasOutstanding && (
-                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600">
-                          Outstanding
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Remaining
-                    </p>
-                    <p className="mt-0.5 text-sm font-bold text-slate-900">
-                      ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Rent Due (net)
-                    </p>
-                    <p className="mt-0.5 font-semibold text-slate-900">
-                      ₹{unit.rentDue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      Paid So Far
-                    </p>
-                    <p className="mt-0.5 font-semibold text-slate-900">
-                      ₹{unit.paidSoFar.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        {/* ════════════════════════════════════════════════════════════════
+            LEFT COLUMN — What you're paying
+        ════════════════════════════════════════════════════════════════ */}
+        <div style={{
+          flex: isMobile ? "none" : "1 1 0",
+          overflowY: isMobile ? "visible" : "auto",
+          padding: isMobile ? "16px" : "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          borderRight: isMobile ? "none" : "1px solid var(--color-border)",
+          borderBottom: isMobile ? "1px solid var(--color-border)" : "none",
+        }}>
 
-        {!selectedUnits.length && (
-          <p className="text-xs text-slate-500">Select at least one unit to continue.</p>
-        )}
-      </section>
-
-      {/* ── 2️⃣ Allocation Mode ──────────────────────────────────────────── */}
-      <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-5">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">Allocation Mode</p>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Quick Payment auto-distributes proportionally. Custom lets you specify
-            exact amounts per unit.
-          </p>
-        </div>
-
-        <Tabs value={allocationMode} onValueChange={setAllocationMode} className="space-y-5">
-          <TabsList className="grid w-full grid-cols-2 bg-slate-100 p-0.5 rounded-full">
-            <TabsTrigger
-              value="auto"
-              className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-slate-900 text-xs font-medium"
-            >
-              Quick Payment
-            </TabsTrigger>
-            <TabsTrigger
-              value="manual"
-              className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-slate-900 text-xs font-medium"
-            >
-              Custom Allocation
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Quick Payment */}
-          <TabsContent value="auto" className="space-y-4 pt-2">
-            {/* Amount input */}
-            <div className="space-y-2">
-              <label htmlFor="amount-quick" className="text-sm font-semibold text-slate-900">
-                Amount to Pay (Rs)
-              </label>
-              <Input
-                id="amount-quick"
-                type="number"
-                placeholder={`Full due: ₹${totalDue.toLocaleString()}`}
-                value={formik.values?.amount || ""}
-                onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
-                onBlur={(e) => { if (!e.target.value) handleAmountChange(totalDue, rent); }}
-                className="text-lg"
-              />
-            </div>
-
-            {/* Auto-computed allocation breakdown — always visible once amount > 0 */}
-            <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
-              <div className="px-4 py-2.5 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-slate-700">Rent</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Due: ₹{rentAmount.toLocaleString()}
-                  </p>
-                </div>
-                <p className={`text-sm font-bold ${rentAllocation > 0 ? "text-slate-900" : "text-slate-300"}`}>
-                  ₹{rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-              </div>
-
-              {camAmount > 0 && (
-                <div className="px-4 py-2.5 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-700">CAM</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Due: ₹{camAmount.toLocaleString()}
-                    </p>
-                  </div>
-                  <p className={`text-sm font-bold ${camAllocation > 0 ? "text-slate-900" : "text-slate-300"}`}>
-                    ₹{camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </p>
-                </div>
-              )}
-
-              {hasLateFee && (
-                <div className="px-4 py-2.5 flex items-center justify-between bg-rose-50/60">
-                  <div>
-                    <p className="text-xs font-semibold text-rose-700 flex items-center gap-1.5">
-                      Late Fee
-                      <span className="text-[9px] font-medium bg-rose-100 text-rose-600 border border-rose-200 rounded-full px-1.5 py-px">
-                        Separate revenue
-                      </span>
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Due: ₹{lateFeeAmount.toLocaleString()} · full payment only
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-sm font-bold ${(lateFeeAllocation || 0) > 0 ? "text-rose-700" : "text-slate-300"}`}>
-                      ₹{(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                    {(lateFeeAllocation || 0) === 0 && paymentAmount > 0 && (
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Add ₹{(lateFeeAmount).toLocaleString()} to cover
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Per-unit breakdown when multi-unit */}
-              {autoUnitAllocations.length > 0 && (
-                <div className="px-4 py-3 bg-slate-50/60">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
-                    Unit breakdown
-                  </p>
-                  <div className="space-y-1.5">
-                    {autoUnitAllocations.map((alloc) => {
-                      const unit = units.find((u) => u.id === alloc.unitId);
-                      return (
-                        <div key={alloc.unitId} className="flex items-center justify-between text-xs">
-                          <span className="text-slate-600">{unit?.name || alloc.unitId}</span>
-                          <span className="font-semibold text-slate-800">
-                            ₹{alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Total line */}
-              <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50">
-                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Total Allocated</p>
-                <p className="text-sm font-bold text-slate-900">
-                  ₹{totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Custom Allocation */}
-          <TabsContent value="manual" className="space-y-4 pt-2">
-            {/* Total amount */}
-            <div className="space-y-2">
-              <label htmlFor="amount-manual" className="text-sm font-semibold text-slate-900">
-                Total Amount to Pay (Rs)
-              </label>
-              <Input
-                id="amount-manual"
-                type="number"
-                placeholder="Enter total payment amount"
-                value={formik.values?.amount || ""}
-                onChange={(e) => formik.setFieldValue("amount", parseFloat(e.target.value) || 0)}
-                className="text-lg"
-              />
-            </div>
-
-            {/* Allocation inputs — each pre-filled with their due amount */}
-            <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
-
+          {/* ── Due Summary strip ──────────────────────────────────────── */}
+          <div style={{
+            ...S.surfaceRaised,
+            borderRadius: "var(--radius-lg)",
+            padding: "16px",
+            boxShadow: "var(--shadow-card)",
+          }}>
+            <SectionLabel>Amount Due</SectionLabel>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: hasLateFee
+                ? (isMobile ? "1fr 1fr" : "1fr 1fr 1fr")
+                : "1fr 1fr",
+              gap: isMobile ? "8px" : "4px",
+            }}>
               {/* Rent */}
-              <div className="px-4 py-3 flex items-center gap-4">
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-slate-700">Rent</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Total due: ₹{rentAmount.toLocaleString()}
+              <div style={{ padding: "8px 0" }}>
+                <p style={{ ...S.textWeak, fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>
+                  Rent {tdsAmountPaisa > 0 ? "(net TDS)" : ""}
+                </p>
+                <p style={{ ...S.textStrong, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
+                  ₹{rentAmount.toLocaleString()}
+                </p>
+                {tdsAmountPaisa > 0 && (
+                  <p style={{ ...S.warning, fontSize: "10px", marginTop: "3px" }}>
+                    TDS ₹{(tdsAmountPaisa / 100).toLocaleString()} withheld
                   </p>
-                </div>
-                <div className="w-36">
-                  <Input
-                    id="rent-allocation"
-                    type="number"
-                    placeholder="0"
-                    value={rentAllocation || ""}
-                    onChange={(e) => setRentAllocation(parseFloat(e.target.value) || 0)}
-                    className="text-right text-sm"
-                  />
-                </div>
+                )}
               </div>
 
               {/* CAM */}
-              <div className="px-4 py-3 flex items-center gap-4">
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-slate-700">CAM</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Total due: ₹{camAmount.toLocaleString()}
-                  </p>
-                </div>
-                <div className="w-36">
-                  <Input
-                    id="cam-allocation"
-                    type="number"
-                    placeholder="0"
-                    value={camAllocation || ""}
-                    onChange={(e) => setCamAllocation(parseFloat(e.target.value) || 0)}
-                    className="text-right text-sm"
-                  />
-                </div>
+              <div style={{ padding: "8px 0", borderLeft: "1px solid var(--color-border)", paddingLeft: "12px" }}>
+                <p style={{ ...S.textWeak, fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>
+                  CAM
+                </p>
+                <p style={{ ...S.textStrong, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
+                  ₹{camAmount.toLocaleString()}
+                </p>
               </div>
 
-              {/* Late Fee — only rendered when a fee has been charged */}
+              {/* Late Fee */}
               {hasLateFee && (
-                <div className="px-4 py-3 flex items-center gap-4 bg-rose-50/40">
-                  <div className="flex-1">
-                    <p className="text-xs font-semibold text-rose-700 flex items-center gap-1.5">
+                <div style={{
+                  padding: "8px 0",
+                  borderLeft: "1px solid var(--color-danger-border)",
+                  paddingLeft: "12px",
+                  backgroundColor: "var(--color-danger-bg)",
+                  borderRadius: "0 var(--radius-md) var(--radius-md) 0",
+                  paddingRight: "8px",
+                  gridColumn: isMobile ? "1 / -1" : "auto",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                    <p style={{ ...S.danger, fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Late Fee
-                      <span className="text-[9px] font-medium bg-rose-100 text-rose-600 border border-rose-200 rounded-full px-1.5 py-px">
-                        All or nothing
-                      </span>
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Total due: ₹{lateFeeAmount.toLocaleString()} · must pay full amount or leave 0
-                    </p>
-                    {isPartialLateFee && (
-                      <p className="text-[11px] text-rose-600 mt-0.5 font-medium">
-                        Enter ₹{lateFeeAmount.toLocaleString()} or 0
-                      </p>
-                    )}
+                    <span style={{
+                      backgroundColor: "var(--color-danger-bg)",
+                      color: "var(--color-danger)",
+                      border: "1px solid var(--color-danger-border)",
+                      borderRadius: "var(--radius-sm)",
+                      fontSize: "9px",
+                      fontWeight: 600,
+                      padding: "1px 5px",
+                    }}>
+                      Penalty
+                    </span>
                   </div>
-                  <div className="flex flex-col gap-1.5 items-end">
-                    <div className="w-36">
-                      <Input
-                        id="late-fee-allocation"
-                        type="number"
-                        placeholder="0"
-                        value={lateFeeAllocation || ""}
-                        onChange={(e) => setLateFeeAllocation(parseFloat(e.target.value) || 0)}
-                        className={`text-right text-sm ${isPartialLateFee ? "border-rose-400 focus-visible:ring-rose-400" : ""}`}
-                      />
+                  <p style={{ ...S.danger, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
+                    ₹{lateFeeAmount.toLocaleString()}
+                  </p>
+                  <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "3px" }}>Full payment required</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ ...S.divider, marginTop: "12px", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <p style={{ ...S.textSub, fontSize: "12px" }}>Total Due</p>
+              <p style={{ ...S.textStrong, fontSize: "17px", fontWeight: 700 }}>₹{totalDue.toLocaleString()}</p>
+            </div>
+          </div>
+
+          {/* ── Unit Selector ──────────────────────────────────────────── */}
+          <div style={{
+            ...S.surfaceRaised,
+            borderRadius: "var(--radius-lg)",
+            padding: "16px",
+            boxShadow: "var(--shadow-card)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+              <SectionLabel style={{ margin: 0 }}>Units</SectionLabel>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", ...S.textSub, fontSize: "11px", fontWeight: 500, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  style={{ accentColor: "var(--color-accent)", width: "13px", height: "13px", cursor: "pointer" }}
+                  checked={allSelected}
+                  onChange={(e) =>
+                    setSelectedUnitIds(e.target.checked ? units.map((u) => u.id) : [])
+                  }
+                />
+                Select all
+              </label>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {units.map((unit) => {
+                const selected = selectedUnitIds.includes(unit.id);
+                return (
+                  <button
+                    key={unit.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedUnitIds((prev) =>
+                        prev.includes(unit.id)
+                          ? prev.filter((id) => id !== unit.id)
+                          : [...prev, unit.id],
+                      )
+                    }
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      borderRadius: "var(--radius-md)",
+                      border: selected
+                        ? "1.5px solid var(--color-accent)"
+                        : "1.5px solid var(--color-border)",
+                      backgroundColor: selected
+                        ? "var(--color-accent-light)"
+                        : "var(--color-surface)",
+                      padding: isMobile ? "14px 14px" : "10px 12px",
+                      cursor: "pointer",
+                      transition: "all 0.1s",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        {/* Radio dot */}
+                        <div style={{
+                          width: "16px", height: "16px", borderRadius: "50%",
+                          border: selected ? "2px solid var(--color-accent)" : "2px solid var(--color-muted)",
+                          backgroundColor: selected ? "var(--color-accent)" : "transparent",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          flexShrink: 0,
+                        }}>
+                          {selected && <div style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#fff" }} />}
+                        </div>
+                        <div>
+                          <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 600 }}>{unit.name}</p>
+                          {unit.label && <p style={{ ...S.textWeak, fontSize: "11px" }}>{unit.label}</p>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        {unit.hasOutstanding && (
+                          <span style={{
+                            ...S.warningBg, ...S.warning,
+                            borderRadius: "var(--radius-sm)",
+                            fontSize: "9px", fontWeight: 600,
+                            padding: "2px 6px",
+                            textTransform: "uppercase", letterSpacing: "0.05em",
+                            display: "block", marginBottom: "2px",
+                          }}>
+                            Outstanding
+                          </span>
+                        )}
+                        <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 700 }}>
+                          ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </p>
+                        <p style={{ ...S.textWeak, fontSize: "10px" }}>remaining</p>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setLateFeeAllocation(lateFeeAmount)}
-                      className="text-[11px] text-rose-600 underline underline-offset-2 hover:text-rose-800"
-                    >
-                      Fill ₹{lateFeeAmount.toLocaleString()}
-                    </button>
+                  </button>
+                );
+              })}
+            </div>
+
+            {!selectedUnits.length && (
+              <p style={{ ...S.danger, fontSize: "11px", marginTop: "8px" }}>
+                Select at least one unit to continue.
+              </p>
+            )}
+          </div>
+
+          {/* ── Allocation ─────────────────────────────────────────────── */}
+          <div style={{
+            ...S.surfaceRaised,
+            borderRadius: "var(--radius-lg)",
+            padding: "16px",
+            boxShadow: "var(--shadow-card)",
+          }}>
+            <SectionLabel>Allocation</SectionLabel>
+
+            <Tabs value={allocationMode} onValueChange={setAllocationMode}>
+              {/* Tab toggle */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                backgroundColor: "var(--color-surface)",
+                borderRadius: "var(--radius-md)",
+                padding: "3px",
+                marginBottom: "16px",
+                border: "1px solid var(--color-border)",
+              }}>
+                {[
+                  { value: "auto", label: "Quick Payment" },
+                  { value: "manual", label: "Custom Allocation" },
+                ].map((tab) => (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    onClick={() => setAllocationMode(tab.value)}
+                    style={{
+                      borderRadius: "var(--radius-sm)",
+                      padding: "6px 0",
+                      fontSize: "12px",
+                      fontWeight: allocationMode === tab.value ? 600 : 400,
+                      cursor: "pointer",
+                      border: "none",
+                      backgroundColor: allocationMode === tab.value
+                        ? "var(--color-surface-raised)"
+                        : "transparent",
+                      color: allocationMode === tab.value
+                        ? "var(--color-accent)"
+                        : "var(--color-text-sub)",
+                      boxShadow: allocationMode === tab.value
+                        ? "var(--shadow-card)"
+                        : "none",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* ── Auto tab ─────────────────────────────────── */}
+              {allocationMode === "auto" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div>
+                    <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                      Amount to Pay (Rs)
+                    </label>
+                    <Input
+                      type="number"
+                      placeholder={`Full due: ₹${totalDue.toLocaleString()}`}
+                      value={formik.values?.amount || ""}
+                      onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
+                      onBlur={(e) => { if (!e.target.value) handleAmountChange(totalDue, rent); }}
+                      style={{ fontSize: "16px", fontWeight: 600 }}
+                    />
+                  </div>
+
+                  {/* Auto allocation breakdown */}
+                  <div style={{
+                    ...S.border,
+                    borderRadius: "var(--radius-md)",
+                    overflow: "hidden",
+                    backgroundColor: "var(--color-surface)",
+                  }}>
+                    {/* Rent row */}
+                    <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>Rent</p>
+                        <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
+                          Due ₹{rentAmount.toLocaleString()}
+                        </p>
+                      </div>
+                      <p style={{ fontSize: "13px", fontWeight: 700, color: rentAllocation > 0 ? "var(--color-text-strong)" : "var(--color-muted)" }}>
+                        ₹{rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+
+                    {camAmount > 0 && (
+                      <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--color-border)" }}>
+                        <div>
+                          <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>CAM</p>
+                          <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
+                            Due ₹{camAmount.toLocaleString()}
+                          </p>
+                        </div>
+                        <p style={{ fontSize: "13px", fontWeight: 700, color: camAllocation > 0 ? "var(--color-text-strong)" : "var(--color-muted)" }}>
+                          ₹{camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </p>
+                      </div>
+                    )}
+
+                    {hasLateFee && (
+                      <div style={{
+                        padding: "10px 14px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        borderTop: "1px solid var(--color-border)",
+                        backgroundColor: "var(--color-danger-bg)",
+                      }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <p style={{ ...S.danger, fontSize: "12px", fontWeight: 600 }}>Late Fee</p>
+                            <span style={{
+                              backgroundColor: "var(--color-danger-bg)",
+                              color: "var(--color-danger)",
+                              border: "1px solid var(--color-danger-border)",
+                              borderRadius: "var(--radius-sm)",
+                              fontSize: "9px", fontWeight: 600,
+                              padding: "1px 5px",
+                            }}>
+                              Separate
+                            </span>
+                          </div>
+                          <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
+                            Due ₹{lateFeeAmount.toLocaleString()} · full only
+                          </p>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <p style={{ fontSize: "13px", fontWeight: 700, color: (lateFeeAllocation || 0) > 0 ? "var(--color-danger)" : "var(--color-muted)" }}>
+                            ₹{(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </p>
+                          {(lateFeeAllocation || 0) === 0 && paymentAmount > 0 && (
+                            <p style={{ ...S.textWeak, fontSize: "10px" }}>
+                              +₹{lateFeeAmount.toLocaleString()} to cover
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Per-unit breakdown */}
+                    {autoUnitAllocations.length > 0 && (
+                      <div style={{
+                        padding: "10px 14px",
+                        borderTop: "1px solid var(--color-border)",
+                        backgroundColor: "var(--color-surface)",
+                      }}>
+                        <p style={{ ...S.textWeak, fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>
+                          Unit breakdown
+                        </p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          {autoUnitAllocations.map((alloc) => {
+                            const unit = units.find((u) => u.id === alloc.unitId);
+                            return (
+                              <div key={alloc.unitId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ ...S.textSub, fontSize: "11px" }}>{unit?.name || alloc.unitId}</span>
+                                <span style={{ ...S.textBody, fontSize: "11px", fontWeight: 600 }}>
+                                  ₹{alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Total */}
+                    <div style={{
+                      padding: "10px 14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      borderTop: "1px solid var(--color-border)",
+                      backgroundColor: "var(--color-surface)",
+                    }}>
+                      <p style={{ ...S.textSub, fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        Total Allocated
+                      </p>
+                      <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 700 }}>
+                        ₹{totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Running total */}
-              <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50">
-                <div>
-                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Total Allocated</p>
-                  {totalAllocated !== (formik.values?.amount || 0) && (formik.values?.amount || 0) > 0 && (
-                    <p className={`text-[11px] mt-0.5 ${isOverAllocated ? "text-rose-600" : "text-amber-600"}`}>
-                      {isOverAllocated
-                        ? `₹${(totalAllocated - (formik.values?.amount || 0)).toLocaleString()} over`
-                        : `₹${((formik.values?.amount || 0) - totalAllocated).toLocaleString()} unallocated`}
-                    </p>
-                  )}
-                </div>
-                <p className={`text-sm font-bold ${isOverAllocated ? "text-rose-700" : "text-slate-900"}`}>
-                  ₹{totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-              </div>
-            </div>
+              {/* ── Manual tab ───────────────────────────────── */}
+              {allocationMode === "manual" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div>
+                    <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                      Total Amount to Pay (Rs)
+                    </label>
+                    <Input
+                      type="number"
+                      placeholder="Enter total payment amount"
+                      value={formik.values?.amount || ""}
+                      onChange={(e) => formik.setFieldValue("amount", parseFloat(e.target.value) || 0)}
+                      style={{ fontSize: "16px", fontWeight: 600 }}
+                    />
+                  </div>
 
-            {/* Per-unit rent allocation (multi-unit only) */}
-            {rent?.useUnitBreakdown && selectedUnits.length > 0 && (
-              <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
-                    Per-unit rent allocation
-                  </p>
-                  <p className={`text-xs font-medium ${unitAllocationMismatch ? "text-rose-600" : "text-slate-500"}`}>
-                    {unitAllocationMismatch
-                      ? `Total ₹${manualUnitRentTotal.toFixed(0)} ≠ rent ₹${rentAllocation.toFixed(0)}`
-                      : `Must sum to ₹${rentAllocation.toLocaleString()}`}
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  {selectedUnits.map((unit) => (
-                    <div key={unit.id} className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <p className="text-xs font-medium text-slate-900">{unit.name}</p>
-                        <p className="text-[11px] text-slate-500">
-                          Remaining ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  <div style={{
+                    ...S.border,
+                    borderRadius: "var(--radius-md)",
+                    overflow: "hidden",
+                    backgroundColor: "var(--color-surface)",
+                  }}>
+                    {/* Rent */}
+                    <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>Rent</p>
+                        <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
+                          Due ₹{rentAmount.toLocaleString()}
                         </p>
                       </div>
-                      <Input
-                        type="number"
-                        className="w-36 text-sm text-right"
-                        value={unitRentAllocations[unit.id] ?? ""}
-                        placeholder="0"
-                        max={unit.remaining}
-                        onChange={(e) =>
-                          setUnitRentAllocations((prev) => ({
-                            ...prev,
-                            [unit.id]: parseFloat(e.target.value) || 0,
-                          }))
-                        }
-                      />
+                      <div style={{ width: "130px" }}>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          value={rentAllocation || ""}
+                          onChange={(e) => setRentAllocation(parseFloat(e.target.value) || 0)}
+                          style={{ textAlign: "right", fontSize: "13px" }}
+                        />
+                      </div>
                     </div>
-                  ))}
+
+                    {/* CAM */}
+                    <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: "12px", borderTop: "1px solid var(--color-border)" }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>CAM</p>
+                        <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
+                          Due ₹{camAmount.toLocaleString()}
+                        </p>
+                      </div>
+                      <div style={{ width: "130px" }}>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          value={camAllocation || ""}
+                          onChange={(e) => setCamAllocation(parseFloat(e.target.value) || 0)}
+                          style={{ textAlign: "right", fontSize: "13px" }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Late Fee */}
+                    {hasLateFee && (
+                      <div style={{
+                        padding: "10px 14px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        borderTop: "1px solid var(--color-border)",
+                        backgroundColor: "var(--color-danger-bg)",
+                      }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <p style={{ ...S.danger, fontSize: "12px", fontWeight: 600 }}>Late Fee</p>
+                            <span style={{
+                              backgroundColor: "var(--color-danger-bg)",
+                              color: "var(--color-danger)",
+                              border: "1px solid var(--color-danger-border)",
+                              borderRadius: "var(--radius-sm)",
+                              fontSize: "9px", fontWeight: 600,
+                              padding: "1px 5px",
+                            }}>
+                              All or nothing
+                            </span>
+                          </div>
+                          <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
+                            Due ₹{lateFeeAmount.toLocaleString()}
+                          </p>
+                          {isPartialLateFee && (
+                            <p style={{ ...S.danger, fontSize: "10px", marginTop: "2px", fontWeight: 500 }}>
+                              Enter ₹{lateFeeAmount.toLocaleString()} or 0
+                            </p>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                          <div style={{ width: "130px" }}>
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              value={lateFeeAllocation || ""}
+                              onChange={(e) => setLateFeeAllocation(parseFloat(e.target.value) || 0)}
+                              style={{
+                                textAlign: "right",
+                                fontSize: "13px",
+                                borderColor: isPartialLateFee ? "var(--color-danger)" : undefined,
+                              }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setLateFeeAllocation(lateFeeAmount)}
+                            style={{
+                              ...S.danger,
+                              background: "none",
+                              border: "none",
+                              fontSize: "10px",
+                              cursor: "pointer",
+                              textDecoration: "underline",
+                              padding: 0,
+                            }}
+                          >
+                            Fill ₹{lateFeeAmount.toLocaleString()}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Running total */}
+                    <div style={{
+                      padding: "10px 14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      borderTop: "1px solid var(--color-border)",
+                      backgroundColor: "var(--color-surface)",
+                    }}>
+                      <div>
+                        <p style={{ ...S.textSub, fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          Total Allocated
+                        </p>
+                        {totalAllocated !== (formik.values?.amount || 0) && (formik.values?.amount || 0) > 0 && (
+                          <p style={{
+                            fontSize: "10px",
+                            marginTop: "1px",
+                            color: isOverAllocated ? "var(--color-danger)" : "var(--color-warning)",
+                          }}>
+                            {isOverAllocated
+                              ? `₹${(totalAllocated - (formik.values?.amount || 0)).toLocaleString()} over`
+                              : `₹${((formik.values?.amount || 0) - totalAllocated).toLocaleString()} unallocated`}
+                          </p>
+                        )}
+                      </div>
+                      <p style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: isOverAllocated ? "var(--color-danger)" : "var(--color-text-strong)",
+                      }}>
+                        ₹{totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Per-unit allocations */}
+                  {rent?.useUnitBreakdown && selectedUnits.length > 0 && (
+                    <div style={{
+                      ...S.border,
+                      borderRadius: "var(--radius-md)",
+                      padding: "12px 14px",
+                      backgroundColor: "var(--color-surface)",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                        <p style={{ ...S.textStrong, fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          Per-unit rent
+                        </p>
+                        <p style={{
+                          fontSize: "10px",
+                          fontWeight: 500,
+                          color: unitAllocationMismatch ? "var(--color-danger)" : "var(--color-text-sub)",
+                        }}>
+                          {unitAllocationMismatch
+                            ? `Total ₹${manualUnitRentTotal.toFixed(0)} ≠ rent ₹${rentAllocation.toFixed(0)}`
+                            : `Must sum to ₹${rentAllocation.toLocaleString()}`}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {selectedUnits.map((unit) => (
+                          <div key={unit.id} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <div style={{ flex: 1 }}>
+                              <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 500 }}>{unit.name}</p>
+                              <p style={{ ...S.textWeak, fontSize: "10px" }}>
+                                Remaining ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                              </p>
+                            </div>
+                            <Input
+                              type="number"
+                              style={{ width: "130px", textAlign: "right", fontSize: "12px" }}
+                              value={unitRentAllocations[unit.id] ?? ""}
+                              placeholder="0"
+                              max={unit.remaining}
+                              onChange={(e) =>
+                                setUnitRentAllocations((prev) => ({
+                                  ...prev,
+                                  [unit.id]: parseFloat(e.target.value) || 0,
+                                }))
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {unitAllocationMismatch && (
-                  <p className="text-xs text-rose-600">
-                    Unit allocations must exactly match the rent allocation amount.
+              )}
+            </Tabs>
+          </div>
+        </div>
+
+        {/* ════════════════════════════════════════════════════════════════
+            RIGHT COLUMN — How you're paying + sticky submit
+        ════════════════════════════════════════════════════════════════ */}
+        <div style={{
+          width: isMobile ? "100%" : "300px",
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          backgroundColor: "var(--color-surface-raised)",
+          overflowY: isMobile ? "visible" : "auto",
+        }}>
+          {/* Scrollable form fields */}
+          <div style={{ flex: 1, padding: isMobile ? "16px" : "20px", display: "flex", flexDirection: "column", gap: "16px", overflowY: isMobile ? "visible" : "auto" }}>
+            <SectionLabel>Payment Details</SectionLabel>
+
+            {/* Method */}
+            <div>
+              <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                Payment Method
+              </label>
+              <Select
+                value={formik.values?.paymentMethod || ""}
+                onValueChange={(v) => formik.setFieldValue("paymentMethod", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select method…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Bank Account */}
+            {needsBankAccount && (
+              <div>
+                <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                  Deposit To *
+                </label>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {bankAccounts.map((bank) => {
+                    const isSelected = selectedBankAccountId === bank._id;
+                    return (
+                      <button
+                        key={bank._id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBankAccountId(bank._id);
+                          formik.setFieldValue("bankAccountId", bank._id);
+                          formik.setFieldValue("bankAccountCode", bank.accountCode || "");
+                        }}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: isMobile ? "14px 14px" : "10px 12px",
+                          borderRadius: "var(--radius-md)",
+                          border: isSelected
+                            ? "1.5px solid var(--color-accent)"
+                            : "1.5px solid var(--color-border)",
+                          backgroundColor: isSelected
+                            ? "var(--color-accent-light)"
+                            : "var(--color-surface)",
+                          cursor: "pointer",
+                          transition: "all 0.1s",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            {getOwnershipLabel(bank.entityId) && (
+                              <span style={{
+                                ...S.textWeak,
+                                fontSize: "9px",
+                                fontWeight: 600,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.06em",
+                                border: "1px solid var(--color-border)",
+                                borderRadius: "var(--radius-sm)",
+                                padding: "1px 5px",
+                                display: "inline-block",
+                                marginBottom: "3px",
+                              }}>
+                                {getOwnershipLabel(bank.entityId)}
+                              </span>
+                            )}
+                            <p style={{ ...S.textStrong, fontSize: "12px", fontWeight: 600 }}>{bank.bankName}</p>
+                            <p style={{ ...S.textWeak, fontSize: "10px" }}>
+                              **** {bank.accountNumber?.slice(-4) || "****"}
+                            </p>
+                            {bank.accountCode && (
+                              <p style={{ ...S.textWeak, fontSize: "10px", fontFamily: "monospace" }}>
+                                {bank.accountCode}
+                              </p>
+                            )}
+                          </div>
+                          <div style={{ textAlign: "right", marginLeft: "8px" }}>
+                            <p style={{ ...S.textWeak, fontSize: "9px", fontWeight: 600, textTransform: "uppercase" }}>Bal</p>
+                            <p style={{ ...S.textStrong, fontSize: "12px", fontWeight: 600 }}>
+                              ₹{bank.balance?.toLocaleString() || "0"}
+                            </p>
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
+                            <svg width="12" height="12" viewBox="0 0 20 20" fill="var(--color-accent)">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            <span style={{ ...S.accentText, fontSize: "10px", fontWeight: 600 }}>Selected</span>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {needsBankAccount && !formik.values?.bankAccountCode && (
+                  <p style={{ ...S.danger, fontSize: "11px", marginTop: "6px" }}>
+                    Select a bank account to continue.
                   </p>
                 )}
               </div>
             )}
-          </TabsContent>
-        </Tabs>
-      </section>
 
-      {/* ── 3️⃣ Payment Details ──────────────────────────────────────────── */}
-      <section className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-4">
-        <p className="text-sm font-semibold text-slate-900">Payment Details</p>
-
-        {/* Method */}
-        <div className="space-y-2">
-          <label htmlFor="payment-method" className="text-sm font-medium text-slate-900">
-            Payment Method
-          </label>
-          <Select
-            value={formik.values?.paymentMethod || ""}
-            onValueChange={(v) => formik.setFieldValue("paymentMethod", v)}
-          >
-            <SelectTrigger id="payment-method">
-              <SelectValue placeholder="Select payment method" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-              <SelectItem value="cheque">Cheque</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Bank account picker — shown for bank_transfer AND cheque */}
-        {(formik.values?.paymentMethod === "bank_transfer" ||
-          formik.values?.paymentMethod === "cheque") && (
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-slate-900">
-                Deposit To *
+            {/* Payment Date */}
+            <div>
+              <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                Payment Date
               </label>
-              <div className="grid gap-3">
-                {bankAccounts.map((bank) => (
-                  <button
-                    key={bank._id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedBankAccountId(bank._id);
-                      formik.setFieldValue("bankAccountId", bank._id);
-                      // FIX: set bankAccountCode so journal builder can route to
-                      // the correct ledger account (e.g. "1010-NABIL")
-                      formik.setFieldValue("bankAccountCode", bank.accountCode || "");
-                    }}
-                    className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
-                      ? "border-slate-900 bg-slate-900/[0.03]"
-                      : "border-slate-200 hover:border-slate-300 bg-white"
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          {getOwnershipLabel(bank.entityId) && (
-                            <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-600">
-                              {getOwnershipLabel(bank.entityId)}
-                            </span>
-                          )}
-                          <p className="font-semibold text-slate-900">{bank.bankName}</p>
-                        </div>
-                        <p className="text-xs text-slate-500">
-                          **** **** {bank.accountNumber?.slice(-4) || "****"}
-                        </p>
-                        {bank.accountCode && (
-                          <p className="text-xs text-slate-400 font-mono mt-0.5">
-                            {bank.accountCode}
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
-                          Balance
-                        </p>
-                        <p className="font-semibold text-slate-900 text-sm">
-                          ₹{bank.balance?.toLocaleString() || "0"}
-                        </p>
-                      </div>
-                      {selectedBankAccountId === bank._id && (
-                        <div className="ml-3 text-slate-900">
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                  </button>
+              <DualCalendarTailwind
+                container={portalContainerRef.current}
+                onChange={(english, nepali) => {
+                  if (english && nepali) {
+                    formik.setFieldValue("paymentDate", new Date(english));
+                    formik.setFieldValue("nepaliDate", nepali);
+                  } else {
+                    formik.setFieldValue("paymentDate", null);
+                    formik.setFieldValue("nepaliDate", null);
+                  }
+                }}
+              />
+            </div>
+
+            {/* Transaction Ref */}
+            <div>
+              <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                Txn Reference{" "}
+                <span style={{ ...S.textWeak, fontWeight: 400 }}>(optional)</span>
+              </label>
+              <Input
+                placeholder="e.g., CHQ-12345"
+                value={formik.values?.transactionRef || ""}
+                onChange={(e) => formik.setFieldValue("transactionRef", e.target.value)}
+                style={{ fontSize: "12px" }}
+              />
+            </div>
+
+            {/* Note */}
+            <div>
+              <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                Note{" "}
+                <span style={{ ...S.textWeak, fontWeight: 400 }}>(optional)</span>
+              </label>
+              <Input
+                placeholder="e.g., Payment for Unit A"
+                value={formik.values?.note || ""}
+                onChange={(e) => formik.setFieldValue("note", e.target.value)}
+                style={{ fontSize: "12px" }}
+              />
+            </div>
+          </div>
+
+          {/* ── Sticky footer: totals + errors + buttons ─────────────── */}
+          <div style={{
+            borderTop: "1px solid var(--color-border)",
+            padding: isMobile ? "12px 16px" : "16px 20px",
+            backgroundColor: "var(--color-surface-raised)",
+            flexShrink: 0,
+            position: isMobile ? "sticky" : "static",
+            bottom: 0,
+            zIndex: 10,
+          }}>
+            {/* Summary totals */}
+            <div style={{
+              borderRadius: "var(--radius-md)",
+              padding: "12px 14px",
+              marginBottom: "12px",
+              backgroundColor:
+                summaryState === "full" ? "var(--color-success-bg)"
+                  : summaryState === "over" ? "var(--color-danger-bg)"
+                    : "var(--color-warning-bg)",
+              border:
+                summaryState === "full" ? "1px solid var(--color-success-border)"
+                  : summaryState === "over" ? "1px solid var(--color-danger-border)"
+                    : "1px solid var(--color-warning-border)",
+            }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: isMobile ? "8px" : "4px", marginBottom: "8px" }}>
+                {[
+                  { label: "Due", value: `₹${totalDue.toLocaleString()}` },
+                  { label: "Allocated", value: `₹${totalAllocated.toLocaleString()}` },
+                  { label: "Remaining", value: `₹${balanceOwed.toLocaleString()}` },
+                ].map((item) => (
+                  <div key={item.label} style={{ textAlign: "center" }}>
+                    <p style={{ ...S.textWeak, fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      {item.label}
+                    </p>
+                    <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 700, marginTop: "2px" }}>
+                      {item.value}
+                    </p>
+                  </div>
                 ))}
               </div>
-              {needsBankAccount && !formik.values?.bankAccountCode && (
-                <p className="text-xs text-rose-600">Select a bank account to continue.</p>
+              <p style={{
+                fontSize: "10px",
+                fontWeight: 500,
+                textAlign: "center",
+                color:
+                  summaryState === "full" ? "var(--color-success)"
+                    : summaryState === "over" ? "var(--color-danger)"
+                      : "var(--color-warning)",
+              }}>
+                {balanceOwed < 0
+                  ? "Allocation exceeds total due."
+                  : balanceOwed === 0
+                    ? "✓ Fully allocated — clears selected dues."
+                    : "Partial payment — balance stays outstanding."}
+              </p>
+            </div>
+
+            {/* Validation errors */}
+            {(!selectedUnits.length || isOverAllocated || isPartialLateFee || unitAllocationMismatch ||
+              (needsBankAccount && !formik.values?.bankAccountCode)) && (
+                <div style={{
+                  ...S.dangerBg,
+                  borderRadius: "var(--radius-sm)",
+                  padding: "8px 10px",
+                  marginBottom: "10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                }}>
+                  {!selectedUnits.length && (
+                    <p style={{ ...S.danger, fontSize: "11px" }}>Select at least one unit.</p>
+                  )}
+                  {isOverAllocated && (
+                    <p style={{ ...S.danger, fontSize: "11px" }}>Allocation exceeds payment amount.</p>
+                  )}
+                  {isPartialLateFee && (
+                    <p style={{ ...S.danger, fontSize: "11px" }}>
+                      Late fee must be ₹{lateFeeAmount.toLocaleString()} or 0.
+                    </p>
+                  )}
+                  {unitAllocationMismatch && (
+                    <p style={{ ...S.danger, fontSize: "11px" }}>
+                      Unit allocations must sum to ₹{rentAllocation.toFixed(2)}.
+                    </p>
+                  )}
+                  {needsBankAccount && !formik.values?.bankAccountCode && (
+                    <p style={{ ...S.danger, fontSize: "11px" }}>Select a bank account.</p>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-        {/* Payment Date */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-900">Payment Date</label>
-          <DualCalendarTailwind
-            container={portalContainerRef.current}
-            onChange={(english, nepali) => {
-              if (english && nepali) {
-                formik.setFieldValue("paymentDate", new Date(english));
-                formik.setFieldValue("nepaliDate", nepali);
-              } else {
-                formik.setFieldValue("paymentDate", null);
-                formik.setFieldValue("nepaliDate", null);
-              }
-            }}
-          />
-        </div>
-
-        {/* Transaction Ref */}
-        <div className="space-y-2">
-          <label htmlFor="transaction-ref" className="text-sm font-medium text-slate-900">
-            Transaction Reference{" "}
-            <span className="text-slate-500 font-normal">(Optional)</span>
-          </label>
-          <Input
-            id="transaction-ref"
-            placeholder="e.g., CHQ-12345 or Bank Ref ID"
-            value={formik.values?.transactionRef || ""}
-            onChange={(e) => formik.setFieldValue("transactionRef", e.target.value)}
-          />
-        </div>
-
-        {/* Note */}
-        <div className="space-y-2">
-          <label htmlFor="note" className="text-sm font-medium text-slate-900">
-            Note{" "}
-            <span className="text-slate-500 font-normal">(Optional)</span>
-          </label>
-          <Input
-            id="note"
-            placeholder="e.g., Payment for Unit A and Unit B"
-            value={formik.values?.note || ""}
-            onChange={(e) => formik.setFieldValue("note", e.target.value)}
-          />
-        </div>
-      </section>
-
-      {/* ── 4️⃣ Final Summary ────────────────────────────────────────────── */}
-      <section className={`mt-6 mb-2 rounded-xl border px-5 py-4 ${summaryTone.container}`}>
-        <div className="space-y-3">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-            Final Summary
-          </p>
-
-          {/* Allocation breakdown */}
-          <div className="grid grid-cols-3 gap-3 text-sm">
-            <div className="bg-white/60 rounded-lg px-3 py-2">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Rent</p>
-              <p className="mt-0.5 font-semibold text-slate-900">
-                ₹{rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
-            </div>
-            <div className="bg-white/60 rounded-lg px-3 py-2">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wide">CAM</p>
-              <p className="mt-0.5 font-semibold text-slate-900">
-                ₹{camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
-            </div>
-            <div className={`rounded-lg px-3 py-2 ${(lateFeeAllocation || 0) > 0 ? "bg-rose-50/80" : "bg-white/60"}`}>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Late Fee</p>
-              <p className={`mt-0.5 font-semibold ${(lateFeeAllocation || 0) > 0 ? "text-rose-700" : "text-slate-400"}`}>
-                ₹{(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-wrap gap-4 items-center justify-between">
-            <p className={`text-xs font-medium ${summaryTone.accent}`}>
-              {balanceOwed < 0
-                ? "Allocation exceeds total due. Reduce the amount or allocations."
-                : balanceOwed === 0
-                  ? "Fully allocated. This payment clears the selected dues."
-                  : "Partially allocated. Remaining balance will stay outstanding."}
-            </p>
-            <div className="grid grid-cols-3 gap-4 text-right min-w-[260px]">
-              <div>
-                <p className="text-[11px] text-slate-500 uppercase tracking-wide">Total Due</p>
-                <p className="mt-1 text-base font-semibold text-slate-900">
-                  ₹{totalDue.toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-[11px] text-slate-500 uppercase tracking-wide">Allocated</p>
-                <p className="mt-1 text-base font-semibold text-slate-900">
-                  ₹{totalAllocated.toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-[11px] text-slate-500 uppercase tracking-wide">Remaining</p>
-                <p className={`mt-1 text-base font-semibold ${summaryTone.accent}`}>
-                  ₹{balanceOwed.toLocaleString()}
-                </p>
-              </div>
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  flex: 1,
+                  backgroundColor: "transparent",
+                  color: "var(--color-text-body)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                  padding: isMobile ? "12px 0" : "9px 0",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "border-color 0.1s",
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.borderColor = "var(--color-text-sub)")}
+                onMouseOut={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitDisabled}
+                onClick={async (e) => {
+                  e.preventDefault();
+                  const payload = buildPayload();
+                  await formik.setValues({ ...formik.values, ...payload });
+                  await formik.handleSubmit();
+                  if (formik.isValid) onClose();
+                }}
+                style={{
+                  flex: 2,
+                  backgroundColor: isSubmitDisabled
+                    ? "var(--color-muted)"
+                    : "var(--color-accent)",
+                  color: isSubmitDisabled
+                    ? "var(--color-text-weak)"
+                    : "#ffffff",
+                  border: "none",
+                  borderRadius: "var(--radius-md)",
+                  padding: isMobile ? "12px 0" : "9px 0",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: isSubmitDisabled ? "not-allowed" : "pointer",
+                  transition: "background-color 0.15s",
+                }}
+                onMouseOver={(e) => {
+                  if (!isSubmitDisabled) e.currentTarget.style.backgroundColor = "var(--color-accent-hover)";
+                }}
+                onMouseOut={(e) => {
+                  if (!isSubmitDisabled) e.currentTarget.style.backgroundColor = "var(--color-accent)";
+                }}
+              >
+                Submit Payment
+              </button>
             </div>
           </div>
         </div>
-      </section>
-
-      <DialogFooter className="mt-2 border-t border-slate-200 pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        {(!selectedUnits.length || isOverAllocated || isPartialLateFee || unitAllocationMismatch ||
-          (needsBankAccount && !formik.values?.bankAccountCode)) && (
-            <div className="text-xs text-rose-600">
-              {!selectedUnits.length && <p>Select at least one unit before submitting.</p>}
-              {isOverAllocated && <p>Allocation total cannot exceed the payment amount.</p>}
-              {isPartialLateFee && (
-                <p>Late fee must be paid in full (₹{lateFeeAmount.toLocaleString()}) or not at all.</p>
-              )}
-              {unitAllocationMismatch && (
-                <p>Per-unit rent allocations must sum to ₹{rentAllocation.toFixed(2)}.</p>
-              )}
-              {needsBankAccount && !formik.values?.bankAccountCode && (
-                <p>Select a bank account to route the journal entry.</p>
-              )}
-            </div>
-          )}
-
-        <div className="flex items-center justify-end gap-2 w-full sm:w-auto">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            disabled={isSubmitDisabled}
-            onClick={async (e) => {
-              e.preventDefault();
-              const payload = buildPayload();
-              await formik.setValues({ ...formik.values, ...payload });
-              await formik.handleSubmit();
-              if (formik.isValid) onClose();
-            }}
-          >
-            Submit Payment
-          </Button>
-        </div>
-      </DialogFooter>
+      </div>
     </DialogContent>
   );
 };

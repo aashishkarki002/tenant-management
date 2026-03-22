@@ -810,7 +810,8 @@ export default function AdminRoot() {
           <TabsContent value="organization">
             {/*
               OrganizationTab is fully self-contained.
-              It fetches ownership entities and block stats internally.
+              It owns the useOwnership hook and fetches
+              GET /api/ownership and GET /api/blocks/get-blocks internally.
               No props needed — it manages its own data lifecycle.
             */}
             <OrganizationTab />

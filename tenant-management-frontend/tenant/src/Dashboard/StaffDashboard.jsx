@@ -1,15 +1,48 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+/**
+ * StaffDashboard.jsx — redesigned
+ *
+ * PM decision: Daily Checks is the #1 job. It owns the hero slot.
+ * Everything else (maintenance tasks, generators) is secondary context below.
+ *
+ * Duplicate-submission guard: a category is LOCKED (non-clickable, visually
+ * sealed) as soon as its status === "COMPLETED" in todaysChecklists. The lock
+ * is enforced in the hero panel here AND remains in dailyChecks.jsx's
+ * handleCategorySelect. Belt AND suspenders.
+ *
+ * useStaffStats is extended minimally — we piggyback today's checklists
+ * onto its existing fetchData so both datasets share one loading state.
+ */
+
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
     Wrench, Zap, AlertTriangle, Fuel, CheckCircle2,
     ChevronRight, RefreshCw, AlertCircle, XCircle,
     ClipboardList, Clock, TrendingUp, Activity,
+    Flame, Droplets, Car, Waves, LayoutGrid, Camera,
+    Lock, ArrowRight, CheckCheck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTime } from "./hooks/UseTime";
 import { useStaffStats } from "./hooks/useStaffStats";
+import api from "../../plugins/axios";
 
-// ─── Priority & status token maps — petrol palette ───────────────────────────
+// ─── Category metadata (mirrors dailyChecks.jsx) ─────────────────────────────
+
+const CATEGORY_META = {
+    FIRE: { icon: Flame, label: "Fire", iconBg: "bg-red-50", iconColor: "text-red-500", ring: "#ef4444", urgency: true },
+    WATER_TANK: { icon: Droplets, label: "Water Tank", iconBg: "bg-blue-50", iconColor: "text-blue-500", ring: "#3b82f6", urgency: false },
+    ELECTRICAL: { icon: Zap, label: "Electrical", iconBg: "bg-yellow-50", iconColor: "text-yellow-500", ring: "#f59e0b", urgency: false },
+    CCTV: { icon: Camera, label: "CCTV", iconBg: "bg-purple-50", iconColor: "text-purple-500", ring: "#8b5cf6", urgency: false },
+    PARKING: { icon: Car, label: "Parking", iconBg: "bg-stone-100", iconColor: "text-stone-500", ring: "#78716c", urgency: false },
+    SANITARY: { icon: Waves, label: "Sanitary", iconBg: "bg-cyan-50", iconColor: "text-cyan-500", ring: "#06b6d4", urgency: false },
+    COMMON_AREA: { icon: LayoutGrid, label: "Common Area", iconBg: "bg-emerald-50", iconColor: "text-emerald-500", ring: "#10b981", urgency: false },
+};
+
+const ALL_CATEGORIES = Object.keys(CATEGORY_META);
+const OWNERSHIP_ENTITY_ID = "69b11f16ce3a098bb6ba5424";
+
+// ─── Priority / status tokens (unchanged from original) ──────────────────────
 
 const PRIORITY_CONFIG = {
     Urgent: { pill: "bg-[var(--color-danger-bg)] text-[var(--color-danger)] border border-[var(--color-danger-border)]", dot: "bg-[var(--color-danger)]" },
@@ -35,6 +68,10 @@ const GENERATOR_STATUS_CONFIG = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function todayISO() {
+    return new Date().toISOString().split("T")[0];
+}
+
 function formatDate(d) {
     if (!d) return "";
     return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -52,6 +89,179 @@ function daysLabel(d) {
     if (n === 0) return "Today";
     if (n === 1) return "Tomorrow";
     return `In ${n}d`;
+}
+
+// ─── CircularProgress (SVG ring) ─────────────────────────────────────────────
+
+function CircularProgress({ pct, size = 120, strokeWidth = 8, color = "var(--color-accent)", trackColor = "var(--color-muted-fill)", label, sublabel }) {
+    const r = (size - strokeWidth) / 2;
+    const circ = 2 * Math.PI * r;
+    const offset = circ - (pct / 100) * circ;
+
+    return (
+        <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+            <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+                <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={trackColor} strokeWidth={strokeWidth} />
+                <circle
+                    cx={size / 2} cy={size / 2} r={r} fill="none"
+                    stroke={color} strokeWidth={strokeWidth}
+                    strokeLinecap="round"
+                    strokeDasharray={circ}
+                    strokeDashoffset={offset}
+                    style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.4,0,0.2,1)" }}
+                />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-black tabular-nums text-[var(--color-text-strong)] leading-none">{pct}%</span>
+                {label && <span className="text-[10px] font-semibold text-[var(--color-text-sub)] mt-0.5 leading-none">{label}</span>}
+            </div>
+        </div>
+    );
+}
+
+// ─── DailyChecksHero ─────────────────────────────────────────────────────────
+// The #1 above-the-fold element. Shows a big ring + per-category chips.
+// Completed categories are LOCKED — no link, no click, visually sealed.
+
+function DailyChecksHero({ todaysChecklists, loadingChecklists }) {
+    const navigate = useNavigate();
+
+    const completedCats = useMemo(
+        () => new Set(todaysChecklists.filter((c) => c.status === "COMPLETED").map((c) => c.category)),
+        [todaysChecklists],
+    );
+
+    const doneCount = completedCats.size;
+    const totalCount = ALL_CATEGORIES.length;
+    const pct = Math.round((doneCount / totalCount) * 100);
+    const allDone = doneCount === totalCount;
+
+    // Ring color transitions green when all done
+    const ringColor = allDone ? "#10b981" : doneCount >= totalCount / 2 ? "#f59e0b" : "var(--color-accent)";
+
+    function handleCategoryClick(cat) {
+        // HARD LOCK: already completed — do nothing. Belt + suspenders on top of
+        // the guard in dailyChecks.jsx's handleCategorySelect.
+        if (completedCats.has(cat)) return;
+        navigate("/checklists", { state: { autoStart: cat } });
+    }
+
+    return (
+        <div
+            className="rounded-3xl border border-[var(--color-border)] overflow-hidden"
+            style={{ background: "var(--color-surface-raised)", boxShadow: "var(--shadow-card)" }}
+        >
+            {/* Header band */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[var(--color-border)]">
+                <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-weak)]">Today's Priority</p>
+                    <h2 className="text-base font-bold text-[var(--color-text-strong)] mt-0.5">Daily Checks</h2>
+                </div>
+                {allDone ? (
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-success-bg)] border border-[var(--color-success-border)] text-xs font-bold text-[var(--color-success)]">
+                        <CheckCheck className="w-3.5 h-3.5" /> All done
+                    </span>
+                ) : (
+                    <Link
+                        to="/checklists"
+                        className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline"
+                    >
+                        Open <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                )}
+            </div>
+
+            {/* Body: ring + category grid */}
+            <div className="px-5 py-5 flex flex-col sm:flex-row items-center gap-6">
+
+                {/* Big ring */}
+                {loadingChecklists ? (
+                    <div className="w-[120px] h-[120px] rounded-full animate-pulse bg-[var(--color-muted-fill)] shrink-0" />
+                ) : (
+                    <div className="shrink-0">
+                        <CircularProgress
+                            pct={pct}
+                            size={120}
+                            strokeWidth={9}
+                            color={ringColor}
+                            label={allDone ? "Complete!" : `${doneCount}/${totalCount}`}
+                        />
+                        {!allDone && (
+                            <p className="text-center text-[10px] text-[var(--color-text-weak)] mt-1.5">
+                                {totalCount - doneCount} remaining
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {/* Category chips */}
+                <div className="flex-1 w-full grid grid-cols-2 gap-2 min-w-0">
+                    {ALL_CATEGORIES.map((cat) => {
+                        const meta = CATEGORY_META[cat];
+                        const Icon = meta.icon;
+                        const done = completedCats.has(cat);
+                        const inProgress = todaysChecklists.find(
+                            (c) => c.category === cat && c.status !== "COMPLETED"
+                        );
+
+                        return (
+                            <button
+                                key={cat}
+                                onClick={() => handleCategoryClick(cat)}
+                                disabled={done || loadingChecklists}
+                                aria-label={meta.label}
+                                className={`
+                                    group flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left
+                                    transition-all duration-150
+                                    ${done
+                                        ? "border-[var(--color-success-border)] bg-[var(--color-success-bg)] cursor-not-allowed opacity-80"
+                                        : inProgress
+                                            ? "border-amber-300 bg-amber-50 hover:border-amber-400 active:scale-[0.97] cursor-pointer"
+                                            : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-accent-mid)] hover:bg-[var(--color-accent-light)] active:scale-[0.97] cursor-pointer"
+                                    }
+                                `}
+                            >
+                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${done ? "bg-[var(--color-success-bg)]" : meta.iconBg}`}>
+                                    {done
+                                        ? <CheckCircle2 className="w-3.5 h-3.5 text-[var(--color-success)]" />
+                                        : <Icon className={`w-3.5 h-3.5 ${meta.iconColor}`} />
+                                    }
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className={`text-xs font-semibold truncate ${done ? "text-[var(--color-success)]" : "text-[var(--color-text-strong)]"}`}>
+                                        {meta.label}
+                                    </p>
+                                    {meta.urgency && !done && (
+                                        <p className="text-[9px] font-bold text-red-500 uppercase tracking-wide">Critical</p>
+                                    )}
+                                    {inProgress && !done && (
+                                        <p className="text-[9px] font-bold text-amber-600 uppercase tracking-wide">In progress</p>
+                                    )}
+                                    {done && (
+                                        <p className="text-[9px] text-[var(--color-success)] font-semibold">Done ✓</p>
+                                    )}
+                                </div>
+                                {done
+                                    ? <Lock className="w-3 h-3 text-[var(--color-success)] opacity-50 shrink-0" />
+                                    : <ChevronRight className="w-3.5 h-3.5 text-[var(--color-text-weak)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                }
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* All-done celebration strip */}
+            {allDone && !loadingChecklists && (
+                <div className="mx-5 mb-5 px-4 py-3 rounded-2xl bg-[var(--color-success-bg)] border border-[var(--color-success-border)] flex items-center gap-3">
+                    <CheckCheck className="w-5 h-5 text-[var(--color-success)] shrink-0" />
+                    <p className="text-sm font-semibold text-[var(--color-success)]">
+                        All {totalCount} checks completed for today. Great work!
+                    </p>
+                </div>
+            )}
+        </div>
+    );
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -83,35 +293,25 @@ function StatCard({ value, label, icon: Icon, variant = "default", loading }) {
         warning: "bg-[var(--color-warning-bg)] border-[var(--color-warning-border)] text-[var(--color-warning)]",
         success: "bg-[var(--color-success-bg)] border-[var(--color-success-border)] text-[var(--color-success)]",
     };
-
     const iconVariants = {
-        default: "text-[var(--color-text-weak)]",
-        accent: "text-white/70",
-        danger: "text-[var(--color-danger)]",
-        warning: "text-[var(--color-warning)]",
-        success: "text-[var(--color-success)]",
+        default: "text-[var(--color-text-weak)]", accent: "text-white/70",
+        danger: "text-[var(--color-danger)]", warning: "text-[var(--color-warning)]", success: "text-[var(--color-success)]",
     };
-
     const labelVariants = {
-        default: "text-[var(--color-text-sub)]",
-        accent: "text-white/70",
-        danger: "text-[var(--color-danger)]",
-        warning: "text-[var(--color-warning)]",
-        success: "text-[var(--color-success)]",
+        default: "text-[var(--color-text-sub)]", accent: "text-white/70",
+        danger: "text-[var(--color-danger)]", warning: "text-[var(--color-warning)]", success: "text-[var(--color-success)]",
     };
 
     return (
-        <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${variants[variant]}`}
-            style={{ boxShadow: "var(--shadow-card)" }}>
+        <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${variants[variant]}`} style={{ boxShadow: "var(--shadow-card)" }}>
             <div className="flex items-center justify-between">
                 <p className={`text-xs font-semibold uppercase tracking-widest ${labelVariants[variant]}`}>{label}</p>
                 <Icon className={`w-4 h-4 ${iconVariants[variant]}`} />
             </div>
-            {loading ? (
-                <div className="h-9 w-16 rounded-lg animate-pulse bg-current opacity-10" />
-            ) : (
-                <p className="text-3xl font-bold tabular-nums leading-none">{value}</p>
-            )}
+            {loading
+                ? <div className="h-9 w-16 rounded-lg animate-pulse bg-current opacity-10" />
+                : <p className="text-3xl font-bold tabular-nums leading-none">{value}</p>
+            }
         </div>
     );
 }
@@ -144,12 +344,10 @@ function TaskRow({ task }) {
                        bg-[var(--color-surface)] hover:border-[var(--color-accent-mid)]
                        hover:bg-[var(--color-accent-light)] transition-all duration-150"
         >
-            {/* Priority dot */}
             <div className="shrink-0 flex items-center justify-center w-9 h-9 rounded-xl bg-[var(--color-bg)]
                             border border-[var(--color-border)] group-hover:border-[var(--color-accent-mid)]">
                 <span className={`w-2 h-2 rounded-full ${priorityCfg.dot}`} />
             </div>
-
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                     <p className={`text-sm font-medium truncate ${isCancelled ? "text-[var(--color-text-weak)] line-through" : "text-[var(--color-text-strong)]"}`}>
@@ -168,12 +366,10 @@ function TaskRow({ task }) {
                     {[task.property?.name, task.unit?.name].filter(Boolean).join(" · ") || "No location"}
                 </p>
             </div>
-
             <div className="text-right shrink-0 ml-2">
                 <p className={`text-xs font-semibold tabular-nums ${dateLabelColor}`}>{dateLabel}</p>
                 <p className="text-[11px] text-[var(--color-text-weak)] mt-0.5">{formatDate(task.scheduledDate)}</p>
             </div>
-
             <ChevronRight className="w-3.5 h-3.5 text-[var(--color-text-weak)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
         </Link>
     );
@@ -191,8 +387,7 @@ function FuelBar({ percent, lowThreshold, criticalThreshold }) {
         <div className="space-y-1.5">
             <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-xs text-[var(--color-text-sub)]">
-                    <Fuel className="w-3 h-3" />
-                    Fuel level
+                    <Fuel className="w-3 h-3" /> Fuel level
                 </span>
                 <span className={`text-xs font-bold tabular-nums ${textColor}`}>{percent}%</span>
             </div>
@@ -219,50 +414,31 @@ function GeneratorCard({ gen }) {
             to="/maintenance/generator"
             className={`group rounded-2xl border p-4 flex flex-col gap-3 transition-all duration-150
                         hover:shadow-md hover:border-[var(--color-accent-mid)]
-                        ${hasProblem
-                    ? "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)]"
-                    : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                }`}
+                        ${hasProblem ? "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)]" : "border-[var(--color-border)] bg-[var(--color-surface)]"}`}
         >
             <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 
-                                    ${hasProblem ? "bg-orange-100" : "bg-[var(--color-accent-light)]"}`}>
-                        {hasProblem
-                            ? <AlertTriangle className="w-4 h-4 text-orange-600" />
-                            : <Zap className="w-4 h-4 text-[var(--color-accent)]" />
-                        }
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${hasProblem ? "bg-orange-100" : "bg-[var(--color-accent-light)]"}`}>
+                        {hasProblem ? <AlertTriangle className="w-4 h-4 text-orange-600" /> : <Zap className="w-4 h-4 text-[var(--color-accent)]" />}
                     </div>
                     <div className="min-w-0">
                         <p className="text-sm font-semibold text-[var(--color-text-strong)] truncate">{gen.name}</p>
-                        {gen.property?.name && (
-                            <p className="text-xs text-[var(--color-text-sub)] truncate">{gen.property.name}</p>
-                        )}
+                        {gen.property?.name && <p className="text-xs text-[var(--color-text-sub)] truncate">{gen.property.name}</p>}
                     </div>
                 </div>
                 <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase px-2 py-1 rounded-full shrink-0 ${statusCfg.pill}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
-                    {gen.status}
+                    <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} /> {gen.status}
                 </span>
             </div>
-
             {gen.currentFuelPercent != null && (
-                <FuelBar
-                    percent={gen.currentFuelPercent}
-                    lowThreshold={gen.lowFuelThresholdPercent}
-                    criticalThreshold={gen.criticalFuelThresholdPercent}
-                />
+                <FuelBar percent={gen.currentFuelPercent} lowThreshold={gen.lowFuelThresholdPercent} criticalThreshold={gen.criticalFuelThresholdPercent} />
             )}
-
             <div className="flex items-center justify-between pt-1 border-t border-[var(--color-border)]">
                 {gen.nextServiceDate ? (
                     <>
                         <span className="text-xs text-[var(--color-text-sub)]">Next service</span>
                         <span className={`text-xs font-semibold tabular-nums ${serviceOverdue ? "text-[var(--color-danger)]" : "text-[var(--color-text-body)]"}`}>
-                            {serviceOverdue
-                                ? `${Math.abs(daysUntil(gen.nextServiceDate))}d overdue`
-                                : daysLabel(gen.nextServiceDate)
-                            }
+                            {serviceOverdue ? `${Math.abs(daysUntil(gen.nextServiceDate))}d overdue` : daysLabel(gen.nextServiceDate)}
                         </span>
                     </>
                 ) : gen.lastCheckedAt ? (
@@ -320,8 +496,7 @@ function TabPill({ active, onClick, children, count }) {
 
 function Section({ title, subtitle, actions, children }) {
     return (
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] overflow-hidden"
-            style={{ boxShadow: "var(--shadow-card)" }}>
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] overflow-hidden" style={{ boxShadow: "var(--shadow-card)" }}>
             <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-[var(--color-border)]">
                 <div>
                     <h2 className="text-sm font-semibold text-[var(--color-text-strong)]">{title}</h2>
@@ -338,14 +513,12 @@ function Section({ title, subtitle, actions, children }) {
 
 function useTaskTabs({ openTasks, completedTasks, cancelledTasks, maintenance }) {
     const [active, setActive] = useState("open");
-
     const tabs = [
         { key: "open", label: "Open", tasks: openTasks, count: openTasks.length },
         { key: "completed", label: "Done", tasks: completedTasks, count: completedTasks.length },
         { key: "cancelled", label: "Cancelled", tasks: cancelledTasks, count: cancelledTasks.length },
         { key: "all", label: "All", tasks: maintenance, count: maintenance.length },
     ];
-
     const currentTab = tabs.find((t) => t.key === active) ?? tabs[0];
     return { tabs, active, setActive, displayedTasks: currentTab.tasks };
 }
@@ -364,13 +537,52 @@ export default function StaffDashboard() {
         openTasks, completedTasks, cancelledTasks, maintenance,
     });
 
+    // ── Today's checklists — fetched independently of useStaffStats ───────────
+    // We keep this separate so it refreshes on its own and doesn't block
+    // the maintenance/generator data from rendering.
+    const [todaysChecklists, setTodaysChecklists] = useState([]);
+    const [loadingChecklists, setLoadingChecklists] = useState(true);
+    const checklistAbortRef = useRef(null);
+
+    const fetchTodaysChecklists = useCallback(async () => {
+        checklistAbortRef.current?.abort();
+        const controller = new AbortController();
+        checklistAbortRef.current = controller;
+        setLoadingChecklists(true);
+        try {
+            const today = todayISO();
+            const res = await api.get("/api/checklists", {
+                params: { propertyId: OWNERSHIP_ENTITY_ID, startDate: today, endDate: today, limit: 20 },
+                signal: controller.signal,
+            });
+            if (!controller.signal.aborted) {
+                setTodaysChecklists(res.data?.data ?? []);
+            }
+        } catch (err) {
+            if (err.name === "CanceledError" || err.name === "AbortError") return;
+            console.error("[StaffDashboard] checklist fetch failed:", err);
+        } finally {
+            if (!controller.signal.aborted) setLoadingChecklists(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchTodaysChecklists();
+        return () => checklistAbortRef.current?.abort();
+    }, [fetchTodaysChecklists]);
+
+    function handleRefreshAll() {
+        refetch();
+        fetchTodaysChecklists();
+    }
+
     const firstName = user?.name?.split(" ")[0] ?? "there";
 
-    // completion % for progress ring
+    // Maintenance completion ring (secondary — shown below daily checks)
     const totalAssigned = maintenance.length;
     const completedCount = completedTasks.length;
     const completionPct = totalAssigned > 0 ? Math.round((completedCount / totalAssigned) * 100) : 0;
-    const ringCircumference = 2 * Math.PI * 20; // r=20
+    const ringCircumference = 2 * Math.PI * 20;
     const ringOffset = ringCircumference - (completionPct / 100) * ringCircumference;
 
     return (
@@ -380,28 +592,27 @@ export default function StaffDashboard() {
                 {/* ── Header ──────────────────────────────────────────────────── */}
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <p className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-weak)] mb-1">
-                            Staff Portal
-                        </p>
+                        <p className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-weak)] mb-1">Staff Portal</p>
                         <h1 className="text-2xl font-bold text-[var(--color-text-strong)] leading-tight">
                             {greeting}, {firstName}
                         </h1>
                         <p className="text-sm text-[var(--color-text-sub)] mt-1">
                             {openTasks.length > 0
-                                ? `You have ${openTasks.length} open task${openTasks.length !== 1 ? "s" : ""}${urgentTasks.length > 0 ? `, ${urgentTasks.length} urgent` : ""}.`
-                                : "You're all caught up today."}
+                                ? `${openTasks.length} maintenance task${openTasks.length !== 1 ? "s" : ""} open${urgentTasks.length > 0 ? ` · ${urgentTasks.length} urgent` : ""}`
+                                : "All maintenance tasks clear today."
+                            }
                         </p>
                     </div>
                     <button
                         type="button"
-                        onClick={refetch}
-                        disabled={loading}
+                        onClick={handleRefreshAll}
+                        disabled={loading || loadingChecklists}
                         className="flex items-center gap-1.5 text-xs text-[var(--color-text-sub)]
                                    border border-[var(--color-border)] rounded-xl px-3 py-2
                                    hover:bg-[var(--color-surface)] hover:text-[var(--color-text-body)]
                                    disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
-                        <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                        <RefreshCw className={`w-3.5 h-3.5 ${(loading || loadingChecklists) ? "animate-spin" : ""}`} />
                         <span className="hidden sm:inline">Refresh</span>
                     </button>
                 </div>
@@ -412,74 +623,49 @@ export default function StaffDashboard() {
                                     bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]">
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <span className="flex-1">{error}</span>
-                        <button type="button" onClick={refetch}
-                            className="text-xs font-semibold underline hover:no-underline shrink-0">
+                        <button type="button" onClick={handleRefreshAll} className="text-xs font-semibold underline hover:no-underline shrink-0">
                             Retry
                         </button>
                     </div>
                 )}
 
-                {/* ── KPI strip ───────────────────────────────────────────────── */}
+                {/* ══════════════════════════════════════════════════════════════
+                    HERO: Daily Checks — #1 priority element, first thing staff sees
+                ══════════════════════════════════════════════════════════════ */}
+                <DailyChecksHero
+                    todaysChecklists={todaysChecklists}
+                    loadingChecklists={loadingChecklists}
+                />
+
+                {/* ── KPI strip — maintenance context ─────────────────────────── */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <StatCard
-                        label="Open Tasks"
-                        value={openTasks.length}
-                        icon={ClipboardList}
-                        variant={openTasks.length > 0 ? "accent" : "default"}
-                        loading={loading}
-                    />
-                    <StatCard
-                        label="Urgent"
-                        value={urgentTasks.length}
-                        icon={AlertTriangle}
-                        variant={urgentTasks.length > 0 ? "danger" : "default"}
-                        loading={loading}
-                    />
-                    <StatCard
-                        label="Completed"
-                        value={completedTasks.length}
-                        icon={CheckCircle2}
-                        variant={completedTasks.length > 0 ? "success" : "default"}
-                        loading={loading}
-                    />
-                    <StatCard
-                        label="Gen. Issues"
-                        value={generatorsWithIssues.length}
-                        icon={Activity}
-                        variant={generatorsWithIssues.length > 0 ? "warning" : "default"}
-                        loading={loading}
-                    />
+                    <StatCard label="Open Tasks" value={openTasks.length} icon={ClipboardList} variant={openTasks.length > 0 ? "accent" : "default"} loading={loading} />
+                    <StatCard label="Urgent" value={urgentTasks.length} icon={AlertTriangle} variant={urgentTasks.length > 0 ? "danger" : "default"} loading={loading} />
+                    <StatCard label="Completed" value={completedTasks.length} icon={CheckCircle2} variant={completedTasks.length > 0 ? "success" : "default"} loading={loading} />
+                    <StatCard label="Gen. Issues" value={generatorsWithIssues.length} icon={Activity} variant={generatorsWithIssues.length > 0 ? "warning" : "default"} loading={loading} />
                 </div>
 
-                {/* ── Progress bar (only when there are tasks) ────────────────── */}
+                {/* ── Maintenance progress ring (small — secondary) ────────────── */}
                 {!loading && totalAssigned > 0 && (
                     <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)]
-                                    px-5 py-4 flex items-center gap-5"
-                        style={{ boxShadow: "var(--shadow-card)" }}>
-                        {/* SVG ring */}
+                                    px-5 py-4 flex items-center gap-5" style={{ boxShadow: "var(--shadow-card)" }}>
                         <div className="shrink-0">
                             <svg width="52" height="52" viewBox="0 0 52 52">
-                                <circle cx="26" cy="26" r="20" fill="none"
-                                    stroke="var(--color-muted-fill)" strokeWidth="4" />
-                                <circle cx="26" cy="26" r="20" fill="none"
-                                    stroke="var(--color-accent)" strokeWidth="4"
+                                <circle cx="26" cy="26" r="20" fill="none" stroke="var(--color-muted-fill)" strokeWidth="4" />
+                                <circle cx="26" cy="26" r="20" fill="none" stroke="var(--color-accent)" strokeWidth="4"
                                     strokeLinecap="round"
                                     strokeDasharray={ringCircumference}
                                     strokeDashoffset={ringOffset}
                                     transform="rotate(-90 26 26)"
                                     style={{ transition: "stroke-dashoffset 0.6s ease" }}
                                 />
-                                <text x="26" y="30" textAnchor="middle"
-                                    fontSize="11" fontWeight="700"
-                                    fill="var(--color-text-strong)">
+                                <text x="26" y="30" textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--color-text-strong)">
                                     {completionPct}%
                                 </text>
                             </svg>
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-[var(--color-text-strong)]">
-                                Today's progress
-                            </p>
+                            <p className="text-sm font-semibold text-[var(--color-text-strong)]">Maintenance progress</p>
                             <p className="text-xs text-[var(--color-text-sub)] mt-0.5">
                                 {completedCount} of {totalAssigned} tasks completed
                                 {openTasks.length > 0 && ` · ${openTasks.length} remaining`}
@@ -497,14 +683,12 @@ export default function StaffDashboard() {
                         <>
                             <div className="flex items-center gap-1.5 flex-wrap">
                                 {tabs.map((tab) => (
-                                    <TabPill key={tab.key} active={active === tab.key}
-                                        onClick={() => setActive(tab.key)} count={tab.count}>
+                                    <TabPill key={tab.key} active={active === tab.key} onClick={() => setActive(tab.key)} count={tab.count}>
                                         {tab.label}
                                     </TabPill>
                                 ))}
                             </div>
-                            <Link to="/maintenance"
-                                className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline ml-1">
+                            <Link to="/maintenance" className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline ml-1">
                                 View all <ChevronRight className="w-3.5 h-3.5" />
                             </Link>
                         </>
@@ -537,8 +721,7 @@ export default function StaffDashboard() {
                         ? `${generatorsWithIssues.length} generator${generatorsWithIssues.length !== 1 ? "s" : ""} need attention`
                         : !loading && generators.length > 0 ? "All generators nominal" : null}
                     actions={
-                        <Link to="/maintenance/generator"
-                            className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline">
+                        <Link to="/maintenance/generator" className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline">
                             View all <ChevronRight className="w-3.5 h-3.5" />
                         </Link>
                     }
@@ -561,30 +744,6 @@ export default function StaffDashboard() {
                         </div>
                     )}
                 </Section>
-
-                {/* ── Quick access ────────────────────────────────────────────── */}
-                <div>
-                    <p className="text-xs font-semibold text-[var(--color-text-weak)] uppercase tracking-widest mb-3 px-1">
-                        Quick access
-                    </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {[
-                            { label: "Daily Check", to: "/checklists", icon: ClipboardList, color: "text-[var(--color-accent)]", bg: "bg-[var(--color-accent-light)] hover:bg-[var(--color-accent-mid)]/20" },
-                            { label: "Maintenance", to: "/maintenance", icon: Wrench, color: "text-orange-600", bg: "bg-orange-50 hover:bg-orange-100" },
-                            { label: "Generator", to: "/maintenance/generator", icon: Zap, color: "text-violet-600", bg: "bg-violet-50 hover:bg-violet-100" },
-                            { label: "Electricity", to: "/electricity", icon: Clock, color: "text-sky-600", bg: "bg-sky-50 hover:bg-sky-100" },
-                        ].map(({ label, to, icon: Icon, color, bg }) => (
-                            <Link key={label} to={to}
-                                className={`flex flex-col items-center justify-center gap-2.5 rounded-2xl border border-[var(--color-border)]
-                                            p-4 text-center transition-all duration-150 hover:shadow-sm ${bg}`}>
-                                <div className="w-9 h-9 rounded-xl bg-white/60 flex items-center justify-center">
-                                    <Icon className={`w-4.5 h-4.5 ${color}`} />
-                                </div>
-                                <span className="text-xs font-semibold text-[var(--color-text-body)]">{label}</span>
-                            </Link>
-                        ))}
-                    </div>
-                </div>
 
             </div>
         </div>

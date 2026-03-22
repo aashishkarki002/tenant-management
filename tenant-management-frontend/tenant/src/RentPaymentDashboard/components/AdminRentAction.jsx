@@ -61,12 +61,12 @@ export const AdminRentAction = ({ onProcessSuccess }) => {
                      * Desktop: w-auto px-3 → normal pill with label
                      */}
                     <Button
-                        variant="outline"
+                        variant="default"
                         size="sm"
                         disabled={processingRents}
                         title="Process Rents"
                         className="h-8 w-8 sm:w-auto px-0 sm:px-3
-                                   border-blue-200 text-blue-700 hover:bg-blue-50
+                                   bg-primary text-primary-foreground hover:bg-primary/90
                                    text-xs font-semibold flex items-center justify-center"
                     >
                         {processingRents ? (
@@ -111,7 +111,7 @@ export const AdminRentAction = ({ onProcessSuccess }) => {
                         disabled={sendingEmails}
                         title="Send Reminders"
                         className="h-8 w-8 sm:w-auto px-0 sm:px-3
-                                   border-orange-200 text-orange-700 hover:bg-orange-50
+                                   border-border text-muted-foreground hover:text-foreground hover:bg-accent
                                    text-xs font-semibold flex items-center justify-center"
                     >
                         {sendingEmails ? (

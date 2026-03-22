@@ -1,13 +1,23 @@
-// app-sidebar.jsx — updated to include Loans under Money group
-// Only change: added { title: "Loans", url: "/loans", icon: Landmark } to the Money group
-
 import {
-  LayoutDashboard, Users, Building2, DollarSign,
-  FileText, Wrench, Banknote, Zap, ChevronDown, Landmark,
+  LayoutDashboard,
+  Users,
+  Building2,
+  DollarSign,
+  FileText,
+  Wrench,
+  Banknote,
+  Zap,
+  ChevronDown,
+  Landmark,
+  ClipboardCheck,
 } from "lucide-react";
 
 import {
-  Sidebar, SidebarContent, SidebarFooter, SidebarRail, useSidebar,
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,6 +32,9 @@ import { useNavigate, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import api from "../../plugins/axios";
+import { useState } from "react";
+
+/* ================= NAV STRUCTURE ================= */
 
 const NAV_GROUPS = [
   {
@@ -33,22 +46,39 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "Money",
+    label: "Finance",
     items: [
       { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
       { title: "Accounting", url: "/accounting", icon: FileText },
-      { title: "Loans", url: "/loans", icon: Landmark },          // ← NEW
-      { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
     ],
   },
   {
-    label: "Building",
+    label: "Operations",
     items: [
+      {
+        title: "Daily Checks",
+        url: "/admin-daily-checks",
+        icon: ClipboardCheck,
+        highlight: true,
+      },
       { title: "Maintenance", url: "/maintenance", icon: Wrench },
-      { title: "Electricity", url: "/electricity", icon: Zap },
     ],
   },
+  {
+    label: "Utilities",
+    items: [{ title: "Electricity", url: "/electricity", icon: Zap }],
+  },
 ];
+
+const MORE_GROUP = {
+  label: "More",
+  items: [
+    { title: "Loans", url: "/loans", icon: Landmark },
+    { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
+  ],
+};
+
+/* ================= HELPERS ================= */
 
 function getInitials(name) {
   if (!name) return "AD";
@@ -60,10 +90,14 @@ function getInitials(name) {
     .join("");
 }
 
+/* ================= COMPONENT ================= */
+
 export default function AppSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const handleNav = () => {
     if (isMobile) setOpenMobile(false);
@@ -86,7 +120,7 @@ export default function AppSidebar() {
     <Sidebar className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       <SidebarRail />
 
-      {/* Brand */}
+      {/* ================= BRAND ================= */}
       <div className="flex items-center gap-2.5 px-4 py-4 border-b border-sidebar-border">
         <img
           src="/logo.jpeg"
@@ -104,11 +138,16 @@ export default function AppSidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* ================= NAVIGATION ================= */}
       <SidebarContent className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
+
+        {/* Main Groups */}
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
-            <p className="px-2 mb-1.5 text-[9px] font-medium tracking-[0.24em] uppercase opacity-60">
+            <p
+              className={`px-2 mb-1.5 text-[9px] font-medium tracking-[0.24em] uppercase ${group.label === "Finance" ? "text-primary" : "opacity-60"
+                }`}
+            >
               {group.label}
             </p>
 
@@ -131,13 +170,21 @@ export default function AppSidebar() {
                   {({ isActive }) => (
                     <>
                       <span
-                        className={`w-0.5 h-4 rounded-full ${isActive
-                          ? "bg-sidebar-ring"
-                          : "bg-transparent"
+                        className={`w-0.5 h-4 rounded-full ${isActive ? "bg-sidebar-ring" : "bg-transparent"
                           }`}
                       />
                       <item.icon className="w-3.5 h-3.5 shrink-0" />
-                      <span>{item.title}</span>
+
+                      <span className="flex items-center gap-2">
+                        {item.title}
+
+                        {/* Highlight Daily Checks */}
+                        {item.highlight && (
+                          <span className="text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded">
+                            Today
+                          </span>
+                        )}
+                      </span>
                     </>
                   )}
                 </NavLink>
@@ -145,9 +192,49 @@ export default function AppSidebar() {
             </nav>
           </div>
         ))}
+
+        {/* ================= MORE (COLLAPSIBLE) ================= */}
+        <div>
+          <button
+            onClick={() => setMoreOpen(!moreOpen)}
+            className="w-full flex items-center justify-between px-2 mb-1.5 text-[9px] font-medium tracking-[0.24em] uppercase opacity-60"
+          >
+            More
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform ${moreOpen ? "rotate-180" : ""
+                }`}
+            />
+          </button>
+
+          <div
+            className={`overflow-hidden transition-all duration-300 ${moreOpen ? "max-h-40" : "max-h-0"
+              }`}
+          >
+            <nav className="flex flex-col gap-1 mt-1">
+              {MORE_GROUP.items.map((item) => (
+                <NavLink
+                  key={item.title}
+                  to={item.url}
+                  onClick={handleNav}
+                  className={({ isActive }) =>
+                    [
+                      "group flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors",
+                      isActive
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    ].join(" ")
+                  }
+                >
+                  <item.icon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{item.title}</span>
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        </div>
       </SidebarContent>
 
-      {/* Footer */}
+      {/* ================= FOOTER ================= */}
       <SidebarFooter className="p-3 border-t border-sidebar-border">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

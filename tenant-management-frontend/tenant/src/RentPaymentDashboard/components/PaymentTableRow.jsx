@@ -48,7 +48,7 @@ export const PaymentTableRow = ({ payment, showBillingPeriod = false }) => {
         <Button
           variant="outline"
           size="sm"
-          className="bg-gray-200 text-black hover:bg-gray-200 min-w-[90px]"
+          className="text-xs font-medium text-foreground min-w-[90px] hover:bg-accent"
           onClick={() => {
             navigate(`/rent-payment/payments/${payment._id}`);
           }}
