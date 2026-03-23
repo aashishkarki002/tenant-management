@@ -1,36 +1,75 @@
+/**
+ * dailyChecksList.route.js  (v2 — Template + Result split)
+ *
+ * Route map:
+ *
+ *   Templates (admin setup):
+ *     GET    /api/checklists/templates              → list templates
+ *     POST   /api/checklists/templates              → create template
+ *     GET    /api/checklists/templates/:id          → get template (full sections)
+ *     POST   /api/checklists/templates/:id/rebuild  → regenerate sections from factory
+ *
+ *   Results (daily operational):
+ *     GET    /api/checklists/results                → list results (paginated)
+ *     POST   /api/checklists/results                → create result for a template+date
+ *     GET    /api/checklists/summary                → aggregated health summary
+ *     GET    /api/checklists/results/:id            → full merged view
+ *     PATCH  /api/checklists/results/:id/submit     → submit outcome delta
+ *     DELETE /api/checklists/results/:id            → delete (admin only)
+ */
+
 import { Router } from "express";
 import { protect } from "../../middleware/protect.js";
+import { authorize } from "../../middleware/authorize.js";
+
 import {
-  createChecklistController,
-  submitChecklistController,
-  getChecklistsController,
-  getChecklistByIdController,
-  getChecklistSummaryController,
-  deleteChecklistController,
+  createTemplateController,
+  rebuildTemplateController,
+  getTemplatesController,
+  getTemplateByIdController,
+  createResultController,
+  submitResultController,
+  getResultsController,
+  getResultByIdController,
+  getResultSummaryController,
+  deleteResultController,
 } from "./dailyChecksList.controller.js";
 
 const router = Router();
 
-// ── Named routes FIRST (before /:id wildcard) ─────────────────────────────────
+// ── All routes require authentication ─────────────────────────────────────────
+router.use(protect);
 
-// GET /api/checklists/summary?propertyId=&nepaliYear=&nepaliMonth=
-router.get("/summary", protect, getChecklistSummaryController);
+// ── Template routes ───────────────────────────────────────────────────────────
+// Named routes before /:id wildcard
 
-// GET /api/checklists?propertyId=&category=&...
-router.get("/", protect, getChecklistsController);
+router.get("/templates", getTemplatesController);
+router.post(
+  "/templates",
+  authorize("admin", "super_admin"),
+  createTemplateController,
+);
+router.get("/templates/:id", getTemplateByIdController);
+router.post(
+  "/templates/:id/rebuild",
+  authorize("admin", "super_admin"),
+  rebuildTemplateController,
+);
 
-// POST /api/checklists/create
-router.post("/create", protect, createChecklistController);
+// ── Result routes ─────────────────────────────────────────────────────────────
 
-// ── ID-based routes ────────────────────────────────────────────────────────────
+// Summary must be before /results/:id to avoid being caught by the wildcard
+router.get("/summary", getResultSummaryController);
 
-// GET /api/checklists/:id
-router.get("/:id", protect, getChecklistByIdController);
+router.get("/results", getResultsController);
+router.post("/results", createResultController);
 
-// PATCH /api/checklists/:id/submit  — fill in results + auto-create repair tasks
-router.patch("/:id/submit", protect, submitChecklistController);
-
-// DELETE /api/checklists/:id
-router.delete("/:id", protect, deleteChecklistController);
+router.get("/results/:id", getResultByIdController);
+router.patch("/results/:id/submit", submitResultController);
+router.delete(
+  "/results/:id",
+  authorize("admin", "super_admin"),
+  deleteResultController,
+);
 
 export default router;

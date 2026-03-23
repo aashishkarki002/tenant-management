@@ -9,4 +9,5 @@ router.post("/create", protect, createRevenueController);
 router.get("/get/:id", protect, getRevenueController);
 router.get("/get-all", protect, getAllRevenueController);
 router.get("/get-revenue-source", protect, getRevenueSourceController);
+
 export default router;
