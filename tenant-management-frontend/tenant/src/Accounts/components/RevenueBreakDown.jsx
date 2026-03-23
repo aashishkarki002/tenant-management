@@ -214,7 +214,7 @@ export default function RevenueBreakDown({
 
     useEffect(() => {
         api.get("/api/tenant/get-tenants").then(({ data }) => setTenants(data?.tenants ?? [])).catch(() => { });
-        api.get("/api/revenue/get-revenue-sources").then(({ data }) => setSources(data?.revenueSources ?? [])).catch(() => { });
+        api.get("/api/revenue/get-revenue-source").then(({ data }) => setSources(data?.revenueSource ?? [])).catch(() => { });
         api.get("/api/bank/get-bank-accounts").then(({ data }) => setBanks(data?.bankAccounts ?? [])).catch(() => { });
     }, []);
 
@@ -250,6 +250,16 @@ export default function RevenueBreakDown({
     const topTenants = D?.topTenants ?? [];
     const statusMap = D?.statusMap ?? {};
     const transactions = D?.transactions ?? [];
+
+    const TXN_PAGE_SIZE = 20;
+    const {
+        paginatedItems: pageTxns,
+        currentPage,
+        totalPages,
+        nextPage,
+        prevPage,
+        startIndex,
+    } = usePagination(transactions, TXN_PAGE_SIZE);
 
     return (
         <div className="rv" style={{ color: C.text }}>
@@ -681,64 +691,60 @@ export default function RevenueBreakDown({
             )}
 
             {/* ═══════════════════ TRANSACTIONS ════════════════════════════════════════ */}
-            {tab === "transactions" && (() => {
-                const TXN_PAGE_SIZE = 20;
-                const { paginatedItems: pageTxns, currentPage, totalPages, nextPage, prevPage, startIndex } = usePagination(transactions, TXN_PAGE_SIZE);
-                return (
-                    <Card delay={0} style={{ padding: 0 }}>
-                        <div className="px-5 py-4 flex justify-between items-center border-b" style={{ borderColor: C.border }}>
-                            <div>
-                                <div className="text-sm font-bold" style={{ color: C.text }}>All Transactions</div>
-                                <div className="text-[11px] mt-0.5" style={{ color: C.muted }}>{transactions.length} total · {periodLabel}</div>
-                            </div>
-                            <button onClick={exportCSV} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer" style={{ borderColor: C.border, background: C.surface, color: C.mid }}>
-                                <Download size={13} />Export CSV
-                            </button>
+            {tab === "transactions" && (
+                <Card delay={0} style={{ padding: 0 }}>
+                    <div className="px-5 py-4 flex justify-between items-center border-b" style={{ borderColor: C.border }}>
+                        <div>
+                            <div className="text-sm font-bold" style={{ color: C.text }}>All Transactions</div>
+                            <div className="text-[11px] mt-0.5" style={{ color: C.muted }}>{transactions.length} total · {periodLabel}</div>
                         </div>
-                        {loading ? <div className="p-5"><Sk /><Sk /><Sk /></div> : transactions.length === 0 ? <None msg="No transactions" /> : (
-                            <>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full border-collapse">
-                                        <thead>
-                                            <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                                                {["#", "Payer", "Source", "Ref", "Type", "Amount", "Date", "Status"].map(h => (
-                                                    <th key={h} className="text-left px-3.5 py-2.5 text-[10px] font-bold tracking-[0.06em] uppercase" style={{ color: C.muted }}>{h}</th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {pageTxns.map((t, i) => (
-                                                <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}50`, background: i % 2 === 0 ? C.surface : C.alt + "70" }}>
-                                                    <td className="px-3.5 py-2.5 text-xs" style={{ color: C.muted }}>{startIndex + i + 1}</td>
-                                                    <td className="px-3.5 py-2.5 font-semibold text-[13px]" style={{ color: C.text }}>{t.payer}</td>
-                                                    <td className="px-3.5 py-2.5 text-[13px]" style={{ color: C.mid }}>{t.source}</td>
-                                                    <td className="px-3.5 py-2.5"><RPill t={t.refType} /></td>
-                                                    <td className="px-3.5 py-2.5"><TPill t={t.payerType} /></td>
-                                                    <td className="px-3.5 py-2.5 font-bold text-[13px]" style={{ color: C.positive }}>{fmt(t.amount)}</td>
-                                                    <td className="px-3.5 py-2.5 text-xs" style={{ color: C.muted }}>{t.bsDate}</td>
-                                                    <td className="px-3.5 py-2.5"><SPill s={t.status} /></td>
-                                                </tr>
+                        <button onClick={exportCSV} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer" style={{ borderColor: C.border, background: C.surface, color: C.mid }}>
+                            <Download size={13} />Export CSV
+                        </button>
+                    </div>
+                    {loading ? <div className="p-5"><Sk /><Sk /><Sk /></div> : transactions.length === 0 ? <None msg="No transactions" /> : (
+                        <>
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                                            {["#", "Payer", "Source", "Ref", "Type", "Amount", "Date", "Status"].map(h => (
+                                                <th key={h} className="text-left px-3.5 py-2.5 text-[10px] font-bold tracking-[0.06em] uppercase" style={{ color: C.muted }}>{h}</th>
                                             ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                {totalPages > 1 && (
-                                    <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: C.border }}>
-                                        <span className="text-xs" style={{ color: C.muted }}>
-                                            Showing {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, transactions.length)} of {transactions.length}
-                                        </span>
-                                        <div className="flex gap-1.5">
-                                            <button onClick={prevPage} disabled={currentPage === 1} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>← Prev</button>
-                                            <span className="px-3 py-1 text-xs" style={{ color: C.muted }}>{currentPage} / {totalPages}</span>
-                                            <button onClick={nextPage} disabled={currentPage === totalPages} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>Next →</button>
-                                        </div>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {pageTxns.map((t, i) => (
+                                            <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}50`, background: i % 2 === 0 ? C.surface : C.alt + "70" }}>
+                                                <td className="px-3.5 py-2.5 text-xs" style={{ color: C.muted }}>{startIndex + i + 1}</td>
+                                                <td className="px-3.5 py-2.5 font-semibold text-[13px]" style={{ color: C.text }}>{t.payer}</td>
+                                                <td className="px-3.5 py-2.5 text-[13px]" style={{ color: C.mid }}>{t.source}</td>
+                                                <td className="px-3.5 py-2.5"><RPill t={t.refType} /></td>
+                                                <td className="px-3.5 py-2.5"><TPill t={t.payerType} /></td>
+                                                <td className="px-3.5 py-2.5 font-bold text-[13px]" style={{ color: C.positive }}>{fmt(t.amount)}</td>
+                                                <td className="px-3.5 py-2.5 text-xs" style={{ color: C.muted }}>{t.bsDate}</td>
+                                                <td className="px-3.5 py-2.5"><SPill s={t.status} /></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {totalPages > 1 && (
+                                <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: C.border }}>
+                                    <span className="text-xs" style={{ color: C.muted }}>
+                                        Showing {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, transactions.length)} of {transactions.length}
+                                    </span>
+                                    <div className="flex gap-1.5">
+                                        <button onClick={prevPage} disabled={currentPage === 1} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>← Prev</button>
+                                        <span className="px-3 py-1 text-xs" style={{ color: C.muted }}>{currentPage} / {totalPages}</span>
+                                        <button onClick={nextPage} disabled={currentPage === totalPages} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>Next →</button>
                                     </div>
-                                )}
-                            </>
-                        )}
-                    </Card>
-                );
-            })()}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </Card>
+            )}
 
             {/* ═══════════════════ ANALYSIS ════════════════════════════════════════════ */}
             {tab === "analysis" && (

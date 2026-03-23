@@ -35,37 +35,55 @@ const getInitialValues = () => ({
   tenantId: "",
   externalPayerName: "",
   externalPayerType: "PERSON",
-  referenceType: "",
+  // FIX: separate field for the revenue source ObjectId
+  sourceId: "",
   referenceId: "",
   amount: "",
   date: new Date().toISOString().split("T")[0],
   notes: "",
   paymentMethod: "bank_transfer",
   bankAccountId: "",
-  paymentSchedule: "one_time",
 });
-
 
 export function AddRevenueDialog({
   open,
   onOpenChange,
   tenants,
-  revenueSource,
+  // FIX: accept both `revenueSource` (array) and the common mistake of
+  // passing `revenueSource.data` or `revenueSource.revenueSource` from
+  // the parent. Normalise here so the dropdown always gets a flat array.
+  revenueSource: revenueSourceProp,
   bankAccounts = [],
   onSuccess,
 }) {
   const [submitting, setSubmitting] = React.useState(false);
   const [selectedBankAccountId, setSelectedBankAccountId] = React.useState("");
 
+  // ── Normalise the revenueSource prop into a guaranteed flat array ─────────
+  // Parent might pass:  array | { data: [...] } | { revenueSource: [...] } | undefined
+  const revenueSource = React.useMemo(() => {
+    if (!revenueSourceProp) return [];
+    if (Array.isArray(revenueSourceProp)) return revenueSourceProp;
+    if (Array.isArray(revenueSourceProp?.data)) return revenueSourceProp.data;
+    if (Array.isArray(revenueSourceProp?.revenueSource))
+      return revenueSourceProp.revenueSource;
+    return [];
+  }, [revenueSourceProp]);
+
   const formik = useFormik({
     initialValues: getInitialValues(),
     onSubmit: async (values) => {
       setSubmitting(true);
       try {
-        const payerType = values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
-        const paymentMethod = String(values.paymentMethod || "bank_transfer").toLowerCase();
+        const payerType =
+          values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
+        const paymentMethod = String(
+          values.paymentMethod || "bank_transfer",
+        ).toLowerCase();
+
+        // FIX: `source` is the ObjectId from sourceId, NOT referenceType
         const payload = {
-          source: values.referenceType,
+          source: values.sourceId,
           amount: Number(values.amount),
           date: values.date || new Date().toISOString().split("T")[0],
           payerType,
@@ -75,12 +93,20 @@ export function AddRevenueDialog({
           paymentMethod,
           createdBy: undefined,
         };
-        if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
-          if (values.bankAccountId) payload.bankAccountId = values.bankAccountId;
+
+        if (
+          paymentMethod === "bank_transfer" ||
+          paymentMethod === "cheque"
+        ) {
+          if (values.bankAccountId)
+            payload.bankAccountId = values.bankAccountId;
         }
 
         if (payerType === "TENANT") {
-          payload.tenant = typeof values.tenantId === "object" ? values.tenantId?._id : values.tenantId;
+          payload.tenant =
+            typeof values.tenantId === "object"
+              ? values.tenantId?._id
+              : values.tenantId;
         } else {
           payload.externalPayer = {
             name: values.externalPayerName,
@@ -113,293 +139,373 @@ export function AddRevenueDialog({
     if (!open) return;
     formik.resetForm({ values: getInitialValues() });
     setSelectedBankAccountId("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const payerType = formik.values.payerType ?? "tenant";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      {/*
+        MOBILE-FIRST:
+        - On mobile (< sm): full screen sheet from bottom, rounded top corners only
+        - On sm+: centred modal, max-w-lg, capped height with internal scroll
+      */}
+      <DialogContent
+        className={[
+          "flex flex-col gap-0 p-0 overflow-hidden",
+
+          // mobile: bottom sheet
+          "fixed bottom-0 left-0 right-0 top-auto",
+          "rounded-t-2xl rounded-b-none",
+          "max-h-[92dvh]",
+          "translate-x-0 translate-y-0",
+
+          // sm+: restore normal centred modal behaviour
+          "sm:top-1/2 sm:left-1/2 sm:bottom-auto sm:right-auto",
+          "sm:-translate-x-1/2 sm:-translate-y-1/2",   // ← key fix
+          "sm:rounded-2xl",
+          "sm:max-w-lg sm:max-h-[90dvh]",
+        ].join(" ")}
+      >
+        {/* Drag handle — mobile only */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+        </div>
+
+        {/* Header */}
+        <DialogHeader className="flex-shrink-0 px-5 pt-4 pb-3 border-b border-border space-y-0.5 sm:px-6 sm:pt-5">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
             Accounting · Revenue
           </p>
-          <DialogTitle className="text-2xl font-bold text-foreground">
+          <DialogTitle className="text-xl font-bold text-foreground leading-tight sm:text-2xl">
             Add Revenue
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={formik.handleSubmit} className="space-y-6">
-          {/* Payer type */}
-          <div className="space-y-2">
-            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Payer type
-            </Label>
-            <div className="inline-flex rounded-md border border-input bg-muted/30 p-0.5">
-              <button
-                type="button"
-                onClick={() => formik.setFieldValue("payerType", "tenant")}
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${payerType === "tenant"
-                  ? "bg-background text-foreground border border-border shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-                  }`}
-              >
-                Tenant
-              </button>
-              <button
-                type="button"
-                onClick={() => formik.setFieldValue("payerType", "external")}
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors ${payerType === "external"
-                  ? "bg-background text-foreground border border-border shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-                  }`}
-              >
-                External
-              </button>
-            </div>
-          </div>
-
-          {/* Select tenant (when Tenant) */}
-          {payerType === "tenant" && (
+        {/* Scrollable form body */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 sm:py-6">
+          <form
+            id="add-revenue-form"
+            onSubmit={formik.handleSubmit}
+            className="space-y-5"
+          >
+            {/* ── Payer type toggle ─────────────────────────────────────── */}
             <div className="space-y-2">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Select tenant
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Payer type
               </Label>
-              <Select
-                value={typeof formik.values.tenantId === "object" ? formik.values.tenantId?._id ?? "" : (formik.values.tenantId ?? "")}
-                onValueChange={(value) => formik.setFieldValue("tenantId", value)}
-              >
-                <SelectTrigger className="w-full rounded-md">
-                  <SelectValue placeholder="— choose tenant —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.isArray(tenants) &&
-                    tenants.map((tenant) => (
-                      <SelectItem key={tenant._id} value={tenant._id}>
-                        {tenant.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {payerType === "external" && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  External payer name
-                </Label>
-                <Input
-                  placeholder="Name of payer"
-                  value={formik.values.externalPayerName ?? ""}
-                  onChange={(e) =>
-                    formik.setFieldValue("externalPayerName", e.target.value)
-                  }
-                  className="rounded-md"
-                />
+              <div className="inline-flex w-full rounded-xl border border-input bg-muted/40 p-1 gap-1">
+                {["tenant", "external"].map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => formik.setFieldValue("payerType", type)}
+                    className={[
+                      "flex-1 rounded-lg py-2.5 text-sm font-medium transition-all capitalize",
+                      payerType === type
+                        ? "bg-background text-foreground shadow-sm border border-border"
+                        : "text-muted-foreground hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    {type}
+                  </button>
+                ))}
               </div>
+            </div>
+
+            {/* ── Tenant picker ────────────────────────────────────────── */}
+            {payerType === "tenant" && (
               <div className="space-y-2">
-                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Type
+                <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Select tenant
                 </Label>
                 <Select
-                  value={formik.values.externalPayerType ?? "PERSON"}
-                  onValueChange={(value) =>
-                    formik.setFieldValue("externalPayerType", value)
+                  value={
+                    typeof formik.values.tenantId === "object"
+                      ? (formik.values.tenantId?._id ?? "")
+                      : (formik.values.tenantId ?? "")
                   }
+                  onValueChange={(v) => formik.setFieldValue("tenantId", v)}
                 >
-                  <SelectTrigger className="w-full rounded-md">
-                    <SelectValue placeholder="Person or Company" />
+                  <SelectTrigger className="w-full h-11 rounded-xl text-sm">
+                    <SelectValue placeholder="— choose tenant —" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PERSON">Person</SelectItem>
-                    <SelectItem value="COMPANY">Company</SelectItem>
+                    {Array.isArray(tenants) &&
+                      tenants.map((tenant) => (
+                        <SelectItem key={tenant._id} value={tenant._id}>
+                          {tenant.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
+            )}
+
+            {/* ── External payer fields ──────────────────────────────── */}
+            {payerType === "external" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Payer name
+                  </Label>
+                  <Input
+                    placeholder="Name of payer"
+                    value={formik.values.externalPayerName ?? ""}
+                    onChange={(e) =>
+                      formik.setFieldValue("externalPayerName", e.target.value)
+                    }
+                    className="h-11 rounded-xl text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Type
+                  </Label>
+                  <Select
+                    value={formik.values.externalPayerType ?? "PERSON"}
+                    onValueChange={(v) =>
+                      formik.setFieldValue("externalPayerType", v)
+                    }
+                  >
+                    <SelectTrigger className="w-full h-11 rounded-xl text-sm">
+                      <SelectValue placeholder="Person or Company" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PERSON">Person</SelectItem>
+                      <SelectItem value="COMPANY">Company</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {/* ── Section divider ───────────────────────────────────────── */}
+            <div className="relative flex items-center py-1">
+              <div className="flex-1 border-t border-border" />
+              <span className="px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Transaction
+              </span>
+              <div className="flex-1 border-t border-border" />
             </div>
-          )}
 
-          {/* Transaction separator */}
-          <div className="relative flex items-center py-2">
-            <div className="flex-1 border-t border-border" />
-            <span className="px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Transaction
-            </span>
-            <div className="flex-1 border-t border-border" />
-          </div>
-
-          {/* Revenue source */}
-          <div className="space-y-2">
-            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Revenue source
-            </Label>
-            <Select
-              value={formik.values.referenceType ?? ""}
-              onValueChange={(value) =>
-                formik.setFieldValue("referenceType", value)
-              }
-            >
-              <SelectTrigger className="w-full rounded-md">
-                <SelectValue placeholder="— select source —" />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.isArray(revenueSource) &&
-                  revenueSource.map((source) => (
+            {/* ── Revenue source ────────────────────────────────────────── */}
+            {/*
+              FIX: bound to `sourceId` (ObjectId string), NOT `referenceType`.
+              The normalised `revenueSource` array is guaranteed non-undefined.
+              If the array is empty we show a disabled placeholder so the user
+              knows data hasn't loaded yet rather than a blank invisible select.
+            */}
+            <div className="space-y-2">
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Revenue source
+              </Label>
+              <Select
+                value={formik.values.sourceId ?? ""}
+                onValueChange={(v) => formik.setFieldValue("sourceId", v)}
+                disabled={revenueSource.length === 0}
+              >
+                <SelectTrigger className="w-full h-11 rounded-xl text-sm">
+                  <SelectValue
+                    placeholder={
+                      revenueSource.length === 0
+                        ? "Loading sources…"
+                        : "— select source —"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {revenueSource.map((source) => (
                     <SelectItem key={source._id} value={source._id}>
                       {source.name}
                     </SelectItem>
                   ))}
-              </SelectContent>
-            </Select>
-          </div>
+                </SelectContent>
+              </Select>
+              {revenueSource.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No revenue sources found. Make sure sources are configured in
+                  the system.
+                </p>
+              )}
+            </div>
 
-          {/* Payment Method — same type/options as PaymentDialog (cash | bank_transfer | cheque) */}
-          <div className="space-y-2">
-            <label htmlFor="payment-method-revenue" className="text-sm font-medium text-foreground">
-              Payment Method
-            </label>
-            <Select
-              value={formik.values?.paymentMethod || ""}
-              onValueChange={(value) => {
-                formik.setFieldValue("paymentMethod", value);
-                if (value !== "bank_transfer") {
-                  setSelectedBankAccountId("");
-                  formik.setFieldValue("bankAccountId", "");
-                }
-              }}
-            >
-              <SelectTrigger id="payment-method-revenue">
-                <SelectValue placeholder="Select payment method" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                <SelectItem value="cheque">Cheque</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            {/* ── Payment method ─────────────────────────────────────── */}
+            <div className="space-y-2">
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Payment method
+              </Label>
+              <Select
+                value={formik.values.paymentMethod || ""}
+                onValueChange={(v) => {
+                  formik.setFieldValue("paymentMethod", v);
+                  if (v !== "bank_transfer" && v !== "cheque") {
+                    setSelectedBankAccountId("");
+                    formik.setFieldValue("bankAccountId", "");
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full h-11 rounded-xl text-sm">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-          {/* Bank account picker — shown when payment method is bank_transfer (same as PaymentDialog) */}
-          {formik.values?.paymentMethod === "bank_transfer" && (
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-foreground">Deposit To</label>
-              <div className="grid gap-3">
-                {Array.isArray(bankAccounts) &&
-                  bankAccounts.map((bank) => (
-                    <button
-                      key={bank._id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedBankAccountId(bank._id);
-                        formik.setFieldValue("bankAccountId", bank._id);
-                      }}
-                      className={`w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-colors ${selectedBankAccountId === bank._id
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-muted-foreground bg-background"
-                        }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            {getOwnershipLabel(bank.entityId) && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-border bg-muted/40 text-muted-foreground">
-                                {getOwnershipLabel(bank.entityId)}
-                              </span>
-                            )}
-                            <p className="font-semibold text-foreground">{bank.bankName}</p>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            **** **** {bank.accountNumber?.slice(-4) || "****"}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
-                            Balance
-                          </p>
-                          <p className="font-semibold text-foreground text-sm">
-                            ₹{bank.balance?.toLocaleString() || "0"}
-                          </p>
-                        </div>
-                        {selectedBankAccountId === bank._id && (
-                          <div className="ml-3 text-primary">
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                              <path
-                                fillRule="evenodd"
-                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+            {/* ── Bank account picker ────────────────────────────────── */}
+            {(formik.values.paymentMethod === "bank_transfer" ||
+              formik.values.paymentMethod === "cheque") && (
+                <div className="space-y-3">
+                  <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Deposit to
+                  </Label>
+                  <div className="flex flex-col gap-2.5">
+                    {Array.isArray(bankAccounts) &&
+                      bankAccounts.map((bank) => {
+                        const selected = selectedBankAccountId === bank._id;
+                        return (
+                          <button
+                            key={bank._id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBankAccountId(bank._id);
+                              formik.setFieldValue("bankAccountId", bank._id);
+                            }}
+                            className={[
+                              "w-full text-left p-3.5 border-2 rounded-xl transition-colors",
+                              selected
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground bg-background",
+                            ].join(" ")}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {getOwnershipLabel(bank.entityId) && (
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-border bg-muted/40 text-muted-foreground flex-shrink-0">
+                                      {getOwnershipLabel(bank.entityId)}
+                                    </span>
+                                  )}
+                                  <p className="font-semibold text-foreground text-sm truncate">
+                                    {bank.bankName}
+                                  </p>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  **** **** {bank.accountNumber?.slice(-4) || "****"}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2.5 flex-shrink-0">
+                                <div className="text-right">
+                                  <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
+                                    Balance
+                                  </p>
+                                  <p className="font-semibold text-foreground text-sm">
+                                    ₹{bank.balance?.toLocaleString() || "0"}
+                                  </p>
+                                </div>
+                                {selected && (
+                                  <div className="text-primary flex-shrink-0">
+                                    <svg
+                                      className="w-5 h-5"
+                                      fill="currentColor"
+                                      viewBox="0 0 20 20"
+                                    >
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                        clipRule="evenodd"
+                                      />
+                                    </svg>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+            {/* ── Amount + Date (stacked on mobile, side-by-side on sm+) ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Amount (₹)
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0"
+                  value={formik.values.amount ?? ""}
+                  onChange={(e) =>
+                    formik.setFieldValue("amount", e.target.value)
+                  }
+                  className="h-11 rounded-xl text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Date
+                </Label>
+                <DualCalendarTailwind
+                  value={formik.values.date ?? ""}
+                  onChange={(englishDate) =>
+                    formik.setFieldValue("date", englishDate)
+                  }
+                />
               </div>
             </div>
-          )}
 
-          {/* Amount + Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* ── Notes ─────────────────────────────────────────────────── */}
             <div className="space-y-2">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Amount (₹)
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Notes{" "}
+                <span className="normal-case font-normal">(optional)</span>
               </Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0"
-                value={formik.values.amount ?? ""}
-                onChange={(e) => formik.setFieldValue("amount", e.target.value)}
-                className="rounded-md"
+              <Textarea
+                placeholder="Any additional context..."
+                value={formik.values.notes ?? ""}
+                onChange={(e) =>
+                  formik.setFieldValue("notes", e.target.value)
+                }
+                rows={3}
+                className="rounded-xl resize-none text-sm"
               />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Date
-              </Label>
-              <DualCalendarTailwind
-                value={formik.values.date ?? ""}
-                onChange={(englishDate) => {
-                  formik.setFieldValue("date", englishDate);
-                }}
-              />
-            </div>
-          </div>
+          </form>
+        </div>
 
-          {/* Notes */}
-          <div className="space-y-2">
-            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Notes (optional)
-            </Label>
-            <Textarea
-              placeholder="Any additional context..."
-              value={formik.values.notes ?? ""}
-              onChange={(e) => formik.setFieldValue("notes", e.target.value)}
-              rows={3}
-              className="rounded-md resize-none"
-            />
-          </div>
-
-          {/* Buttons */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={submitting}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              {submitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : null}
-              Add Revenue
-            </Button>
-          </div>
-        </form>
+        {/* ── Sticky footer ─────────────────────────────────────────────── */}
+        {/*
+          Placed OUTSIDE the scrollable area so it's always visible
+          at the bottom of the sheet / modal regardless of scroll position.
+        */}
+        <div className="flex-shrink-0 flex gap-3 px-5 py-4 border-t border-border bg-background sm:px-6 sm:pb-5">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleClose}
+            className="flex-1 h-11 rounded-xl text-sm sm:flex-none sm:w-24"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="add-revenue-form"
+            disabled={submitting}
+            className="flex-1 h-11 rounded-xl text-sm bg-primary text-primary-foreground hover:bg-primary/90 sm:flex-none sm:min-w-[130px]"
+          >
+            {submitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+            Add Revenue
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

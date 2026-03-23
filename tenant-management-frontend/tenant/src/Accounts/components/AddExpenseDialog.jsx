@@ -21,6 +21,11 @@ import api from "../../../plugins/axios";
 import { Loader2, Building2, User, Users, CheckCircle2 } from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
 import { PAYMENT_METHODS } from "../../Tenant/addTenant/constants/tenant.constant.js";
+import {
+  getCurrentNepaliMonth,
+  getCurrentNepaliYear,
+  getNepaliMonthOptions,
+} from "../../../utils/nepaliDate";
 
 const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
 
@@ -75,8 +80,9 @@ function getInitialValues() {
     staffId: "",
     staffRole: "",
     staffDepartment: "",
-    payPeriodMonth: new Date().getMonth() + 1,
-    payPeriodYear: new Date().getFullYear(),
+    // Pay period is based on Nepali (BS) calendar.
+    payPeriodMonth: getCurrentNepaliMonth(),
+    payPeriodYear: getCurrentNepaliYear(),
     // Transaction
     source: "",
     referenceType: "MANUAL",
@@ -124,6 +130,12 @@ export function AddExpenseDialog({
   onSuccess,
 }) {
   const [submitting, setSubmitting] = useState(false);
+  const [staffFetching, setStaffFetching] = useState(false);
+  const [fetchedStaffList, setFetchedStaffList] = useState([]);
+  const [didFetchStaffs, setDidFetchStaffs] = useState(false);
+
+  const hasProvidedStaffList = Array.isArray(staffList) && staffList.length > 0;
+  const resolvedStaffList = hasProvidedStaffList ? staffList : fetchedStaffList;
 
   const formik = useFormik({
     initialValues: getInitialValues(),
@@ -215,21 +227,61 @@ export function AddExpenseDialog({
     formik.resetForm({ values: getInitialValues() });
   }, [open]);
 
+  // Fix: populate the staff dropdown when the parent doesn't pass `staffList`.
+  useEffect(() => {
+    if (!open) return;
+    if (hasProvidedStaffList) return;
+    if (didFetchStaffs) return;
+
+    let cancelled = false;
+
+    const fetchStaffs = async () => {
+      try {
+        setStaffFetching(true);
+        const res = await api.get("/api/staff/get-staffs");
+        const data = res.data?.data;
+        const list = Array.isArray(data) ? data : data?.data ?? [];
+        if (!cancelled) setFetchedStaffList(list);
+      } catch (e) {
+        if (!cancelled) setFetchedStaffList([]);
+        console.error("Error fetching staffs:", e);
+      } finally {
+        if (!cancelled) {
+          setDidFetchStaffs(true);
+          setStaffFetching(false);
+        }
+      }
+    };
+
+    fetchStaffs();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, hasProvidedStaffList, didFetchStaffs]);
+
   // When a staff member is selected, auto-fill role + department from their profile
   const handleStaffSelect = (staffId) => {
     formik.setFieldValue("staffId", staffId);
-    const staff = staffList.find((s) => s._id === staffId);
-    if (staff?.profile) {
-      formik.setFieldValue("staffRole", staff.profile.designation || "");
-      formik.setFieldValue("staffDepartment", staff.profile.department || "");
-    }
+    const staff = resolvedStaffList.find((s) => s._id === staffId);
+
+    // Staff object shape varies across modules; support both:
+    // - { role, department }
+    // - { profile: { designation, department } }
+    const role = staff?.role ?? staff?.profile?.designation ?? "";
+    const department = staff?.department ?? staff?.profile?.department ?? "";
+
+    formik.setFieldValue("staffRole", role);
+    formik.setFieldValue("staffDepartment", department);
   };
 
   const { payeeType } = formik.values;
-  const selectedStaff = staffList.find((s) => s._id === formik.values.staffId);
+  const selectedStaff = resolvedStaffList.find(
+    (s) => s._id === formik.values.staffId,
+  );
   const showBankPicker =
     formik.values.paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
     formik.values.paymentMethod === PAYMENT_METHODS.CHEQUE;
+  const payMonthOptions = getNepaliMonthOptions({ lang: "np" });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -371,21 +423,31 @@ export function AddExpenseDialog({
                     <SelectValue placeholder="— select staff —" />
                   </SelectTrigger>
                   <SelectContent>
-                    {staffList.length === 0 && (
+                    {resolvedStaffList.length === 0 && staffFetching && (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">
+                        Loading staffs...
+                      </div>
+                    )}
+                    {resolvedStaffList.length === 0 && !staffFetching && (
                       <div className="px-3 py-2 text-xs text-muted-foreground">
                         No staff members found
                       </div>
                     )}
-                    {staffList.map((s) => (
+                    {resolvedStaffList.map((s) => (
                       <SelectItem key={s._id} value={s._id}>
                         <div className="flex flex-col">
                           <span>{s.name}</span>
-                          {s.profile?.designation && (
+                          {(s.role || s.profile?.designation) && (
                             <span className="text-[11px] text-muted-foreground">
-                              {s.profile.designation}
-                              {s.profile.department
-                                ? ` · ${s.profile.department}`
+                              {s.role ?? s.profile?.designation}
+                              {(s.department ?? s.profile?.department)
+                                ? ` · ${s.department ?? s.profile?.department}`
                                 : ""}
+                            </span>
+                          )}
+                          {!s.role && !s.profile?.designation && s.email && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {s.email}
                             </span>
                           )}
                         </div>
@@ -406,8 +468,9 @@ export function AddExpenseDialog({
                       </p>
                       <p className="text-[11px] text-muted-foreground truncate">
                         {[
-                          selectedStaff.profile?.designation,
-                          selectedStaff.profile?.department,
+                          selectedStaff.role ?? selectedStaff.profile?.designation,
+                          selectedStaff.department ??
+                            selectedStaff.profile?.department,
                         ]
                           .filter(Boolean)
                           .join(" · ") || selectedStaff.email}
@@ -431,27 +494,25 @@ export function AddExpenseDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {[
-                        "January", "February", "March", "April", "May", "June",
-                        "July", "August", "September", "October", "November", "December",
-                      ].map((m, i) => (
-                        <SelectItem key={i + 1} value={String(i + 1)}>
-                          {m}
+                      {payMonthOptions.map((m) => (
+                        <SelectItem key={m.value} value={String(m.value)}>
+                          {m.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <FieldLabel>Pay Year</FieldLabel>
+                  <FieldLabel>Pay Year (BS)</FieldLabel>
                   <Input
                     type="number"
                     min="2000"
-                    max="2100"
+                    max="2200"
                     value={formik.values.payPeriodYear}
-                    onChange={(e) =>
-                      formik.setFieldValue("payPeriodYear", e.target.value)
-                    }
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      formik.setFieldValue("payPeriodYear", v === "" ? "" : Number(v));
+                    }}
                   />
                 </div>
               </div>
