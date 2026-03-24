@@ -2,6 +2,23 @@ import React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PAGE_SIZE } from "../utils/electricityConstants";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Build the page number window to display.
+ * Always shows at most 5 page numbers centred around the current page.
+ */
+function buildPageWindow(currentPage, totalPages) {
+  const windowSize = Math.min(5, totalPages);
+  let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+  const end = Math.min(totalPages, start + windowSize - 1);
+  // Shift window left if we hit the right edge.
+  start = Math.max(1, end - windowSize + 1);
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function ElectricityPagination({
   currentPage,
   totalItems,
@@ -11,55 +28,122 @@ export function ElectricityPagination({
   const totalPages = Math.ceil(totalItems / pageSize);
   if (totalItems <= 0 || totalPages <= 1) return null;
 
-  const start = Math.min((currentPage - 1) * pageSize + 1, totalItems);
+  const start = (currentPage - 1) * pageSize + 1;
   const end = Math.min(currentPage * pageSize, totalItems);
+  const pageNumbers = buildPageWindow(currentPage, totalPages);
 
-  const pageNumbers = Array.from(
-    { length: Math.min(5, totalPages) },
-    (_, i) => {
-      if (totalPages <= 5) return i + 1;
-      if (currentPage <= 3) return i + 1;
-      if (currentPage >= totalPages - 2) return totalPages - 4 + i;
-      return currentPage - 2 + i;
-    }
-  );
+  const navBtnBase = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "32px",
+    height: "32px",
+    borderRadius: "var(--radius-md)",
+    border: "none",
+    cursor: "pointer",
+    transition: "background-color 0.15s",
+    backgroundColor: "transparent",
+    color: "var(--color-text-sub)",
+  };
 
   return (
-    <div className="flex justify-between items-center mt-4 pt-4 border-t border-[#F0EDE9]">
-      <p className="text-xs text-[#948472]">
-        Showing <span className="font-semibold text-[#625848]">{start}–{end}</span> of{" "}
-        <span className="font-semibold text-[#625848]">{totalItems}</span> readings
+    <div
+      className="flex items-center justify-between mt-4 pt-4"
+      style={{ borderTop: "1px solid var(--color-border)" }}
+    >
+      {/* Count label */}
+      <p className="text-xs" style={{ color: "var(--color-text-sub)" }}>
+        Showing{" "}
+        <span style={{ color: "var(--color-text-body)", fontWeight: 600 }}>
+          {start}–{end}
+        </span>{" "}
+        of{" "}
+        <span style={{ color: "var(--color-text-body)", fontWeight: 600 }}>
+          {totalItems}
+        </span>{" "}
+        readings
       </p>
+
+      {/* Page buttons */}
       <div className="flex items-center gap-1">
+        {/* Previous */}
         <button
           type="button"
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
-          className="flex items-center justify-center w-8 h-8 rounded-md text-[#948472]
-            hover:bg-[#F0EDE9] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          style={{
+            ...navBtnBase,
+            opacity: currentPage === 1 ? 0.35 : 1,
+            cursor: currentPage === 1 ? "not-allowed" : "pointer",
+          }}
+          onMouseOver={(e) => {
+            if (currentPage !== 1)
+              e.currentTarget.style.backgroundColor = "var(--color-surface)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+          }}
+          aria-label="Previous page"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-        {pageNumbers.map((page) => (
-          <button
-            key={page}
-            type="button"
-            onClick={() => onPageChange(page)}
-            className={`w-8 h-8 rounded-md text-xs font-semibold transition-colors
-              ${currentPage === page
-                ? "bg-[#3D1414] text-white"
-                : "text-[#625848] hover:bg-[#F0EDE9]"
-              }`}
-          >
-            {page}
-          </button>
-        ))}
+
+        {/* Page numbers */}
+        {pageNumbers.map((page) => {
+          const isActive = page === currentPage;
+          return (
+            <button
+              key={page}
+              type="button"
+              onClick={() => onPageChange(page)}
+              style={{
+                width: "32px",
+                height: "32px",
+                borderRadius: "var(--radius-md)",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: 600,
+                transition: "background-color 0.15s, color 0.15s",
+                backgroundColor: isActive
+                  ? "var(--color-accent)"
+                  : "transparent",
+                color: isActive ? "#ffffff" : "var(--color-text-body)",
+              }}
+              onMouseOver={(e) => {
+                if (!isActive)
+                  e.currentTarget.style.backgroundColor = "var(--color-surface)";
+              }}
+              onMouseOut={(e) => {
+                if (!isActive)
+                  e.currentTarget.style.backgroundColor = "transparent";
+              }}
+              aria-label={`Page ${page}`}
+              aria-current={isActive ? "page" : undefined}
+            >
+              {page}
+            </button>
+          );
+        })}
+
+        {/* Next */}
         <button
           type="button"
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage >= totalPages}
-          className="flex items-center justify-center w-8 h-8 rounded-md text-[#948472]
-            hover:bg-[#F0EDE9] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          style={{
+            ...navBtnBase,
+            opacity: currentPage >= totalPages ? 0.35 : 1,
+            cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
+          }}
+          onMouseOver={(e) => {
+            if (currentPage < totalPages)
+              e.currentTarget.style.backgroundColor = "var(--color-surface)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+          }}
+          aria-label="Next page"
         >
           <ChevronRight className="w-4 h-4" />
         </button>

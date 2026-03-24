@@ -533,10 +533,10 @@ export default function ElectricityReadingDialog({
                                             {genMeters.length > 0 && (
                                                 <>
                                                     {otherMeters.length > 0 && (
-                                    <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold border-t mt-1 pt-2">
-                                                        ⚡ Generator Meters
-                                                    </div>
-                                                )}
+                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold border-t mt-1 pt-2">
+                                                            ⚡ Generator Meters
+                                                        </div>
+                                                    )}
                                                     {otherMeters.length === 0 && (
                                                         <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold">
                                                             ⚡ Generator Meters
@@ -627,8 +627,20 @@ export default function ElectricityReadingDialog({
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="w-full max-w-lg">
-                <DialogHeader>
+            {/*
+             * Industry pattern for tall dialogs:
+             *   DialogContent = flex-col + max-h → the shell
+             *   Header        = shrink-0         → always visible
+             *   Body          = flex-1 + overflow-y-auto → only this scrolls
+             *   Footer        = shrink-0 + border-t      → always visible / pinned
+             *
+             * max-w-xl (576px) gives the dual-calendar and cascading selects
+             * enough horizontal room without going full-screen on desktop.
+             */}
+            <DialogContent className="w-full max-w-xl flex flex-col max-h-[90vh] gap-0 p-0">
+
+                {/* ── Fixed header ─────────────────────────────────────────────── */}
+                <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b">
                     <DialogTitle>Add Electricity Reading</DialogTitle>
                     <DialogDescription>
                         Select a meter type, then choose the specific{" "}
@@ -636,84 +648,92 @@ export default function ElectricityReadingDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* Reading date (Nepali + English) — required by backend */}
+                {/* ── Scrollable body ───────────────────────────────────────────
+                 *  Shared fields (billing month + reading date) live here, ABOVE
+                 *  the tab switcher — they belong to the whole dialog, not a tab.
+                 ─────────────────────────────────────────────────────────────── */}
+                <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
 
+                    {/* Shared: Billing Month + Reading Date — 2-col on desktop */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-                <Tabs value={selectedMeterType} onValueChange={setSelectedMeterType}>
-                    <TabsList className="bg-muted-fill rounded-lg gap-1 w-full">
-                        {METER_TYPES.map(({ value, label, icon: Icon }) => (
-                            <TabsTrigger
-                                key={value}
-                                value={value}
-                                className="flex items-center gap-1.5 flex-1"
+                        {/* ── Billing Period ──────────────────────────────────── */}
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-medium flex items-center gap-1.5">
+                                <CalendarDays className="w-3.5 h-3.5 text-orange-700" />
+                                Billing Month (BS)
+                                {!isBillingPeriodValid(billingPeriod) && (
+                                    <span className="text-xs text-danger font-normal ml-1">required</span>
+                                )}
+                            </label>
+                            <Select
+                                value={isBillingPeriodValid(billingPeriod) ? periodKey(billingPeriod) : ""}
+                                onValueChange={(val) => {
+                                    const parsed = parsePeriodKey(val);
+                                    if (parsed) setBillingPeriod(parsed);
+                                }}
                             >
-                                <Icon className="w-4 h-4" />
-                                <span className="hidden sm:inline">{label}</span>
-                            </TabsTrigger>
+                                <SelectTrigger className="h-9 bg-muted-fill">
+                                    <SelectValue placeholder="Select billing month…">
+                                        {isBillingPeriodValid(billingPeriod)
+                                            ? labelForPeriod(billingPeriod)
+                                            : "Select billing month…"}
+                                    </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {billingPeriodOptions.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                Change when backfilling a previous month.
+                            </p>
+                        </div>
+
+                        {/* ── Reading Date ────────────────────────────────────── */}
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-medium">Reading Date</label>
+                            <DualCalendarTailwind
+                                value={readingDateEnglish}
+                                onChange={(english, nepali) => {
+                                    setReadingDateEnglish(english || "");
+                                    setReadingDateNepali(nepali || "");
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* ── Meter type tabs ──────────────────────────────────────── */}
+                    <Tabs value={selectedMeterType} onValueChange={setSelectedMeterType}>
+                        <TabsList className="bg-muted-fill rounded-lg gap-1 w-full">
+                            {METER_TYPES.map(({ value, label, icon: Icon }) => (
+                                <TabsTrigger
+                                    key={value}
+                                    value={value}
+                                    className="flex items-center gap-1.5 flex-1"
+                                >
+                                    <Icon className="w-4 h-4" />
+                                    <span className="hidden sm:inline">{label}</span>
+                                </TabsTrigger>
+                            ))}
+                        </TabsList>
+
+                        {METER_TYPES.map(({ value }) => (
+                            <TabsContent key={value} value={value}>
+                                {renderFilters(value)}
+                            </TabsContent>
                         ))}
-                    </TabsList>
+                    </Tabs>
+                </div>
 
-                    {/* ── Billing Period selector ────────────────────────────────────────
-                        Separate from the physical reading date.
-                        An admin backfilling Mangsir (month 8) in Falgun (month 11) sets
-                        this to "Mangsir 2082" while readingDate = today.
-                        The bridge ensures the value is always 1-based, matching DB storage.
-                    ─────────────────────────────────────────────────────────────────── */}
-                    <div className="flex flex-col gap-1.5 mt-3">
-                        <label className="text-sm font-medium flex items-center gap-1.5">
-                            <CalendarDays className="w-3.5 h-3.5 text-orange-700" />
-                            Billing Month (BS)
-                            {!isBillingPeriodValid(billingPeriod) && (
-                                <span className="text-xs text-danger font-normal ml-1">required</span>
-                            )}
-                        </label>
-                        <Select
-                            value={isBillingPeriodValid(billingPeriod) ? periodKey(billingPeriod) : ""}
-                            onValueChange={(val) => {
-                                const parsed = parsePeriodKey(val);
-                                if (parsed) setBillingPeriod(parsed);
-                            }}
-                        >
-                            <SelectTrigger className="h-9 bg-muted-fill">
-                                <SelectValue placeholder="Select billing month…">
-                                    {isBillingPeriodValid(billingPeriod)
-                                        ? labelForPeriod(billingPeriod)
-                                        : "Select billing month…"}
-                                </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                                {billingPeriodOptions.map((opt) => (
-                                    <SelectItem key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                            Which BS month does this reading bill for? Defaults to the current
-                            month — change this when backfilling a previous month.
-                        </p>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                        <label className="text-sm font-medium">Reading Date</label>
-                        <DualCalendarTailwind
-                            value={readingDateEnglish}
-                            onChange={(english, nepali) => {
-                                setReadingDateEnglish(english || "");
-                                setReadingDateNepali(nepali || "");
-                            }}
-                        />
-                    </div>
-
-                    {METER_TYPES.map(({ value }) => (
-                        <TabsContent key={value} value={value}>
-                            {renderFilters(value)}
-                        </TabsContent>
-                    ))}
-                </Tabs>
-
-                <DialogFooter className="gap-2 mt-2">
+                {/* ── Pinned footer ─────────────────────────────────────────────
+                 *  border-t provides visual separation from the scroll body.
+                 *  shrink-0 ensures it never gets squeezed out on small viewports.
+                 ─────────────────────────────────────────────────────────────── */}
+                <DialogFooter className="px-6 py-4 border-t shrink-0 gap-2">
                     <Button type="button" variant="outline" onClick={handleClose} disabled={saving}>
                         Cancel
                     </Button>

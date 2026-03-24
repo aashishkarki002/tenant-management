@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,16 +18,51 @@ import {
 } from "@/components/ui/select";
 import { useFormik } from "formik";
 import api from "../../../plugins/axios";
-import { Loader2 } from "lucide-react";
+import {
+  Loader2,
+  Building2,
+  Sparkles,
+  User,
+  ChevronRight,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
+import useOwnership from "../../hooks/use-ownership";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function getEntityBadgeColor(type) {
+  switch (type) {
+    case "private":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800";
+    case "company":
+      return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800";
+    case "head_office":
+      return "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800";
+    default:
+      return "bg-muted text-muted-foreground border-border";
+  }
+}
+
+function getEntityTypeLabel(type) {
+  switch (type) {
+    case "private":
+      return "Private";
+    case "company":
+      return "Company";
+    case "head_office":
+      return "Head Office";
+    default:
+      return type ?? "Unknown";
+  }
+}
 
 function getOwnershipLabel(entity) {
   if (!entity || typeof entity !== "object") return null;
-  if (entity.name) return entity.name;
-  if (entity.type === "head_office") return "HQ";
-  if (entity.type === "company") return "Company";
-  if (entity.type === "private") return "Private";
-  return null;
+  return entity.name || getEntityTypeLabel(entity.type);
 }
 
 const getInitialValues = () => ({
@@ -35,71 +70,284 @@ const getInitialValues = () => ({
   tenantId: "",
   externalPayerName: "",
   externalPayerType: "PERSON",
-  // FIX: separate field for the revenue source ObjectId
   sourceId: "",
-  referenceId: "",
   amount: "",
   date: new Date().toISOString().split("T")[0],
   notes: "",
   paymentMethod: "bank_transfer",
   bankAccountId: "",
+  // Ownership fields
+  entityId: "",
+  blockId: "",
+  transactionScope: "building",
+  // Manual override flag
+  entityOverridden: false,
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Entity Resolution Banner
+// Shows auto-resolved entity (from tenant block) or manual picker
+// ─────────────────────────────────────────────────────────────────────────────
+
+function EntityResolutionBanner({
+  resolvedEntity,
+  resolvedBlock,
+  resolving,
+  error,
+  isAutoResolved,
+  allEntities,
+  entitiesLoading,
+  manualEntityId,
+  onManualEntityChange,
+  payerType,
+}) {
+  // For external payers — always show manual selector
+  if (payerType === "external") {
+    return (
+      <div className="space-y-2">
+        <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+          <Building2 className="w-3 h-3" />
+          Receiving Entity
+        </Label>
+        <Select
+          value={manualEntityId || ""}
+          onValueChange={onManualEntityChange}
+          disabled={entitiesLoading}
+        >
+          <SelectTrigger className="w-full h-11 rounded-xl text-sm">
+            <SelectValue placeholder={entitiesLoading ? "Loading entities…" : "— select entity —"} />
+          </SelectTrigger>
+          <SelectContent>
+            {allEntities.map((e) => (
+              <SelectItem key={e._id} value={e._id}>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
+                  >
+                    {getEntityTypeLabel(e.type)}
+                  </span>
+                  {e.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {manualEntityId && (
+          <p className="text-[11px] text-muted-foreground">
+            Revenue will be recorded under the selected entity.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // For tenants — show auto-resolution state
+  if (resolving) {
+    return (
+      <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-muted/40 border border-border animate-pulse">
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />
+        <span className="text-sm text-muted-foreground">
+          Resolving ownership from tenant's block…
+        </span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
+        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+            Could not auto-resolve entity
+          </p>
+          <p className="text-xs text-amber-600/80 dark:text-amber-500 mt-0.5">
+            {error} — please select manually below.
+          </p>
+          <div className="mt-2">
+            <Select
+              value={manualEntityId || ""}
+              onValueChange={onManualEntityChange}
+              disabled={entitiesLoading}
+            >
+              <SelectTrigger className="w-full h-9 rounded-lg text-sm border-amber-300 dark:border-amber-700">
+                <SelectValue placeholder={entitiesLoading ? "Loading entities…" : "— select entity —"} />
+              </SelectTrigger>
+              <SelectContent>
+                {allEntities.map((e) => (
+                  <SelectItem key={e._id} value={e._id}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
+                      >
+                        {getEntityTypeLabel(e.type)}
+                      </span>
+                      {e.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAutoResolved && resolvedEntity) {
+    return (
+      <div className="rounded-xl border border-border overflow-hidden">
+        {/* Auto-resolved header */}
+        <div className="flex items-center gap-2 px-3.5 py-2 bg-muted/30 border-b border-border">
+          <Sparkles className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Auto-resolved from tenant's block
+          </span>
+        </div>
+
+        {/* Breadcrumb trail: Tenant → Block → Entity */}
+        <div className="px-4 py-3.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Tenant node */}
+            <div className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2.5 py-1.5">
+              <User className="w-3 h-3 text-muted-foreground" />
+              <span className="text-xs font-medium text-foreground">
+                Tenant
+              </span>
+            </div>
+
+            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+
+            {/* Block node */}
+            <div className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2.5 py-1.5">
+              <Building2 className="w-3 h-3 text-muted-foreground" />
+              <span className="text-xs font-medium text-foreground">
+                {resolvedBlock?.name || "Block"}
+              </span>
+            </div>
+
+            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+
+            {/* Entity node — highlighted */}
+            <div
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border font-semibold text-xs ${getEntityBadgeColor(resolvedEntity.type)}`}
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              <span>{resolvedEntity.name || getEntityTypeLabel(resolvedEntity.type)}</span>
+              <span className="opacity-60 font-normal">
+                ({getEntityTypeLabel(resolvedEntity.type)})
+              </span>
+            </div>
+          </div>
+
+          {/* Override link */}
+          <button
+            type="button"
+            onClick={() => onManualEntityChange("__override__")}
+            className="mt-2 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+          >
+            Override entity manually
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // No tenant selected yet — placeholder
+  return (
+    <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-muted/30 border border-dashed border-border">
+      <Building2 className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
+      <span className="text-sm text-muted-foreground/70">
+        Select a tenant to auto-resolve the owning entity
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Dialog
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function AddRevenueDialog({
   open,
   onOpenChange,
   tenants,
-  // FIX: accept both `revenueSource` (array) and the common mistake of
-  // passing `revenueSource.data` or `revenueSource.revenueSource` from
-  // the parent. Normalise here so the dropdown always gets a flat array.
   revenueSource: revenueSourceProp,
   bankAccounts = [],
   onSuccess,
 }) {
-  const [submitting, setSubmitting] = React.useState(false);
-  const [selectedBankAccountId, setSelectedBankAccountId] = React.useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
-  // ── Normalise the revenueSource prop into a guaranteed flat array ─────────
-  // Parent might pass:  array | { data: [...] } | { revenueSource: [...] } | undefined
-  const revenueSource = React.useMemo(() => {
+  // Fetch all ownership entities via hook
+  const { entities: entitiesProp, loading: entitiesLoading } = useOwnership();
+
+  // Entity resolution state
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState(null);
+  const [resolvedEntity, setResolvedEntity] = useState(null); // { _id, name, type }
+  const [resolvedBlock, setResolvedBlock] = useState(null);   // { _id, name }
+  const [isAutoResolved, setIsAutoResolved] = useState(false);
+  const [showManualOverride, setShowManualOverride] = useState(false);
+  const [manualEntityId, setManualEntityId] = useState("");
+
+  // Normalise revenueSource prop
+  const revenueSource = useMemo(() => {
     if (!revenueSourceProp) return [];
     if (Array.isArray(revenueSourceProp)) return revenueSourceProp;
     if (Array.isArray(revenueSourceProp?.data)) return revenueSourceProp.data;
-    if (Array.isArray(revenueSourceProp?.revenueSource))
-      return revenueSourceProp.revenueSource;
+    if (Array.isArray(revenueSourceProp?.revenueSource)) return revenueSourceProp.revenueSource;
     return [];
   }, [revenueSourceProp]);
+
+  // Normalise entities from hook (already a plain array, but guard anyway)
+  const allEntities = useMemo(() => {
+    if (!entitiesProp) return [];
+    if (Array.isArray(entitiesProp)) return entitiesProp;
+    return [];
+  }, [entitiesProp]);
+
+  // The final entityId to use in the submit payload
+  const resolvedEntityId = useMemo(() => {
+    if (showManualOverride || !isAutoResolved) return manualEntityId;
+    return resolvedEntity?._id || "";
+  }, [showManualOverride, isAutoResolved, resolvedEntity, manualEntityId]);
 
   const formik = useFormik({
     initialValues: getInitialValues(),
     onSubmit: async (values) => {
+      const entityId = resolvedEntityId;
+      if (!entityId) {
+        // Surface validation error — entity is required
+        return;
+      }
+
       setSubmitting(true);
       try {
-        const payerType =
-          values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
-        const paymentMethod = String(
-          values.paymentMethod || "bank_transfer",
-        ).toLowerCase();
+        const payerType = values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
+        const paymentMethod = String(values.paymentMethod || "bank_transfer").toLowerCase();
 
-        // FIX: `source` is the ObjectId from sourceId, NOT referenceType
+        // Determine transactionScope from entity type
+        const entity = allEntities.find((e) => e._id === entityId);
+        const transactionScope =
+          entity?.type === "head_office" ? "head_office" : "building";
+
         const payload = {
           source: values.sourceId,
           amount: Number(values.amount),
           date: values.date || new Date().toISOString().split("T")[0],
           payerType,
           referenceType: "MANUAL",
-          referenceId: values.referenceId || undefined,
           notes: values.notes || undefined,
           paymentMethod,
-          createdBy: undefined,
+          // Ownership fields
+          entityId,
+          blockId: transactionScope !== "head_office" ? (resolvedBlock?._id || undefined) : undefined,
+          transactionScope,
         };
 
-        if (
-          paymentMethod === "bank_transfer" ||
-          paymentMethod === "cheque"
-        ) {
-          if (values.bankAccountId)
-            payload.bankAccountId = values.bankAccountId;
+        if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
+          if (values.bankAccountId) payload.bankAccountId = values.bankAccountId;
         }
 
         if (payerType === "TENANT") {
@@ -132,38 +380,141 @@ export function AddRevenueDialog({
   const handleClose = () => {
     formik.resetForm({ values: getInitialValues() });
     setSelectedBankAccountId("");
+    resetEntityResolution();
     onOpenChange(false);
+  };
+
+  const resetEntityResolution = () => {
+    setResolving(false);
+    setResolveError(null);
+    setResolvedEntity(null);
+    setResolvedBlock(null);
+    setIsAutoResolved(false);
+    setShowManualOverride(false);
+    setManualEntityId("");
   };
 
   useEffect(() => {
     if (!open) return;
     formik.resetForm({ values: getInitialValues() });
     setSelectedBankAccountId("");
+    resetEntityResolution();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // ── Auto-resolve entity when tenant changes ──────────────────────────────
+  const resolveTenantEntity = useCallback(async (tenantId) => {
+    if (!tenantId) {
+      resetEntityResolution();
+      return;
+    }
+
+    setResolving(true);
+    setResolveError(null);
+    setIsAutoResolved(false);
+    setResolvedEntity(null);
+    setResolvedBlock(null);
+
+    try {
+      // Fetch tenant details — includes block reference
+      const tenantRes = await api.get(`/api/tenant/get-tenant/${tenantId}`);
+      const tenant = tenantRes.data?.tenant || tenantRes.data?.data;
+
+      if (!tenant) throw new Error("Tenant data not found");
+
+      const blockId = tenant.block?._id || tenant.block;
+      if (!blockId) throw new Error("Tenant has no block assigned");
+
+      // Fetch block to get ownershipEntityId
+      // Try the blocks endpoint — adjust path if your API differs
+      let block = null;
+      let entity = null;
+
+      try {
+        const blockRes = await api.get(`/api/blocks/${blockId}`);
+        block = blockRes.data?.block || blockRes.data?.data;
+      } catch {
+        // If no dedicated block endpoint, check the property tree
+        const propRes = await api.get("/api/property/get-property");
+        const tree = propRes.data?.property || propRes.data?.data;
+        const blocks = tree?.blocks || [];
+        block = blocks.find((b) => b._id === blockId || b._id?.toString() === blockId?.toString());
+      }
+
+      if (!block) throw new Error("Block not found");
+
+      const entityId = block.ownershipEntityId?._id || block.ownershipEntityId;
+      if (!entityId) throw new Error("Block has no ownership entity assigned");
+
+      // Try to find entity in the local allEntities list first (no extra call)
+      entity = allEntities.find(
+        (e) => e._id === entityId || e._id?.toString() === entityId?.toString()
+      );
+
+      if (!entity) {
+        // Fallback: fetch from ownership endpoint
+        const entityRes = await api.get(`/api/ownership/${entityId}`);
+        entity = entityRes.data?.entity || entityRes.data?.data;
+      }
+
+      if (!entity) throw new Error("Ownership entity not found");
+
+      setResolvedBlock({ _id: block._id, name: block.name });
+      setResolvedEntity({ _id: entity._id, name: entity.name, type: entity.type });
+      setIsAutoResolved(true);
+      setShowManualOverride(false);
+    } catch (err) {
+      console.error("Entity resolution failed:", err);
+      setResolveError(err.message || "Unknown error");
+    } finally {
+      setResolving(false);
+    }
+  }, [allEntities]);
+
+  // Trigger resolution when tenant changes
+  useEffect(() => {
+    const tenantId = typeof formik.values.tenantId === "object"
+      ? formik.values.tenantId?._id
+      : formik.values.tenantId;
+
+    if (formik.values.payerType === "tenant" && tenantId) {
+      resolveTenantEntity(tenantId);
+    } else {
+      resetEntityResolution();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formik.values.tenantId, formik.values.payerType]);
+
+  const handleManualEntityChange = (value) => {
+    if (value === "__override__") {
+      setShowManualOverride(true);
+      setManualEntityId("");
+    } else {
+      setManualEntityId(value);
+      // If they pick an entity manually, update block tracking too
+      if (showManualOverride) {
+        setResolvedBlock(null); // block unknown in manual mode
+      }
+    }
+  };
+
   const payerType = formik.values.payerType ?? "tenant";
+  const isEntityResolved = !!resolvedEntityId;
+  const canSubmit = isEntityResolved && formik.values.sourceId && formik.values.amount;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/*
-        MOBILE-FIRST:
-        - On mobile (< sm): full screen sheet from bottom, rounded top corners only
-        - On sm+: centred modal, max-w-lg, capped height with internal scroll
-      */}
       <DialogContent
         className={[
           "flex flex-col gap-0 p-0 overflow-hidden",
-
           // mobile: bottom sheet
           "fixed bottom-0 left-0 right-0 top-auto",
           "rounded-t-2xl rounded-b-none",
           "max-h-[92dvh]",
           "translate-x-0 translate-y-0",
-
-          // sm+: restore normal centred modal behaviour
+          // sm+: centred modal
           "sm:top-1/2 sm:left-1/2 sm:bottom-auto sm:right-auto",
-          "sm:-translate-x-1/2 sm:-translate-y-1/2",   // ← key fix
+          "sm:-translate-x-1/2 sm:-translate-y-1/2",
           "sm:rounded-2xl",
           "sm:max-w-lg sm:max-h-[90dvh]",
         ].join(" ")}
@@ -281,6 +632,87 @@ export function AddRevenueDialog({
               </div>
             )}
 
+            {/* ── Entity resolution section ──────────────────────────── */}
+            <div className="space-y-2">
+              <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Receiving entity
+              </Label>
+
+              {/* For tenants: show auto-resolution UI, with manual override */}
+              {payerType === "tenant" && !showManualOverride && (
+                <EntityResolutionBanner
+                  resolvedEntity={resolvedEntity}
+                  resolvedBlock={resolvedBlock}
+                  resolving={resolving}
+                  error={resolveError}
+                  isAutoResolved={isAutoResolved}
+                  allEntities={allEntities}
+                  entitiesLoading={entitiesLoading}
+                  manualEntityId={manualEntityId}
+                  onManualEntityChange={handleManualEntityChange}
+                  payerType={payerType}
+                />
+              )}
+
+              {/* Manual override mode (for tenants who clicked "override") */}
+              {payerType === "tenant" && showManualOverride && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1">
+                    <span>Manual override active —</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowManualOverride(false);
+                        setManualEntityId("");
+                      }}
+                      className="underline underline-offset-2 hover:text-foreground transition-colors"
+                    >
+                      revert to auto
+                    </button>
+                  </div>
+                  <Select
+                    value={manualEntityId || ""}
+                    onValueChange={setManualEntityId}
+                    disabled={entitiesLoading}
+                  >
+                    <SelectTrigger className="w-full h-11 rounded-xl text-sm">
+                      <SelectValue placeholder={entitiesLoading ? "Loading entities…" : "— select entity —"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allEntities.map((e) => (
+                        <SelectItem key={e._id} value={e._id}>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
+                            >
+                              {getEntityTypeLabel(e.type)}
+                            </span>
+                            {e.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* For external: always manual */}
+              {payerType === "external" && (
+                <EntityResolutionBanner
+                  resolvedEntity={null}
+                  resolvedBlock={null}
+                  resolving={false}
+                  error={null}
+                  isAutoResolved={false}
+                  allEntities={allEntities}
+                  entitiesLoading={entitiesLoading}
+                  manualEntityId={manualEntityId}
+                  onManualEntityChange={setManualEntityId}
+                  payerType={payerType}
+                />
+              )}
+            </div>
+
             {/* ── Section divider ───────────────────────────────────────── */}
             <div className="relative flex items-center py-1">
               <div className="flex-1 border-t border-border" />
@@ -291,12 +723,6 @@ export function AddRevenueDialog({
             </div>
 
             {/* ── Revenue source ────────────────────────────────────────── */}
-            {/*
-              FIX: bound to `sourceId` (ObjectId string), NOT `referenceType`.
-              The normalised `revenueSource` array is guaranteed non-undefined.
-              If the array is empty we show a disabled placeholder so the user
-              knows data hasn't loaded yet rather than a blank invisible select.
-            */}
             <div className="space-y-2">
               <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Revenue source
@@ -405,22 +831,12 @@ export function AddRevenueDialog({
                                     Balance
                                   </p>
                                   <p className="font-semibold text-foreground text-sm">
-                                    ₹{bank.balance?.toLocaleString() || "0"}
+                                    रू{((bank.balancePaisa ?? bank.balance ?? 0) / 100).toLocaleString("en-IN")}
                                   </p>
                                 </div>
                                 {selected && (
                                   <div className="text-primary flex-shrink-0">
-                                    <svg
-                                      className="w-5 h-5"
-                                      fill="currentColor"
-                                      viewBox="0 0 20 20"
-                                    >
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                        clipRule="evenodd"
-                                      />
-                                    </svg>
+                                    <CheckCircle2 className="w-5 h-5" />
                                   </div>
                                 )}
                               </div>
@@ -432,11 +848,11 @@ export function AddRevenueDialog({
                 </div>
               )}
 
-            {/* ── Amount + Date (stacked on mobile, side-by-side on sm+) ── */}
+            {/* ── Amount + Date ──────────────────────────────────────── */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Amount (₹)
+                  Amount (रू)
                 </Label>
                 <Input
                   type="number"
@@ -479,14 +895,20 @@ export function AddRevenueDialog({
                 className="rounded-xl resize-none text-sm"
               />
             </div>
+
+            {/* ── Entity required warning ───────────────────────────────── */}
+            {!isEntityResolved &&
+              !resolving &&
+              (formik.values.tenantId || payerType === "external") && (
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>A receiving entity is required to save this revenue.</span>
+                </div>
+              )}
           </form>
         </div>
 
         {/* ── Sticky footer ─────────────────────────────────────────────── */}
-        {/*
-          Placed OUTSIDE the scrollable area so it's always visible
-          at the bottom of the sheet / modal regardless of scroll position.
-        */}
         <div className="flex-shrink-0 flex gap-3 px-5 py-4 border-t border-border bg-background sm:px-6 sm:pb-5">
           <Button
             type="button"
@@ -499,8 +921,8 @@ export function AddRevenueDialog({
           <Button
             type="submit"
             form="add-revenue-form"
-            disabled={submitting}
-            className="flex-1 h-11 rounded-xl text-sm bg-primary text-primary-foreground hover:bg-primary/90 sm:flex-none sm:min-w-[130px]"
+            disabled={submitting || !canSubmit}
+            className="flex-1 h-11 rounded-xl text-sm bg-primary text-primary-foreground hover:bg-primary/90 sm:flex-none sm:min-w-[130px] disabled:opacity-50"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
             Add Revenue

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,7 @@ import {
   getCurrentNepaliYear,
   getNepaliMonthOptions,
 } from "../../../utils/nepaliDate";
+import useOwnership from "../../hooks/use-ownership";
 
 const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
 
@@ -67,6 +68,34 @@ const REFERENCE_TYPES = [
   { value: "ADVANCE", label: "Advance" },
 ];
 
+// ─── Entity badge helpers (mirrors AddRevenueDialog) ─────────────────────────
+
+function getEntityBadgeColor(type) {
+  switch (type) {
+    case "private":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800";
+    case "company":
+      return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800";
+    case "head_office":
+      return "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800";
+    default:
+      return "bg-muted text-muted-foreground border-border";
+  }
+}
+
+function getEntityTypeLabel(type) {
+  switch (type) {
+    case "private":
+      return "Private";
+    case "company":
+      return "Company";
+    case "head_office":
+      return "Head Office";
+    default:
+      return type ?? "Unknown";
+  }
+}
+
 function getInitialValues() {
   return {
     payeeType: "EXTERNAL",
@@ -93,6 +122,8 @@ function getInitialValues() {
     notes: "",
     paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
     bankAccountId: "",
+    // Ownership
+    entityId: "",
   };
 }
 
@@ -134,6 +165,15 @@ export function AddExpenseDialog({
   const [fetchedStaffList, setFetchedStaffList] = useState([]);
   const [didFetchStaffs, setDidFetchStaffs] = useState(false);
 
+  // Fetch all ownership entities via hook
+  const { entities: rawEntities, loading: entitiesLoading } = useOwnership();
+
+  const allEntities = useMemo(() => {
+    if (!rawEntities) return [];
+    if (Array.isArray(rawEntities)) return rawEntities;
+    return [];
+  }, [rawEntities]);
+
   const hasProvidedStaffList = Array.isArray(staffList) && staffList.length > 0;
   const resolvedStaffList = hasProvidedStaffList ? staffList : fetchedStaffList;
 
@@ -153,6 +193,11 @@ export function AddExpenseDialog({
 
         const nepaliDateStr = values.nepaliDateStr || null;
 
+        // Determine transactionScope from selected entity type
+        const entity = allEntities.find((e) => e._id === values.entityId);
+        const transactionScope =
+          entity?.type === "head_office" ? "head_office" : "building";
+
         const payload = {
           source: values.source,
           amount: Number(values.amount),
@@ -163,7 +208,8 @@ export function AddExpenseDialog({
           notes: values.notes || undefined,
           payeeType,
           paymentMethod,
-          transactionScope: "building",
+          entityId: values.entityId || undefined,
+          transactionScope,
         };
 
         // Payment method → bank account
@@ -227,7 +273,7 @@ export function AddExpenseDialog({
     formik.resetForm({ values: getInitialValues() });
   }, [open]);
 
-  // Fix: populate the staff dropdown when the parent doesn't pass `staffList`.
+  // Populate the staff dropdown when the parent doesn't pass `staffList`.
   useEffect(() => {
     if (!open) return;
     if (hasProvidedStaffList) return;
@@ -456,7 +502,7 @@ export function AddExpenseDialog({
                   </SelectContent>
                 </Select>
 
-                {/* Staff pill — shows selected staff info inline, no history */}
+                {/* Staff pill — shows selected staff info inline */}
                 {selectedStaff && (
                   <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5 mt-1">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold shrink-0">
@@ -470,7 +516,7 @@ export function AddExpenseDialog({
                         {[
                           selectedStaff.role ?? selectedStaff.profile?.designation,
                           selectedStaff.department ??
-                            selectedStaff.profile?.department,
+                          selectedStaff.profile?.department,
                         ]
                           .filter(Boolean)
                           .join(" · ") || selectedStaff.email}
@@ -518,6 +564,43 @@ export function AddExpenseDialog({
               </div>
             </div>
           )}
+
+          {/* ── Receiving Entity ── */}
+          <div className="space-y-2">
+            <FieldLabel>Receiving Entity</FieldLabel>
+            <Select
+              value={formik.values.entityId ?? ""}
+              onValueChange={(v) => formik.setFieldValue("entityId", v)}
+              disabled={entitiesLoading}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue
+                  placeholder={
+                    entitiesLoading ? "Loading entities…" : "— select entity —"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {allEntities.map((e) => (
+                  <SelectItem key={e._id} value={e._id}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
+                      >
+                        {getEntityTypeLabel(e.type)}
+                      </span>
+                      {e.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {formik.values.entityId && (
+              <p className="text-[11px] text-muted-foreground">
+                Expense will be recorded under the selected entity.
+              </p>
+            )}
+          </div>
 
           <SectionDivider label="Transaction" />
 

@@ -1,111 +1,193 @@
 import React from "react";
 
-const METER_SEGMENTS = [
-  { key: "unit", label: "Units", color: "var(--color-primary)", bg: "bg-primary-bg", text: "text-primary", border: "border-primary-border", dotClass: "bg-primary" },
-  { key: "common_area", label: "Common Area", color: "var(--color-success)", bg: "bg-success-bg", text: "text-success", border: "border-success-border", dotClass: "bg-success" },
-  { key: "parking", label: "Parking", color: "var(--color-warning)", bg: "bg-warning-bg", text: "text-warning", border: "border-warning-border", dotClass: "bg-warning" },
-  { key: "sub_meter", label: "Sub-Meter", color: "var(--color-danger)", bg: "bg-danger-bg", text: "text-danger", border: "border-danger-border", dotClass: "bg-danger" },
+// ─── Segment config ───────────────────────────────────────────────────────────
+// Only CSS variables that exist in the petrol theme design system.
+// "primary" and "secondary" are not defined — accent is the brand token.
+
+const SEGMENTS = [
+  {
+    key: "unit",
+    label: "Units",
+    barColor: "var(--color-accent)",
+    textColor: "var(--color-accent)",
+    bgColor: "var(--color-accent-light)",
+    borderColor: "var(--color-accent-mid)",
+  },
+  {
+    key: "common_area",
+    label: "Common Area",
+    barColor: "var(--color-success)",
+    textColor: "var(--color-success)",
+    bgColor: "var(--color-success-bg)",
+    borderColor: "var(--color-success-border)",
+  },
+  {
+    key: "parking",
+    label: "Parking",
+    barColor: "var(--color-warning)",
+    textColor: "var(--color-warning)",
+    bgColor: "var(--color-warning-bg)",
+    borderColor: "var(--color-warning-border)",
+  },
+  {
+    key: "sub_meter",
+    label: "Sub-Meter",
+    barColor: "var(--color-info)",
+    textColor: "var(--color-info)",
+    bgColor: "var(--color-info-bg)",
+    borderColor: "var(--color-info-border)",
+  },
 ];
 
-const fmt = {
-  kwh: (n) =>
-    Number(n).toLocaleString("en-NP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
-  rs: (n) =>
-    `Rs ${Number(n).toLocaleString("en-NP", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-};
+// ─── Formatters ───────────────────────────────────────────────────────────────
+
+const fmtKwh = (n) =>
+  Number(n).toLocaleString("en-NP", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+
+const fmtRs = (n) =>
+  `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function ElectricitySummaryCards({ grouped = {}, summary = {} }) {
   const { grandTotalUnits = 0 } = summary;
 
-  const activeSegments = METER_SEGMENTS.reduce((acc, seg) => {
+  // Build active segments only — skip buckets with no data.
+  const activeSegments = SEGMENTS.reduce((acc, seg) => {
     const bucket = grouped[seg.key];
     const units = Number(bucket?.totalUnits ?? 0);
     const amount = Number(bucket?.totalAmount ?? 0);
     const count = Number(bucket?.count ?? 0);
     if (units <= 0 && amount <= 0 && count <= 0) return acc;
-    acc.push({ ...seg, units, amount, count });
-    return acc;
+    return [...acc, { ...seg, units, amount, count }];
   }, []);
-
-  const divisor = activeSegments.reduce((s, seg) => s + seg.units, 0) || grandTotalUnits || 1;
 
   if (activeSegments.length === 0) return null;
 
+  const divisor =
+    activeSegments.reduce((s, seg) => s + seg.units, 0) || grandTotalUnits || 1;
+
   return (
-    <div className="bg-surface-raised rounded-xl border border-muted-fill overflow-hidden shadow-sm
-      hover:shadow-md transition-shadow duration-200">
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{
+        backgroundColor: "var(--color-surface-raised)",
+        border: "1px solid var(--color-border)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
       {/* Header */}
-      <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-muted-fill bg-gradient-to-r from-muted-fill to-surface-raised">
-        <h3 className="text-sm font-bold text-text-strong tracking-tight">Consumption Breakdown</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-text-sub">Total:</span>
-          <span className="text-sm font-bold text-text-strong">
-            {fmt.kwh(grandTotalUnits)} kWh
-          </span>
-        </div>
+      <div
+        className="px-5 pt-4 pb-3 flex items-center justify-between border-b"
+        style={{
+          borderColor: "var(--color-border)",
+          backgroundColor: "var(--color-surface)",
+        }}
+      >
+        <h3
+          className="text-sm font-semibold"
+          style={{ color: "var(--color-text-strong)" }}
+        >
+          Consumption Breakdown
+        </h3>
+        <span
+          className="text-sm font-semibold tabular-nums"
+          style={{ color: "var(--color-text-body)" }}
+        >
+          {fmtKwh(grandTotalUnits)} kWh
+        </span>
       </div>
 
       <div className="px-5 py-4 space-y-4">
-        {/* Stacked bar — animated on load */}
-        <div className="relative h-4 w-full rounded-full bg-secondary overflow-hidden flex shadow-inner">
+        {/* Stacked bar */}
+        <div
+          className="relative h-3 w-full rounded-full overflow-hidden flex"
+          style={{ backgroundColor: "var(--color-muted)" }}
+        >
           {activeSegments.map((seg) => {
             const pct = (seg.units / divisor) * 100;
             return (
               <div
                 key={seg.key}
-                title={`${seg.label}: ${fmt.kwh(seg.units)} kWh (${pct.toFixed(1)}%)`}
+                title={`${seg.label}: ${fmtKwh(seg.units)} kWh (${pct.toFixed(1)}%)`}
                 style={{
                   width: `${pct}%`,
-                  minWidth: pct > 0 ? "8px" : "0",
-                  backgroundColor: seg.color,
+                  minWidth: pct > 0 ? "6px" : "0",
+                  backgroundColor: seg.barColor,
                   flexShrink: 0,
-                  transition: "all 0.6s cubic-bezier(0.4,0,0.2,1)",
+                  transition: "width 0.5s ease",
                 }}
-                className="hover:opacity-80 cursor-pointer first:rounded-l-full last:rounded-r-full"
+                className="first:rounded-l-full last:rounded-r-full hover:opacity-80 cursor-default"
               />
             );
           })}
         </div>
 
-        {/* Per-type breakdown cards — responsive grid */}
+        {/* Per-type cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {activeSegments.map((seg, index) => {
+          {activeSegments.map((seg) => {
             const pct = ((seg.units / divisor) * 100).toFixed(0);
             return (
               <div
                 key={seg.key}
-                className={`group rounded-xl border border-border px-3.5 py-3.5 ${seg.bg} ${seg.border} 
-                  transition-all duration-200 hover:shadow-md hover:scale-[1.02] cursor-default
-                  animate-in fade-in slide-in-from-bottom-2`}
-                style={{ animationDelay: `${index * 50}ms` }}
+                className="rounded-xl px-3.5 py-3.5"
+                style={{
+                  backgroundColor: seg.bgColor,
+                  border: `1px solid ${seg.borderColor}`,
+                }}
               >
-                <div className="flex items-center gap-2 mb-2.5">
+                {/* Label + percentage */}
+                <div className="flex items-center justify-between gap-1 mb-2.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: seg.barColor }}
+                    />
+                    <span
+                      className="text-xs font-semibold truncate"
+                      style={{ color: seg.textColor }}
+                    >
+                      {seg.label}
+                    </span>
+                  </div>
                   <span
-                    className="inline-block h-3 w-3 rounded-full shrink-0 shadow-sm
-                      transition-transform duration-200 group-hover:scale-110"
-                    style={{ backgroundColor: seg.color }}
-                  />
-                  <span className={`text-xs font-bold ${seg.text} flex-1 truncate`}>
-                    {seg.label}
-                  </span>
-                  <span className={`text-xs font-bold ${seg.text} opacity-70 
-                    px-1.5 py-0.5 rounded-md bg-secondary hover:bg-secondary/80`}>
+                    className="text-[10px] font-bold shrink-0"
+                    style={{ color: seg.textColor, opacity: 0.7 }}
+                  >
                     {pct}%
                   </span>
                 </div>
 
-                <p className={`text-lg font-bold ${seg.text} leading-tight`}>
-                  {fmt.kwh(seg.units)} kWh
+                {/* Primary value */}
+                <p
+                  className="text-lg font-bold leading-tight tabular-nums"
+                  style={{ color: seg.textColor }}
+                >
+                  {fmtKwh(seg.units)} kWh
                 </p>
-                <p className={`text-xs ${seg.text} opacity-80 mt-1`}>
-                  {fmt.rs(seg.amount)}
+
+                {/* Secondary value */}
+                <p
+                  className="text-xs mt-1"
+                  style={{ color: seg.textColor, opacity: 0.75 }}
+                >
+                  {fmtRs(seg.amount)}
                 </p>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-                  <p className={`text-[10px] ${seg.text} opacity-60 font-medium`}>
-                    {seg.count} {seg.count === 1 ? "reading" : "readings"}
-                  </p>
-                  <div className={`w-1.5 h-1.5 rounded-full ${seg.dotClass}`} />
-                </div>
+
+                {/* Reading count */}
+                <p
+                  className="text-[10px] mt-2.5 pt-2 font-medium"
+                  style={{
+                    color: seg.textColor,
+                    opacity: 0.6,
+                    borderTop: `1px solid ${seg.borderColor}`,
+                  }}
+                >
+                  {seg.count} {seg.count === 1 ? "reading" : "readings"}
+                </p>
               </div>
             );
           })}
