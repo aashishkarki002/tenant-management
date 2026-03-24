@@ -379,6 +379,8 @@ export const loginUser = async (req, res) => {
 
     // Set httpOnly cookies — the frontend must NOT read these via JS.
     // The axios instance uses withCredentials:true so they are sent automatically.
+    res.clearCookie("accessToken", { httpOnly: true, path: "/" });
+    res.clearCookie("refreshToken", { httpOnly: true, path: "/" });
     res.cookie(
       "refreshToken",
       result.refreshToken,

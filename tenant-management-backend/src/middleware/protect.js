@@ -1,42 +1,24 @@
+// middleware/protect.js
 import { verifyAccessToken } from "../utils/jwt.js";
 
-export const protect = async (req, res, next) => {
+/**
+ * protect — access token guard for all protected routes.
+ *
+ * Token resolution order (industry standard):
+ *   1. Authorization: Bearer <token>   → API clients / Postman
+ *   2. req.cookies.accessToken          → Browser (httpOnly cookie)
+ *
+ * On success  → attaches req.admin = { id, role } and calls next()
+ * On failure  → 401 (never 403 — identity is unknown at this stage)
+ */
+export const protect = (req, res, next) => {
   try {
-    // Check if request object is valid
-    if (!req) {
-      console.error("Request object is null or undefined");
-      return res.status(500).json({
-        success: false,
-        message: "Internal server error - Invalid request",
-      });
-    }
+    const token = extractToken(req);
 
-    let token = null;
-
-    // Method 1: Try to get token from Authorization header
-    let authHeader = null;
-    if (req.headers && req.headers.authorization) {
-      authHeader = req.headers.authorization;
-    } else if (req.get && typeof req.get === "function") {
-      authHeader = req.get("authorization") || req.get("Authorization");
-    } else if (req.header && typeof req.header === "function") {
-      authHeader = req.header("authorization") || req.header("Authorization");
-    }
-
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.split(" ")[1];
-    }
-
-    // Method 2: Try to get token from cookies (fallback)
-    if (!token && req.cookies && req.cookies.accessToken) {
-      token = req.cookies.accessToken;
-    }
-
-    // If still no token found
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized - No token provided. Please login again.",
+        message: "Unauthorized - No token provided",
       });
     }
 
@@ -45,23 +27,44 @@ export const protect = async (req, res, next) => {
     if (!decoded) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized - Invalid or expired token",
+        message: "Unauthorized - Invalid or expired access token",
       });
     }
 
-    // Token only contains id and role (as per auth.services.js)
+    // Attach minimal identity — never the full DB document.
+    // authorize.js reads req.admin.role for RBAC.
     req.admin = {
       id: decoded.id,
       role: decoded.role,
     };
-    req.admin_id = decoded.id;
 
     next();
-  } catch (error) {
-    console.error("Protect middleware error:", error);
+  } catch (err) {
+    console.error("[protect]", err.message);
     return res.status(401).json({
       success: false,
-      message: "Unauthorized - Token verification failed",
+      message: "Unauthorized",
     });
   }
 };
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Extracts the raw JWT string from the request.
+ * Kept separate so the resolution logic is easy to unit-test.
+ */
+function extractToken(req) {
+  // 1. Bearer header — preferred for non-browser clients
+  const authHeader = req.headers?.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7); // faster than split(" ")[1]
+  }
+
+  // 2. httpOnly cookie — preferred for browser clients
+  if (req.cookies?.accessToken) {
+    return req.cookies.accessToken;
+  }
+
+  return null;
+}
