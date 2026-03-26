@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Plus, ChevronDown, ChevronUp, Zap, Calendar, List,
-  Search, LayoutGrid, LayoutList,
+  Search, LayoutGrid, LayoutList, SlidersHorizontal, X, Check,
 } from 'lucide-react';
 import MaintenanceCard from './components/MaintenanceCard';
 import MaintenanceCalendar from './components/MaintenanceCalendar';
@@ -21,14 +21,12 @@ import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import api from '../../plugins/axios';
 import { useUnits } from '../hooks/use-units';
 import { useBankAccounts } from '../Accounts/hooks/useAccounting';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { useFormik } from 'formik';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import { Empty, EmptyTitle } from '@/components/ui/empty';
 import { cn } from '@/lib/utils';
 import GeneratorPanel from '../Generators/Generator';
-import { useHeaderSlot } from '../context/HeaderSlotContext';
 
 /* ── Style helpers ────────────────────────────────────────────────────────── */
 export const getPriorityStyle = (priority) => {
@@ -80,6 +78,8 @@ export default function Maintenance() {
   const [activeTab, setActiveTab] = useState('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('cards');
+  const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
+  const filterPopoverRef = useRef(null);
 
   const [formSections, setFormSections] = useState({
     general: true, property: false, assign: false, timing: false,
@@ -257,7 +257,6 @@ export default function Maintenance() {
   }, [filteredMaintenance]);
 
   const hasAnyTickets = filteredMaintenance.length > 0;
-  const hasActiveFilters = statusFilter !== 'All' || priorityFilter !== 'All' || searchQuery.trim();
 
   /* ── Card render helper ── */
   const renderCard = (item) => {
@@ -285,55 +284,56 @@ export default function Maintenance() {
     );
   };
 
-  // ── Header slot ─────────────────────────────────────────────────────────
-  useHeaderSlot(
-    () => (
-      <div className="flex items-center w-full min-w-0">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className="hidden sm:flex items-center gap-2 shrink-0">
-            <span className="h-1.5 w-1.5 rounded-full bg-text-strong" />
-            <span className="text-sm font-semibold whitespace-nowrap text-text-strong">
-              Maintenance
-            </span>
-          </div>
-          <div className="hidden sm:block h-4 w-px shrink-0 bg-muted-fill" />
-          <nav className="flex items-center gap-1 flex-1 sm:flex-none">
-            {[
-              { id: 'list', label: 'List', Icon: List },
-              { id: 'calendar', label: 'Calendar', Icon: Calendar },
-              { id: 'generator', label: 'Generator', Icon: Zap },
-            ].map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setActiveTab(id)}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors',
-                  activeTab === id
-                    ? 'bg-surface-raised text-text-strong'
-                    : 'text-text-sub',
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="hidden sm:inline">{label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
+  /* ── Close filter popover on outside click ── */
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (filterPopoverRef.current && !filterPopoverRef.current.contains(e.target)) {
+        setFilterPopoverOpen(false);
+      }
+    };
+    if (filterPopoverOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [filterPopoverOpen]);
 
-      </div>
-    ),
-    [activeTab],
-  );
+  /* ── Clear header slot (tabs moved into page body) ── */
+
+  const hasActiveFilters = statusFilter !== 'All' || priorityFilter !== 'All' || searchQuery.trim();
 
   /* ────────────────────────────────────────────────────────────────────────
      RENDER
   ──────────────────────────────────────────────────────────────────────── */
   return (
     <div className="pb-12">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 bg-surface">
-        {/* ════════════════ LIST TAB ════════════════ */}
-        <TabsContent value="list" className="space-y-6">
+
+      {/* ════════════════ PAGE-LEVEL TAB NAV ════════════════ */}
+      <div className="flex items-center justify-between border-b border-muted-fill mb-6">
+        <nav className="flex items-center">
+          {[
+            { id: 'list', label: 'List', Icon: List },
+            { id: 'calendar', label: 'Calendar', Icon: Calendar },
+            { id: 'generator', label: 'Generator', Icon: Zap },
+          ].map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id)}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px',
+                activeTab === id
+                  ? 'border-text-strong text-text-strong'
+                  : 'border-transparent text-text-sub hover:text-text-body hover:border-muted-fill',
+              )}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* ════════════════ LIST TAB ════════════════ */}
+      {activeTab === 'list' && (
+        <div className="space-y-6">
 
           {/* ── Page Header ── */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -385,31 +385,10 @@ export default function Maintenance() {
           {/* ── KPI Cards ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {[
-              {
-                label: 'Open',
-                value: stats.open,
-                bg: 'bg-muted-fill', border: 'border-muted-fill',
-                numColor: 'text-text-strong',
-              },
-              {
-                label: 'In Progress',
-                value: stats.inProgress,
-                bg: 'bg-muted-fill', border: 'border-muted-fill',
-                numColor: 'text-text-strong',
-              },
-              {
-                label: 'Overdue',
-                value: stats.overdue,
-                bg: stats.overdue > 0 ? 'bg-muted-fill' : 'bg-muted-fill',
-                border: stats.overdue > 0 ? 'border-muted-fill' : 'border-muted-fill',
-                numColor: stats.overdue > 0 ? 'text-text-strong' : 'text-text-sub',
-              },
-              {
-                label: 'Completed This Week',
-                value: stats.completedThisWeek,
-                bg: 'bg-muted-fill', border: 'border-muted-fill',
-                numColor: 'text-text-strong',
-              },
+              { label: 'Open', value: stats.open, bg: 'bg-muted-fill', border: 'border-muted-fill', numColor: 'text-text-strong' },
+              { label: 'In Progress', value: stats.inProgress, bg: 'bg-muted-fill', border: 'border-muted-fill', numColor: 'text-text-strong' },
+              { label: 'Overdue', value: stats.overdue, bg: 'bg-muted-fill', border: 'border-muted-fill', numColor: stats.overdue > 0 ? 'text-text-strong' : 'text-text-sub' },
+              { label: 'Completed This Week', value: stats.completedThisWeek, bg: 'bg-muted-fill', border: 'border-muted-fill', numColor: 'text-text-strong' },
             ].map(({ label, value, bg, border, numColor }) => (
               <div key={label} className={cn('rounded-xl border p-5 shadow-sm', bg, border)}>
                 <p className={cn('text-3xl font-bold tabular-nums', numColor)}>{value}</p>
@@ -418,96 +397,144 @@ export default function Maintenance() {
             ))}
           </div>
 
-          {/* ── Search ── */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-sub pointer-events-none" />
-            <Input
-              placeholder="Search repairs, tenants, or units..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-surface-raised border-muted-fill h-10"
-            />
-          </div>
-
-          {/* ── Filters ── */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            {/* Status filters */}
-            <div className="flex items-center gap-2">
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-text-sub">
-                Status
-              </span>
-              <div className="sm:hidden flex-1">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="h-8 text-sm bg-surface-raised border-muted-fill">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_FILTERS.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s === 'All' ? 'All' : formatStatus(s)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="hidden sm:flex items-center rounded-lg border border-gray-200 bg-gray-50/50 p-0.5">
-                {STATUS_FILTERS.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setStatusFilter(s)}
-                    className={cn(
-                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
-                      statusFilter === s
-                        ? 'bg-surface-raised text-text-strong shadow-sm'
-                        : 'text-text-sub hover:text-text-body',
-                    )}
-                  >
-                    {s === 'All' ? 'All' : formatStatus(s)}
-                  </button>
-                ))}
-              </div>
+          {/* ── Search + Filter toolbar ── */}
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-sub pointer-events-none" />
+              <Input
+                placeholder="Search repairs, tenants, or units..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 bg-surface-raised border-muted-fill h-10"
+              />
             </div>
 
-            <div className="hidden sm:block h-4 w-px bg-muted-fill" />
+            {/* Filter button + popover */}
+            <div className="relative" ref={filterPopoverRef}>
+              <button
+                type="button"
+                onClick={() => setFilterPopoverOpen((v) => !v)}
+                className={cn(
+                  'flex items-center gap-2 h-10 px-4 rounded-lg border text-sm font-medium transition-colors',
+                  hasActiveFilters
+                    ? 'border-emerald-600 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                    : 'border-muted-fill bg-surface-raised text-text-body hover:bg-muted-fill',
+                )}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                Filter
+                {hasActiveFilters && (
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-semibold text-white">
+                    {(statusFilter !== 'All' ? 1 : 0) + (priorityFilter !== 'All' ? 1 : 0)}
+                  </span>
+                )}
+              </button>
 
-            {/* Priority filters */}
-            <div className="flex items-center gap-2">
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-text-sub">
-                Priority
-              </span>
-              <div className="sm:hidden flex-1">
-                <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                  <SelectTrigger className="h-8 text-sm bg-surface-raised border-muted-fill">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRIORITY_FILTERS.map((p) => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="hidden sm:flex items-center rounded-lg border border-muted-fill bg-muted-fill/50 p-0.5">
-                {PRIORITY_FILTERS.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setPriorityFilter(p)}
-                    className={cn(
-                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                      priorityFilter === p
-                        ? 'bg-surface-raised text-text-strong shadow-sm'
-                        : 'text-text-sub hover:text-text-body',
-                    )}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
+              {/* Popover */}
+              {filterPopoverOpen && (
+                <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-56 rounded-xl border border-muted-fill bg-surface-raised shadow-lg">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-muted-fill">
+                    <span className="text-sm font-semibold text-text-strong">Filters</span>
+                    <button
+                      type="button"
+                      onClick={() => setFilterPopoverOpen(false)}
+                      className="rounded-full p-1 text-text-sub hover:bg-muted-fill transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Status section */}
+                  <div className="px-4 pt-3 pb-2">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-sub">
+                      Status
+                    </p>
+                    <div className="flex flex-col gap-1">
+                      {STATUS_FILTERS.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setStatusFilter(s)}
+                          className={cn(
+                            'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-left transition-colors',
+                            statusFilter === s
+                              ? 'bg-muted-fill text-text-strong font-medium'
+                              : 'text-text-body hover:bg-muted-fill/60',
+                          )}
+                        >
+                          <span className={cn(
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded',
+                            statusFilter === s ? 'bg-emerald-600' : 'border border-muted-fill bg-surface-raised',
+                          )}>
+                            {statusFilter === s && <Check className="h-2.5 w-2.5 text-white" />}
+                          </span>
+                          {s === 'All' ? 'All statuses' : formatStatus(s)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mx-4 border-t border-muted-fill" />
+
+                  {/* Priority section */}
+                  <div className="px-4 pt-3 pb-3">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-sub">
+                      Priority
+                    </p>
+                    <div className="flex flex-col gap-1">
+                      {PRIORITY_FILTERS.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setPriorityFilter(p)}
+                          className={cn(
+                            'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-left transition-colors',
+                            priorityFilter === p
+                              ? 'bg-muted-fill text-text-strong font-medium'
+                              : 'text-text-body hover:bg-muted-fill/60',
+                          )}
+                        >
+                          <span className={cn(
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded',
+                            priorityFilter === p ? 'bg-emerald-600' : 'border border-muted-fill bg-surface-raised',
+                          )}>
+                            {priorityFilter === p && <Check className="h-2.5 w-2.5 text-white" />}
+                          </span>
+                          {p === 'All' ? 'All priorities' : p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Footer: clear */}
+                  {hasActiveFilters && (
+                    <>
+                      <div className="mx-4 border-t border-muted-fill" />
+                      <div className="px-4 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatusFilter('All');
+                            setPriorityFilter('All');
+                            setSearchQuery('');
+                            setFilterPopoverOpen(false);
+                          }}
+                          className="w-full rounded-lg py-1.5 text-xs font-medium text-text-sub hover:bg-muted-fill transition-colors"
+                        >
+                          Clear all filters
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Result count */}
+            {/* Result count (only when active) */}
             {hasActiveFilters && (
-              <span className="ml-auto text-xs text-text-sub">
+              <span className="shrink-0 text-xs text-text-sub">
                 {filteredMaintenance.length} result{filteredMaintenance.length !== 1 ? 's' : ''}
               </span>
             )}
@@ -553,7 +580,6 @@ export default function Maintenance() {
                     : "No tasks match the current filters"}
                 </EmptyTitle>
               </Empty>
-
               {maintenance.length === 0 && (
                 <AddTaskDialog
                   formik={formik}
@@ -568,18 +594,18 @@ export default function Maintenance() {
               )}
             </div>
           )}
-        </TabsContent>
+        </div>
+      )}
 
-        {/* ════════════════ CALENDAR TAB ════════════════ */}
-        <TabsContent value="calendar">
-          <MaintenanceCalendar maintenance={maintenance} />
-        </TabsContent>
+      {/* ════════════════ CALENDAR TAB ════════════════ */}
+      {activeTab === 'calendar' && (
+        <MaintenanceCalendar maintenance={maintenance} />
+      )}
 
-        {/* ════════════════ GENERATOR TAB ════════════════ */}
-        <TabsContent value="generator">
-          <GeneratorPanel />
-        </TabsContent>
-      </Tabs>
+      {/* ════════════════ GENERATOR TAB ════════════════ */}
+      {activeTab === 'generator' && (
+        <GeneratorPanel />
+      )}
     </div>
   );
 }
@@ -590,7 +616,7 @@ function AddTaskDialog({
   unit, staffs, selectedTenant, isLoading,
   compact = false, label,
 }) {
-  const buttonLabel = label || '+ New Repair';
+  const buttonLabel = label || ' New Repair';
   return (
     <Dialog>
       <DialogTrigger asChild>
