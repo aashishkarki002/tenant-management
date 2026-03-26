@@ -96,19 +96,31 @@ const tenantSchema = new mongoose.Schema(
     rentEscalation: {
       // Master switch
       enabled: { type: Boolean, default: false },
-
-      // How often does escalation trigger (in months, e.g. 12 = yearly)
-      intervalMonths: { type: Number, default: 12 },
-
-      // Percentage increase per interval (e.g. 5 = 5%)
-      percentageIncrease: { type: Number, default: 0 },
-
+      scheduled: [
+        {
+          intervalMonths: { type: Number, required: true },
+          type: {
+            type: String,
+            enum: ["percentage", "fixed_amount", "fixed_per_sqft", "absolute"],
+            default: "percentage",
+            required: true,
+          },
+          // The value to apply — interpretation depends on `type`:
+          //   percentage   → 5 means +5%, -10 means -10% (discount), 0 means freeze
+          //   fixed_amount → rupees added to total rent e.g. 5000 = +Rs. 5,000/mo
+          //   fixed_per_sqft → rupees added to pricePerSqft e.g. 2 = +Rs. 2/sqft
+          //   absolute     → the exact new totalRentPaisa in RUPEES (not paisa)
+          value: { type: Number, required: true },
+          label: { type: String, required: true },
+          appliesTo: {
+            type: String,
+            enum: ["rent_only", "cam_only", "both"],
+            default: "rent_only",
+          },
+        },
+      ],
+      currentScheduledIndex: { type: Number, default: 0 },
       // What the escalation applies to
-      appliesTo: {
-        type: String,
-        enum: ["rent_only", "cam_only", "both"],
-        default: "rent_only",
-      },
 
       // ── English Date (JS Date) — used for MongoDB index + cron queries ──
       nextEscalationDate: { type: Date, default: null },
@@ -148,7 +160,9 @@ const tenantSchema = new mongoose.Schema(
           newGrossAmountPaisa: { type: Number, required: true },
           newTotalRentPaisa: { type: Number, required: true },
           newCamChargesPaisa: { type: Number, required: true },
-
+          // Add to history subdoc schema in Tenant.Model.js:
+          escalationType: { type: String, default: "percentage" },
+          escalationValue: { type: Number }, // the raw value (%, rupees, or Rs/sqft)
           percentageApplied: { type: Number, required: true },
           note: { type: String, default: "" },
         },

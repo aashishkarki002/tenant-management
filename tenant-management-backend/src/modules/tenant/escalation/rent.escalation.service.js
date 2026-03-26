@@ -84,22 +84,97 @@ function computeNextEscalationDate(baseNpDate, intervalMonths) {
  * @param {number} pct      Percentage to apply, e.g. 5
  * @returns {Object}
  */
-function computeEscalatedValues(tenant, pct) {
-  const appliesTo = tenant.rentEscalation?.appliesTo ?? "rent_only";
+function computeEscalatedValues(tenant, step) {
+  // Per-step appliesTo overrides the tenant-level setting
+  const appliesTo =
+    step.appliesTo ?? tenant.rentEscalation?.appliesTo ?? "rent_only";
   const sqft = tenant.leasedSquareFeet;
 
-  // Only escalate the rates that appliesTo covers
-  const newPricePerSqftPaisa =
-    appliesTo === "cam_only"
-      ? tenant.pricePerSqftPaisa
-      : applyPercentage(tenant.pricePerSqftPaisa, pct);
+  let newPricePerSqftPaisa = tenant.pricePerSqftPaisa;
+  let newCamRatePerSqftPaisa = tenant.camRatePerSqftPaisa;
 
-  const newCamRatePerSqftPaisa =
-    appliesTo === "rent_only"
-      ? tenant.camRatePerSqftPaisa
-      : applyPercentage(tenant.camRatePerSqftPaisa, pct);
+  switch (step.type) {
+    // ── PERCENTAGE ──────────────────────────────────────────────────────────
+    // value = 5 → +5%, value = 0 → freeze, value = -10 → discount
+    case "percentage": {
+      if (appliesTo !== "cam_only") {
+        newPricePerSqftPaisa = Math.round(
+          tenant.pricePerSqftPaisa * (1 + step.value / 100),
+        );
+      }
+      if (appliesTo !== "rent_only") {
+        newCamRatePerSqftPaisa = Math.round(
+          tenant.camRatePerSqftPaisa * (1 + step.value / 100),
+        );
+      }
+      break;
+    }
 
-  // Re-run the full rent formula (takes rupees, returns rupees)
+    // ── FIXED AMOUNT ────────────────────────────────────────────────────────
+    // value = rupees added to total rent per month e.g. 5000 = +Rs. 5,000/mo
+    // We back-derive the new pricePerSqft so the formula stays consistent.
+    // CAM is never touched by fixed_amount (you're fixing the rent, not the rate).
+    case "fixed_amount": {
+      if (appliesTo === "cam_only") {
+        // Fixed amount on CAM → distribute across sqft
+        const camIncreasePaisa = Math.round(step.value * 100); // rupees → paisa
+        const camIncreasePerSqftPaisa = Math.round(camIncreasePaisa / sqft);
+        newCamRatePerSqftPaisa =
+          tenant.camRatePerSqftPaisa + camIncreasePerSqftPaisa;
+        break;
+      }
+      // Default: applies to rent component
+      const rentIncreasePaisa = Math.round(step.value * 100); // rupees → paisa
+      const rentIncreasePerSqftPaisa = Math.round(rentIncreasePaisa / sqft);
+      newPricePerSqftPaisa =
+        tenant.pricePerSqftPaisa + rentIncreasePerSqftPaisa;
+
+      if (appliesTo === "both") {
+        // Same absolute rupee amount added to CAM too
+        const camIncreasePaisa = Math.round(step.value * 100);
+        const camIncreasePerSqftPaisa = Math.round(camIncreasePaisa / sqft);
+        newCamRatePerSqftPaisa =
+          tenant.camRatePerSqftPaisa + camIncreasePerSqftPaisa;
+      }
+      break;
+    }
+
+    // ── FIXED PER SQFT ──────────────────────────────────────────────────────
+    // value = rupees per sqft to add e.g. 2 = +Rs. 2/sqft
+    // Most natural for Nepal commercial leases — rate cards are per-sqft.
+    case "fixed_per_sqft": {
+      const increasePerSqftPaisa = Math.round(step.value * 100); // rupees → paisa
+      if (appliesTo !== "cam_only") {
+        newPricePerSqftPaisa = tenant.pricePerSqftPaisa + increasePerSqftPaisa;
+      }
+      if (appliesTo !== "rent_only") {
+        newCamRatePerSqftPaisa =
+          tenant.camRatePerSqftPaisa + increasePerSqftPaisa;
+      }
+      break;
+    }
+
+    // ── ABSOLUTE ─────────────────────────────────────────────────────────────
+    // value = the exact new total rent in RUPEES (not paisa, for admin sanity).
+    // Back-derives pricePerSqft from the target amount so everything stays consistent.
+    // CAM is unchanged — absolute targets the rent component only.
+    case "absolute": {
+      const targetTotalRentPaisa = Math.round(step.value * 100);
+      // Back-derive: totalRent = pricePerSqft * sqft * (1 - tdsRate)
+      // So: pricePerSqft = targetTotalRent / (sqft * (1 - tdsRate))
+      const tdsRate = (tenant.tdsPercentage ?? 10) / 100;
+      newPricePerSqftPaisa = Math.round(
+        targetTotalRentPaisa / (sqft * (1 - tdsRate)),
+      );
+      // CAM untouched for absolute — admin explicitly set the rent number
+      break;
+    }
+
+    default:
+      throw new Error(`Unknown escalation type: ${step.type}`);
+  }
+
+  // ── Re-run full rent formula ────────────────────────────────────────────────
   const calc = calculateUnitLease({
     sqft,
     pricePerSqft: paisaToRupees(newPricePerSqftPaisa),
@@ -111,7 +186,7 @@ function computeEscalatedValues(tenant, pct) {
   const totalRentPaisa = Math.round(calc.rentMonthly * 100);
 
   return {
-    // ── Paisa values (stored in DB) ──────────────────────────────────────────
+    // ── Paisa values (DB) ───────────────────────────────────────────────────
     pricePerSqftPaisa: newPricePerSqftPaisa,
     camRatePerSqftPaisa: newCamRatePerSqftPaisa,
     grossAmountPaisa: Math.round(calc.grossMonthly * 100),
@@ -120,10 +195,9 @@ function computeEscalatedValues(tenant, pct) {
     totalRentPaisa,
     camChargesPaisa: Math.round(calc.camMonthly * 100),
     netAmountPaisa: Math.round(calc.netMonthly * 100),
-    // Quarterly amount pre-computed so applyEscalation never diverges
     quarterlyRentAmountPaisa: totalRentPaisa * 3,
 
-    // ── Rupee values (API response / preview only) ───────────────────────────
+    // ── Rupee values (API response / preview) ───────────────────────────────
     pricePerSqft: paisaToRupees(newPricePerSqftPaisa),
     camRatePerSqft: paisaToRupees(newCamRatePerSqftPaisa),
     grossAmount: calc.grossMonthly,
@@ -133,7 +207,10 @@ function computeEscalatedValues(tenant, pct) {
     netAmount: calc.netMonthly,
     quarterlyRentAmount: calc.rentMonthly * 3,
 
-    percentageApplied: pct,
+    // ── Escalation metadata ─────────────────────────────────────────────────
+    escalationType: step.type,
+    escalationValue: step.value,
+    appliesTo,
   };
 }
 
@@ -154,9 +231,19 @@ export async function previewEscalation(tenantId, overridePercentage) {
   if (!tenant.rentEscalation?.enabled) {
     throw new Error("Rent escalation is not enabled for this tenant");
   }
+  const schedule = tenant.rentEscalation.schedule ?? [];
+  const stepIndex = Math.min(
+    tenant.rentEscalation.currentStepIndex ?? 0,
+    schedule.length - 1,
+  );
+  const currentStep = schedule[stepIndex];
 
-  const pct = overridePercentage ?? tenant.rentEscalation.percentageIncrease;
-  const newValues = computeEscalatedValues(tenant, pct);
+  const effectiveStep =
+    overridePercentage != null
+      ? { ...currentStep, type: "percentage", value: overridePercentage }
+      : currentStep;
+
+  const newValues = computeEscalatedValues(tenant, effectiveStep);
 
   // getNepaliMonthDates() gives today's full Nepali context in one call
   const { nepaliToday, npYear, npMonth, nepaliMonthName } =
@@ -168,6 +255,15 @@ export async function previewEscalation(tenantId, overridePercentage) {
 
   return {
     ...newValues,
+    stepInfo: {
+      index: stepIndex,
+      label: currentStep.label,
+      type: effectiveStep.type,
+      value: effectiveStep.value,
+      totalSteps: schedule.length,
+      isLastStep: stepIndex === schedule.length - 1,
+      repeatingAfterExhaustion: stepIndex === schedule.length - 1,
+    },
     context: {
       today: {
         nepali: formatNepaliISO(nepaliToday),
@@ -217,123 +313,117 @@ export async function previewEscalation(tenantId, overridePercentage) {
 export async function applyEscalation(tenantId, options = {}) {
   const { overridePercentage, note = "", adminId, session } = options;
 
-  // Build query with optional session
-  const query = Tenant.findById(tenantId);
-  if (session) query.session(session);
-  const tenant = await query;
-
-  if (!tenant) {
+  const queryOptions = session ? { session } : {};
+  const tenant = await Tenant.findById(tenantId, null, queryOptions);
+  if (!tenant)
     return { success: false, message: "Tenant not found", statusCode: 404 };
-  }
   if (!tenant.rentEscalation?.enabled) {
     return {
       success: false,
-      message: "Rent escalation is not enabled for this tenant",
+      message: "Escalation not enabled",
       statusCode: 400,
     };
   }
 
-  const pct = overridePercentage ?? tenant.rentEscalation.percentageIncrease;
+  const escalation = tenant.rentEscalation;
+  const schedule = escalation.schedule ?? [];
 
-  // ── Snapshot BEFORE values ────────────────────────────────────────────────
-  const before = {
-    pricePerSqftPaisa: tenant.pricePerSqftPaisa,
-    camRatePerSqftPaisa: tenant.camRatePerSqftPaisa,
-    grossAmountPaisa: tenant.grossAmountPaisa,
-    totalRentPaisa: tenant.totalRentPaisa,
-    camChargesPaisa: tenant.camChargesPaisa,
-  };
-
-  // ── Recalculate financials ────────────────────────────────────────────────
-  const newValues = computeEscalatedValues(tenant, pct);
-
-  // ── Today in Nepali calendar ──────────────────────────────────────────────
-  // getNepaliMonthDates() returns npYear and npMonth (1-based) ready for DB storage
-  const { nepaliToday, npYear, npMonth } = getNepaliMonthDates();
-  const todayNpISO = formatNepaliISO(nepaliToday);
-
-  // ── Compute NEXT escalation date ──────────────────────────────────────────
-  // Base = stored nextEscalationNepaliDate  OR  leaseStartDate (never "today")
-  // addNepaliMonths preserves the original day-of-month with built-in clamping
-  const escalationBase = tenant.rentEscalation.nextEscalationNepaliDate
-    ? parseNepaliISO(tenant.rentEscalation.nextEscalationNepaliDate)
-    : toNepaliDate(tenant.leaseStartDate);
-
-  const nextNpDate = computeNextEscalationDate(
-    escalationBase,
-    tenant.rentEscalation.intervalMonths,
-  );
-  const nextNpISO = formatNepaliISO(nextNpDate);
-  const nextNpMonth1 = nextNpDate.getMonth() + 1; // 1-based for getQuarterFromMonth
-
-  // ── Write new financial values ────────────────────────────────────────────
-  tenant.pricePerSqftPaisa = newValues.pricePerSqftPaisa;
-  tenant.pricePerSqft = paisaToRupees(newValues.pricePerSqftPaisa);
-  tenant.camRatePerSqftPaisa = newValues.camRatePerSqftPaisa;
-  tenant.camRatePerSqft = paisaToRupees(newValues.camRatePerSqftPaisa);
-  tenant.grossAmountPaisa = newValues.grossAmountPaisa;
-  tenant.totalRentPaisa = newValues.totalRentPaisa;
-  tenant.tdsPaisa = newValues.tdsPaisa;
-  tenant.rentalRatePaisa = newValues.rentalRatePaisa;
-  tenant.camChargesPaisa = newValues.camChargesPaisa;
-  tenant.netAmountPaisa = newValues.netAmountPaisa;
-
-  if (tenant.rentPaymentFrequency === "quarterly") {
-    tenant.quarterlyRentAmountPaisa = newValues.quarterlyRentAmountPaisa;
+  if (schedule.length === 0) {
+    return {
+      success: false,
+      message: "No escalation schedule defined",
+      statusCode: 400,
+    };
   }
 
-  // ── Advance escalation schedule ───────────────────────────────────────────
-  tenant.rentEscalation.lastEscalatedAt = new Date();
-  tenant.rentEscalation.lastEscalatedNepaliDate = todayNpISO;
-  tenant.rentEscalation.nextEscalationDate = nextNpDate.getDateObject(); // English Date for cron index
-  tenant.rentEscalation.nextEscalationNepaliDate = nextNpISO;
+  // ── Pick current step (clamp to last if exhausted) ───────────────────
+  const stepIndex = Math.min(
+    escalation.currentStepIndex ?? 0,
+    schedule.length - 1,
+  );
+  const currentStep = schedule[stepIndex];
+  const effectiveStep =
+    overridePercentage != null
+      ? { ...currentStep, type: "percentage", value: overridePercentage }
+      : currentStep;
 
-  // ── Push history entry ────────────────────────────────────────────────────
-  tenant.rentEscalation.history.push({
+  const newValues = computeEscalatedValues(tenant, effectiveStep);
+
+  // ── Advance step index (stays at last step after exhaustion) ─────────
+  const nextStepIndex = Math.min(stepIndex + 1, schedule.length - 1);
+  const nextStep = schedule[nextStepIndex];
+
+  // ── Compute NEXT escalation date from the CURRENT fire date ──────────
+  // Current nextEscalationNepaliDate is TODAY (the date that just fired).
+  // We advance by nextStep.intervalMonths from it.
+  const currentFireNpDate = escalation.nextEscalationNepaliDate
+    ? parseNepaliISO(escalation.nextEscalationNepaliDate)
+    : toNepaliDate(tenant.leaseStartDate);
+
+  const nextEscNpDate = computeNextEscalationDate(
+    currentFireNpDate,
+    nextStep.intervalMonths,
+  );
+  const nextEscISO = formatNepaliISO(nextEscNpDate);
+  const nextEscEnglish = nextEscNpDate.getDateObject();
+
+  // ── Build history entry ───────────────────────────────────────────────
+  const { nepaliToday, npYear, npMonth } = getNepaliMonthDates();
+  const historyEntry = {
     escalatedAt: new Date(),
-    escalatedNepaliDate: todayNpISO,
+    escalatedNepaliDate: formatNepaliISO(nepaliToday),
     nepaliYear: npYear,
-    nepaliMonth: npMonth, // 1-based, from getNepaliMonthDates
-    quarter: getQuarterFromMonth(npMonth), // derived via helper
+    nepaliMonth: npMonth,
+    quarter: getQuarterFromMonth(npMonth),
     escalatedBy: adminId ? new mongoose.Types.ObjectId(adminId) : undefined,
-
-    // Before snapshot
-    previousPricePerSqftPaisa: before.pricePerSqftPaisa,
-    previousCamRatePerSqftPaisa: before.camRatePerSqftPaisa,
-    previousGrossAmountPaisa: before.grossAmountPaisa,
-    previousTotalRentPaisa: before.totalRentPaisa,
-    previousCamChargesPaisa: before.camChargesPaisa,
-
-    // After snapshot
+    previousPricePerSqftPaisa: tenant.pricePerSqftPaisa,
+    previousCamRatePerSqftPaisa: tenant.camRatePerSqftPaisa,
+    previousGrossAmountPaisa: tenant.grossAmountPaisa,
+    previousTotalRentPaisa: tenant.totalRentPaisa,
+    previousCamChargesPaisa: tenant.camChargesPaisa,
     newPricePerSqftPaisa: newValues.pricePerSqftPaisa,
     newCamRatePerSqftPaisa: newValues.camRatePerSqftPaisa,
     newGrossAmountPaisa: newValues.grossAmountPaisa,
     newTotalRentPaisa: newValues.totalRentPaisa,
     newCamChargesPaisa: newValues.camChargesPaisa,
+    percentageApplied: effectiveStep.value,
+    note: note || currentStep.label || "",
+  };
 
-    percentageApplied: pct,
-    note,
+  // ── Write to DB ───────────────────────────────────────────────────────
+  Object.assign(tenant, {
+    pricePerSqftPaisa: newValues.pricePerSqftPaisa,
+    camRatePerSqftPaisa: newValues.camRatePerSqftPaisa,
+    grossAmountPaisa: newValues.grossAmountPaisa,
+    tdsPaisa: newValues.tdsPaisa,
+    rentalRatePaisa: newValues.rentalRatePaisa,
+    totalRentPaisa: newValues.totalRentPaisa,
+    camChargesPaisa: newValues.camChargesPaisa,
+    netAmountPaisa: newValues.netAmountPaisa,
+    quarterlyRentAmountPaisa: newValues.quarterlyRentAmountPaisa,
   });
 
-  // Correct Mongoose save() session syntax
-  await tenant.save(session ? { session } : undefined);
+  tenant.rentEscalation.currentStepIndex = nextStepIndex;
+  tenant.rentEscalation.nextEscalationDate = nextEscEnglish;
+  tenant.rentEscalation.nextEscalationNepaliDate = nextEscISO;
+  tenant.rentEscalation.lastEscalatedAt = new Date();
+  tenant.rentEscalation.lastEscalatedNepaliDate = formatNepaliISO(nepaliToday);
+  tenant.rentEscalation.history.push(historyEntry);
 
-  console.log(
-    `✅ Escalation applied — Tenant: ${tenant.name} | ${pct}% | ` +
-      `Nepali: ${todayNpISO} | Next due: ${nextNpISO}`,
-  );
+  await tenant.save(queryOptions);
 
   return {
     success: true,
-    message: `Rent escalated by ${pct}% successfully`,
-    tenant,
-    preview: newValues,
-    nepaliDates: {
-      appliedOn: todayNpISO,
-      appliedQuarter: getQuarterFromMonth(npMonth),
-      nextEscalationDue: nextNpISO,
-      nextEscalationQuarter: getQuarterFromMonth(nextNpMonth1),
+    message: `Escalation applied: ${pct}% (Step ${stepIndex + 1} of ${schedule.length})`,
+    stepApplied: { index: stepIndex, label: currentStep.label, pct },
+    nextStep: {
+      index: nextStepIndex,
+      label: nextStep.label,
+      pct: nextStep.percentageIncrease,
+      nepaliDate: nextEscISO,
     },
+    newValues,
+    tenant,
   };
 }
 
@@ -438,72 +528,87 @@ export async function processDueEscalations(asOf = new Date()) {
  */
 export async function enableEscalation(tenantId, settings) {
   const tenant = await Tenant.findById(tenantId);
-  if (!tenant) {
+  if (!tenant)
     return { success: false, message: "Tenant not found", statusCode: 404 };
+
+  const { schedule, appliesTo = "rent_only", startNepaliDate } = settings;
+
+  // ── Backward compat: single-step input → normalize to schedule array ──
+  // Allows: { percentageIncrease: 5, intervalMonths: 12 }
+  // to work exactly as before without breaking existing callers
+  let resolvedSchedule = schedule;
+  if (!resolvedSchedule || resolvedSchedule.length === 0) {
+    const pct = settings.percentageIncrease;
+    const interval = settings.intervalMonths ?? 12;
+    if (!pct || pct < 0) {
+      return {
+        success: false,
+        message: "schedule or percentageIncrease required",
+        statusCode: 400,
+      };
+    }
+    resolvedSchedule = [
+      { intervalMonths: interval, percentageIncrease: pct, label: "Default" },
+    ];
   }
 
-  const {
-    percentageIncrease,
-    intervalMonths = 12,
-    appliesTo = "rent_only",
-    startNepaliDate,
-  } = settings;
-
-  if (!percentageIncrease || percentageIncrease <= 0) {
-    return {
-      success: false,
-      message: "percentageIncrease must be a positive number",
-      statusCode: 400,
-    };
+  // ── Validate schedule ─────────────────────────────────────────────────
+  for (const [i, step] of resolvedSchedule.entries()) {
+    if (!step.intervalMonths || step.intervalMonths < 1) {
+      return {
+        success: false,
+        message: `Step ${i}: intervalMonths must be >= 1`,
+        statusCode: 400,
+      };
+    }
+    if (step.percentageIncrease == null || step.percentageIncrease < 0) {
+      return {
+        success: false,
+        message: `Step ${i}: percentageIncrease must be >= 0 (0 = freeze)`,
+        statusCode: 400,
+      };
+    }
   }
 
-  // ── Anchor: explicit override → leaseStartDate ────────────────────────────
+  // ── Compute first escalation date from step[0].intervalMonths ────────
   const anchorNpDate = startNepaliDate
     ? parseNepaliISO(startNepaliDate)
     : toNepaliDate(tenant.leaseStartDate);
 
-  // First escalation = anchor + intervalMonths
-  // addNepaliMonths (via computeNextEscalationDate) clamps the day automatically
-  const firstEscalationNpDate = computeNextEscalationDate(
+  const firstNpDate = computeNextEscalationDate(
     anchorNpDate,
-    intervalMonths,
+    resolvedSchedule[0].intervalMonths,
   );
-  const firstEscalationISO = formatNepaliISO(firstEscalationNpDate);
-  const firstEscalationEnglish = firstEscalationNpDate.getDateObject();
-  const firstEscalationMonth1 = firstEscalationNpDate.getMonth() + 1; // 1-based
+  const firstISO = formatNepaliISO(firstNpDate);
+  const firstEnglish = firstNpDate.getDateObject();
 
-  // Preserve existing history and last-escalated info (safe toObject() for subdoc)
   const existing =
     tenant.rentEscalation?.toObject?.() ?? tenant.rentEscalation ?? {};
 
   tenant.rentEscalation = {
     ...existing,
     enabled: true,
-    percentageIncrease,
-    intervalMonths,
+    schedule: resolvedSchedule,
+    currentStepIndex: 0, // always reset to step 0 on (re-)enable
     appliesTo,
-    nextEscalationDate: firstEscalationEnglish, // English Date → cron index
-    nextEscalationNepaliDate: firstEscalationISO, // Human-readable display
+    nextEscalationDate: firstEnglish,
+    nextEscalationNepaliDate: firstISO,
     history: existing.history ?? [],
     lastEscalatedAt: existing.lastEscalatedAt ?? null,
     lastEscalatedNepaliDate: existing.lastEscalatedNepaliDate ?? null,
   };
 
   await tenant.save();
-
   return {
     success: true,
     message: "Rent escalation enabled",
     tenant,
-    escalationSchedule: {
-      anchorNepaliDate: formatNepaliISO(anchorNpDate),
-      firstEscalationNepali: firstEscalationISO,
-      firstEscalationEnglish,
-      firstEscalationQuarter: getQuarterFromMonth(firstEscalationMonth1),
-      intervalMonths,
-      percentageIncrease,
-      appliesTo,
-    },
+    escalationSchedule: resolvedSchedule.map((step, i) => ({
+      step: i + 1,
+      label: step.label || `Step ${i + 1}`,
+      intervalMonths: step.intervalMonths,
+      percentageIncrease: step.percentageIncrease,
+    })),
   };
 }
 
