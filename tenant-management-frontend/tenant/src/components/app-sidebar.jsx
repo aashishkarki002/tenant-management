@@ -19,7 +19,12 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useTheme } from "../context/ThemeContext";
+import { Button } from "@/components/ui/button";
 
+import {
+  Sun, Moon,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -33,6 +38,7 @@ import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import api from "../../plugins/axios";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 
 /* ================= NAV STRUCTURE ================= */
 
@@ -96,6 +102,9 @@ export default function AppSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
+  const iconBtnBase = "size-7 p-0 rounded-full hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors";
+  const iconBtnStyle = { color: "var(--color-text-sub)" };
 
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -262,6 +271,21 @@ export default function AppSidebar() {
           </DropdownMenuTrigger>
 
           <DropdownMenuContent side="top" align="start" className="w-44">
+            <DropdownMenuItem
+              onClick={toggleTheme}
+              className="flex items-center justify-between gap-3 cursor-pointer"
+            >
+              <span className="text-sm">Appearance</span>
+              <div className={cn(
+                "flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium transition-colors",
+                isDark
+                  ? "bg-zinc-700 text-zinc-200"
+                  : "bg-zinc-100 text-zinc-600"
+              )}>
+                {isDark ? <Moon className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
+                {isDark ? "Dark" : "Light"}
+              </div>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate("/admin")}>
               Account settings
             </DropdownMenuItem>

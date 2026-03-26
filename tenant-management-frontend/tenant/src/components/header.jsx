@@ -453,7 +453,7 @@ export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const { user, loading } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
+
   const navigate = useNavigate();
 
   // ── Fetch notifications ──────────────────────────────────────────────────
@@ -549,17 +549,7 @@ export default function Header() {
           </div>
 
           {/* ── Theme toggle ── */}
-          <button
-            onClick={toggleTheme}
-            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className={iconBtnBase}
-            style={iconBtnStyle}
-          >
-            {isDark
-              ? <Sun className="w-4 h-4 transition-transform duration-200" style={{ color: "var(--color-text-sub)" }} />
-              : <Moon className="w-4 h-4 transition-transform duration-200" style={{ color: "var(--color-text-sub)" }} />
-            }
-          </button>
+
 
           {/* ── Notifications ── */}
           <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
