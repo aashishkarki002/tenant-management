@@ -1,16 +1,9 @@
 /**
- * FinancialTab.jsx  (FIXED)
+ * FinancialTab.jsx
  *
- * FIX 1 - BANK_GUARANTEE removed from rent payment method select.
- *   It belongs in the security deposit section.
- *
- * FIX 2 - Added Security Deposit Payment section with:
- *   - SD mode selector (bank_guarantee | cash | bank_transfer | cheque)
- *   - Bank account fields when mode requires a cash/bank entry
- *   - Bank guarantee photo upload when mode is bank_guarantee
- *
- * FIX 3 - FinancialTotalsDisplay now receives tdsPercentage so it can
- *   show the correct TDS breakdown (gross / TDS / net / CAM / total).
+ * CHANGE — Added EscalationSection at the bottom of the form (above nav buttons).
+ *   Escalation is an optional collapsible section toggled off by default.
+ *   All other existing functionality is unchanged.
  */
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { PAYMENT_METHODS, SECURITY_DEPOSIT_MODES } from "../constants/tenant.constant";
 import { FinancialTotalsDisplay } from "./FinancialTotalsDisplay";
+import { EscalationSection } from "./EscalationSection";
 
 function getOwnershipLabel(entity) {
     if (!entity || typeof entity !== "object") return null;
@@ -66,7 +60,7 @@ export const FinancialTab = ({
         <Card className="shadow-sm">
             <CardContent className="p-6 space-y-6">
 
-                {/* ── Rent Payment Method ────────────────────────────────────────── */}
+                {/* ── Rent Payment Method ──────────────────────────────────────── */}
                 <div className="space-y-2">
                     <Label>Rent Payment Method *</Label>
                     <Select
@@ -102,7 +96,7 @@ export const FinancialTab = ({
                     </div>
                 )}
 
-                {/* ── TDS ───────────────────────────────────────────────────────── */}
+                {/* ── TDS ──────────────────────────────────────────────────────── */}
                 <div className="space-y-2">
                     <Label>TDS Percentage</Label>
                     <Input
@@ -170,7 +164,6 @@ export const FinancialTab = ({
                             </div>
                         </div>
 
-                        {/* Live TDS breakdown display */}
                         <FinancialTotalsDisplay
                             unitFinancials={formik.values.unitFinancials}
                             tdsPercentage={parseFloat(formik.values.tdsPercentage) || 10}
@@ -215,7 +208,6 @@ export const FinancialTab = ({
                         )}
                     </div>
 
-                    {/* Bank details - only shown when money changes hands via bank */}
                     {sdNeedsBankDetails && (
                         <div className="space-y-2">
                             <Label>Bank Account *</Label>
@@ -225,12 +217,8 @@ export const FinancialTab = ({
                                     const bank = Array.isArray(bankAccounts)
                                         ? bankAccounts.find((b) => b._id === value)
                                         : null;
-
                                     formik.setFieldValue("sdBankAccountId", bank?._id || "");
-                                    formik.setFieldValue(
-                                        "sdBankAccountCode",
-                                        bank?.accountCode || "",
-                                    );
+                                    formik.setFieldValue("sdBankAccountCode", bank?.accountCode || "");
                                 }}
                             >
                                 <SelectTrigger className="w-full">
@@ -250,7 +238,6 @@ export const FinancialTab = ({
                         </div>
                     )}
 
-                    {/* Bank guarantee photo upload */}
                     {sdMode === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE && (
                         <div className="space-y-2">
                             <Label>Bank Guarantee Document *</Label>
@@ -267,6 +254,9 @@ export const FinancialTab = ({
                         </div>
                     )}
                 </div>
+
+                {/* ── Rent Escalation (optional) ────────────────────────────────── */}
+                <EscalationSection formik={formik} />
 
                 {/* ── Navigation ───────────────────────────────────────────────── */}
                 <div className="flex justify-between mt-6">

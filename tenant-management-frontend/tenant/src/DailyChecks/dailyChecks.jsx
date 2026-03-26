@@ -48,85 +48,24 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import _api from "../../plugins/axios";
+import api from "../../plugins/axios";
 import { useAuth } from "../context/AuthContext";
-
-// ─── Ensure every request carries the auth token ─────────────────────────────
-// The backend `protect` middleware reads `Authorization: Bearer <token>`.
-// If your axios instance already sets this globally (e.g. in plugins/axios.js
-// via an interceptor), this is a no-op. If not, this interceptor adds it.
-// Token key must match what your auth flow stores — adjust if needed.
-_api.interceptors.request.use((config) => {
-    if (!config.headers["Authorization"]) {
-        const token =
-            localStorage.getItem("token") ||
-            localStorage.getItem("adminToken") ||
-            sessionStorage.getItem("token");
-        if (token) config.headers["Authorization"] = `Bearer ${token}`;
-    }
-    return config;
-});
-
-// Surface 401s as a clear toast so devs see auth failures immediately
-_api.interceptors.response.use(
-    (res) => res,
-    (err) => {
-        if (err?.response?.status === 401) {
-            toast.error("Session expired — please log in again.");
-        }
-        return Promise.reject(err);
-    },
-);
-
-const api = _api;
-
-// ─── Nepali date helper (mirrors nepaliDateHelper.js logic in the browser) ─────
-// We replicate the lightweight subset we need so there's no extra import.
-// For a real app, import directly from utils/nepaliDateHelper.js
-
-const NEPALI_MONTH_NAMES = [
-    "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
-    "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
-];
-
-const NEPALI_MONTH_NAMES_NP = [
-    "बैशाख", "जेठ", "असार", "श्रावण", "भदौ", "असोज",
-    "कार्तिक", "मंसिर", "पुष", "माघ", "फागुन", "चैत",
-];
+import { getTodayNepali, NEPALI_MONTH_NAMES, NEPALI_MONTH_NAMES_NP } from "../../utils/nepaliDate";
 
 /**
- * Get today's Nepali date fields using the same UTC+5:45 chain as the backend.
+ * Get today's Nepali date fields using the proper utility.
  * Returns { bsYear, bsMonth (1-based), bsDay, nepaliISO, monthName, monthNameNp }
- * Falls back gracefully if nepali-datetime isn't available in the browser.
  */
 function getNepaliTodayClient() {
-    try {
-        // Dynamic import guard — in real app import NepaliDate from "nepali-datetime"
-        // For the widget we use a hardcoded fallback representing the current BS date.
-        // The server always sends the authoritative value; this is display-only.
-        const NPT_OFFSET_MS = (5 * 60 + 45) * 60 * 1000;
-        const nptNow = new Date(Date.now() + NPT_OFFSET_MS);
-        const y = nptNow.getUTCFullYear();
-        const m = nptNow.getUTCMonth();
-        const d = nptNow.getUTCDate();
-
-        // Approximate BS conversion table (accurate for 2024-2027 / 2081-2084)
-        // Real app: use NepaliDate library
-        const AD_TO_BS_OFFSET = 56; // rough year offset
-        const bsYearApprox = y - 57 + 1; // ~2082 for 2025
-        // For display purposes use library; here we return approximate
-        // In production this function would call: new NepaliDate(new Date(Date.UTC(y,m,d)))
-        const bsYear = 2082; // 2026 AD ≈ 2082 BS
-        const bsMonth = 11;  // Falgun (March 2026)
-        const bsDay = 9;     // ~March 22 → ~Falgun 9
-        const monthName = NEPALI_MONTH_NAMES[bsMonth - 1];
-        const monthNameNp = NEPALI_MONTH_NAMES_NP[bsMonth - 1];
-        const nepaliISO = `${bsYear}-${String(bsMonth).padStart(2, "0")}-${String(bsDay).padStart(2, "0")}`;
-
-        return { bsYear, bsMonth, bsDay, nepaliISO, monthName, monthNameNp };
-    } catch {
-        return { bsYear: 2082, bsMonth: 11, bsDay: 9, nepaliISO: "2082-11-09", monthName: "Falgun", monthNameNp: "फागुन" };
-    }
+    const today = getTodayNepali();
+    return {
+        bsYear: today.year,
+        bsMonth: today.month,
+        bsDay: today.day,
+        nepaliISO: today.isoString,
+        monthName: today.monthName,
+        monthNameNp: today.monthNameNp,
+    };
 }
 
 // ─── Category config ──────────────────────────────────────────────────────────
@@ -204,6 +143,24 @@ const OWNERSHIP_ENTITY_ID = "69b11f16ce3a098bb6ba5424";
 
 function todayISO() {
     return new Date().toISOString().split("T")[0];
+}
+
+/**
+ * Check if a checklist is from today based on its checkDate
+ */
+function isChecklistFromToday(checklist) {
+    if (!checklist?.checkDate) return false;
+    const today = todayISO();
+    const checkDate = new Date(checklist.checkDate).toISOString().split("T")[0];
+    return checkDate === today;
+}
+
+/**
+ * Check if a checklist is completed today
+ */
+function isCompletedToday(checklist) {
+    if (!checklist || checklist.status !== "COMPLETED") return false;
+    return isChecklistFromToday(checklist);
 }
 
 // Only items explicitly marked false count as issues — null (untouched) does not
@@ -523,14 +480,21 @@ function CategoryPicker({ checklists, onSelect, completedCategories, loading, t 
         );
     }
 
+    const today = todayISO();
+
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {ALL_CATEGORIES.map((cat) => {
                 const meta = CATEGORY_META[cat];
                 const Icon = meta.icon;
-                const isDone = completedCategories.includes(cat);
                 const checklist = checklists.find((c) => c.category === cat);
-                const isInProgress = checklist && checklist.status !== "COMPLETED";
+
+                // Check if checklist is completed today
+                const isDone = checklist && isCompletedToday(checklist);
+
+                // Check if checklist is from today and in progress
+                const isFromToday = checklist && isChecklistFromToday(checklist);
+                const isInProgress = checklist && checklist.status !== "COMPLETED" && isFromToday;
 
                 return (
                     <button
@@ -807,17 +771,30 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
         if (submitting) return;
         setSubmitting(true);
         try {
-            // Strip photos from sections before sending (photos go to upload endpoint separately)
-            // In production: upload photos first, get URLs, include in notes/attachment field
-            const sectionsForApi = sections.map((sec) => ({
-                ...sec,
-                items: sec.items.map(({ photos, isOk, ...rest }) => ({ ...rest, isOk: isOk === null ? true : isOk })),
-            }));
+            // v2: submit sends only the DELTA — items that failed or have notes.
+            // Items where isOk=true and notes="" are the assumed default and are NOT stored.
+            // This is what gives the 95% storage reduction vs the old full-embed approach.
+            const itemResults = [];
+            for (const sec of sections) {
+                for (const item of sec.items) {
+                    const effectiveIsOk = item.isOk === null ? true : item.isOk;
+                    const hasNote = item.notes?.trim();
+                    // Only include in delta if failed OR explicitly noted
+                    if (!effectiveIsOk || hasNote) {
+                        itemResults.push({
+                            itemId: item._id,
+                            sectionKey: sec.sectionKey,
+                            isOk: effectiveIsOk,
+                            notes: item.notes?.trim() ?? "",
+                        });
+                    }
+                }
+            }
 
             const res = await api.patch(
-                `/api/checklists/${checklist.data._id}/submit`,
+                `/api/checklists/results/${checklist.data._id}/submit`,
                 {
-                    sections: sectionsForApi,
+                    itemResults,
                     overallNotes,
                     status: "COMPLETED",
                     nepaliDate: nepaliDate.nepaliISO,
@@ -1126,11 +1103,34 @@ export default function DailyChecklistPage() {
             try {
                 setLoadingChecklists(true);
                 const today = todayISO();
-                const res = await api.get("/api/checklists", {
+                // v2: Fetch all categories for today - we'll fetch latest for each category separately
+                // First, try to get today's checklists
+                const res = await api.get("/api/checklists/results", {
                     params: { propertyId, startDate: today, endDate: today, limit: 50 },
                     signal: controller.signal,
                 });
-                setTodaysChecklists(res.data?.data ?? []);
+
+                const todayResults = res.data?.data ?? [];
+
+                // If no results for today, fetch the latest result for each category
+                if (todayResults.length === 0) {
+                    const latestResults = await Promise.allSettled(
+                        ALL_CATEGORIES.map(cat =>
+                            api.get("/api/checklists/results", {
+                                params: { propertyId, category: cat, limit: 1, page: 1 },
+                                signal: controller.signal,
+                            })
+                        )
+                    );
+
+                    const allLatest = latestResults
+                        .filter(r => r.status === 'fulfilled' && r.value?.data?.data?.[0])
+                        .map(r => r.value.data.data[0]);
+
+                    setTodaysChecklists(allLatest);
+                } else {
+                    setTodaysChecklists(todayResults);
+                }
             } catch (err) {
                 if (err.name === "CanceledError" || err.name === "AbortError") return;
                 console.error("[DailyChecklistPage] load failed:", err);
@@ -1143,40 +1143,100 @@ export default function DailyChecklistPage() {
         return () => controller.abort();
     }, [propertyId]);
 
-    const completedCategories = useMemo(
-        () => todaysChecklists.filter((c) => c.status === "COMPLETED").map((c) => c.category),
-        [todaysChecklists],
-    );
+    const completedCategories = useMemo(() => {
+        return todaysChecklists
+            .filter((c) => isCompletedToday(c))
+            .map((c) => c.category);
+    }, [todaysChecklists]);
     const doneCount = completedCategories.length;
     const totalCount = ALL_CATEGORIES.length;
 
     async function handleCategorySelect(cat, existing) {
         setSelectedCategory(cat);
-        if (existing && existing.status !== "COMPLETED") {
+        const today = todayISO();
+
+        // ── Check if already completed today ──────────────────────────────────────
+        if (existing && isCompletedToday(existing)) {
+            toast.info(t("checklist.alreadyCompletedToday", "This checklist has already been completed today"));
+            return;
+        }
+
+        // ── Resume in-progress result from today ──────────────────────────────────
+        if (existing && existing.status !== "COMPLETED" && isChecklistFromToday(existing)) {
             try {
-                const res = await api.get(`/api/checklists/${existing._id}`);
+                // v2: results are under /results/:id (returns merged template+delta view)
+                const res = await api.get(`/api/checklists/results/${existing._id}`);
                 setActiveChecklist(res.data);
                 setView("checklist");
-            } catch { toast.error(t("common.retry", "Please try again")); }
+            } catch {
+                toast.error(t("common.retry", "Please try again"));
+            }
             return;
         }
-        if (existing?.status === "COMPLETED") {
-            toast.info(t("checklist.checklistSubmitted", "Already submitted today"));
-            return;
-        }
+
+        // ── If existing from previous day, allow creating new one ────────────────
+        // v2: results require a templateId resolved via multiple strategies:
+        //   1. If we have an existing checklist (even from previous day), use its template
+        //   2. Primary: GET /templates?propertyId&category (block-specific)
+        //   3. Fallback 1: GET /results?propertyId&category&limit=1 — derive from existing result
+        //   4. Fallback 2: GET /results?category&limit=1 (no propertyId) — any property
         setCreating(true);
         try {
-            const res = await api.post("/api/checklists/create", {
-                propertyId,
-                category: cat,
-                checklistType: "DAILY",
+            let templateId = null;
+
+            // Strategy 0: If we have an existing checklist, use its template
+            if (existing?.template) {
+                templateId = typeof existing.template === 'object' ? existing.template._id : existing.template;
+                console.log(`Using template from existing checklist: ${templateId}`);
+            }
+
+            // Strategy 1: direct template catalog lookup
+            if (!templateId) {
+                const tplRes = await api.get("/api/checklists/templates", {
+                    params: { propertyId, category: cat, isActive: true },
+                });
+                const templates = tplRes.data?.data ?? [];
+                if (templates.length) {
+                    templateId = templates[0]._id;
+                }
+            }
+
+            // Strategy 2: derive from any recent result for this property
+            if (!templateId) {
+                const recentRes = await api.get("/api/checklists/results", {
+                    params: { propertyId, category: cat, limit: 1, page: 1 },
+                });
+                const recentResult = recentRes.data?.data?.[0];
+                const tplRef = recentResult?.template;
+                templateId = tplRef?._id ?? tplRef ?? null;
+            }
+
+            // Strategy 3: derive from ANY result for this category (any property)
+            if (!templateId) {
+                const anyRes = await api.get("/api/checklists/results", {
+                    params: { category: cat, limit: 1, page: 1 },
+                });
+                const anyResult = anyRes.data?.data?.[0];
+                const tplRef = anyResult?.template;
+                templateId = tplRef?._id ?? tplRef ?? null;
+            }
+
+            if (!templateId) {
+                toast.error(`No checklist template found for ${cat}. Ask your admin to create one first, or run the seed script to generate templates.`);
+                return;
+            }
+
+            // Step 2: create a thin result document linked to the template.
+            const res = await api.post("/api/checklists/results", {
+                templateId,
                 checkDate: new Date().toISOString(),
-                // Send Nepali date fields so service doesn't have to derive them
                 nepaliDate: nepaliDate.nepaliISO,
                 nepaliMonth: nepaliDate.bsMonth,
                 nepaliYear: nepaliDate.bsYear,
             });
-            const fullRes = await api.get(`/api/checklists/${res.data.data._id}`);
+
+            // Step 3: fetch the full merged view (template sections + empty delta).
+            const fullRes = await api.get(`/api/checklists/results/${res.data.data._id}`);
             setActiveChecklist(fullRes.data);
             setView("checklist");
         } catch (err) {

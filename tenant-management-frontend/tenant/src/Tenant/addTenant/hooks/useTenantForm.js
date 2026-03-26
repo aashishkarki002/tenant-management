@@ -1,21 +1,26 @@
 /**
  * useTenantForm.js
  *
- * FIX 1 - Added sdPaymentMethod, sdBankAccountId, sdBankAccountCode.
- *   sdPaymentMethod is separate from paymentMethod (rent) because:
- *     - A tenant may pay rent by cheque but secure the deposit via bank guarantee
- *     - BANK_GUARANTEE is only valid for the security deposit, never for rent
+ * CHANGE — Added escalation fields to INITIAL_VALUES.
+ *   escalationEnabled        Boolean  — master switch (default off)
+ *   escalationStartDate      string   — AD "YYYY-MM-DD" (optional)
+ *   escalationStartDateNepali string  — BS "YYYY-MM-DD" (optional)
+ *   escalationSchedule       Array    — mirrors Tenant.rentEscalation.scheduled
  *
- * FIX 2 - tdsPercentage default is "10" to match the backend default.
+ * NOTE for formDataBuilder (buildTenantFormData):
+ *   When escalationEnabled is true, serialize escalationSchedule as JSON
+ *   and append to FormData:
  *
- * FIX 3 - Added Nepali (BS) date fields for every date field.
- *   The backend needs these to correctly compute escalation schedules,
- *   rent quarters, and all Nepali-calendar-aware logic. Without them,
- *   the backend was silently falling back to AD-derived Nepali dates
- *   which can be off by a day at month boundaries due to BS/AD misalignment.
- *
- *   Naming convention:  <fieldName>Nepali  (e.g. leaseStartDateNepali)
- *   Format:             "YYYY-MM-DD" (BS)
+ *     if (values.escalationEnabled && values.escalationSchedule?.length) {
+ *       formData.append("escalationEnabled", "true");
+ *       formData.append("escalationSchedule", JSON.stringify(
+ *         values.escalationSchedule.map(({ _id, ...tier }) => tier) // strip UI-only _id
+ *       ));
+ *       if (values.escalationStartDate)
+ *         formData.append("escalationStartDate", values.escalationStartDate);
+ *       if (values.escalationStartDateNepali)
+ *         formData.append("escalationStartDateNepali", values.escalationStartDateNepali);
+ *     }
  */
 
 import { useState } from "react";
@@ -47,7 +52,7 @@ const INITIAL_VALUES = {
   spaceHandoverDate: "",
   spaceReturnedDate: "",
 
-  // Lease — BS (Nepali) counterparts  ← NEW
+  // Lease — BS (Nepali) counterparts
   leaseStartDateNepali: "",
   leaseEndDateNepali: "",
   dateOfAgreementSignedNepali: "",
@@ -63,21 +68,28 @@ const INITIAL_VALUES = {
 
   // Financial - per unit
   unitFinancials: {},
-  tdsPercentage: "10", // matches backend default
+  tdsPercentage: "10",
 
-  // Rent payment method: cash | bank_transfer | cheque | mobile_wallet
-  // BANK_GUARANTEE is NOT valid here — it only applies to the security deposit
+  // Rent payment method
   paymentMethod: "",
   chequeAmount: "",
   chequeNumber: "",
 
-  // Security deposit payment (separate concept from rent payment)
-  // bank_guarantee = document only, no cash/bank journal entry posted
-  // cash | bank_transfer | cheque = money received -> posts DR Cash/Bank CR SD Liability
+  // Security deposit payment
   sdPaymentMethod: "",
-  sdBankAccountId: "", // required when sdPaymentMethod is bank_transfer or cheque
-  sdBankAccountCode: "", // chart-of-accounts code for the specific bank account
+  sdBankAccountId: "",
+  sdBankAccountCode: "",
   bankGuaranteePhoto: null,
+
+  // ── Rent Escalation (optional) ──────────────────────────────────────────
+  // escalationEnabled: master toggle. False = rentEscalation.enabled stays false on the model.
+  // escalationSchedule: array of tier objects (see EscalationSection.jsx for shape).
+  // escalationStartDate / escalationStartDateNepali: optional override for when escalation
+  //   begins. If blank, the backend defaults to leaseStartDate.
+  escalationEnabled: false,
+  escalationStartDate: "",
+  escalationStartDateNepali: "",
+  escalationSchedule: [],
 };
 
 export const useTenantForm = (property, onSuccess) => {

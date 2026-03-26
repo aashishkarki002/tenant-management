@@ -1,15 +1,12 @@
 /**
- * DailyChecks.jsx
+ * DailyChecks.jsx  (v2 — Template + Result split)
  *
- * Architecture: Status-board — one card per inspection category (7 fixed).
- * Drawer: two tabs → Report (swappable via history) + History (sparkline + log).
- *
- * APIs:
- *   GET /api/property/get-property
- *   GET /api/checklists?category=X&propertyId=Y&limit=1   → latest per category
- *   GET /api/checklists/:id                                → full report detail
- *   GET /api/checklists?category=X&propertyId=Y&limit=30  → history tab
- *   POST /api/checklists/create                            → seed from template
+ * APIs used:
+ *   GET  /api/checklists/results?category=X&propertyId=Y&limit=1   → latest per category
+ *   GET  /api/checklists/results/:id                                → full merged view
+ *   GET  /api/checklists/results?category=X&propertyId=Y&limit=30  → history tab
+ *   GET  /api/checklists/templates?propertyId=X&category=Y&checklistType=Z&isActive=true
+ *   POST /api/checklists/results  { templateId, checkDate }         → create result
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -20,9 +17,9 @@ import {
   ChevronDown, ChevronUp, FileText, History, BarChart2,
   ArrowLeft, Loader2, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react';
-import { Button }  from '@/components/ui/button';
-import { Input }   from '@/components/ui/input';
-import { Label }   from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -31,39 +28,43 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
-import api       from '../../plugins/axios';
+import api from '../../plugins/axios';
 import { toast } from 'sonner';
 
 /* ── Design constants ─────────────────────────────────────── */
 
 const CATEGORIES = [
-  { key: 'CCTV',        label: 'CCTV',          Icon: Camera,    iconColor: '#1A5276', bg: '#EBF5FB', border: '#AED6F1', accent: '#1A5276' },
-  { key: 'ELECTRICAL',  label: 'Electrical',    Icon: Zap,       iconColor: '#92400e', bg: '#FEF9C3', border: '#FDE68A', accent: '#b45309' },
-  { key: 'SANITARY',    label: 'Sanitary',      Icon: Droplets,  iconColor: '#0e7490', bg: '#CFFAFE', border: '#A5F3FC', accent: '#0e7490' },
-  { key: 'COMMON_AREA', label: 'Common Area',   Icon: Building2, iconColor: '#5b21b6', bg: '#EDE9FE', border: '#C4B5FD', accent: '#5b21b6' },
-  { key: 'PARKING',     label: 'Parking',       Icon: Car,       iconColor: '#374151', bg: '#F3F4F6', border: '#D1D5DB', accent: '#4b5563' },
-  { key: 'FIRE',        label: 'Fire & Safety', Icon: Flame,     iconColor: '#991b1b', bg: '#FEE2E2', border: '#FECACA', accent: '#dc2626' },
-  { key: 'WATER_TANK',  label: 'Water Tank',    Icon: Waves,     iconColor: '#0369a1', bg: '#E0F2FE', border: '#BAE6FD', accent: '#0284c7' },
+  { key: 'CCTV', label: 'CCTV', Icon: Camera, iconColor: '#1A5276', bg: '#EBF5FB', border: '#AED6F1', accent: '#1A5276' },
+  { key: 'ELECTRICAL', label: 'Electrical', Icon: Zap, iconColor: '#92400e', bg: '#FEF9C3', border: '#FDE68A', accent: '#b45309' },
+  { key: 'SANITARY', label: 'Sanitary', Icon: Droplets, iconColor: '#0e7490', bg: '#CFFAFE', border: '#A5F3FC', accent: '#0e7490' },
+  { key: 'COMMON_AREA', label: 'Common Area', Icon: Building2, iconColor: '#5b21b6', bg: '#EDE9FE', border: '#C4B5FD', accent: '#5b21b6' },
+  { key: 'PARKING', label: 'Parking', Icon: Car, iconColor: '#374151', bg: '#F3F4F6', border: '#D1D5DB', accent: '#4b5563' },
+  { key: 'FIRE', label: 'Fire & Safety', Icon: Flame, iconColor: '#991b1b', bg: '#FEE2E2', border: '#FECACA', accent: '#dc2626' },
+  { key: 'WATER_TANK', label: 'Water Tank', Icon: Waves, iconColor: '#0369a1', bg: '#E0F2FE', border: '#BAE6FD', accent: '#0284c7' },
 ];
 
 const CAT = Object.fromEntries(CATEGORIES.map(c => [c.key, c]));
 
 const STATUS_CFG = {
-  PENDING:     { label: 'Pending',     bg: 'var(--color-warning-bg)', text: 'var(--color-warning)',  bd: 'var(--color-warning-border)' },
-  IN_PROGRESS: { label: 'In Progress', bg: 'var(--color-info-bg)',    text: 'var(--color-info)',     bd: 'var(--color-info-border)'    },
-  COMPLETED:   { label: 'Completed',   bg: 'var(--color-success-bg)', text: 'var(--color-success)',  bd: 'var(--color-success-border)' },
-  INCOMPLETE:  { label: 'Incomplete',  bg: 'var(--color-danger-bg)',  text: 'var(--color-danger)',   bd: 'var(--color-danger-border)'  },
+  PENDING: { label: 'Pending', bg: 'var(--color-warning-bg)', text: 'var(--color-warning)', bd: 'var(--color-warning-border)' },
+  IN_PROGRESS: { label: 'In Progress', bg: 'var(--color-info-bg)', text: 'var(--color-info)', bd: 'var(--color-info-border)' },
+  COMPLETED: { label: 'Completed', bg: 'var(--color-success-bg)', text: 'var(--color-success)', bd: 'var(--color-success-border)' },
+  INCOMPLETE: { label: 'Incomplete', bg: 'var(--color-danger-bg)', text: 'var(--color-danger)', bd: 'var(--color-danger-border)' },
 };
 
 const FREQ = { DAILY: 'Daily', WEEKLY_TWICE: 'Twice Weekly', WEEKLY: 'Weekly', MONTHLY: 'Monthly' };
 
 /* ── Utilities ─────────────────────────────────────────────── */
 
-const pRate  = c => (!c?.totalItems ? 0 : Math.round((c.passedItems / c.totalItems) * 100));
+const pRate = c => (!c?.totalItems ? 0 : Math.round((c.passedItems / c.totalItems) * 100));
 const rColor = r => r === 100 ? 'var(--color-success)' : r >= 70 ? 'var(--color-warning)' : 'var(--color-danger)';
-const fDate  = d => { try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return '—'; } };
+const fDate = d => { try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return '—'; } };
 const fShort = d => { try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return '—'; } };
-const fails  = c => (c?.sections || []).flatMap(s => (s.items || []).filter(i => !i.isOk).map(i => ({ ...i, sectionLabel: s.sectionLabel })));
+
+// Works for both old embed (sections[].items) and new merged view (same shape from getResultById)
+const fails = c => (c?.sections || []).flatMap(s =>
+  (s.items || []).filter(i => !i.isOk).map(i => ({ ...i, sectionLabel: s.sectionLabel }))
+);
 
 /* ── Pass Rate Ring ─────────────────────────────────────────── */
 
@@ -73,8 +74,8 @@ function Ring({ rate = 0, size = 40, sw = 3.5 }) {
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--color-muted)" strokeWidth={sw} />
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={col} strokeWidth={sw}
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-muted)" strokeWidth={sw} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={col} strokeWidth={sw}
           strokeDasharray={`${fill} ${circ - fill}`} strokeLinecap="round"
           style={{ transition: 'stroke-dasharray 0.5s ease' }}
         />
@@ -90,14 +91,14 @@ function Ring({ rate = 0, size = 40, sw = 3.5 }) {
 /* ── Sparkline bar chart ────────────────────────────────────── */
 
 function Sparkline({ history = [], max = 10 }) {
-  const slice   = [...history].reverse().slice(-max);
-  const padded  = Array(Math.max(0, max - slice.length)).fill(null).concat(slice);
-  const rates   = slice.map(c => pRate(c));
-  const latest  = rates.at(-1) ?? null;
-  const prev    = rates.at(-2) ?? null;
-  const delta   = latest !== null && prev !== null ? latest - prev : null;
-  const TIcon   = delta === null ? Minus : delta > 2 ? TrendingUp : delta < -2 ? TrendingDown : Minus;
-  const tCol    = delta === null ? 'var(--color-text-weak)' : delta > 2 ? 'var(--color-success)' : delta < -2 ? 'var(--color-danger)' : 'var(--color-text-sub)';
+  const slice = [...history].reverse().slice(-max);
+  const padded = Array(Math.max(0, max - slice.length)).fill(null).concat(slice);
+  const rates = slice.map(c => pRate(c));
+  const latest = rates.at(-1) ?? null;
+  const prev = rates.at(-2) ?? null;
+  const delta = latest !== null && prev !== null ? latest - prev : null;
+  const TIcon = delta === null ? Minus : delta > 2 ? TrendingUp : delta < -2 ? TrendingDown : Minus;
+  const tCol = delta === null ? 'var(--color-text-weak)' : delta > 2 ? 'var(--color-success)' : delta < -2 ? 'var(--color-danger)' : 'var(--color-text-sub)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -151,9 +152,9 @@ function StatusBadge({ status }) {
 
 function CategoryCard({ catKey, checklist, loading, onOpen }) {
   const [hovered, setHovered] = useState(false);
-  const c       = CAT[catKey];
-  const rate    = checklist ? pRate(checklist) : null;
-  const failed  = checklist ? fails(checklist) : [];
+  const c = CAT[catKey];
+  const rate = checklist ? pRate(checklist) : null;
+  const failed = checklist ? fails(checklist) : [];
   const preview = failed.slice(0, 3);
   const hasData = !!checklist;
 
@@ -191,8 +192,8 @@ function CategoryCard({ catKey, checklist, loading, onOpen }) {
         {loading
           ? <Loader2 size={14} color="var(--color-text-weak)" style={{ animation: 'spin 1s linear infinite' }} />
           : checklist
-          ? <StatusBadge status={checklist.status} />
-          : <span style={{ fontSize: 11, color: 'var(--color-text-weak)', fontStyle: 'italic' }}>No check yet</span>
+            ? <StatusBadge status={checklist.status} />
+            : <span style={{ fontSize: 11, color: 'var(--color-text-weak)', fontStyle: 'italic' }}>No check yet</span>
         }
       </div>
 
@@ -228,8 +229,8 @@ function CategoryCard({ catKey, checklist, loading, onOpen }) {
         </div>
       )}
 
-      {/* Hover-reveal: failure preview */}
-      {hasData && (
+      {/* Hover-reveal: failure preview — only shows if sections are present (merged view) */}
+      {hasData && checklist?.sections && (
         <div style={{ maxHeight: hovered && checklist?.hasIssues ? 200 : 0, overflow: 'hidden', transition: 'max-height 0.28s ease' }}>
           <div style={{ borderTop: '1px dashed var(--color-danger-border)', paddingTop: 11, display: 'flex', flexDirection: 'column', gap: 5 }}>
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
@@ -272,8 +273,8 @@ function ReportTab({ checklist, loading }) {
   }, [checklist?._id]);
 
   const toggle = k => setExp(p => ({ ...p, [k]: !p[k] }));
-  const rate   = checklist ? pRate(checklist) : 0;
-  const rcol   = rColor(rate);
+  const rate = checklist ? pRate(checklist) : 0;
+  const rcol = rColor(rate);
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 56 }}>
@@ -287,6 +288,9 @@ function ReportTab({ checklist, loading }) {
       <span style={{ fontSize: 13, color: 'var(--color-text-sub)' }}>Select an inspection from History</span>
     </div>
   );
+
+  // Pending results haven't been submitted yet — no sections to show
+  const hasSections = checklist.sections && checklist.sections.length > 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -303,8 +307,8 @@ function ReportTab({ checklist, loading }) {
       {/* KPI trio */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
         {[
-          { label: 'Total',  val: checklist.totalItems  ?? 0, col: 'var(--color-text-strong)' },
-          { label: 'Passed', val: checklist.passedItems ?? 0, col: 'var(--color-success)'     },
+          { label: 'Total', val: checklist.totalItems ?? 0, col: 'var(--color-text-strong)' },
+          { label: 'Passed', val: checklist.passedItems ?? 0, col: 'var(--color-success)' },
           { label: 'Failed', val: checklist.failedItems ?? 0, col: checklist.hasIssues ? 'var(--color-danger)' : 'var(--color-text-weak)' },
         ].map(k => (
           <div key={k.label} style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
@@ -341,12 +345,20 @@ function ReportTab({ checklist, loading }) {
         </div>
       )}
 
-      {/* Sections */}
-      {(checklist.sections || []).map(sec => {
-        const key    = sec._id || sec.sectionKey;
+      {/* No sections yet (e.g. PENDING result not yet fetched with merge) */}
+      {!hasSections && checklist.status !== 'PENDING' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px 12px' }}>
+          <FileText size={12} color="var(--color-text-sub)" />
+          <span style={{ fontSize: 12, color: 'var(--color-text-sub)' }}>No section detail available for this result.</span>
+        </div>
+      )}
+
+      {/* Sections — rendered from merged template+delta view */}
+      {hasSections && (checklist.sections || []).map(sec => {
+        const key = sec._id || sec.sectionKey;
         const failed = (sec.items || []).filter(i => !i.isOk);
         const passed = (sec.items || []).filter(i => i.isOk);
-        const open   = exp[key] !== false;
+        const open = exp[key] !== false;
         const hasFail = failed.length > 0;
 
         return (
@@ -421,24 +433,25 @@ function HistoryTab({ catKey, propertyId, activeCL, onViewReport }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [page,    setPage]    = useState(1);
+  const [page, setPage] = useState(1);
   const PAGE = 15;
 
-  const fetch = useCallback(async (pg = 1) => {
+  const fetchHistory = useCallback(async (pg = 1) => {
     if (!catKey) return;
     setLoading(true);
     try {
-      const params = { category: catKey, limit: PAGE, page: pg, ...(propertyId ? { propertyId } : {}) };
-      const res    = await api.get('/api/checklists', { params });
-      const data   = res.data?.data || [];
+      // ✅ Fixed: /api/checklists/results (was /api/checklists)
+      const params = { category: catKey, limit: PAGE, page: pg, ...(propertyId && propertyId !== 'ALL' ? { propertyId } : {}) };
+      const res = await api.get('/api/checklists/results', { params });
+      const data = res.data?.data || [];
       setHistory(pg === 1 ? data : prev => [...prev, ...data]);
       setHasMore(data.length === PAGE);
       setPage(pg);
     } catch { toast.error('Failed to load history'); }
-    finally  { setLoading(false); }
+    finally { setLoading(false); }
   }, [catKey, propertyId]);
 
-  useEffect(() => { fetch(1); }, [fetch]);
+  useEffect(() => { fetchHistory(1); }, [fetchHistory]);
 
   if (loading && history.length === 0) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 56 }}>
@@ -469,9 +482,9 @@ function HistoryTab({ catKey, propertyId, activeCL, onViewReport }) {
       {/* History rows */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {history.map((cl, i) => {
-          const r         = pRate(cl);
+          const r = pRate(cl);
           const failCount = cl.failedItems || 0;
-          const isActive  = activeCL?._id === cl._id;
+          const isActive = activeCL?._id === cl._id;
 
           return (
             <div key={cl._id} style={{
@@ -530,7 +543,7 @@ function HistoryTab({ catKey, propertyId, activeCL, onViewReport }) {
 
       {/* Load more */}
       {hasMore && (
-        <button onClick={() => fetch(page + 1)} disabled={loading} style={{ width: '100%', height: 34, borderRadius: 8, fontSize: 12, backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-sub)', cursor: loading ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+        <button onClick={() => fetchHistory(page + 1)} disabled={loading} style={{ width: '100%', height: 34, borderRadius: 8, fontSize: 12, backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-sub)', cursor: loading ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           {loading && <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />} Load more
         </button>
       )}
@@ -541,9 +554,9 @@ function HistoryTab({ catKey, propertyId, activeCL, onViewReport }) {
 /* ── The Drawer ─────────────────────────────────────────────── */
 
 function Drawer({ open, onClose, catKey, latestId, propertyId }) {
-  const [tab,          setTab]     = useState('report');
-  const [activeCL,     setActive]  = useState(null);
-  const [reportLoading, setRLoad]  = useState(false);
+  const [tab, setTab] = useState('report');
+  const [activeCL, setActive] = useState(null);
+  const [reportLoading, setRLoad] = useState(false);
   const c = CAT[catKey] || {};
 
   useEffect(() => {
@@ -555,7 +568,9 @@ function Drawer({ open, onClose, catKey, latestId, propertyId }) {
     if (!id) return;
     setRLoad(true); setTab('report');
     try {
-      const res = await api.get(`/api/checklists/${id}`);
+      // ✅ Fixed: /api/checklists/results/:id (was /api/checklists/:id)
+      // This endpoint returns the full merged view: template sections + delta
+      const res = await api.get(`/api/checklists/results/${id}`);
       setActive(res.data?.data || null);
     } catch { toast.error('Failed to load report'); }
     finally { setRLoad(false); }
@@ -601,7 +616,7 @@ function Drawer({ open, onClose, catKey, latestId, propertyId }) {
 
         {/* Scrollable content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 22px 28px' }}>
-          {tab === 'report'  && <ReportTab  checklist={activeCL} loading={reportLoading} />}
+          {tab === 'report' && <ReportTab checklist={activeCL} loading={reportLoading} />}
           {tab === 'history' && <HistoryTab catKey={catKey} propertyId={propertyId} activeCL={activeCL} onViewReport={loadReport} />}
         </div>
       </SheetContent>
@@ -610,36 +625,100 @@ function Drawer({ open, onClose, catKey, latestId, propertyId }) {
 }
 
 /* ── Create Dialog ──────────────────────────────────────────── */
+// ✅ Fully rewritten: looks up the matching template first, then creates a result
 
 function CreateDialog({ open, onOpenChange, properties, defaultCat, onCreated }) {
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ propertyId: '', blockId: '', category: defaultCat || 'ELECTRICAL', checklistType: 'DAILY', checkDate: new Date().toISOString().slice(0, 10) });
+  const [tLoading, setTLoading] = useState(false); // template lookup loading
+  const [template, setTemplate] = useState(null);  // found template
+  const [tError, setTError] = useState('');     // no template found msg
+  const [form, setForm] = useState({
+    propertyId: '',
+    blockId: '',
+    category: defaultCat || 'ELECTRICAL',
+    checklistType: 'DAILY',
+    checkDate: new Date().toISOString().slice(0, 10),
+  });
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   useEffect(() => { if (defaultCat) setF('category', defaultCat); }, [defaultCat]);
 
-  const prop   = properties.find(p => p._id === form.propertyId);
+  // Reset template whenever selector fields change
+  useEffect(() => {
+    setTemplate(null);
+    setTError('');
+  }, [form.propertyId, form.blockId, form.category, form.checklistType]);
+
+  const prop = properties.find(p => p._id === form.propertyId);
   const blocks = prop?.blocks || [];
 
+  // Step 1: look up the matching template
+  const lookupTemplate = async () => {
+    if (!form.propertyId) { toast.error('Select a property first'); return; }
+    setTLoading(true);
+    setTemplate(null);
+    setTError('');
+    try {
+      const params = {
+        propertyId: form.propertyId,
+        category: form.category,
+        checklistType: form.checklistType,
+        isActive: true,
+        ...(form.blockId ? { blockId: form.blockId } : {}),
+      };
+      const res = await api.get('/api/checklists/templates', { params });
+      const list = res.data?.data || [];
+      if (list.length === 0) {
+        setTError(`No active template found for ${form.category} / ${FREQ[form.checklistType]}. Ask an admin to create one first.`);
+      } else {
+        setTemplate(list[0]);
+      }
+    } catch { toast.error('Failed to look up template'); }
+    finally { setTLoading(false); }
+  };
+
+  // Step 2: create the result using the found templateId
   const submit = async () => {
-    if (!form.propertyId || !form.checkDate) { toast.error('Property and date are required'); return; }
+    if (!template) { toast.error('Find a template first'); return; }
+    if (!form.checkDate) { toast.error('Check date is required'); return; }
     setLoading(true);
     try {
-      await api.post('/api/checklists/create', { propertyId: form.propertyId, blockId: form.blockId || undefined, category: form.category, checklistType: form.checklistType, checkDate: new Date(form.checkDate).toISOString() });
-      toast.success('Checklist created'); onOpenChange(false); onCreated?.();
-    } catch (err) { toast.error(err?.response?.data?.message || 'Failed to create checklist'); }
-    finally { setLoading(false); }
+      // ✅ Fixed: POST /api/checklists/results with { templateId, checkDate }
+      await api.post('/api/checklists/results', {
+        templateId: template._id,
+        checkDate: new Date(form.checkDate).toISOString(),
+      });
+      toast.success('Checklist created');
+      onOpenChange(false);
+      onCreated?.();
+      // Reset
+      setTemplate(null);
+      setTError('');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to create checklist');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reset state when dialog closes
+  const handleOpenChange = v => {
+    if (!v) { setTemplate(null); setTError(''); }
+    onOpenChange(v);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent style={{ backgroundColor: 'var(--color-surface-raised)', border: '1px solid var(--color-border)', maxWidth: 420 }}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent style={{ backgroundColor: 'var(--color-surface-raised)', border: '1px solid var(--color-border)', maxWidth: 440 }}>
         <DialogHeader>
           <DialogTitle style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-strong)' }}>New Inspection Checklist</DialogTitle>
-          <p style={{ fontSize: 13, color: 'var(--color-text-sub)', marginTop: 4 }}>Seeds from the built-in template for the selected category.</p>
+          <p style={{ fontSize: 13, color: 'var(--color-text-sub)', marginTop: 4 }}>
+            Creates a result from the matching template for the selected property and category.
+          </p>
         </DialogHeader>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 }}>
+          {/* Property */}
           <div>
             <Label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-strong)' }}>Property *</Label>
             <Select value={form.propertyId} onValueChange={v => setF('propertyId', v)}>
@@ -647,15 +726,22 @@ function CreateDialog({ open, onOpenChange, properties, defaultCat, onCreated })
               <SelectContent>{properties.map(p => <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+
+          {/* Block */}
           {blocks.length > 0 && (
             <div>
               <Label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-strong)' }}>Block</Label>
               <Select value={form.blockId} onValueChange={v => setF('blockId', v)}>
                 <SelectTrigger className="mt-1.5 bg-surface-raised border-muted-fill"><SelectValue placeholder="All blocks (optional)" /></SelectTrigger>
-                <SelectContent>{blocks.map(b => <SelectItem key={b._id} value={b._id}>{b.name}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  <SelectItem value="">All blocks</SelectItem>
+                  {blocks.map(b => <SelectItem key={b._id} value={b._id}>{b.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
           )}
+
+          {/* Category + Frequency */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
               <Label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-strong)' }}>Category *</Label>
@@ -672,15 +758,68 @@ function CreateDialog({ open, onOpenChange, properties, defaultCat, onCreated })
               </Select>
             </div>
           </div>
+
+          {/* Check Date */}
           <div>
             <Label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-strong)' }}>Check Date *</Label>
             <Input type="date" value={form.checkDate} onChange={e => setF('checkDate', e.target.value)} className="mt-1.5 bg-surface-raised border-muted-fill" />
+          </div>
+
+          {/* Template lookup */}
+          <div>
+            <button
+              onClick={lookupTemplate}
+              disabled={!form.propertyId || tLoading}
+              style={{
+                width: '100%', height: 34, borderRadius: 8, fontSize: 12, fontWeight: 600,
+                backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                color: 'var(--color-text-sub)', cursor: form.propertyId ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                opacity: form.propertyId ? 1 : 0.5,
+              }}
+            >
+              {tLoading
+                ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Looking up template…</>
+                : 'Find Template'
+              }
+            </button>
+
+            {/* Template found */}
+            {template && (
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 11px', borderRadius: 8, backgroundColor: 'var(--color-success-bg)', border: '1px solid var(--color-success-border)' }}>
+                <CheckCircle2 size={13} color="var(--color-success)" style={{ flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-success)' }}>
+                    {template.name || `${template.category} – ${FREQ[template.checklistType]}`}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-sub)', marginTop: 1 }}>
+                    {template.totalItems} items · ready to use
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* No template */}
+            {tError && (
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 11px', borderRadius: 8, backgroundColor: 'var(--color-warning-bg)', border: '1px solid var(--color-warning-border)' }}>
+                <AlertTriangle size={13} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 12, color: 'var(--color-warning)', lineHeight: 1.5 }}>{tError}</span>
+              </div>
+            )}
           </div>
         </div>
 
         <DialogFooter style={{ gap: 8, marginTop: 8 }}>
           <DialogClose asChild><Button variant="outline" style={{ fontSize: 13 }}>Cancel</Button></DialogClose>
-          <Button onClick={submit} disabled={loading} style={{ backgroundColor: 'var(--color-accent)', color: '#fff', fontSize: 13, fontWeight: 600, border: 'none' }}>
+          <Button
+            onClick={submit}
+            disabled={loading || !template}
+            style={{
+              backgroundColor: template ? 'var(--color-accent)' : 'var(--color-muted)',
+              color: '#fff', fontSize: 13, fontWeight: 600, border: 'none',
+              cursor: template ? 'pointer' : 'default',
+            }}
+          >
             {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : 'Create Checklist'}
           </Button>
         </DialogFooter>
@@ -693,8 +832,8 @@ function CreateDialog({ open, onOpenChange, properties, defaultCat, onCreated })
 
 function OverviewBar({ cards }) {
   const populated = cards.filter(c => c.checklist);
-  const issues    = populated.filter(c => c.checklist.hasIssues).length;
-  const avgRate   = populated.length ? Math.round(populated.reduce((s, c) => s + pRate(c.checklist), 0) / populated.length) : 0;
+  const issues = populated.filter(c => c.checklist.hasIssues).length;
+  const avgRate = populated.length ? Math.round(populated.reduce((s, c) => s + pRate(c.checklist), 0) / populated.length) : 0;
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 24 }}>
@@ -725,12 +864,12 @@ function OverviewBar({ cards }) {
 export default function DailyChecks() {
   const [properties, setProperties] = useState([]);
   const [propertyId, setPropertyId] = useState('ALL');
-  const [cards,      setCards]      = useState(CATEGORIES.map(c => ({ catKey: c.key, checklist: null, loading: true })));
+  const [cards, setCards] = useState(CATEGORIES.map(c => ({ catKey: c.key, checklist: null, loading: true })));
 
-  const [drawerOpen,  setDrawerOpen]  = useState(false);
-  const [drawerCat,   setDrawerCat]   = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerCat, setDrawerCat] = useState(null);
   const [drawerLatest, setDrawerLatest] = useState(null);
-  const [createOpen,  setCreateOpen]  = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Load properties
   useEffect(() => {
@@ -740,15 +879,28 @@ export default function DailyChecks() {
     })();
   }, []);
 
-  // Fetch latest check per category — parallel
+  // ✅ Fixed: fetch from /api/checklists/results (was /api/checklists)
   const refresh = useCallback(async () => {
     setCards(CATEGORIES.map(c => ({ catKey: c.key, checklist: null, loading: true })));
     const results = await Promise.allSettled(
-      CATEGORIES.map(cat => api.get('/api/checklists', { params: { category: cat.key, limit: 1, page: 1, ...(propertyId && propertyId !== 'ALL' ? { propertyId } : {}) } }))
+      CATEGORIES.map(cat =>
+        api.get('/api/checklists/results', {
+          params: {
+            category: cat.key,
+            limit: 1,
+            page: 1,
+            ...(propertyId && propertyId !== 'ALL' ? { propertyId } : {}),
+          },
+        })
+      )
     );
     setCards(CATEGORIES.map((cat, i) => {
       const r = results[i];
-      return { catKey: cat.key, checklist: r.status === 'fulfilled' ? (r.value?.data?.data?.[0] || null) : null, loading: false };
+      return {
+        catKey: cat.key,
+        checklist: r.status === 'fulfilled' ? (r.value?.data?.data?.[0] || null) : null,
+        loading: false,
+      };
     }));
   }, [propertyId]);
 
