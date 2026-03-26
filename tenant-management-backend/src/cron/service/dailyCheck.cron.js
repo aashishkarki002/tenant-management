@@ -174,6 +174,19 @@ export async function createAndNotifyMorning() {
     .populate("property", "name")
     .populate("block", "name")
     .lean();
+  console.log(
+    "Templates found:",
+    templates.length,
+    templates.map((t) => ({
+      id: t._id,
+      category: t.category,
+      checklistType: t.checklistType,
+      isActive: t.isActive,
+    })),
+  );
+  const resultCount = await ChecklistResult.countDocuments();
+  console.log("Result count:", resultCount);
+  // Should be 0 if you deleted everything
 
   if (!templates.length) {
     console.log("   → No active DAILY templates found — skipping");

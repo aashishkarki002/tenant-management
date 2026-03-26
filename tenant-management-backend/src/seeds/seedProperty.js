@@ -2,9 +2,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { connectDB } from "../config/db.js";
-import Property from "../modules/tenant/Property.Model.js";
-import Block from "../modules/tenant/Block.Model.js";
-import InnerBlock from "../modules/tenant/InnerBlock.Model.js";
+import Property from "../modules/property/Property.Model.js";
+import { Block } from "../modules/blocks/Block.Model.js";
+import InnerBlock from "../modules/blocks/innerBlocks/InnerBlock.Model.js";
 import { Unit } from "../modules/units/unit.model.js";
 
 async function seedProperty() {
