@@ -91,6 +91,29 @@ export function parsePeriodKey(key) {
   return { nepaliYear, nepaliMonth };
 }
 
+/**
+ * Parse "MonthName YYYY" (e.g. "Ashwin 2081") into 1-based month + year.
+ *
+ * @param {string} value
+ * @returns {{ month: number, year: number } | null}
+ */
+export function parseNepaliMonthString(value) {
+  if (!value || typeof value !== "string") return null;
+  const match = value.trim().match(/^(\S+)\s+(\d{4})$/);
+  if (!match) return null;
+
+  const monthName = match[1].toLowerCase();
+  const year = parseInt(match[2], 10);
+  if (Number.isNaN(year)) return null;
+
+  const monthIndex = NEPALI_MONTH_NAMES.findIndex(
+    (name) => name.toLowerCase() === monthName,
+  );
+  if (monthIndex < 0) return null;
+
+  return { month: monthIndex + 1, year };
+}
+
 // ─── Select-option builders ───────────────────────────────────────────────────
 
 /**

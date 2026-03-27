@@ -32,6 +32,8 @@ const PAYMENT_METHODS = [
 ];
 
 const BANK_REQUIRED = new Set(["bank_transfer", "cheque"]);
+const fmtRs = (n) =>
+    `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -137,14 +139,15 @@ export default function ElectricityPaymentDialog({
     setPaymentDialogOpen,
     unitName,
     record,
-    totalAmountFormatted,
+    totalAmount,
     paidAmount,
-    paidAmountFormatted,
     remainingAmount,
-    remainingAmountFormatted,
     onPaymentRecorded,
 }) {
     const { bankAccounts = [] } = useBankAccounts();
+    const totalAmountFormatted = fmtRs(totalAmount);
+    const paidAmountFormatted = paidAmount > 0 ? fmtRs(paidAmount) : null;
+    const remainingAmountFormatted = fmtRs(remainingAmount);
 
     const formik = useFormik({
         initialValues: {
@@ -266,7 +269,7 @@ export default function ElectricityPaymentDialog({
                         {paidAmount > 0 && (
                             <SummaryRow
                                 label="Already Paid"
-                                value={paidAmountFormatted}
+                                value={paidAmountFormatted ?? "-"}
                                 className="pb-2.5 border-b"
                                 style={{ borderColor: "var(--color-border)" }}
                             />

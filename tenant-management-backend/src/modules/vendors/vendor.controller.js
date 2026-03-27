@@ -20,12 +20,10 @@ export const createVendor = async (req, res) => {
     } = req.body;
 
     if (!name || !serviceType || !phone) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "name, serviceType, and phone are required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "name, serviceType, and phone are required",
+      });
     }
 
     const vendor = await Vendor.create({
@@ -278,5 +276,23 @@ export const updatePersonnel = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: "Failed to update personnel" });
+  }
+};
+export const getVendorsByServiceType = async (req, res) => {
+  try {
+    const { serviceType } = req.params;
+    const vendors = await Vendor.find({
+      serviceType,
+      isActive: true,
+    })
+      .sort({ name: 1 })
+      .lean();
+
+    return res.status(200).json({ success: true, vendors });
+  } catch (error) {
+    console.error("getVendorsByServiceType error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch vendors" });
   }
 };

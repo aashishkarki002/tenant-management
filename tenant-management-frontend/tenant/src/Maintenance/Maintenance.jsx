@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { Empty, EmptyTitle } from '@/components/ui/empty';
 import { cn } from '@/lib/utils';
 import GeneratorPanel from '../Generators/Generator';
+import { UnitCombobox } from '@/components/UnitComboBox';
 
 /* ── Style helpers ────────────────────────────────────────────────────────── */
 export const getPriorityStyle = (priority) => {
@@ -617,6 +618,22 @@ function AddTaskDialog({
   compact = false, label,
 }) {
   const buttonLabel = label || ' New Repair';
+  const unitOptions = useMemo(
+    () =>
+      (unit ?? []).map((u) => ({
+        value: u._id,
+        label: u.name ?? u.unitName ?? u._id,
+        blockName: u.blockName ?? u.block?.name ?? undefined,
+        floor: u.floor ?? u.floorName ?? undefined,
+        isOccupied:
+          Boolean(u.currentLease) ||
+          Boolean(u.tenantId) ||
+          Boolean(u.tenant?._id) ||
+          Boolean(u.tenant),
+      })),
+    [unit],
+  );
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -722,16 +739,16 @@ function AddTaskDialog({
             >
               <div>
                 <Label className="text-text-strong">Unit Number</Label>
-                <Select value={formik.values.unit} onValueChange={(v) => formik.setFieldValue('unit', v)}>
-                  <SelectTrigger className="mt-1.5 bg-surface-raised border-muted-fill">
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(unit ?? []).map((u) => (
-                      <SelectItem key={u._id} value={u._id}>{u.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="mt-1.5">
+                  <UnitCombobox
+                    options={unitOptions}
+                    value={formik.values.unit || ''}
+                    onChange={(v) => formik.setFieldValue('unit', v)}
+                    placeholder="Select unit"
+                    loading={isLoading}
+                    disabled={isLoading || unitOptions.length === 0}
+                  />
+                </div>
               </div>
               {selectedTenant && (
                 <div className="rounded-md border border-muted-fill bg-surface-raised p-4">

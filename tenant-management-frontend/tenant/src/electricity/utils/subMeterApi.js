@@ -55,11 +55,11 @@ export async function createSubMeter(body) {
 }
 
 /**
- * PATCH /api/electricity/sub-meters/:id
- * Update name, description, isActive, etc.
+ * PUT /api/electricity/sub-meters/update/:subMeterId
+ * Update an existing sub-meter (name, description, isActive, etc.).
  *
- * @param {string} id
- * @param {Object} body - partial SubMeter fields
+ * @param {string} id - Sub-meter id
+ * @param {Object} body - Partial SubMeter fields
  * @returns {Promise<SubMeter>}
  */
 export async function updateSubMeter(id, body) {

@@ -1,19 +1,15 @@
 /**
- * DailyChecklistPage.jsx  – Enhanced
+ * DailyChecklistPage.jsx  – Exception-based model
  *
- * Key upgrades over baseline:
- *  1. Nepali date displayed everywhere using getNepaliToday() / NEPALI_MONTH_NAMES
- *     from nepaliDateHelper.js (same util the service already uses).
- *  2. Issue Dialog — clicking "Issue" opens a full-screen bottom-sheet modal with:
- *       • Description textarea (required before submit)
- *       • Photo attachment — camera capture on mobile, file picker on desktop
- *       • Up to 3 photos per issue, stored as base64 in state & sent to API
- *  3. Auto-maintenance tasks shown prominently on ResultScreen.
- *  4. Nepali date sent with every create / submit API call so the service
- *     doesn't have to derive it server-side.
+ * UX overhaul: staff only acts on exceptions, not on normality.
+ *  - Items default to isOk: null ("not yet walked")
+ *  - Section-level "All Clear ✓" bulk action = 1 tap per section
+ *  - Individual "Issue" button per item (no OK button needed)
+ *  - 3 visual states: unreviewed (gray) / cleared (green) / issue (amber)
+ *  - Submit gate: null treated as OK on submit (no backend change required)
+ *  - Audit trail preserved: null ≠ true (supervisor can see what was explicitly walked)
  *
- * Stack: React + Tailwind (CSS vars) + lucide-react + react-i18next + sonner.
- * No new deps required.  Photos are base64 — hook up your upload endpoint as needed.
+ * Backend: zero changes. Submit delta logic already treats null → true.
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -45,6 +41,9 @@ import {
     Calendar,
     Trash2,
     Upload,
+    ShieldCheck,
+    Eye,
+    EyeOff,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -52,10 +51,6 @@ import api from "../../plugins/axios";
 import { useAuth } from "../context/AuthContext";
 import { getTodayNepali, NEPALI_MONTH_NAMES, NEPALI_MONTH_NAMES_NP } from "../../utils/nepaliDate";
 
-/**
- * Get today's Nepali date fields using the proper utility.
- * Returns { bsYear, bsMonth (1-based), bsDay, nepaliISO, monthName, monthNameNp }
- */
 function getNepaliTodayClient() {
     const today = getTodayNepali();
     return {
@@ -145,9 +140,6 @@ function todayISO() {
     return new Date().toISOString().split("T")[0];
 }
 
-/**
- * Check if a checklist is from today based on its checkDate
- */
 function isChecklistFromToday(checklist) {
     if (!checklist?.checkDate) return false;
     const today = todayISO();
@@ -155,15 +147,12 @@ function isChecklistFromToday(checklist) {
     return checkDate === today;
 }
 
-/**
- * Check if a checklist is completed today
- */
 function isCompletedToday(checklist) {
     if (!checklist || checklist.status !== "COMPLETED") return false;
     return isChecklistFromToday(checklist);
 }
 
-// Only items explicitly marked false count as issues — null (untouched) does not
+// Issues = explicitly marked false
 function countIssues(sections) {
     return sections.reduce((acc, sec) => acc + sec.items.filter((it) => it.isOk === false).length, 0);
 }
@@ -172,12 +161,21 @@ function countTotal(sections) {
     return sections.reduce((acc, sec) => acc + sec.items.length, 0);
 }
 
-// Progress = items the user has explicitly touched (isOk is true OR false, not null)
-function countChecked(sections) {
+// Reviewed = explicitly walked (true OR false), NOT null
+function countReviewed(sections) {
     return sections.reduce(
         (acc, sec) => acc + sec.items.filter((it) => it.isOk === true || it.isOk === false).length,
         0,
     );
+}
+
+// Section is fully walked when every item is non-null
+function isSectionReviewed(section) {
+    return section.items.every((it) => it.isOk !== null);
+}
+
+function countReviewedSections(sections) {
+    return sections.filter(isSectionReviewed).length;
 }
 
 // ─── ProgressBar ──────────────────────────────────────────────────────────────
@@ -208,24 +206,18 @@ function NepaliDateBadge({ bsYear, bsMonth, bsDay, monthName }) {
 }
 
 // ─── IssueDialog ──────────────────────────────────────────────────────────────
-// Full-screen bottom-sheet modal for documenting issues.
-// Opens when staff presses the "Issue" button on any checklist item.
-// Features: description (required), photo attach (camera / file picker), up to 3 photos.
 
 function IssueDialog({ item, onConfirm, onCancel }) {
     const [description, setDescription] = useState(item.notes ?? "");
     const [photos, setPhotos] = useState(item.photos ?? []);
-    const [cameraError, setCameraError] = useState(null);
     const fileInputRef = useRef(null);
     const cameraInputRef = useRef(null);
     const textareaRef = useRef(null);
 
-    // Focus textarea on mount
     useEffect(() => {
         setTimeout(() => textareaRef.current?.focus(), 100);
     }, []);
 
-    // Prevent body scroll while dialog open
     useEffect(() => {
         document.body.style.overflow = "hidden";
         return () => { document.body.style.overflow = ""; };
@@ -258,23 +250,19 @@ function IssueDialog({ item, onConfirm, onCancel }) {
     }
 
     return (
-        // Backdrop
         <div
             className="fixed inset-0 z-50 flex flex-col justify-end"
             style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
             onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
         >
-            {/* Sheet */}
             <div
                 className="bg-[var(--color-surface)] rounded-t-3xl max-h-[92dvh] flex flex-col overflow-hidden"
                 style={{ animation: "slideUp 0.28s cubic-bezier(0.34,1.56,0.64,1) both" }}
             >
-                {/* Handle */}
                 <div className="flex justify-center pt-3 pb-1 shrink-0">
                     <div className="w-10 h-1 rounded-full bg-[var(--color-border)]" />
                 </div>
 
-                {/* Header */}
                 <div className="px-5 pb-4 pt-2 flex items-start gap-3 shrink-0 border-b border-[var(--color-border)]">
                     <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0 mt-0.5">
                         <AlertCircle className="w-5 h-5 text-red-500" />
@@ -296,10 +284,7 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                     </button>
                 </div>
 
-                {/* Scrollable body */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-
-                    {/* Description */}
                     <div>
                         <label className="block text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2">
                             Issue Description <span className="text-red-500">*</span>
@@ -308,7 +293,7 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                             ref={textareaRef}
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Describe what's wrong in detail… e.g. '2 bulbs fused, right side of corridor dark'"
+                            placeholder="Describe what's wrong… e.g. '2 bulbs fused, right side of corridor dark'"
                             rows={4}
                             className="
                                 w-full text-sm rounded-xl px-4 py-3 resize-none
@@ -328,13 +313,11 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                         )}
                     </div>
 
-                    {/* Photo section */}
                     <div>
                         <label className="block text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2">
                             Photos <span className="text-[var(--color-text-weak)] font-normal normal-case tracking-normal">({photos.length}/3)</span>
                         </label>
 
-                        {/* Photo thumbnails */}
                         <div className="flex gap-2.5 flex-wrap">
                             {photos.map((photo, idx) => (
                                 <div
@@ -342,11 +325,7 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                                     className="relative w-24 h-24 rounded-xl overflow-hidden border-2 border-[var(--color-border)] bg-[var(--color-muted)] shrink-0"
                                     style={{ animation: `fadeIn 0.2s ease both` }}
                                 >
-                                    <img
-                                        src={photo.uri}
-                                        alt={`Issue photo ${idx + 1}`}
-                                        className="w-full h-full object-cover"
-                                    />
+                                    <img src={photo.uri} alt={`Issue photo ${idx + 1}`} className="w-full h-full object-cover" />
                                     <button
                                         onClick={() => handleRemovePhoto(idx)}
                                         className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center hover:bg-red-500 transition-colors"
@@ -357,10 +336,8 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                                 </div>
                             ))}
 
-                            {/* Add photo buttons — show both camera and upload when under limit */}
                             {photos.length < 3 && (
                                 <div className="flex gap-2.5">
-                                    {/* Camera capture (mobile-native) */}
                                     <button
                                         onClick={() => cameraInputRef.current?.click()}
                                         className="
@@ -375,7 +352,6 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                                         <span className="text-[10px] font-semibold text-[var(--color-text-sub)]">Camera</span>
                                     </button>
 
-                                    {/* File picker */}
                                     <button
                                         onClick={() => fileInputRef.current?.click()}
                                         className="
@@ -393,31 +369,14 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                             )}
                         </div>
 
-                        {/* Hidden inputs */}
-                        <input
-                            ref={cameraInputRef}
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            multiple
-                            className="hidden"
-                            onChange={(e) => handleAddPhotos(e.target.files)}
-                        />
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            onChange={(e) => handleAddPhotos(e.target.files)}
-                        />
+                        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(e) => handleAddPhotos(e.target.files)} />
+                        <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleAddPhotos(e.target.files)} />
 
                         <p className="text-xs text-[var(--color-text-weak)] mt-2">
-                            Up to 3 photos. Use camera for a live shot or gallery to upload existing.
+                            Up to 3 photos. Camera for live shot, gallery to upload existing.
                         </p>
                     </div>
 
-                    {/* Auto maintenance notice */}
                     <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-amber-50 border border-amber-200">
                         <Wrench className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                         <p className="text-xs text-amber-800 leading-relaxed">
@@ -426,7 +385,6 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                     </div>
                 </div>
 
-                {/* Footer actions */}
                 <div className="px-5 py-4 border-t border-[var(--color-border)] flex gap-3 shrink-0 bg-[var(--color-surface)]">
                     <button
                         onClick={onCancel}
@@ -480,19 +438,13 @@ function CategoryPicker({ checklists, onSelect, completedCategories, loading, t 
         );
     }
 
-    const today = todayISO();
-
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {ALL_CATEGORIES.map((cat) => {
                 const meta = CATEGORY_META[cat];
                 const Icon = meta.icon;
                 const checklist = checklists.find((c) => c.category === cat);
-
-                // Check if checklist is completed today
                 const isDone = checklist && isCompletedToday(checklist);
-
-                // Check if checklist is from today and in progress
                 const isFromToday = checklist && isChecklistFromToday(checklist);
                 const isInProgress = checklist && checklist.status !== "COMPLETED" && isFromToday;
 
@@ -551,21 +503,29 @@ function CategoryPicker({ checklists, onSelect, completedCategories, loading, t 
 }
 
 // ─── CheckItem ────────────────────────────────────────────────────────────────
-// When staff hits "Issue", opens the IssueDialog instead of inline textarea.
+// Exception-only model:
+//   null  → not yet walked (neutral, shows "Issue?" prompt)
+//   true  → explicitly cleared (green, via bulk or item-level undo)
+//   false → issue logged (amber, opens IssueDialog)
+//
+// The OK button is removed. Staff only acts on exceptions.
+// If they tapped Issue by mistake, they can dismiss the dialog and the item
+// stays in its previous state. If they want to clear a previously flagged item
+// they tap the green "Clear" chip that appears on a false item.
 
 function CheckItem({ item, sectionKey, onChange, t }) {
     const [dialogOpen, setDialogOpen] = useState(false);
-
-    function handleOk() {
-        // If previously had issue, clear it
-        onChange(sectionKey, item._id, { isOk: true, notes: "", photos: [] });
-    }
 
     function handleIssueClick() {
         setDialogOpen(true);
     }
 
-    function handleDialogConfirm({ notes, photos, isOk }) {
+    function handleClearIssue() {
+        // Revert a flagged item back to "reviewed OK"
+        onChange(sectionKey, item._id, { isOk: true, notes: "", photos: [] });
+    }
+
+    function handleDialogConfirm({ notes, photos }) {
         onChange(sectionKey, item._id, { isOk: false, notes, photos });
         setDialogOpen(false);
     }
@@ -575,14 +535,17 @@ function CheckItem({ item, sectionKey, onChange, t }) {
     }
 
     const hasPhotos = item.photos?.length > 0;
+    const isIssue = item.isOk === false;
+    const isCleared = item.isOk === true;
+    const isPending = item.isOk === null;
 
     return (
         <>
             <div className={`
                 rounded-xl border-2 overflow-hidden transition-all duration-200
-                ${item.isOk === false
+                ${isIssue
                     ? "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)]"
-                    : item.isOk === true
+                    : isCleared
                         ? "border-[var(--color-success-border)] bg-[var(--color-success-bg)]"
                         : "border-[var(--color-border)] bg-[var(--color-surface-raised)]"
                 }
@@ -590,65 +553,107 @@ function CheckItem({ item, sectionKey, onChange, t }) {
                 <div className="flex items-center gap-3 p-3">
                     {/* Status dot */}
                     <div className={`
-                        w-2 h-2 rounded-full shrink-0 mt-0.5
-                        ${item.isOk === false
+                        w-2 h-2 rounded-full shrink-0 mt-0.5 transition-colors duration-300
+                        ${isIssue
                             ? "bg-[var(--color-warning)]"
-                            : item.isOk === true
+                            : isCleared
                                 ? "bg-[var(--color-success)]"
-                                : "bg-[var(--color-muted)]"
+                                : "bg-[var(--color-border)]"
                         }
                     `} />
 
                     {/* Label + qty */}
                     <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium leading-snug ${item.isOk === false ? "text-[var(--color-warning)]" : "text-[var(--color-text-body)]"}`}>
+                        <p className={`
+                            text-sm font-medium leading-snug
+                            ${isIssue
+                                ? "text-[var(--color-warning)]"
+                                : isCleared
+                                    ? "text-[var(--color-success)]"
+                                    : "text-[var(--color-text-body)]"
+                            }
+                        `}>
                             {item.label}
                         </p>
                         {item.quantity != null && (
                             <p className="text-xs text-[var(--color-text-weak)] mt-0.5">
-                                {t("checklist.qty", { n: item.quantity })} qty: {item.quantity}
+                                qty: {item.quantity}
                             </p>
                         )}
                     </div>
 
-                    {/* OK / Issue */}
-                    <div className="flex gap-2 shrink-0">
-                        <button
-                            onClick={handleOk}
-                            aria-pressed={item.isOk === true}
-                            className={`
-                                flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
-                                transition-all duration-150 active:scale-95
-                                ${item.isOk === true
-                                    ? "bg-[var(--color-success)] text-white shadow-sm"
-                                    : "bg-white border-2 border-[var(--color-success-border)] text-[var(--color-success)] hover:bg-[var(--color-success-bg)]"
-                                }
-                            `}
-                        >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>{t("checklist.okButton", "OK")}</span>
-                        </button>
+                    {/* Action area — context-sensitive */}
+                    <div className="flex gap-2 shrink-0 items-center">
 
-                        <button
-                            onClick={handleIssueClick}
-                            aria-pressed={item.isOk === false}
-                            className={`
-                                flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
-                                transition-all duration-150 active:scale-95
-                                ${item.isOk === false
-                                    ? "bg-[var(--color-warning)] text-white shadow-sm"
-                                    : "bg-white border-2 border-[var(--color-warning-border)] text-[var(--color-warning)] hover:bg-[var(--color-warning-bg)]"
-                                }
-                            `}
-                        >
-                            <X className="w-3.5 h-3.5" />
-                            <span>{t("checklist.issueButton", "Issue")}</span>
-                        </button>
+                        {/* Pending: show Issue button only */}
+                        {isPending && (
+                            <button
+                                onClick={handleIssueClick}
+                                className="
+                                    flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
+                                    bg-white border-2 border-[var(--color-warning-border)]
+                                    text-[var(--color-warning)] hover:bg-[var(--color-warning-bg)]
+                                    transition-all duration-150 active:scale-95
+                                "
+                            >
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                <span>{t("checklist.issueButton", "Issue?")}</span>
+                            </button>
+                        )}
+
+                        {/* Cleared: show subtle "flag" option in case they need to reverse */}
+                        {isCleared && (
+                            <button
+                                onClick={handleIssueClick}
+                                className="
+                                    flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
+                                    bg-[var(--color-success-bg)] border-2 border-[var(--color-success-border)]
+                                    text-[var(--color-success)] hover:border-[var(--color-warning-border)]
+                                    hover:bg-[var(--color-warning-bg)] hover:text-[var(--color-warning)]
+                                    transition-all duration-150 active:scale-95 group
+                                "
+                                title="Flag an issue on this item"
+                            >
+                                <Check className="w-3.5 h-3.5 group-hover:hidden" />
+                                <AlertCircle className="w-3.5 h-3.5 hidden group-hover:block" />
+                                <span className="group-hover:hidden">{t("checklist.okButton", "OK")}</span>
+                                <span className="hidden group-hover:inline">{t("checklist.issueButton", "Issue?")}</span>
+                            </button>
+                        )}
+
+                        {/* Issue logged: show clear + edit */}
+                        {isIssue && (
+                            <div className="flex gap-1.5">
+                                <button
+                                    onClick={handleClearIssue}
+                                    className="
+                                        flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-bold
+                                        bg-white border-2 border-[var(--color-success-border)]
+                                        text-[var(--color-success)] hover:bg-[var(--color-success-bg)]
+                                        transition-all duration-150 active:scale-95
+                                    "
+                                    title="Mark as OK"
+                                >
+                                    <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={handleIssueClick}
+                                    className="
+                                        flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
+                                        bg-[var(--color-warning)] text-white shadow-sm
+                                        transition-all duration-150 active:scale-95
+                                    "
+                                >
+                                    <AlertCircle className="w-3.5 h-3.5" />
+                                    <span>Edit</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {/* Issue summary row — shown when issue logged */}
-                {item.isOk === false && (item.notes || hasPhotos) && (
+                {/* Issue summary row */}
+                {isIssue && (item.notes || hasPhotos) && (
                     <div className="px-3 pb-3 flex items-start gap-2">
                         <div className="flex-1 min-w-0">
                             {item.notes && (
@@ -666,18 +671,10 @@ function CheckItem({ item, sectionKey, onChange, t }) {
                                 ))}
                             </div>
                         )}
-                        {/* Edit issue button */}
-                        <button
-                            onClick={handleIssueClick}
-                            className="text-[10px] font-bold text-[var(--color-warning)] underline shrink-0 ml-1"
-                        >
-                            Edit
-                        </button>
                     </div>
                 )}
             </div>
 
-            {/* Issue Dialog Portal */}
             {dialogOpen && (
                 <IssueDialog
                     item={item}
@@ -690,27 +687,62 @@ function CheckItem({ item, sectionKey, onChange, t }) {
 }
 
 // ─── SectionGroup ─────────────────────────────────────────────────────────────
+// Now with "All Clear ✓" bulk action.
+// onSectionClear(sectionKey) — sets all null items in this section to true.
 
-function SectionGroup({ section, onChange, t }) {
+function SectionGroup({ section, onChange, onSectionClear, t }) {
     const total = section.items.length;
-    const passed = section.items.filter((it) => it.isOk === true).length;
+    const cleared = section.items.filter((it) => it.isOk === true).length;
     const issues = section.items.filter((it) => it.isOk === false).length;
+    const pending = section.items.filter((it) => it.isOk === null).length;
+    const isFullyReviewed = pending === 0;
 
     return (
         <div>
+            {/* Section header */}
             <div className="flex items-center justify-between mb-2 px-1">
-                <h3 className="text-sm font-bold text-[var(--color-text-strong)]">
-                    {section.sectionLabel}
-                </h3>
-                <div className="flex items-center gap-2">
-                    {issues > 0 && (
-                        <span className="text-xs font-semibold text-[var(--color-warning)] bg-[var(--color-warning-bg)] px-2 py-0.5 rounded-full border border-[var(--color-warning-border)]">
-                            {issues} {t("checklist.issueCount", "issue(s)")}
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <h3 className="text-sm font-bold text-[var(--color-text-strong)] truncate">
+                        {section.sectionLabel}
+                    </h3>
+                    {/* Reviewed state indicator */}
+                    {isFullyReviewed && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--color-success-bg)] text-[var(--color-success)] border border-[var(--color-success-border)] uppercase tracking-wide shrink-0">
+                            Walked ✓
                         </span>
                     )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                    {issues > 0 && (
+                        <span className="text-xs font-semibold text-[var(--color-warning)] bg-[var(--color-warning-bg)] px-2 py-0.5 rounded-full border border-[var(--color-warning-border)]">
+                            {issues} ⚠
+                        </span>
+                    )}
+
+                    {/* Progress: x/total reviewed */}
                     <span className="text-xs text-[var(--color-text-weak)]">
-                        {passed}/{total}
+                        {total - pending}/{total}
                     </span>
+
+                    {/* All Clear — only show when there are still pending items */}
+                    {pending > 0 && (
+                        <button
+                            onClick={() => onSectionClear(section.sectionKey)}
+                            className="
+                                flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                                text-xs font-bold
+                                bg-[var(--color-success-bg)] text-[var(--color-success)]
+                                border-2 border-[var(--color-success-border)]
+                                hover:bg-[var(--color-success)] hover:text-white
+                                transition-all duration-150 active:scale-95
+                            "
+                            title={`Mark all ${pending} remaining items as OK`}
+                        >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            All Clear
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -741,7 +773,12 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
         checklist?.data?.sections
             ? JSON.parse(JSON.stringify(checklist.data.sections)).map((s) => ({
                 ...s,
-                items: s.items.map((it) => ({ ...it, isOk: null, photos: [] })),
+                items: s.items.map((it) => ({
+                    ...it,
+                    isOk: null,   // ← always start null (not yet walked)
+                    photos: [],
+                    notes: "",
+                })),
             }))
             : [],
     );
@@ -750,8 +787,12 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
 
     const totalItems = countTotal(sections);
     const issueCount = countIssues(sections);
-    const checkedCount = countChecked(sections);
+    const reviewedCount = countReviewed(sections);
+    const reviewedSections = countReviewedSections(sections);
+    const totalSections = sections.length;
+    const pendingCount = totalItems - reviewedCount;
 
+    // Per-item change handler (unchanged API)
     function handleItemChange(sectionKey, itemId, patch) {
         setSections((prev) =>
             prev.map((sec) =>
@@ -767,19 +808,35 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
         );
     }
 
+    // ── NEW: section-level All Clear ──────────────────────────────────────────
+    // Sets isOk: true on all items that are still null in this section.
+    // Items already set to false (issues) are intentionally left unchanged.
+    function handleSectionAllClear(sectionKey) {
+        setSections((prev) =>
+            prev.map((sec) =>
+                sec.sectionKey !== sectionKey
+                    ? sec
+                    : {
+                        ...sec,
+                        items: sec.items.map((it) =>
+                            it.isOk === null ? { ...it, isOk: true, notes: "", photos: [] } : it,
+                        ),
+                    },
+            ),
+        );
+    }
+
     async function handleSubmit() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            // v2: submit sends only the DELTA — items that failed or have notes.
-            // Items where isOk=true and notes="" are the assumed default and are NOT stored.
-            // This is what gives the 95% storage reduction vs the old full-embed approach.
+            // Submit logic unchanged — null treated as OK on the server side too.
+            // Only delta (failed or noted items) is sent.
             const itemResults = [];
             for (const sec of sections) {
                 for (const item of sec.items) {
                     const effectiveIsOk = item.isOk === null ? true : item.isOk;
                     const hasNote = item.notes?.trim();
-                    // Only include in delta if failed OR explicitly noted
                     if (!effectiveIsOk || hasNote) {
                         itemResults.push({
                             itemId: item._id,
@@ -844,43 +901,61 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
                         <p className="text-sm font-bold text-[var(--color-text-strong)] truncate">
                             {t(meta.labelKey, category)}
                         </p>
-                        {/* Nepali date in header */}
                         <p className="text-xs text-[var(--color-text-sub)]">
                             {nepaliDate.bsDay} {nepaliDate.monthName} {nepaliDate.bsYear} BS
                         </p>
                     </div>
 
-                    {issueCount > 0 && (
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--color-warning-bg)] text-[var(--color-warning)] border border-[var(--color-warning-border)]">
-                            {issueCount} ⚠
+                    <div className="flex items-center gap-2 shrink-0">
+                        {issueCount > 0 && (
+                            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--color-warning-bg)] text-[var(--color-warning)] border border-[var(--color-warning-border)]">
+                                {issueCount} ⚠
+                            </span>
+                        )}
+                        {/* Section progress pill */}
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--color-surface-raised)] text-[var(--color-text-sub)] border border-[var(--color-border)]">
+                            {reviewedSections}/{totalSections} sections
                         </span>
-                    )}
+                    </div>
                 </div>
 
+                {/* Progress: item-level granularity */}
                 <div className="flex items-center gap-2">
                     <ProgressBar
-                        value={checkedCount}
+                        value={reviewedCount}
                         max={totalItems}
                         className="flex-1 mt-1"
                         color={issueCount > 0 ? "var(--color-warning)" : meta.color}
                     />
                     <span className="text-xs font-semibold text-[var(--color-text-sub)] shrink-0">
-                        {checkedCount}/{totalItems}
+                        {pendingCount > 0 ? `${pendingCount} left` : "All walked ✓"}
                     </span>
                 </div>
             </div>
 
-            {/* Scrollable sections + overall notes */}
+            {/* Hint banner — shown only when nothing has been reviewed yet */}
+            {reviewedCount === 0 && (
+                <div className="mx-4 mt-4 flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-[var(--color-accent-light)] border border-[var(--color-accent-mid)]">
+                    <Eye className="w-4 h-4 text-[var(--color-accent)] shrink-0 mt-0.5" />
+                    <p className="text-xs text-[var(--color-accent)] font-medium leading-relaxed">
+                        Walk each section and tap <strong>All Clear</strong> if everything looks fine. Only flag items with actual issues.
+                    </p>
+                </div>
+            )}
+
+            {/* Scrollable sections */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
                 {sections.map((sec) => (
                     <SectionGroup
                         key={sec.sectionKey}
                         section={sec}
                         onChange={handleItemChange}
+                        onSectionClear={handleSectionAllClear}
                         t={t}
                     />
                 ))}
 
+                {/* Overall notes */}
                 <div>
                     <label className="block text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2">
                         <MessageSquare className="w-3.5 h-3.5 inline mr-1.5" />
@@ -902,20 +977,31 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
                     />
                 </div>
 
-                {/* Bottom padding for sticky footer */}
                 <div className="h-4" />
             </div>
 
             {/* Sticky submit footer */}
             <div className="sticky bottom-0 bg-[var(--color-surface)] border-t border-[var(--color-border)] px-4 py-4">
+
+                {/* Pending items warning */}
+                {pendingCount > 0 && (
+                    <div className="flex items-center gap-2 mb-3 px-3 py-2.5 rounded-xl bg-[var(--color-surface-raised)] border border-[var(--color-border)]">
+                        <EyeOff className="w-3.5 h-3.5 text-[var(--color-text-sub)] shrink-0" />
+                        <p className="text-xs text-[var(--color-text-sub)] font-medium">
+                            {pendingCount} item{pendingCount > 1 ? "s" : ""} not yet walked — will be treated as OK on submit
+                        </p>
+                    </div>
+                )}
+
                 {issueCount > 0 && (
                     <div className="flex items-center gap-2 mb-3 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
                         <Wrench className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                         <p className="text-xs text-amber-800 font-medium">
-                            {issueCount} issue{issueCount > 1 ? "s" : ""} found — {issueCount} repair task{issueCount > 1 ? "s" : ""} will be auto-created
+                            {issueCount} issue{issueCount > 1 ? "s" : ""} — {issueCount} repair task{issueCount > 1 ? "s" : ""} will be auto-created
                         </p>
                     </div>
                 )}
+
                 <button
                     onClick={handleSubmit}
                     disabled={submitting}
@@ -970,8 +1056,6 @@ function ResultScreen({ result, onNewCheck, onBack }) {
 
     return (
         <div className="flex flex-col px-5 py-8 gap-5">
-
-            {/* Hero */}
             <div className="flex flex-col items-center text-center gap-3">
                 <div className={`w-20 h-20 rounded-full flex items-center justify-center ${hasIssues ? "bg-[var(--color-warning-bg)]" : "bg-[var(--color-success-bg)]"}`}>
                     {hasIssues
@@ -992,7 +1076,6 @@ function ResultScreen({ result, onNewCheck, onBack }) {
                     </p>
                 </div>
 
-                {/* Nepali date stamp */}
                 <NepaliDateBadge
                     bsYear={nepaliDate.bsYear}
                     bsMonth={nepaliDate.bsMonth}
@@ -1000,7 +1083,6 @@ function ResultScreen({ result, onNewCheck, onBack }) {
                     monthName={nepaliDate.monthName}
                 />
 
-                {/* Pass rate pill */}
                 <div className={`
                     px-5 py-2 rounded-full text-sm font-bold border
                     ${hasIssues
@@ -1012,7 +1094,6 @@ function ResultScreen({ result, onNewCheck, onBack }) {
                 </div>
             </div>
 
-            {/* Auto-created maintenance tasks */}
             {autoCreatedTasks.length > 0 && (
                 <div className="rounded-2xl border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] overflow-hidden">
                     <div className="px-4 py-3 border-b border-[var(--color-warning-border)] flex items-center gap-2">
@@ -1044,7 +1125,6 @@ function ResultScreen({ result, onNewCheck, onBack }) {
                 </div>
             )}
 
-            {/* Stats strip */}
             <div className="grid grid-cols-3 gap-2">
                 {[
                     { label: "Total", value: data.totalItems, color: "var(--color-text-body)" },
@@ -1058,7 +1138,6 @@ function ResultScreen({ result, onNewCheck, onBack }) {
                 ))}
             </div>
 
-            {/* Actions */}
             <div className="flex flex-col gap-3 mt-1">
                 <button
                     onClick={onNewCheck}
@@ -1103,8 +1182,6 @@ export default function DailyChecklistPage() {
             try {
                 setLoadingChecklists(true);
                 const today = todayISO();
-                // v2: Fetch all categories for today - we'll fetch latest for each category separately
-                // First, try to get today's checklists
                 const res = await api.get("/api/checklists/results", {
                     params: { propertyId, startDate: today, endDate: today, limit: 50 },
                     signal: controller.signal,
@@ -1112,7 +1189,6 @@ export default function DailyChecklistPage() {
 
                 const todayResults = res.data?.data ?? [];
 
-                // If no results for today, fetch the latest result for each category
                 if (todayResults.length === 0) {
                     const latestResults = await Promise.allSettled(
                         ALL_CATEGORIES.map(cat =>
@@ -1153,18 +1229,14 @@ export default function DailyChecklistPage() {
 
     async function handleCategorySelect(cat, existing) {
         setSelectedCategory(cat);
-        const today = todayISO();
 
-        // ── Check if already completed today ──────────────────────────────────────
         if (existing && isCompletedToday(existing)) {
             toast.info(t("checklist.alreadyCompletedToday", "This checklist has already been completed today"));
             return;
         }
 
-        // ── Resume in-progress result from today ──────────────────────────────────
         if (existing && existing.status !== "COMPLETED" && isChecklistFromToday(existing)) {
             try {
-                // v2: results are under /results/:id (returns merged template+delta view)
                 const res = await api.get(`/api/checklists/results/${existing._id}`);
                 setActiveChecklist(res.data);
                 setView("checklist");
@@ -1174,34 +1246,22 @@ export default function DailyChecklistPage() {
             return;
         }
 
-        // ── If existing from previous day, allow creating new one ────────────────
-        // v2: results require a templateId resolved via multiple strategies:
-        //   1. If we have an existing checklist (even from previous day), use its template
-        //   2. Primary: GET /templates?propertyId&category (block-specific)
-        //   3. Fallback 1: GET /results?propertyId&category&limit=1 — derive from existing result
-        //   4. Fallback 2: GET /results?category&limit=1 (no propertyId) — any property
         setCreating(true);
         try {
             let templateId = null;
 
-            // Strategy 0: If we have an existing checklist, use its template
             if (existing?.template) {
                 templateId = typeof existing.template === 'object' ? existing.template._id : existing.template;
-                console.log(`Using template from existing checklist: ${templateId}`);
             }
 
-            // Strategy 1: direct template catalog lookup
             if (!templateId) {
                 const tplRes = await api.get("/api/checklists/templates", {
                     params: { propertyId, category: cat, isActive: true },
                 });
                 const templates = tplRes.data?.data ?? [];
-                if (templates.length) {
-                    templateId = templates[0]._id;
-                }
+                if (templates.length) templateId = templates[0]._id;
             }
 
-            // Strategy 2: derive from any recent result for this property
             if (!templateId) {
                 const recentRes = await api.get("/api/checklists/results", {
                     params: { propertyId, category: cat, limit: 1, page: 1 },
@@ -1211,7 +1271,6 @@ export default function DailyChecklistPage() {
                 templateId = tplRef?._id ?? tplRef ?? null;
             }
 
-            // Strategy 3: derive from ANY result for this category (any property)
             if (!templateId) {
                 const anyRes = await api.get("/api/checklists/results", {
                     params: { category: cat, limit: 1, page: 1 },
@@ -1222,11 +1281,10 @@ export default function DailyChecklistPage() {
             }
 
             if (!templateId) {
-                toast.error(`No checklist template found for ${cat}. Ask your admin to create one first, or run the seed script to generate templates.`);
+                toast.error(`No checklist template found for ${cat}. Ask your admin to create one first.`);
                 return;
             }
 
-            // Step 2: create a thin result document linked to the template.
             const res = await api.post("/api/checklists/results", {
                 templateId,
                 checkDate: new Date().toISOString(),
@@ -1235,7 +1293,6 @@ export default function DailyChecklistPage() {
                 nepaliYear: nepaliDate.bsYear,
             });
 
-            // Step 3: fetch the full merged view (template sections + empty delta).
             const fullRes = await api.get(`/api/checklists/results/${res.data.data._id}`);
             setActiveChecklist(fullRes.data);
             setView("checklist");
@@ -1285,7 +1342,6 @@ export default function DailyChecklistPage() {
     return (
         <div className="min-h-screen bg-[var(--color-bg)] flex flex-col max-w-2xl mx-auto">
 
-            {/* Page header — picker screen only */}
             {view === "picker" && (
                 <div className="px-4 pt-5 pb-4 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
                     <div className="flex items-center gap-3 mb-4">
@@ -1306,7 +1362,6 @@ export default function DailyChecklistPage() {
                             </p>
                         </div>
 
-                        {/* Nepali date badge */}
                         <NepaliDateBadge
                             bsYear={nepaliDate.bsYear}
                             bsMonth={nepaliDate.bsMonth}
@@ -1323,7 +1378,6 @@ export default function DailyChecklistPage() {
                         </button>
                     </div>
 
-                    {/* Greeting banner */}
                     <div className="rounded-2xl bg-[var(--color-accent)] px-4 py-3 flex items-center gap-3 mb-4">
                         <div>
                             <p className="text-white/80 text-xs">{greeting}</p>
@@ -1337,7 +1391,6 @@ export default function DailyChecklistPage() {
                         </div>
                     </div>
 
-                    {/* Progress strip */}
                     <div className="space-y-1.5">
                         <div className="flex justify-between items-center">
                             <p className="text-xs font-semibold text-[var(--color-text-sub)]">
@@ -1355,10 +1408,7 @@ export default function DailyChecklistPage() {
                 </div>
             )}
 
-            {/* Content */}
             <div className="flex-1 flex flex-col">
-
-                {/* Creating overlay */}
                 {creating && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
                         <div className="bg-[var(--color-surface-raised)] rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-xl">

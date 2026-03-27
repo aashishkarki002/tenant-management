@@ -9,8 +9,6 @@ async function main() {
     await import("./cron/service/generator.cron.js");
   const { scheduleDailyChecklistCron } =
     await import("./cron/service/dailyCheck.cron.js");
-  const { createAndNotifyMorning } =
-    await import("./cron/service/dailyCheck.cron.js");
 
   const PORT = process.env.PORT || 3000;
   console.log("NODE_ENV:", process.env.NODE_ENV);
@@ -33,7 +31,6 @@ async function main() {
   await import("./cron/service/master-cron.js");
   scheduleGeneratorCheckCron();
   scheduleDailyChecklistCron();
-  createAndNotifyMorning();
   server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     console.log(`Socket.io is running on port ${PORT}`);

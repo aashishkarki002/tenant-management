@@ -71,17 +71,11 @@ export function ElectricityPagination({
           type="button"
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
+          className="hover:bg-surface"
           style={{
             ...navBtnBase,
             opacity: currentPage === 1 ? 0.35 : 1,
             cursor: currentPage === 1 ? "not-allowed" : "pointer",
-          }}
-          onMouseOver={(e) => {
-            if (currentPage !== 1)
-              e.currentTarget.style.backgroundColor = "var(--color-surface)";
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = "transparent";
           }}
           aria-label="Previous page"
         >
@@ -96,6 +90,7 @@ export function ElectricityPagination({
               key={page}
               type="button"
               onClick={() => onPageChange(page)}
+              className={isActive ? "" : "hover:bg-surface"}
               style={{
                 width: "32px",
                 height: "32px",
@@ -110,14 +105,6 @@ export function ElectricityPagination({
                   : "transparent",
                 color: isActive ? "#ffffff" : "var(--color-text-body)",
               }}
-              onMouseOver={(e) => {
-                if (!isActive)
-                  e.currentTarget.style.backgroundColor = "var(--color-surface)";
-              }}
-              onMouseOut={(e) => {
-                if (!isActive)
-                  e.currentTarget.style.backgroundColor = "transparent";
-              }}
               aria-label={`Page ${page}`}
               aria-current={isActive ? "page" : undefined}
             >
@@ -131,17 +118,11 @@ export function ElectricityPagination({
           type="button"
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage >= totalPages}
+          className="hover:bg-surface"
           style={{
             ...navBtnBase,
             opacity: currentPage >= totalPages ? 0.35 : 1,
             cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
-          }}
-          onMouseOver={(e) => {
-            if (currentPage < totalPages)
-              e.currentTarget.style.backgroundColor = "var(--color-surface)";
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = "transparent";
           }}
           aria-label="Next page"
         >

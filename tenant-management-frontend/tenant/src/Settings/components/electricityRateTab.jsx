@@ -16,6 +16,17 @@ const PER_TYPE_FIELDS = [
     { key: "sub_meter", label: "Sub-Meter", meta: METER_TYPE_META.sub_meter },
 ];
 
+const toNumber = (value) => {
+    if (value == null || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatRate = (value) => {
+    const numeric = toNumber(value);
+    return numeric == null ? "0.00" : numeric.toFixed(2);
+};
+
 function ElectricityRateTab({ propertyId }) {
     const [rateData, setRateData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -95,7 +106,7 @@ function ElectricityRateTab({ propertyId }) {
                                             Default Rate (fallback for all meter types)
                                         </p>
                                         <p className="text-3xl font-bold text-blue-700">
-                                            Rs {rateData.currentRatePerUnit?.toFixed(2)}
+                                            Rs {formatRate(rateData?.currentCustomRatePerUnit ?? rateData?.currentRatePerUnit)}
                                             <span className="text-base font-normal text-blue-400 ml-1">/ kWh</span>
                                         </p>
                                     </div>
@@ -170,7 +181,7 @@ function ElectricityRateTab({ propertyId }) {
                                         </div>
                                         <div className="flex items-center gap-2 text-sm flex-wrap justify-end">
                                             <span className="font-medium text-gray-700">
-                                                Rs {r.ratePerUnit.toFixed(2)}
+                                                Rs {formatRate(r.customRatePerUnit ?? r.ratePerUnit ?? (toNumber(r.customRatePerUnitPaisa) != null ? toNumber(r.customRatePerUnitPaisa) / 100 : null))}
                                             </span>
                                             {r.meterTypeRates &&
                                                 Object.entries(r.meterTypeRates)
@@ -183,7 +194,7 @@ function ElectricityRateTab({ propertyId }) {
                                                                 key={type}
                                                                 className={`px-2 py-0.5 rounded-full text-xs font-semibold ${meta.badge}`}
                                                             >
-                                                                {meta.label}: Rs {(val / 100).toFixed(2)}
+                                                                {meta.label}: Rs {formatRate(val)}
                                                             </span>
                                                         );
                                                     })}

@@ -14,7 +14,13 @@ import { electricityService } from "./electricity.service.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 import mongoose from "mongoose";
 
-const VALID_METER_TYPES = ["unit", "common_area", "parking", "sub_meter"];
+const VALID_METER_TYPES = [
+  "unit",
+  "common_area",
+  "parking",
+  "sub_meter",
+  "vendor",
+];
 
 const groupReadingsByMeterType = (readings = []) => {
   const buckets = Object.fromEntries(
@@ -92,12 +98,10 @@ export const createElectricityReading = async (req, res) => {
       if (!unitId) {
         await session.abortTransaction();
         session.endSession();
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "unitId is required for unit readings",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "unitId is required for unit readings",
+        });
       }
     } else {
       if (!subMeterId || !propertyId) {
@@ -151,12 +155,10 @@ export const createElectricityReading = async (req, res) => {
     await session.abortTransaction();
     session.endSession();
     console.error("Error creating electricity reading:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "Failed to create electricity reading",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to create electricity reading",
+    });
   }
 };
 
@@ -235,12 +237,10 @@ export const getElectricityReadings = async (req, res) => {
     });
   } catch (error) {
     console.error("Error getting electricity readings:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "Failed to get electricity readings",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get electricity readings",
+    });
   }
 };
 
@@ -260,12 +260,10 @@ export const getElectricityReadingById = async (req, res) => {
     res.status(200).json({ success: true, data: reading.data.readings[0] });
   } catch (error) {
     console.error("Error getting electricity reading:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "Failed to get electricity reading",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get electricity reading",
+    });
   }
 };
 
@@ -286,12 +284,10 @@ export const recordElectricityPayment = async (req, res) => {
     if (!electricityId || !amount) {
       await session.abortTransaction();
       session.endSession();
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "electricityId and amount are required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "electricityId and amount are required",
+      });
     }
 
     let receiptImageUrl = null;
@@ -347,12 +343,10 @@ export const recordElectricityPayment = async (req, res) => {
     await session.abortTransaction();
     session.endSession();
     console.error("Error recording electricity payment:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "Failed to record electricity payment",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to record electricity payment",
+    });
   }
 };
 
@@ -369,12 +363,10 @@ export const getUnitConsumptionHistory = async (req, res) => {
     res.status(200).json(result);
   } catch (error) {
     console.error("Error getting unit consumption history:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "Failed to get unit consumption history",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get unit consumption history",
+    });
   }
 };
 
@@ -394,12 +386,10 @@ export const getTenantElectricitySummary = async (req, res) => {
     });
   } catch (error) {
     console.error("Error getting tenant electricity summary:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "Failed to get tenant electricity summary",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get tenant electricity summary",
+    });
   }
 };
 
@@ -462,12 +452,10 @@ export const updateElectricityReading = async (req, res) => {
     await session.abortTransaction();
     session.endSession();
     console.error("Error updating electricity reading:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "Failed to update electricity reading",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update electricity reading",
+    });
   }
 };
 
@@ -495,11 +483,9 @@ export const deleteElectricityReading = async (req, res) => {
     });
   } catch (error) {
     console.error("Error deleting electricity reading:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "Failed to delete electricity reading",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete electricity reading",
+    });
   }
 };

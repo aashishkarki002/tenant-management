@@ -42,13 +42,17 @@ import { cn } from "@/lib/utils";
 
 /* ================= NAV STRUCTURE ================= */
 
+const PRIMARY_ITEMS = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+];
+
 const NAV_GROUPS = [
   {
-    label: "People",
+    label: "Core",
     items: [
-      { title: "Dashboard", url: "/", icon: LayoutDashboard },
-      { title: "Tenants", url: "/tenants", icon: Users },
+      { title: "Buildings", url: "/buildings", icon: Building2 },
       { title: "Units", url: "/units", icon: Building2 },
+      { title: "Tenants", url: "/tenants", icon: Users },
     ],
   },
   {
@@ -150,7 +154,38 @@ export default function AppSidebar() {
       {/* ================= NAVIGATION ================= */}
       <SidebarContent className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
 
-        {/* Main Groups */}
+        {/* Primary Items (No Group Label) */}
+        <nav className="flex flex-col gap-1">
+          {PRIMARY_ITEMS.map((item) => (
+            <NavLink
+              key={item.title}
+              to={item.url}
+              end={item.url === "/"}
+              onClick={handleNav}
+              className={({ isActive }) =>
+                [
+                  "group flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors",
+                  isActive
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                ].join(" ")
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={`w-0.5 h-4 rounded-full ${isActive ? "bg-sidebar-ring" : "bg-transparent"
+                      }`}
+                  />
+                  <item.icon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{item.title}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Grouped Navigation */}
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             <p

@@ -5,9 +5,8 @@ import {
 } from "@/components/ui/command";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
-  Bell, Search, X, CheckCheck, Wrench, CreditCard,
-  AlertCircle, Clock, ChevronRight, Sun, Moon,
-  Users, Receipt, BookOpen, UserPlus,
+  Bell, Search, X, CheckCheck,
+  ChevronRight,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
@@ -16,86 +15,22 @@ import { socket } from "../../plugins/socket";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../context/ThemeContext";
 import api from "../../plugins/axios";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import { useAppBadge } from "../hooks/useBadge";
 import { HeaderSlot } from "../context/HeaderSlotContext";
 import PushNotificationBanner from "./PushNotificationBanner";
-
-// ─── Notification config ──────────────────────────────────────────────────────
-// Colors use semantic CSS tokens so they adapt to light/dark automatically.
-const NOTIFICATION_CONFIG = {
-  PAYMENT_NOTIFICATION: { icon: CreditCard, colorVar: "var(--color-success)", bgVar: "var(--color-success-bg)", borderVar: "var(--color-success-border)", label: "Payment", labelBg: "var(--color-success-bg)", labelColor: "var(--color-success)" },
-  LATE_FEE_NOTIFICATION: { icon: AlertCircle, colorVar: "var(--color-warning)", bgVar: "var(--color-warning-bg)", borderVar: "var(--color-warning-border)", label: "Late Fee", labelBg: "var(--color-warning-bg)", labelColor: "var(--color-warning)" },
-  RENT_OVERDUE: { icon: Clock, colorVar: "var(--color-danger)", bgVar: "var(--color-danger-bg)", borderVar: "var(--color-danger-border)", label: "Overdue", labelBg: "var(--color-danger-bg)", labelColor: "var(--color-danger)" },
-  RENT_PARTIALLY_PAID: { icon: CreditCard, colorVar: "var(--color-warning)", bgVar: "var(--color-warning-bg)", borderVar: "var(--color-warning-border)", label: "Partial", labelBg: "var(--color-warning-bg)", labelColor: "var(--color-warning)" },
-  RENT_PAID: { icon: CreditCard, colorVar: "var(--color-success)", bgVar: "var(--color-success-bg)", borderVar: "var(--color-success-border)", label: "Paid", labelBg: "var(--color-success-bg)", labelColor: "var(--color-success)" },
-  RENT_REMINDER: { icon: Bell, colorVar: "var(--color-info)", bgVar: "var(--color-info-bg)", borderVar: "var(--color-info-border)", label: "Reminder", labelBg: "var(--color-info-bg)", labelColor: "var(--color-info)" },
-  MAINTENANCE_CREATED: { icon: Wrench, colorVar: "var(--color-warning)", bgVar: "var(--color-warning-bg)", borderVar: "var(--color-warning-border)", label: "Maintenance", labelBg: "var(--color-warning-bg)", labelColor: "var(--color-warning)" },
-  MAINTENANCE_ASSIGNED: { icon: Wrench, colorVar: "var(--color-info)", bgVar: "var(--color-info-bg)", borderVar: "var(--color-info-border)", label: "Assigned", labelBg: "var(--color-info-bg)", labelColor: "var(--color-info)" },
-  MAINTENANCE_COMPLETED: { icon: Wrench, colorVar: "var(--color-success)", bgVar: "var(--color-success-bg)", borderVar: "var(--color-success-border)", label: "Done", labelBg: "var(--color-success-bg)", labelColor: "var(--color-success)" },
-  MAINTENANCE_CANCELLED: { icon: Wrench, colorVar: "var(--color-text-sub)", bgVar: "var(--color-surface)", borderVar: "var(--color-border)", label: "Cancelled", labelBg: "var(--color-surface)", labelColor: "var(--color-text-sub)" },
-};
-const DEFAULT_CONFIG = {
-  icon: Bell,
-  colorVar: "var(--color-text-sub)",
-  bgVar: "var(--color-surface)",
-  borderVar: "var(--color-border)",
-  label: "Notification",
-  labelBg: "var(--color-surface)",
-  labelColor: "var(--color-text-sub)",
-};
-
-const TOAST_CONFIG = {
-  PAYMENT_NOTIFICATION: { fn: toast.success },
-  RENT_PAID: { fn: toast.success },
-  RENT_OVERDUE: { fn: toast.error },
-  LATE_FEE_NOTIFICATION: { fn: toast.warning },
-  MAINTENANCE_COMPLETED: { fn: toast.success },
-  MAINTENANCE_ASSIGNED: { fn: toast.info },
-  MAINTENANCE_CREATED: { fn: toast.info },
-  MAINTENANCE_CANCELLED: { fn: toast.warning },
-  RENT_PARTIALLY_PAID: { fn: toast.warning },
-  RENT_REMINDER: { fn: toast.info },
-};
-
-// Search result type → icon + badge style
-const TYPE_ICON = { tenant: Users, rent: Receipt, ledger: BookOpen };
-const TYPE_LABEL_STYLE = {
-  tenant: { bg: "var(--color-info-bg)", color: "var(--color-info)" },
-  rent: { bg: "var(--color-success-bg)", color: "var(--color-success)" },
-  ledger: { bg: "var(--color-warning-bg)", color: "var(--color-warning)" },
-};
-const STATUS_DOT_COLOR = {
-  active: "var(--color-success)",
-  inactive: "var(--color-text-sub)",
-  pending: "var(--color-warning)",
-  paid: "var(--color-success)",
-  overdue: "var(--color-danger)",
-  partially_paid: "var(--color-warning)",
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
-}
-
-// Shared icon-button style — used for Bell + Theme toggle
-const iconBtnBase = `
-  relative w-9 h-9 rounded-lg flex items-center justify-center shrink-0
-  border transition-all duration-150
-  focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30
-`.trim();
+import {
+  DEFAULT_NOTIFICATION_CONFIG,
+  NOTIFICATION_CONFIG,
+  SEARCH_QUICK_ACTIONS,
+  STATUS_DOT_COLOR,
+  TYPE_ICON,
+  TYPE_LABEL_STYLE,
+  iconBtnBase,
+  showNotificationToast,
+  timeAgo,
+} from "./header/header.helpers";
 
 // ─── Global Search ────────────────────────────────────────────────────────────
 export function GlobalSearch() {
@@ -322,12 +257,7 @@ export function GlobalSearch() {
               {/* Quick actions */}
               {!query && (
                 <CommandGroup heading="Quick actions">
-                  {[
-                    { label: "Record a payment", icon: Receipt, route: "/rent-payment?action=new" },
-                    { label: "Add new tenant", icon: UserPlus, route: "/tenants?action=new" },
-                    { label: "Log maintenance", icon: Wrench, route: "/maintenance?action=new" },
-                    { label: "View all units", icon: BookOpen, route: "/units" },
-                  ].map((a) => (
+                  {SEARCH_QUICK_ACTIONS.map((a) => (
                     <CommandItem
                       key={a.label}
                       onSelect={() => { setOpen(false); navigate(a.route); }}
@@ -358,7 +288,7 @@ export function GlobalSearch() {
 // ─── Notification Item ────────────────────────────────────────────────────────
 function NotificationItem({ notification, onMarkRead }) {
   const [expanded, setExpanded] = useState(false);
-  const config = NOTIFICATION_CONFIG[notification.type] ?? DEFAULT_CONFIG;
+  const config = NOTIFICATION_CONFIG[notification.type] ?? DEFAULT_NOTIFICATION_CONFIG;
   const Icon = config.icon;
 
   const handleExpand = (e) => {
@@ -508,8 +438,7 @@ export default function Header() {
         if (prev.some(x => (x._id || x.id) === id)) return prev;
         return [n, ...prev];
       });
-      const fn = TOAST_CONFIG[n.type]?.fn ?? toast;
-      fn(n.title, { description: n.message, duration: 5000 });
+      showNotificationToast(n);
     };
 
     socket.on("connect", handleConnect);
@@ -544,7 +473,7 @@ export default function Header() {
         <div className="flex items-center w-full gap-2 min-w-0">
 
           {/* ── Search / page-injected slot ── */}
-          <div className="flex-1 min-w-0">
+          <div className="flex flex-1 min-w-0">
             <HeaderSlot fallback={<GlobalSearch />} />
           </div>
 

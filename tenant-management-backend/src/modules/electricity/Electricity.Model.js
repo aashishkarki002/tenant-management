@@ -38,7 +38,7 @@ const electricitySchema = new mongoose.Schema(
 
     billTo: {
       type: String,
-      enum: ["tenant", "property"],
+      enum: ["tenant", "property", "vendor"],
       default: "tenant",
       index: true,
     },

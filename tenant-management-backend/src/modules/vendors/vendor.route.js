@@ -12,6 +12,7 @@ import {
   assignPersonnel,
   getPersonnelByContract,
   updatePersonnel,
+  getVendorsByServiceType,
 } from "./vendor.controller.js";
 
 const vendorRouter = Router();
@@ -33,5 +34,8 @@ vendorRouter.get("/:vendorId/contracts", getContractsByVendor);
 vendorRouter.post("/personnel", assignPersonnel);
 vendorRouter.get("/contracts/:contractId/personnel", getPersonnelByContract);
 vendorRouter.patch("/personnel/:id", updatePersonnel);
+
+// Service Type
+vendorRouter.get("/service-type/:serviceType", getVendorsByServiceType);
 
 export { vendorRouter };

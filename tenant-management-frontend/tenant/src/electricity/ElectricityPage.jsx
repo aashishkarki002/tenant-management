@@ -1,23 +1,21 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
 import useProperty from "../hooks/use-property";
 import { useUnits } from "../hooks/use-units";
-import api from "../../plugins/axios";
 import { useElectricityData } from "./hooks/useElectricityData";
 import { useNewElectricityRows } from "./hooks/useNewElectricityRows";
-import { ElectricityHeader } from "./components/ElectricityHeader";
 import { ElectricityKpiCards } from "./components/ElectricityKpiCards";
 import { ElectricityFilters } from "./components/ElectricityFilters";
 import { ElectricitySummaryCards } from "./components/ElectricitySummaryCards";
 import { ElectricityInsights } from "./components/ElectricityInsights";
 import { ElectricityTable } from "./components/ElectricityTable";
-import { createReading } from "./utils/electricityApi";
+import ElectricityReadingDialog from "./components/ElectricityReadingDialog";
 import {
   getConsumption,
   formatConsumption,
   getTrendPercent,
+  deriveElectricityMetrics,
 } from "./utils/electricityCalculations";
-import { PAGE_SIZE } from "./utils/electricityConstants";
 // ─── Single authoritative Nepali date source ──────────────────────────────────
 // All date helpers flow through nepaliMonthBridge. Never import from
 // plugins/useNepaliDate or @/constants/nepaliMonths inside this module tree.
@@ -35,8 +33,6 @@ import { useNavigate } from "react-router-dom";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const METER_TYPE_KEYS = ["unit", "common_area", "parking", "sub_meter"];
-
 /**
  * Default filter = current Nepali billing month.
  * Uses the bridge so there's exactly one place that knows "what is now?".
@@ -46,15 +42,6 @@ function buildDefaultFilterValues() {
   return { blockId: "all", innerBlockId: "", month: nepaliMonth, year: nepaliYear };
 }
 
-function countsFromGrouped(grouped) {
-  return {
-    unit: grouped.unit?.count ?? 0,
-    common_area: grouped.common_area?.count ?? 0,
-    parking: grouped.parking?.count ?? 0,
-    sub_meter: grouped.sub_meter?.count ?? 0,
-  };
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ElectricityPage() {
@@ -62,11 +49,9 @@ export default function ElectricityPage() {
   const { units } = useUnits({ occupied: true });
   const navigate = useNavigate();
 
-  const [tenants, setTenants] = useState([]);
   const [filterValues, setFilterValues] = useState(buildDefaultFilterValues);
   const [activeTab, setActiveTab] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -122,47 +107,16 @@ export default function ElectricityPage() {
 
   // ─── Flatten readings for the table ───────────────────────────────────────
 
-  const readings = useMemo(() => {
-    if (activeTab === "all") {
-      return METER_TYPE_KEYS.flatMap((key) => grouped[key]?.readings ?? []);
-    }
-    return grouped[activeTab]?.readings ?? [];
-  }, [grouped, activeTab]);
+  const { readings, countsByType } = useMemo(
+    () => deriveElectricityMetrics(grouped, activeTab),
+    [grouped, activeTab],
+  );
 
-  const countsByType = useMemo(() => countsFromGrouped(grouped), [grouped]);
-
-  const { newRows, addNewRow, updateNewRow, removeNewRow, clearNewRows } =
+  const { newRows, updateNewRow, removeNewRow } =
     useNewElectricityRows({
       readings,
       units: Array.isArray(units) ? units : [],
     });
-
-  // ─── Tenants (for unitId → tenantId mapping during save) ──────────────────
-
-  useEffect(() => {
-    const fetchTenants = async () => {
-      try {
-        const res = await api.get("/api/tenant/get-tenants");
-        const data = res.data;
-        if (data?.tenants)
-          setTenants(Array.isArray(data.tenants) ? data.tenants : []);
-      } catch (err) {
-        console.error("Error fetching tenants:", err);
-      }
-    };
-    fetchTenants();
-  }, []);
-
-  const unitIdToTenantId = useMemo(() => {
-    const map = {};
-    for (const tenant of tenants) {
-      for (const u of tenant.units ?? []) {
-        const id = typeof u === "object" ? u._id : u;
-        if (id) map[id] = tenant._id;
-      }
-    }
-    return map;
-  }, [tenants]);
 
   const availableInnerBlocks = useMemo(
     () => (Array.isArray(selectedBlock?.innerBlocks) ? selectedBlock.innerBlocks : []),
@@ -314,57 +268,6 @@ export default function ElectricityPage() {
     [searchQuery, handleExportReport, navigate],
   );
 
-  // ─── Save inline rows ──────────────────────────────────────────────────────
-
-  const handleSaveReadings = useCallback(async () => {
-    const validRows = newRows.filter(
-      (row) =>
-        row.unitId &&
-        row.currentUnit != null &&
-        row.currentUnit !== "" &&
-        parseFloat(row.currentUnit) >= parseFloat(row.previousUnit || "0"),
-    );
-    if (validRows.length === 0) {
-      toast.error("Add at least one valid reading (unit, previous and current reading).");
-      return;
-    }
-    const tenantIdMissing = validRows.find((row) => !unitIdToTenantId[row.unitId]);
-    if (tenantIdMissing) {
-      toast.error(
-        "Selected unit has no tenant. Only units assigned to a tenant can have readings.",
-      );
-      return;
-    }
-    const now = new Date();
-    setSaving(true);
-    try {
-      await Promise.all(
-        validRows.map((row) =>
-          createReading({
-            meterType: "unit",
-            tenantId: unitIdToTenantId[row.unitId],
-            unitId: row.unitId,
-            currentReading: parseFloat(row.currentUnit),
-            previousReading: parseFloat(row.previousUnit || "0"),
-            nepaliMonth: filterValues.month,
-            nepaliYear: filterValues.year,
-            nepaliDate: `${filterValues.year}-${String(filterValues.month).padStart(2, "0")}`,
-            englishMonth: now.getMonth() + 1,
-            englishYear: now.getFullYear(),
-            readingDate: now.toISOString(),
-          }),
-        ),
-      );
-      toast.success(`${validRows.length} reading(s) saved.`);
-      clearNewRows();
-      refetch();
-    } catch (err) {
-      toast.error(err?.message || "Failed to save readings.");
-    } finally {
-      setSaving(false);
-    }
-  }, [newRows, unitIdToTenantId, filterValues.month, filterValues.year, clearNewRows, refetch]);
-
   const handleOpenAddReading = useCallback(() => setDialogOpen(true), []);
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -378,18 +281,12 @@ export default function ElectricityPage() {
   return (
     <div className="min-h-screen pb-8 bg-background">
       <div className="space-y-4 pt-5 px-4 sm:px-5">
-
-        <ElectricityHeader
-          onExportReport={handleExportReport}
-          onAddReading={addNewRow}
-          onSaveReadings={handleSaveReadings}
-          onSaved={refetch}
-          hasNewRows={newRows.length > 0}
-          saving={saving}
-          property={property}
+        <ElectricityReadingDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
           allBlocks={allBlocks}
-          dialogOpen={dialogOpen}
-          setDialogOpen={setDialogOpen}
+          property={property}
+          onSaved={refetch}
         />
 
         <div className="flex items-start justify-between gap-4 flex-wrap">

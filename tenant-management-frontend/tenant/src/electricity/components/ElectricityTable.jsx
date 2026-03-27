@@ -1,11 +1,18 @@
 import React from "react";
-import { ElectricityTabs } from "./ElectricityTabs";
 import { ElectricityTableRow } from "./ElectricityTableRow";
 import { ElectricityPagination } from "./ElectricityPagination";
 import { isFlagged } from "../utils/electricityCalculations";
 import { PAGE_SIZE } from "../utils/electricityConstants";
 import { Zap, PlusCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+const TABS = [
+  { label: "All", value: "all", typeKey: null },
+  { label: "Units", value: "unit", typeKey: "unit" },
+  { label: "Common Area", value: "common_area", typeKey: "common_area" },
+  { label: "Parking", value: "parking", typeKey: "parking" },
+  { label: "Sub-Meter", value: "sub_meter", typeKey: "sub_meter" },
+];
 
 export function ElectricityTable({
   loading,
@@ -64,12 +71,61 @@ export function ElectricityTable({
 
       <div className="px-5 py-4">
         {/* Tabs */}
-        <ElectricityTabs
-          activeTab={activeTab}
-          onTabChange={onTabChange}
-          flaggedCount={flaggedCount}
-          countsByType={countsByType}
-        />
+        <div className="flex gap-1 mb-4 flex-wrap border-b border-muted-fill pb-3">
+          {TABS.map((tab) => {
+            const count = tab.typeKey ? (countsByType[tab.typeKey] ?? 0) : null;
+            const isActive = activeTab === tab.value;
+
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => onTabChange(tab.value)}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5
+                  ${isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-text-sub hover:bg-muted-fill hover:text-text-strong"
+                  }`}
+              >
+                {tab.label}
+                {count != null && count > 0 && (
+                  <span
+                    className={`text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none
+                      ${isActive
+                        ? "bg-primary/20 text-primary"
+                        : "bg-primary/20 text-primary"
+                      }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+
+          {flaggedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => onTabChange("flagged")}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5
+                ${activeTab === "flagged"
+                  ? "bg-destructive text-destructive-foreground"
+                  : "text-destructive hover:bg-destructive"
+                }`}
+            >
+              Flagged
+              <span
+                className={`text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none
+                  ${activeTab === "flagged"
+                    ? "bg-primary/20 text-primary"
+                    : "bg-destructive text-destructive-foreground"
+                  }`}
+              >
+                {flaggedCount}
+              </span>
+            </button>
+          )}
+        </div>
 
         {/* Table */}
         {loading ? (
@@ -94,7 +150,7 @@ export function ElectricityTable({
               <Button
                 type="button"
                 onClick={onAddReading}
-                className="flex items-center gap-2 bg-accent text-white hover:bg-accent-hover rounded-lg px-5 py-2.5"
+                className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-5 py-2.5"
               >
                 <PlusCircle className="w-4 h-4" />
                 Add First Reading

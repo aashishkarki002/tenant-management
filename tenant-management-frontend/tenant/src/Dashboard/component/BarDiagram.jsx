@@ -437,6 +437,8 @@ function EmptyState() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function BarDiagram({ stats, loading, error, period = 'thisYear' }) {
+    const [quarterFilter, setQuarterFilter] = React.useState('ALL');
+
     // ── Derive all date context from the real BS calendar ─────────────────────
     const todayBs = useMemo(() => {
         // getCurrentFYMonths is cheap — runs once per render
@@ -474,8 +476,15 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
         [rawData, fyMonths, currentMonth, period],
     );
 
-    const verdict = useMemo(() => computeVerdict(monthlyData), [monthlyData]);
-    const hasNoData = monthlyData.length === 0 || monthlyData.every((d) => d.isEmpty);
+    // Filter data by quarter
+    const filteredData = useMemo(() => {
+        if (quarterFilter === 'ALL') return monthlyData;
+        const targetQuarter = parseInt(quarterFilter.replace('Q', ''));
+        return monthlyData.filter(d => d.quarter === targetQuarter);
+    }, [monthlyData, quarterFilter]);
+
+    const verdict = useMemo(() => computeVerdict(filteredData), [filteredData]);
+    const hasNoData = filteredData.length === 0 || filteredData.every((d) => d.isEmpty);
 
     const qBands = useMemo(() => buildQBands(fyMonths), [fyMonths]);
 
@@ -492,10 +501,29 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                 </div>
 
                 {!loading && !hasNoData && (
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                        <button
+                            onClick={() => setQuarterFilter('ALL')}
+                            className={`px-2 py-1 rounded text-[10px] font-medium tracking-wide transition-colors ${quarterFilter === 'ALL'
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'hover:bg-secondary'
+                                }`}
+                            style={{ color: quarterFilter === 'ALL' ? COLOR.barHighlight : COLOR.axisText }}
+                        >
+                            ALL
+                        </button>
                         {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
-                            <span key={q} className="text-[10px] font-medium tracking-wide"
-                                style={{ color: COLOR.axisText }}>{q}</span>
+                            <button
+                                key={q}
+                                onClick={() => setQuarterFilter(q)}
+                                className={`px-2 py-1 rounded text-[10px] font-medium tracking-wide transition-colors ${quarterFilter === q
+                                        ? 'bg-primary/10 text-primary'
+                                        : 'hover:bg-secondary'
+                                    }`}
+                                style={{ color: quarterFilter === q ? COLOR.barHighlight : COLOR.axisText }}
+                            >
+                                {q}
+                            </button>
                         ))}
                     </div>
                 )}
@@ -506,9 +534,9 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
 
                 {!loading && !hasNoData && verdict && <VerdictBadge verdict={verdict} />}
 
-                {!loading && !hasNoData && period === 'thisYear' && (
+                {!loading && !hasNoData && period === 'thisYear' && quarterFilter === 'ALL' && (
                     <CurrentMonthCallout
-                        data={monthlyData}
+                        data={filteredData}
                         currentMonth={currentMonth}
                         currentYear={currentYear}
                     />
@@ -522,11 +550,11 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                     ) : (
                         <ResponsiveContainer width="100%" height="100%">
                             <ComposedChart
-                                data={monthlyData}
+                                data={filteredData}
                                 margin={{ top: 22, right: 6, left: 0, bottom: 4 }}
                                 barCategoryGap="22%"
                             >
-                                {qBands.map((q) => (
+                                {quarterFilter === 'ALL' && qBands.map((q) => (
                                     <ReferenceArea key={q.label}
                                         x1={q.x1} x2={q.x2} fill={q.fill} stroke="none"
                                         label={{
@@ -537,7 +565,7 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                                 ))}
 
                                 <XAxis dataKey="name" axisLine={false} tickLine={false}
-                                    tick={(props) => <XAxisTick {...props} monthlyData={monthlyData} />}
+                                    tick={(props) => <XAxisTick {...props} monthlyData={filteredData} />}
                                     interval={0}
                                 />
                                 <YAxis hide />
@@ -545,7 +573,7 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                                     cursor={{ fill: 'rgba(231,229,224,0.2)', radius: 4 }} />
 
                                 <Bar dataKey="revenue" radius={[3, 3, 0, 0]} maxBarSize={28} minPointSize={2}>
-                                    {monthlyData.map((entry, index) => (
+                                    {filteredData.map((entry, index) => (
                                         <Cell key={index}
                                             fill={
                                                 entry.isEmpty ? COLOR.barEmpty
@@ -558,7 +586,7 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                                         />
                                     ))}
                                     <LabelList dataKey="revenue"
-                                        content={(props) => <MoMLabel {...props} monthlyData={monthlyData} />}
+                                        content={(props) => <MoMLabel {...props} monthlyData={filteredData} />}
                                     />
                                 </Bar>
 
@@ -576,7 +604,7 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                     )}
                 </div>
 
-                {!loading && !hasNoData && <SummaryStrip data={monthlyData} />}
+                {!loading && !hasNoData && <SummaryStrip data={filteredData} />}
             </CardContent>
         </Card>
     );

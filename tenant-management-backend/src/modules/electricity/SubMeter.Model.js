@@ -27,6 +27,7 @@ export const METER_TYPES = {
   COMMON_AREA: "common_area", // lobbies, corridors, staircases, gym, rooftop
   PARKING: "parking", // basement / surface parking lighting & ventilation
   SUB_METER: "sub_meter", // any other building equipment (pump, generator, lift)
+  VENDOR: "vendor", // vendor meter
 };
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ const subMeterSchema = new mongoose.Schema(
         METER_TYPES.COMMON_AREA,
         METER_TYPES.PARKING,
         METER_TYPES.SUB_METER,
+        METER_TYPES.VENDOR,
       ],
       required: [true, "meterType is required"],
       // NOTE: "unit" is intentionally excluded — unit meters are just Unit docs,
@@ -79,6 +81,11 @@ const subMeterSchema = new mongoose.Schema(
     innerBlock: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "InnerBlock",
+      default: null,
+    },
+    vendor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
       default: null,
     },
 

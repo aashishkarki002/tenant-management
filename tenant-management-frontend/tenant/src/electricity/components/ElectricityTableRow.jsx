@@ -97,10 +97,6 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
       ? Number(record.remainingAmount)
       : Math.max(0, totalAmount - paidAmount);
 
-  const totalAmountFormatted = record.totalAmountFormatted ?? fmtRs(totalAmount);
-  const paidAmountFormatted = record.paidAmountFormatted ?? (paidAmount > 0 ? fmtRs(paidAmount) : null);
-  const remainingAmountFormatted = record.remainingAmountFormatted ?? fmtRs(remainingAmount);
-
   const isPayable = remainingAmount > 0 && PAYABLE_STATUSES.has(status);
 
   const handleViewDetails = useCallback(() => {
@@ -110,14 +106,8 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
   return (
     <>
       <tr
-        className="transition-colors"
+        className="transition-colors hover:bg-surface"
         style={{ backgroundColor: statusConfig.rowBg }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--color-surface)";
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.backgroundColor = statusConfig.rowBg;
-        }}
       >
         {/* Name + tags */}
         <td className="py-3 px-4">
@@ -216,7 +206,7 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
             className="text-sm font-medium tabular-nums"
             style={{ color: "var(--color-text-strong)" }}
           >
-            {totalAmountFormatted}
+            {fmtRs(totalAmount)}
           </span>
         </td>
 
@@ -297,11 +287,9 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
         setPaymentDialogOpen={setPaymentDialogOpen}
         unitName={unitName}
         record={record}
-        totalAmountFormatted={totalAmountFormatted}
+        totalAmount={totalAmount}
         paidAmount={paidAmount}
-        paidAmountFormatted={paidAmountFormatted}
         remainingAmount={remainingAmount}
-        remainingAmountFormatted={remainingAmountFormatted}
         onPaymentRecorded={onPaymentRecorded}
       />
     </>

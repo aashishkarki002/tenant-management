@@ -11,7 +11,7 @@ import { useStats } from "./hooks/UseStats";
 import { Link } from "react-router-dom";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { GlobalSearch } from "../components/header";
-import AttentionRequired from "./component/AttentionRequired";
+import BuildingHealthPanel from "./component/BuildingHealthPanel";
 import { getFYLabel, getFYStartYear, getTodayNepali } from "../../utils/nepaliDate";
 
 // Derive FY labels once — no approximation, uses the real BS calendar
@@ -160,7 +160,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="lg:col-span-1">
-              <AttentionRequired stats={stats} loading={loading} />
+              <BuildingHealthPanel stats={stats} loading={loading} />
             </div>
           </div>
 

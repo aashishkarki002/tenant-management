@@ -21,7 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useUnits } from "../../hooks/use-units";
-import { useSubMeterOptions, filterSubMeterOptions } from "../utils/useSubMeterOptions";
+import { UnitCombobox } from "../../components/UnitComboBox";
+import { useSubMeters, filterSubMeterOptions } from "../hooks/useSubMeters";
 import { createReading, getReadings } from "../utils/electricityApi";
 import { getUnitsForInnerBlocks } from "../../Tenant/addTenant/utils/propertyHelper";
 import DualCalendarTailwind from "../../components/dualDate";
@@ -105,7 +106,7 @@ export default function ElectricityReadingDialog({
     const {
         byType: subMetersByType,
         loading: subMetersLoading,
-    } = useSubMeterOptions(propertyId);
+    } = useSubMeters(propertyId);
 
     const [selectedMeterType, setSelectedMeterType] = useState("unit");
     const [saving, setSaving] = useState(false);
@@ -245,7 +246,7 @@ export default function ElectricityReadingDialog({
      * Returns filtered item list for the active tab.
      *
      * Unit tab  → useUnits() result (tenant contracts, different domain).
-     * All other → useSubMeterOptions() result (infrastructure config).
+     * All other → useSubMeters() result (infrastructure config).
      *
      * Industry note: never mix domain data sources into a single list.
      * Separate fetches = separate caches, separate loading states.
@@ -435,6 +436,20 @@ export default function ElectricityReadingDialog({
             sub_meter: "Sub Meter",
         };
         const itemLabel = labelMap[type] ?? type;
+        const unitComboboxOptions =
+            type === "unit"
+                ? options.map((opt) => ({
+                    value: opt._id,
+                    label: opt.displayName ?? opt.name ?? opt.unitName ?? opt._id,
+                    blockName: opt.blockName ?? opt.block?.name ?? undefined,
+                    floor: opt.floor ?? opt.floorName ?? undefined,
+                    isOccupied:
+                        Boolean(opt.currentLease) ||
+                        Boolean(opt.tenantId) ||
+                        Boolean(opt.tenant?._id) ||
+                        Boolean(opt.tenant),
+                }))
+                : [];
 
         return (
             <div className="flex flex-col gap-4 mt-3">
@@ -508,64 +523,75 @@ export default function ElectricityReadingDialog({
                             <Loader2 className="inline ml-2 w-3 h-3 animate-spin text-text-sub" />
                         )}
                     </label>
-                    <Select
-                        value={selected || ""}
-                        onValueChange={(val) => update(type, "selected", val)}
-                        disabled={isLoading}
-                    >
-                        <SelectTrigger className="h-9 bg-muted-fill">
-                            <SelectValue placeholder={isLoading ? "Loading…" : `Select ${itemLabel}`} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {options.length > 0 ? (() => {
-                                // For sub_meter tab: group generator meters separately
-                                // Generator sub-meters are auto-named "Generator – {name}" by generator.service.js
-                                if (type === "sub_meter") {
-                                    const genMeters = options.filter(o => (o.name ?? "").startsWith("Generator –"));
-                                    const otherMeters = options.filter(o => !(o.name ?? "").startsWith("Generator –"));
-                                    return (
-                                        <>
-                                            {otherMeters.map((opt) => (
-                                                <SelectItem key={opt._id} value={opt._id}>
-                                                    {opt.displayName ?? opt.name ?? opt._id}
-                                                </SelectItem>
-                                            ))}
-                                            {genMeters.length > 0 && (
-                                                <>
-                                                    {otherMeters.length > 0 && (
-                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold border-t mt-1 pt-2">
-                                                            ⚡ Generator Meters
-                                                        </div>
-                                                    )}
-                                                    {otherMeters.length === 0 && (
-                                                        <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold">
-                                                            ⚡ Generator Meters
-                                                        </div>
-                                                    )}
-                                                    {genMeters.map((opt) => (
-                                                        <SelectItem key={opt._id} value={opt._id}>
-                                                            {opt.name?.replace("Generator – ", "") ?? opt._id}
-                                                            {" "}
-                                                            <span className="text-warning text-[10px]">(Generator)</span>
-                                                        </SelectItem>
-                                                    ))}
-                                                </>
-                                            )}
-                                        </>
-                                    );
-                                }
-                                return options.map((opt) => (
-                                    <SelectItem key={opt._id} value={opt._id}>
-                                        {opt.displayName ?? opt.name ?? opt.unitName ?? opt._id}
+                    {type === "unit" ? (
+                        <UnitCombobox
+                            options={unitComboboxOptions}
+                            value={selected || ""}
+                            onChange={(val) => update(type, "selected", val)}
+                            placeholder={isLoading ? "Loading units…" : `Select ${itemLabel}`}
+                            disabled={isLoading || unitComboboxOptions.length === 0}
+                            loading={isLoading}
+                        />
+                    ) : (
+                        <Select
+                            value={selected || ""}
+                            onValueChange={(val) => update(type, "selected", val)}
+                            disabled={isLoading}
+                        >
+                            <SelectTrigger className="h-9 bg-muted-fill">
+                                <SelectValue placeholder={isLoading ? "Loading…" : `Select ${itemLabel}`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {options.length > 0 ? (() => {
+                                    // For sub_meter tab: group generator meters separately
+                                    // Generator sub-meters are auto-named "Generator – {name}" by generator.service.js
+                                    if (type === "sub_meter") {
+                                        const genMeters = options.filter(o => (o.name ?? "").startsWith("Generator –"));
+                                        const otherMeters = options.filter(o => !(o.name ?? "").startsWith("Generator –"));
+                                        return (
+                                            <>
+                                                {otherMeters.map((opt) => (
+                                                    <SelectItem key={opt._id} value={opt._id}>
+                                                        {opt.displayName ?? opt.name ?? opt._id}
+                                                    </SelectItem>
+                                                ))}
+                                                {genMeters.length > 0 && (
+                                                    <>
+                                                        {otherMeters.length > 0 && (
+                                                            <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold border-t mt-1 pt-2">
+                                                                ⚡ Generator Meters
+                                                            </div>
+                                                        )}
+                                                        {otherMeters.length === 0 && (
+                                                            <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-text-sub font-semibold">
+                                                                ⚡ Generator Meters
+                                                            </div>
+                                                        )}
+                                                        {genMeters.map((opt) => (
+                                                            <SelectItem key={opt._id} value={opt._id}>
+                                                                {opt.name?.replace("Generator – ", "") ?? opt._id}
+                                                                {" "}
+                                                                <span className="text-warning text-[10px]">(Generator)</span>
+                                                            </SelectItem>
+                                                        ))}
+                                                    </>
+                                                )}
+                                            </>
+                                        );
+                                    }
+                                    return options.map((opt) => (
+                                        <SelectItem key={opt._id} value={opt._id}>
+                                            {opt.displayName ?? opt.name ?? opt.unitName ?? opt._id}
+                                        </SelectItem>
+                                    ));
+                                })() : (
+                                    <SelectItem value="__none__" disabled>
+                                        {isLoading ? "Loading…" : `No ${itemLabel.toLowerCase()}s found`}
                                     </SelectItem>
-                                ));
-                            })() : (
-                                <SelectItem value="__none__" disabled>
-                                    {isLoading ? "Loading…" : `No ${itemLabel.toLowerCase()}s found`}
-                                </SelectItem>
-                            )}
-                        </SelectContent>
-                    </Select>
+                                )}
+                            </SelectContent>
+                        </Select>
+                    )}
                 </div>
 
                 {/* Tenant transition warning — shown when the unit changed tenants */}

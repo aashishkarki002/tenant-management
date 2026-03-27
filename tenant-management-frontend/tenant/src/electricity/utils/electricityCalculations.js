@@ -1,5 +1,3 @@
-import { NEPALI_MONTHS } from "@/constants/nepaliMonths";
-
 /**
  * Electricity consumption and trend helpers.
  */
@@ -54,22 +52,26 @@ export function formatConsumption(value) {
 }
 
 /**
- * Parse "MonthName YYYY" (e.g. "Ashwin 2081") to { month: 1-12, year: number }.
- * Uses NEPALI_MONTHS order (Baisakh=1 ... Chaitra=12).
- * @param {string} str
- * @returns {{ month: number, year: number } | null}
+ * Derive electricity view metrics from grouped API data.
+ * Keeps hook/store data raw and centralizes UI-ready derivations.
+ * @param {Object} grouped
+ * @param {string} activeTab
+ * @returns {{ readings: Array, countsByType: Object }}
  */
-export function parseNepaliMonthString(str) {
-  if (!str || typeof str !== "string") return null;
-  const trimmed = str.trim();
-  const match = trimmed.match(/^(\S+)\s+(\d{4})$/);
-  if (!match) return null;
-  const [, monthName, yearStr] = match;
-  const year = parseInt(yearStr, 10);
-  if (Number.isNaN(year)) return null;
-  const monthEntry = NEPALI_MONTHS.find(
-    (m) => m.label.toLowerCase() === monthName.toLowerCase()
-  );
-  if (!monthEntry) return null;
-  return { month: monthEntry.value, year };
+export function deriveElectricityMetrics(grouped = {}, activeTab = "all") {
+  const meterTypeKeys = ["unit", "common_area", "parking", "sub_meter"];
+
+  const countsByType = {
+    unit: grouped.unit?.count ?? 0,
+    common_area: grouped.common_area?.count ?? 0,
+    parking: grouped.parking?.count ?? 0,
+    sub_meter: grouped.sub_meter?.count ?? 0,
+  };
+
+  const readings =
+    activeTab === "all"
+      ? meterTypeKeys.flatMap((key) => grouped[key]?.readings ?? [])
+      : grouped[activeTab]?.readings ?? [];
+
+  return { readings, countsByType };
 }

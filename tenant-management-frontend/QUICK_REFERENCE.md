@@ -1,224 +1,340 @@
-# Tenant Management System - Quick Feature Reference
-
-## ✅ COMPLETED (12 Features)
-
-### Authentication & Security
-
-- ✅ Login/Signup with JWT
-- ✅ Protected Routes
-- ✅ User Authentication Context
-- ✅ Logout Functionality
-
-### Tenant Management
-
-- ✅ Add Tenant (Complete form with documents, dates, financials)
-- ✅ View Tenants List
-- ✅ View Tenant Details (with PDF viewer)
-- ✅ Delete Tenant
-- ✅ Tenant Card Component
-
-### Dashboard
-
-- ✅ Statistics Cards (Tenants, Occupancy, Rent Due, Revenue)
-- ✅ Quick Actions
-- ✅ Building Status Progress Bars
-
-### Admin Settings
-
-- ✅ Bank Account Management (Add, List)
-- ✅ Password Change
-
-### Infrastructure
-
-- ✅ UI Component Library (shadcn/ui)
-- ✅ Responsive Layout
-- ✅ Nepali Date Conversion
-- ✅ Axios Configuration with Interceptors
+# Quick Reference: Navigation Redesign
+## Key Design Decisions & Rationale
 
 ---
 
-## ⚠️ PARTIALLY DONE (7 Features)
+## 🎯 Core Philosophy
 
-1. **Edit Tenant** - Form exists, needs API integration ⚠️
-2. **Rent Payment Recording** - Dialog exists, needs functionality ⚠️
-3. **Maintenance Module** - UI only, needs backend ⚠️
-4. **Search & Filter** - UI exists, needs logic ⚠️
-5. **Admin Profile Update** - Form exists, needs API ⚠️
-6. **Bank Account Delete** - Button exists, needs handler ⚠️
-7. **Dashboard Reminders** - Buttons exist, needs functionality ⚠️
+> **"Actions live where users focus, not where systems organize them."**
+
+Operational workflows belong in their domain context (Buildings), not in system-level settings.
 
 ---
 
-## ❌ NOT STARTED (15 Features)
+## 📊 Decision Matrix
 
-### Financial Modules (High Priority)
-
-1. ❌ Accounting Module (0%)
-2. ❌ Revenue Streams (0%)
-3. ❌ Cheque Drafts (0%)
-4. ❌ Payment History (0%)
-5. ❌ Automated Rent Generation (0%)
-
-### Operational Modules (Medium Priority)
-
-6. ❌ Electricity Module (0%)
-7. ❌ Maintenance Backend Integration (20% UI done)
-8. ❌ Contract Renewal Management (0%)
-9. ❌ Notifications System (0%)
-
-### Reporting & Analytics (Medium Priority)
-
-10. ❌ Reporting & Analytics (0%)
-11. ❌ Dashboard Charts (0%)
-12. ❌ Export Functionality (0%)
-
-### Enhancements (Low Priority)
-
-13. ❌ Calendar View for Maintenance (0%)
-14. ❌ Email Verification Flow (0%)
-15. ❌ Internationalization/i18n (0%)
+| Element | Before | After | Why |
+|---------|--------|-------|-----|
+| **Migration Location** | Settings → Organization | Buildings → Contextual action | Users think in terms of domain objects, not system structure |
+| **Buildings Navigation** | Not present | Core group, prominently placed | Buildings are the primary asset being managed |
+| **Dashboard Position** | Grouped under "People" | Ungrouped primary item | Dashboard is universal entry point, shouldn't be categorized |
+| **Group Labels** | "People" | "Core" | "Core" better represents foundational domain objects |
+| **Migration Trigger** | Separate settings page | Button on building card | Reduces clicks, improves discoverability |
+| **Modal vs Page** | Full page navigation | Modal dialog | Lightweight action doesn't warrant full navigation |
 
 ---
 
-## 🎯 IMMEDIATE ACTION ITEMS (Next 2 Weeks)
+## 🗂️ Information Architecture
 
-### Week 1: Critical Fixes
+### Hierarchy Levels
 
-1. **Edit Tenant** (4-6 hours)
+```
+Level 1: Sidebar Groups (Primary categorization)
+   │
+   ├─ Level 2: Navigation Items (Domain objects/functions)
+   │     │
+   │     └─ Level 3: Contextual Actions (Shown in detail views, not sidebar)
+   │           │
+   │           └─ Example: Migrate Ownership on Buildings page
+   │
+   └─ MAX 5-6 groups to avoid cognitive overload
+```
 
-   - Fetch tenant data
-   - Pre-populate form
-   - API integration
-   - Form submission
+### Grouping Strategy
 
-2. **Rent Payment Recording** (6-8 hours)
+```
+PRIMARY (No group)
+   └─ Dashboard (universal access point)
 
-   - Form state management
-   - API integration
-   - Payment validation
-   - Receipt generation
+CORE (Domain objects)
+   ├─ Buildings (NEW)
+   ├─ Units
+   └─ Tenants
 
-3. **Admin Profile Update** (2-3 hours)
-   - API integration
-   - Form submission
-   - Success handling
+FINANCE (Money management)
+   ├─ Rent & Payments
+   └─ Accounting
 
-### Week 2: Core Features
+OPERATIONS (Daily tasks)
+   ├─ Daily Checks
+   └─ Maintenance
 
-4. **Search & Filter** (3-4 hours)
+UTILITIES (Infrastructure)
+   └─ Electricity
 
-   - Search functionality
-   - Filter by block
-   - Debounce implementation
+MORE (Secondary, collapsible)
+   ├─ Loans
+   └─ Cheque Drafts
 
-5. **Maintenance Backend** (8-12 hours)
-
-   - API integration
-   - Create/Read operations
-   - Filter functionality
-
-6. **Payment History** (10-14 hours)
-   - Payment history view
-   - Filter by date
-   - Receipt viewing
-
----
-
-## 📊 COMPLETION STATUS
-
-**Overall Progress: ~45-50%**
-
-| Category          | Status  |
-| ----------------- | ------- |
-| Authentication    | ✅ 100% |
-| Tenant Management | ⚠️ 85%  |
-| Rent & Payments   | ⚠️ 60%  |
-| Dashboard         | ⚠️ 70%  |
-| Admin Settings    | ⚠️ 80%  |
-| Maintenance       | ⚠️ 20%  |
-| Financial Modules | ❌ 0%   |
-| Reporting         | ❌ 0%   |
+SETTINGS (Footer only, configuration)
+   ├─ Account Settings
+   └─ Organization Settings
+```
 
 ---
 
-## 🔥 HIGH PRIORITY TASKS (Next 4 Weeks)
+## 🎨 Visual Hierarchy Principles
 
-1. ✅ Edit Tenant
-2. ✅ Rent Payment Recording
-3. ✅ Payment History
-4. ✅ Accounting Module
-5. ✅ Revenue Streams Module
-6. ✅ Automated Rent Generation
+### 1. Position = Importance
+- **Top**: Most frequently accessed (Dashboard)
+- **Core group**: Essential domain objects (Buildings, Units, Tenants)
+- **Middle**: Regular operational items
+- **Bottom (collapsible)**: Low-frequency features
+- **Footer**: Settings and account
 
-**Estimated Time: 80-100 hours**
+### 2. Visual Weight
+```css
+Primary items:      No group label, immediate visibility
+Grouped items:      Small uppercase labels (9px), subdued
+Active state:       Dark background + blue left indicator
+Hover state:        Subtle gray background
+```
 
----
-
-## 📈 MODULE COMPLETION BREAKDOWN
-
-### ✅ Fully Functional Modules
-
-- Authentication System (100%)
-- Tenant Creation & Viewing (100%)
-- Dashboard Basics (70%)
-- Bank Account Management (80%)
-
-### ⚠️ Needs Completion
-
-- Tenant Editing (30%)
-- Payment Recording (30%)
-- Maintenance Module (20%)
-- Search/Filter (10%)
-
-### ❌ Not Started
-
-- Accounting (0%)
-- Revenue Streams (0%)
-- Cheque Drafts (0%)
-- Electricity (0%)
-- Reporting (0%)
-- Notifications (0%)
+### 3. Information Density
+- **Sidebar**: Minimal, scannable (icons + labels)
+- **Building cards**: Medium density (key metrics visible)
+- **Modal**: High density (all migration details)
 
 ---
 
-## 💡 QUICK WINS (Low Effort, High Impact)
+## 🎯 User Mental Models
 
-1. **Search Functionality** (3-4 hours) - User experience improvement
-2. **Admin Profile Update** (2-3 hours) - Basic feature completion
-3. **Bank Account Delete** (1-2 hours) - Simple CRUD operation
-4. **Email Verification** (2-3 hours) - Complete signup flow
-5. **Filter by Block** (2-3 hours) - Enhanced tenant list
+### User Thinks → System Responds
 
-**Total Quick Wins: 10-14 hours**
+| User's Thought Process | System Navigation |
+|------------------------|-------------------|
+| "I need to manage buildings" | → Click "Buildings" in sidebar |
+| "I want to transfer this building" | → Click "Migrate Ownership" on building card |
+| "I need to configure the system" | → Click user menu → Settings |
+| "I want to see today's tasks" | → Click "Dashboard" or "Daily Checks" (with Today badge) |
 
----
+### Anti-patterns Avoided
 
-## 🚀 TECHNOLOGY STACK STATUS
+❌ **Don't**: Hide operations in Settings  
+✅ **Do**: Place operations in domain context
 
-| Technology   | Status       | Usage                     |
-| ------------ | ------------ | ------------------------- |
-| React        | ✅ Active    | Core framework            |
-| React Router | ✅ Active    | Routing                   |
-| Formik       | ✅ Active    | Form management           |
-| Axios        | ✅ Active    | API calls                 |
-| Tailwind CSS | ✅ Active    | Styling                   |
-| shadcn/ui    | ✅ Active    | UI components             |
-| Nepali Date  | ✅ Active    | Date conversion           |
-| Socket.io    | ⚠️ Installed | Not used (notifications?) |
-| i18next      | ⚠️ Installed | Not configured            |
-| PDF Viewer   | ⚠️ Partial   | Basic usage only          |
+❌ **Don't**: Create separate nav items for rare actions  
+✅ **Do**: Use contextual actions on objects
+
+❌ **Don't**: Use technical/system terms  
+✅ **Do**: Use business/domain language
 
 ---
 
-## 📝 NOTES
+## 🎨 Design Token Quick Reference
 
-- **Backend API**: Base URL is `http://localhost:3000`
-- **Date Format**: Both English and Nepali dates supported
-- **File Uploads**: Supports images and PDFs
-- **Authentication**: JWT token stored in localStorage
-- **Protected Routes**: All main pages require authentication
+### Spacing Scale
+```
+xs:  4px  (gap-1)
+sm:  8px  (gap-2)
+md:  12px (gap-3, p-3)
+lg:  16px (gap-4, space-y-4)
+xl:  24px (p-6, space-y-6)
+2xl: 32px (space-y-8)
+```
+
+### Typography Scale
+```
+Group labels:   9px,  uppercase, letter-spacing: 0.24em
+Nav items:      13px, font-medium
+Headings:       24px, font-semibold
+Body text:      14px
+Small text:     12px
+Tiny badges:    10px
+```
+
+### Border Radius
+```
+Small (buttons, badges): 6px (rounded-md)
+Cards: 8px (rounded-lg)
+Pills: 9999px (rounded-full)
+```
 
 ---
 
-**Last Updated**: Current codebase analysis
-**Full Details**: See `FEATURE_ANALYSIS.md`
+## 🎯 Interaction Patterns
+
+### Navigation Item
+```
+State:      Visual Feedback:
+Default  →  Transparent, readable
+Hover    →  Gray background (#F4F4F5)
+Active   →  Dark background + blue left ring
+Focus    →  Blue outline (keyboard)
+```
+
+### Building Card
+```
+Default  →  Flat border, no shadow
+Hover    →  Lifted (2px), subtle shadow
+Click    →  Navigation or modal open
+```
+
+### Migration Button
+```
+Default  →  Outline style, secondary prominence
+Hover    →  Filled background
+Click    →  Open modal with form
+```
+
+---
+
+## 📱 Responsive Strategy
+
+### Breakpoints
+```
+Mobile:  < 768px   (1 column, overlay sidebar)
+Tablet:  768-1024  (2 columns, pinned sidebar)
+Desktop: > 1024px  (2-3 columns, full layout)
+```
+
+### Mobile Optimizations
+- Sidebar becomes overlay (closes after navigation)
+- Single-column card layout
+- Stacked action buttons
+- Larger touch targets (min 44px)
+- Full-screen modals
+
+---
+
+## ⚡ Performance Considerations
+
+### Load Strategy
+```
+Critical:     Sidebar, dashboard data
+High:         Buildings list, tenant count
+Medium:       Financial summaries
+Low:          Detailed reports, analytics
+Lazy:         Modal forms (load on demand)
+```
+
+### State Management
+```
+Server state:  Buildings data (React Query)
+UI state:      Modal open/close, filters
+URL state:     Search, pagination
+Local state:   Form inputs
+```
+
+---
+
+## ✅ Accessibility Checklist
+
+### WCAG AA Compliance
+- [ ] Color contrast ≥ 4.5:1 for text
+- [ ] Color contrast ≥ 3:1 for interactive elements
+- [ ] Keyboard navigation works throughout
+- [ ] Focus indicators visible
+- [ ] Screen reader labels present
+- [ ] Touch targets ≥ 44x44px
+- [ ] Form validation accessible
+- [ ] Modal focus trap works
+
+### Keyboard Shortcuts (Potential)
+```
+G + D  →  Go to Dashboard
+G + B  →  Go to Buildings
+G + U  →  Go to Units
+G + T  →  Go to Tenants
+/      →  Focus search
+ESC    →  Close modal/dialog
+```
+
+---
+
+## 🚀 Implementation Checklist
+
+### Phase 1: Navigation ✅
+- [x] Update sidebar structure
+- [x] Add Buildings navigation item
+- [x] Regroup items (Core, Finance, etc.)
+- [x] Test responsive behavior
+
+### Phase 2: Buildings Page
+- [x] Create Buildings.jsx component
+- [x] Create BuildingsTable.jsx component
+- [ ] Add route to router
+- [ ] Connect to API
+- [ ] Test search/filter
+
+### Phase 3: Migration Flow
+- [x] Design migration modal
+- [ ] Implement form validation
+- [ ] Connect to migration API
+- [ ] Add error handling
+- [ ] Test complete flow
+
+### Phase 4: Cleanup
+- [ ] Remove migration from Settings
+- [ ] Update documentation
+- [ ] User communication plan
+- [ ] Monitor adoption
+
+---
+
+## 📊 Success Metrics
+
+### Quantitative
+- **Task Time**: Target 20% reduction in time to migrate
+- **Discoverability**: 90%+ users find migration without help
+- **Error Rate**: <5% form submission errors
+- **Adoption**: 80%+ users use new flow within 2 weeks
+
+### Qualitative
+- User satisfaction with new flow
+- Reduction in support tickets
+- Positive feedback on discoverability
+- Intuitive navigation reported
+
+---
+
+## 🎓 Design Principles Applied
+
+1. **Object-First Organization**
+   - Group by domain entities, not features
+
+2. **Contextual Actions**
+   - Show actions where users focus attention
+
+3. **Progressive Disclosure**
+   - Hide complexity, reveal when needed
+
+4. **Reduced Cognitive Load**
+   - Limit top-level choices, use clear labels
+
+5. **Visual Hierarchy**
+   - Position, size, and color convey importance
+
+6. **Consistency**
+   - Reuse patterns, maintain design system
+
+7. **Accessibility**
+   - Usable by everyone, all devices
+
+8. **Performance**
+   - Fast, responsive, optimized
+
+---
+
+## 🔗 Related Documents
+
+- **[NAVIGATION_DESIGN.md](./NAVIGATION_DESIGN.md)** - Full architecture details
+- **[VISUAL_DESIGN_SYSTEM.md](./VISUAL_DESIGN_SYSTEM.md)** - Design tokens & components
+- **[IMPLEMENTATION_GUIDE.md](./IMPLEMENTATION_GUIDE.md)** - Step-by-step implementation
+- **[USER_FLOW_MIGRATION.md](./USER_FLOW_MIGRATION.md)** - User journey & flows
+- **[VISUAL_MOCKUPS.md](./VISUAL_MOCKUPS.md)** - Visual representations
+
+---
+
+## 💡 Key Takeaway
+
+**The best interface is the one that disappears.**
+
+Users shouldn't think about where features live in your app structure. They should think about their task (migrating a building) and naturally find the action where it makes sense (on the building itself).
+
+This redesign moves from **system-centric** to **user-centric** navigation.
+
+---
+
+**Quick Start**: Read NAVIGATION_DESIGN.md → Review VISUAL_MOCKUPS.md → Follow IMPLEMENTATION_GUIDE.md  
+**Last Updated**: March 27, 2026

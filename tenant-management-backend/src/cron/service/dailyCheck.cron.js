@@ -247,7 +247,7 @@ export async function createAndNotifyMorning() {
 
   // ── Morning push to staff ─────────────────────────────────────────────────
   if (created > 0 || skipped > 0) {
-    const staffIds = await resolveAdminIds("staff_only");
+    const staffIds = await resolveAdminIds("staff");
     const allIds = await resolveAdminIds("all");
 
     const totalPending = created + skipped;
@@ -447,7 +447,7 @@ export async function sendEndOfDayWarning() {
     `   → ${pending.length} PENDING, ${inProgress.length} IN_PROGRESS`,
   );
 
-  const adminIds = await resolveAdminIds("admin_only");
+  const adminIds = await resolveAdminIds("admin");
   if (!adminIds.length) {
     console.log("   → No active admins — skipping end-of-day warning");
     return;
