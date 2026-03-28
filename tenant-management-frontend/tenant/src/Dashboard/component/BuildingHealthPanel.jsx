@@ -157,12 +157,12 @@ function HealthRing({ completionRate = 0, size = 120 }) {
     const radius = (size - strokeWidth * 2) / 2;
     const circumference = 2 * Math.PI * radius;
     const fillAmount = Math.max(0, Math.min(1, completionRate / 100)) * circumference;
-    
-    const color = completionRate === 100 
-        ? 'var(--success)' 
-        : completionRate >= 70 
-        ? 'var(--warning)' 
-        : 'var(--destructive)';
+
+    const color = completionRate === 100
+        ? 'var(--success)'
+        : completionRate >= 70
+            ? 'var(--warning)'
+            : 'var(--destructive)';
 
     return (
         <div className="relative" style={{ width: size, height: size }}>
@@ -334,7 +334,7 @@ export default function BuildingHealthPanel({ stats, loading }) {
                         })
                     )
                 );
-                
+
                 const data = CATEGORIES.map((cat, i) => {
                     const r = results[i];
                     return {
@@ -356,14 +356,14 @@ export default function BuildingHealthPanel({ stats, loading }) {
     // Calculate overall building health
     const buildingHealth = useMemo(() => {
         if (checksLoading || dailyCheckData.length === 0) return { rate: 0, completed: 0, total: CATEGORIES.length };
-        
+
         const completedChecks = dailyCheckData.filter(d => d.checklist && d.checklist.status === 'COMPLETED');
         const avgPassRate = completedChecks.length > 0
             ? completedChecks.reduce((sum, d) => sum + pRate(d.checklist), 0) / completedChecks.length
             : 0;
-        
+
         const completionRate = (completedChecks.length / CATEGORIES.length) * 100;
-        
+
         // Combine completion rate and pass rate for overall health
         const overallHealth = (completionRate * 0.6) + (avgPassRate * 0.4);
 
@@ -407,7 +407,7 @@ export default function BuildingHealthPanel({ stats, loading }) {
 
     return (
         <div className="rounded-2xl border border-border overflow-hidden h-full flex flex-col bg-card">
-            
+
             {/* Building Health Status Section */}
             <div className="px-4 py-4 border-b border-secondary">
                 <div className="flex items-center gap-2 mb-3">
@@ -417,7 +417,7 @@ export default function BuildingHealthPanel({ stats, loading }) {
 
                 <div className="flex flex-col items-center gap-3">
                     <HealthRing completionRate={buildingHealth.rate} size={100} />
-                    
+
                     <div className="w-full space-y-2">
                         <div className="flex items-center justify-between text-xs">
                             <span className="text-muted-foreground">Daily Checks</span>
@@ -427,19 +427,19 @@ export default function BuildingHealthPanel({ stats, loading }) {
                         </div>
                         <div className="flex items-center justify-between text-xs">
                             <span className="text-muted-foreground">Avg Pass Rate</span>
-                            <span className="font-semibold" style={{ 
-                                color: buildingHealth.avgPassRate === 100 
-                                    ? 'var(--success)' 
-                                    : buildingHealth.avgPassRate >= 70 
-                                    ? 'var(--warning)' 
-                                    : 'var(--destructive)' 
+                            <span className="font-semibold" style={{
+                                color: buildingHealth.avgPassRate === 100
+                                    ? 'var(--success)'
+                                    : buildingHealth.avgPassRate >= 70
+                                        ? 'var(--warning)'
+                                        : 'var(--destructive)'
                             }}>
                                 {buildingHealth.avgPassRate}%
                             </span>
                         </div>
                     </div>
 
-                    <Link 
+                    <Link
                         to="/admin-daily-checks"
                         className="w-full mt-2 py-2 px-3 rounded-lg text-xs font-semibold 
                                  bg-primary/10 text-primary hover:bg-primary/20 
@@ -451,91 +451,11 @@ export default function BuildingHealthPanel({ stats, loading }) {
                 </div>
             </div>
 
-            {/* Needs Attention Section */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-secondary bg-muted/30">
-                <div className="flex items-center gap-2">
-                    <CircleDot
-                        className="w-3.5 h-3.5"
-                        style={{
-                            color: totalCount > 0 ? "var(--destructive)" : "var(--success)",
-                        }}
-                    />
-                    <span className="text-sm font-bold text-foreground">Needs Attention</span>
-                </div>
 
-                {!loading && totalCount > 0 && (
-                    <span
-                        className="text-[10px] font-bold tabular-nums px-2 py-0.5 rounded-full"
-                        style={{
-                            background: "color-mix(in oklch, var(--destructive) 16%, transparent)",
-                            color: "var(--destructive)",
-                        }}
-                    >
-                        {totalCount} item{totalCount !== 1 ? "s" : ""}
-                    </span>
-                )}
-                {!loading && totalCount === 0 && (
-                    <span
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                        style={{
-                            background: "color-mix(in oklch, var(--success) 16%, transparent)",
-                            color: "var(--success)",
-                        }}
-                    >
-                        All clear
-                    </span>
-                )}
-            </div>
 
-            {/* Attention Items Body */}
-            <div className="flex-1 overflow-y-auto" style={{ maxHeight: "320px" }}>
-                {loading ? (
-                    <Skeleton />
-                ) : totalCount === 0 ? (
-                    <AllClear />
-                ) : (
-                    groups.map((group) =>
-                        group.items.map((item, i) => {
-                            const isFirstInGroup = i === 0;
-                            const isLastInGroup = i === group.items.length - 1;
-                            const isLastGroup = group === groups[groups.length - 1];
-                            return (
-                                <React.Fragment key={item.id}>
-                                    {isFirstInGroup && (
-                                        <SectionLabel label={group.label} color={group.dot} count={group.items.length} />
-                                    )}
-                                    <ItemRow item={item} isLast={isLastInGroup && isLastGroup} />
-                                </React.Fragment>
-                            );
-                        })
-                    )
-                )}
-            </div>
 
-            {/* Footer quick-links */}
-            {!loading && totalCount > 0 && (
-                <div className="flex items-center gap-0 border-t border-secondary">
-                    {[
-                        { label: "Payments", to: "/rent-payment" },
-                        { label: "Maintenance", to: "/maintenance" },
-                        { label: "Tenants", to: "/tenant" },
-                    ].map(({ label, to }, i, arr) => (
-                        <Link
-                            key={to}
-                            to={to}
-                            className="flex-1 flex items-center justify-center py-2.5
-                         text-[10px] font-semibold tracking-wide uppercase
-                         transition-colors hover:bg-secondary text-muted-foreground
-                         hover:text-primary"
-                            style={{
-                                borderRight: i < arr.length - 1 ? "1px solid var(--color-secondary)" : "none",
-                            }}
-                        >
-                            {label}
-                        </Link>
-                    ))}
-                </div>
-            )}
+
+
         </div>
     );
 }

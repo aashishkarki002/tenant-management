@@ -13,6 +13,7 @@ import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { GlobalSearch } from "../components/header";
 import BuildingHealthPanel from "./component/BuildingHealthPanel";
 import { getFYLabel, getFYStartYear, getTodayNepali } from "../../utils/nepaliDate";
+import AttentionBanner from "./component/AttentionBanner";
 
 // Derive FY labels once — no approximation, uses the real BS calendar
 const todayBs = getTodayNepali();
@@ -151,11 +152,13 @@ export default function Dashboard() {
 
           {/* ── ROW 1: 4 KPI tiles ── above the fold ── */}
           <KpiStrip stats={stats} loading={loading} />
+          <AttentionBanner stats={stats} loading={loading} />
 
           {/* ── ROW 2: Revenue chart + Needs Attention (above fold) ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
-              <div className="rounded-2xl border border-border overflow-hidden h-full bg-card">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 
+          ">
+            <div className="lg:col-span-2 h-[320px]">
+              <div className="rounded-2xl border border-border overflow-hidden bg-card h-full">
                 <BarDiagram stats={stats} loading={loading} error={error} period={period} />
               </div>
             </div>
@@ -167,8 +170,7 @@ export default function Dashboard() {
           {/* ── ROW 3: Activity feed (scrollable, below fold) ── */}
           <RecentActivities stats={stats} loading={loading} error={error} />
 
-          {/* ── ROW 4: Building performance grid ── */}
-          <BuildingPerformanceGrid stats={stats} loading={loading} />
+
 
         </div>
       )}

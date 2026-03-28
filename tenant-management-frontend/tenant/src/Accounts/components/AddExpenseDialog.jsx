@@ -96,6 +96,19 @@ function getEntityTypeLabel(type) {
   }
 }
 
+function ownershipEntityIdFromBlock(block) {
+  if (!block) return "";
+  const ref = block.ownershipEntityId ?? block.ownershipEntity;
+  const id = ref?._id ?? ref;
+  return id != null ? String(id) : "";
+}
+
+function blocksForOwnershipEntity(blocks, entityId) {
+  if (!entityId || !Array.isArray(blocks)) return [];
+  const target = String(entityId);
+  return blocks.filter((b) => ownershipEntityIdFromBlock(b) === target);
+}
+
 function getInitialValues() {
   return {
     payeeType: "EXTERNAL",
@@ -124,6 +137,7 @@ function getInitialValues() {
     bankAccountId: "",
     // Ownership
     entityId: "",
+    blockId: "",
   };
 }
 
@@ -164,9 +178,13 @@ export function AddExpenseDialog({
   const [staffFetching, setStaffFetching] = useState(false);
   const [fetchedStaffList, setFetchedStaffList] = useState([]);
   const [didFetchStaffs, setDidFetchStaffs] = useState(false);
-
-  // Fetch all ownership entities via hook
-  const { entities: rawEntities, loading: entitiesLoading } = useOwnership();
+  // Fetch all ownership entities and blocks via hook
+  const { 
+    entities: rawEntities, 
+    blocks, 
+    loading: entitiesLoading, 
+    getBlocksForEntity 
+  } = useOwnership();
 
   const allEntities = useMemo(() => {
     if (!rawEntities) return [];
@@ -198,6 +216,12 @@ export function AddExpenseDialog({
         const transactionScope =
           entity?.type === "head_office" ? "head_office" : "building";
 
+        if (transactionScope === "building" && !values.blockId) {
+          console.error("Building block is required for this entity.");
+          setSubmitting(false);
+          return;
+        }
+
         const payload = {
           source: values.source,
           amount: Number(values.amount),
@@ -210,6 +234,9 @@ export function AddExpenseDialog({
           paymentMethod,
           entityId: values.entityId || undefined,
           transactionScope,
+          ...(transactionScope === "building" && values.blockId
+            ? { blockId: values.blockId }
+            : {}),
         };
 
         // Payment method → bank account
@@ -273,6 +300,43 @@ export function AddExpenseDialog({
     formik.resetForm({ values: getInitialValues() });
   }, [open]);
 
+  // Auto-select block when entity changes
+  useEffect(() => {
+    if (!open) return;
+    const entityId = formik.values.entityId;
+    if (!entityId) {
+      formik.setFieldValue("blockId", "");
+      return;
+    }
+    const entity = allEntities.find((e) => String(e._id) === String(entityId));
+    if (!entity || entity.type === "head_office") {
+      formik.setFieldValue("blockId", "");
+      return;
+    }
+    const list = getBlocksForEntity(entityId);
+    if (list.length === 1) {
+      formik.setFieldValue("blockId", String(list[0]._id));
+    } else if (list.length === 0) {
+      formik.setFieldValue("blockId", "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- formik.setFieldValue; sync when entity changes
+  }, [open, formik.values.entityId, allEntities, getBlocksForEntity]);
+
+  const handleEntityChange = (entityId) => {
+    formik.setFieldValue("entityId", entityId);
+    const entity = allEntities.find((e) => String(e._id) === String(entityId));
+    if (!entity || entity.type === "head_office") {
+      formik.setFieldValue("blockId", "");
+      return;
+    }
+    const list = getBlocksForEntity(entityId);
+    if (list.length === 1) {
+      formik.setFieldValue("blockId", String(list[0]._id));
+    } else if (list.length > 1) {
+      formik.setFieldValue("blockId", "");
+    }
+  };
+
   // Populate the staff dropdown when the parent doesn't pass `staffList`.
   useEffect(() => {
     if (!open) return;
@@ -328,6 +392,31 @@ export function AddExpenseDialog({
     formik.values.paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
     formik.values.paymentMethod === PAYMENT_METHODS.CHEQUE;
   const payMonthOptions = getNepaliMonthOptions({ lang: "np" });
+
+  const selectedEntity = allEntities.find(
+    (e) => String(e._id) === String(formik.values.entityId ?? ""),
+  );
+  const blocksForSelected = getBlocksForEntity(formik.values.entityId);
+  const showBlockPicker =
+    selectedEntity &&
+    selectedEntity.type !== "head_office" &&
+    blocksForSelected.length > 1;
+
+  const expenseAwaitingBlocks =
+    selectedEntity &&
+    selectedEntity.type !== "head_office" &&
+    entitiesLoading;
+  const expenseNeedsBlock =
+    selectedEntity &&
+    selectedEntity.type !== "head_office" &&
+    blocksForSelected.length > 0;
+  const expenseBlockInvalid =
+    expenseNeedsBlock && !formik.values.blockId && !entitiesLoading;
+  const expenseNoBlocksForEntity =
+    selectedEntity &&
+    selectedEntity.type !== "head_office" &&
+    !entitiesLoading &&
+    blocksForSelected.length === 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -570,7 +659,7 @@ export function AddExpenseDialog({
             <FieldLabel>Receiving Entity</FieldLabel>
             <Select
               value={formik.values.entityId ?? ""}
-              onValueChange={(v) => formik.setFieldValue("entityId", v)}
+              onValueChange={handleEntityChange}
               disabled={entitiesLoading}
             >
               <SelectTrigger className="w-full">
@@ -599,6 +688,44 @@ export function AddExpenseDialog({
               <p className="text-[11px] text-muted-foreground">
                 Expense will be recorded under the selected entity.
               </p>
+            )}
+            {selectedEntity &&
+              selectedEntity.type !== "head_office" &&
+              !entitiesLoading &&
+              blocksForSelected.length === 0 && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  No building blocks are linked to this entity. Assign a block in
+                  Organization settings before recording this expense.
+                </p>
+              )}
+            {selectedEntity &&
+              selectedEntity.type !== "head_office" &&
+              blocksForSelected.length === 1 &&
+              formik.values.blockId && (
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Block automatically selected: {blocksForSelected[0].name || "Unnamed block"}
+                </p>
+              )}
+            {showBlockPicker && (
+              <div className="space-y-2 pt-1">
+                <FieldLabel>Building block</FieldLabel>
+                <Select
+                  value={formik.values.blockId ?? ""}
+                  onValueChange={(v) => formik.setFieldValue("blockId", v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="— select block —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {blocksForSelected.map((b) => (
+                      <SelectItem key={b._id} value={String(b._id)}>
+                        {b.name || "Unnamed block"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </div>
 
@@ -776,7 +903,15 @@ export function AddExpenseDialog({
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button
+              type="submit"
+              disabled={
+                submitting ||
+                expenseAwaitingBlocks ||
+                expenseBlockInvalid ||
+                expenseNoBlocksForEntity
+              }
+            >
               {submitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
               Add Expense
             </Button>

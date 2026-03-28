@@ -34,6 +34,7 @@ export default function LoginForm({ className, ...props }) {
       setLoading(true);
       try {
         const response = await api.post("/api/auth/login", {
+
           email: values.email,
           password: values.password,
         });

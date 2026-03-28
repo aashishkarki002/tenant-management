@@ -65,6 +65,19 @@ function getOwnershipLabel(entity) {
   return entity.name || getEntityTypeLabel(entity.type);
 }
 
+function ownershipEntityIdFromBlock(block) {
+  if (!block) return "";
+  const ref = block.ownershipEntityId ?? block.ownershipEntity;
+  const id = ref?._id ?? ref;
+  return id != null ? String(id) : "";
+}
+
+function blocksForOwnershipEntity(blocks, entityId) {
+  if (!entityId || !Array.isArray(blocks)) return [];
+  const target = String(entityId);
+  return blocks.filter((b) => ownershipEntityIdFromBlock(b) === target);
+}
+
 const getInitialValues = () => ({
   payerType: "tenant",
   tenantId: "",
@@ -279,8 +292,13 @@ export function AddRevenueDialog({
   const [submitting, setSubmitting] = useState(false);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
-  // Fetch all ownership entities via hook
-  const { entities: entitiesProp, loading: entitiesLoading } = useOwnership();
+  // Fetch all ownership entities and blocks via hook
+  const { 
+    entities: entitiesProp, 
+    blocks, 
+    loading: entitiesLoading, 
+    getBlocksForEntity 
+  } = useOwnership();
 
   // Entity resolution state
   const [resolving, setResolving] = useState(false);
@@ -322,15 +340,17 @@ export function AddRevenueDialog({
         return;
       }
 
+      const entity = allEntities.find((e) => e._id === entityId);
+      const transactionScope =
+        entity?.type === "head_office" ? "head_office" : "building";
+      if (transactionScope === "building" && !values.blockId) {
+        return;
+      }
+
       setSubmitting(true);
       try {
         const payerType = values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
         const paymentMethod = String(values.paymentMethod || "bank_transfer").toLowerCase();
-
-        // Determine transactionScope from entity type
-        const entity = allEntities.find((e) => e._id === entityId);
-        const transactionScope =
-          entity?.type === "head_office" ? "head_office" : "building";
 
         const payload = {
           source: values.sourceId,
@@ -342,7 +362,10 @@ export function AddRevenueDialog({
           paymentMethod,
           // Ownership fields
           entityId,
-          blockId: transactionScope !== "head_office" ? (resolvedBlock?._id || undefined) : undefined,
+          blockId:
+            transactionScope === "head_office"
+              ? undefined
+              : values.blockId || undefined,
           transactionScope,
         };
 
@@ -392,6 +415,7 @@ export function AddRevenueDialog({
     setIsAutoResolved(false);
     setShowManualOverride(false);
     setManualEntityId("");
+    formik.setFieldValue("blockId", "");
   };
 
   useEffect(() => {
@@ -401,6 +425,36 @@ export function AddRevenueDialog({
     resetEntityResolution();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Keep formik.blockId in sync with resolved entity + tenant block / block list
+  useEffect(() => {
+    if (!open) return;
+    if (!resolvedEntityId) {
+      formik.setFieldValue("blockId", "");
+      return;
+    }
+    const ent = allEntities.find((e) => String(e._id) === String(resolvedEntityId));
+    if (!ent || ent.type === "head_office") {
+      formik.setFieldValue("blockId", "");
+      return;
+    }
+    const list = getBlocksForEntity(resolvedEntityId);
+    if (
+      resolvedBlock?._id &&
+      list.some((b) => String(b._id) === String(resolvedBlock._id))
+    ) {
+      formik.setFieldValue("blockId", String(resolvedBlock._id));
+      return;
+    }
+    if (list.length === 1) {
+      formik.setFieldValue("blockId", String(list[0]._id));
+      return;
+    }
+    const cur = formik.values.blockId;
+    const valid = cur && list.some((b) => String(b._id) === String(cur));
+    if (!valid) formik.setFieldValue("blockId", "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync from entity/block list; avoid loop on blockId
+  }, [open, resolvedEntityId, allEntities, resolvedBlock?._id, getBlocksForEntity]);
 
   // ── Auto-resolve entity when tenant changes ──────────────────────────────
   const resolveTenantEntity = useCallback(async (tenantId) => {
@@ -426,19 +480,24 @@ export function AddRevenueDialog({
       if (!blockId) throw new Error("Tenant has no block assigned");
 
       // Fetch block to get ownershipEntityId
-      // Try the blocks endpoint — adjust path if your API differs
       let block = null;
       let entity = null;
 
-      try {
-        const blockRes = await api.get(`/api/blocks/${blockId}`);
-        block = blockRes.data?.block || blockRes.data?.data;
-      } catch {
-        // If no dedicated block endpoint, check the property tree
-        const propRes = await api.get("/api/property/get-property");
-        const tree = propRes.data?.property || propRes.data?.data;
-        const blocks = tree?.blocks || [];
-        block = blocks.find((b) => b._id === blockId || b._id?.toString() === blockId?.toString());
+      // Check if block is already in the local blocks list (from hook)
+      block = blocks.find((b) => String(b._id) === String(blockId));
+
+      if (!block) {
+        // Fallback to API call
+        try {
+          const blockRes = await api.get(`/api/blocks/${blockId}`);
+          block = blockRes.data?.block || blockRes.data?.data;
+        } catch {
+          // If no dedicated block endpoint, check the property tree
+          const propRes = await api.get("/api/property/get-property");
+          const tree = propRes.data?.property || propRes.data?.data;
+          const blocksList = tree?.blocks || [];
+          block = blocksList.find((b) => b._id === blockId || b._id?.toString() === blockId?.toString());
+        }
       }
 
       if (!block) throw new Error("Block not found");
@@ -469,7 +528,8 @@ export function AddRevenueDialog({
     } finally {
       setResolving(false);
     }
-  }, [allEntities]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- formik.setFieldValue is stable for this dialog
+  }, [allEntities, blocks]);
 
   // Trigger resolution when tenant changes
   useEffect(() => {
@@ -500,7 +560,29 @@ export function AddRevenueDialog({
 
   const payerType = formik.values.payerType ?? "tenant";
   const isEntityResolved = !!resolvedEntityId;
-  const canSubmit = isEntityResolved && formik.values.sourceId && formik.values.amount;
+  const selectedEntityForRevenue = allEntities.find(
+    (e) => String(e._id) === String(resolvedEntityId ?? ""),
+  );
+  const blocksForRevenueEntity = getBlocksForEntity(resolvedEntityId);
+  const needsBuildingBlock =
+    !!resolvedEntityId &&
+    selectedEntityForRevenue &&
+    selectedEntityForRevenue.type !== "head_office";
+  const blockReady =
+    !needsBuildingBlock ||
+    (!entitiesLoading &&
+      blocksForRevenueEntity.length > 0 &&
+      !!formik.values.blockId);
+  const canSubmit =
+    isEntityResolved &&
+    formik.values.sourceId &&
+    formik.values.amount &&
+    blockReady;
+
+  const showRevenueBlockPicker =
+    needsBuildingBlock &&
+    !entitiesLoading &&
+    blocksForRevenueEntity.length > 1;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -672,7 +754,10 @@ export function AddRevenueDialog({
                   </div>
                   <Select
                     value={manualEntityId || ""}
-                    onValueChange={setManualEntityId}
+                    onValueChange={(v) => {
+                      setManualEntityId(v);
+                      setResolvedBlock(null);
+                    }}
                     disabled={entitiesLoading}
                   >
                     <SelectTrigger className="w-full h-11 rounded-xl text-sm">
@@ -712,6 +797,52 @@ export function AddRevenueDialog({
                 />
               )}
             </div>
+
+            {needsBuildingBlock &&
+              !entitiesLoading &&
+              blocksForRevenueEntity.length === 0 &&
+              isEntityResolved && (
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>
+                    No building blocks are linked to this entity. Assign a block in
+                    Organization settings first.
+                  </span>
+                </div>
+              )}
+
+            {needsBuildingBlock &&
+              !entitiesLoading &&
+              blocksForRevenueEntity.length === 1 &&
+              formik.values.blockId && (
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Block automatically selected: {blocksForRevenueEntity[0].name || "Unnamed block"}
+                </p>
+              )}
+
+            {showRevenueBlockPicker && (
+              <div className="space-y-2">
+                <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Building block
+                </Label>
+                <Select
+                  value={formik.values.blockId ?? ""}
+                  onValueChange={(v) => formik.setFieldValue("blockId", v)}
+                >
+                  <SelectTrigger className="w-full h-11 rounded-xl text-sm">
+                    <SelectValue placeholder="— select block —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {blocksForRevenueEntity.map((b) => (
+                      <SelectItem key={b._id} value={String(b._id)}>
+                        {b.name || "Unnamed block"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* ── Section divider ───────────────────────────────────────── */}
             <div className="relative flex items-center py-1">

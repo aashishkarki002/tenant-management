@@ -26,7 +26,8 @@ export default function LedgerFeed({ entries = [], loading, onViewAll }) {
         </div>
     );
 
-    const recent = entries.slice(0, 8);
+    // API returns oldest-first (FIFO); take the tail for "latest" without re-sorting.
+    const recent = entries.length <= 8 ? entries : entries.slice(-8);
 
     if (!recent.length) return (
         <div className="py-5 text-center text-[13px] text-[var(--color-text-sub)]">

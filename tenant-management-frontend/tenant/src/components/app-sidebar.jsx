@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Landmark,
   ClipboardCheck,
+  UserCog,
 } from "lucide-react";
 
 import {
@@ -53,6 +54,7 @@ const NAV_GROUPS = [
       { title: "Buildings", url: "/buildings", icon: Building2 },
       { title: "Units", url: "/units", icon: Building2 },
       { title: "Tenants", url: "/tenants", icon: Users },
+      { title: "Staff", url: "/staff", icon: UserCog },
     ],
   },
   {

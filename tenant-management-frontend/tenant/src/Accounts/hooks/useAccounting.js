@@ -47,18 +47,21 @@ export function useAccounting(
   const [ledgerEntries, setLedgerEntries] = useState([]);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
-  const params = buildParams(
-    quarter,
-    startDate,
-    endDate,
-    month,
-    fiscalYear,
-    entityId,
-  );
-
+  // BUG FIX: params must be built INSIDE useCallback, not outside.
+  // Building params outside and referencing it inside useCallback captures a
+  // stale closure — params is a new object every render but useCallback only
+  // re-runs when its deps change, so it was always using the first render's params.
   const fetchSummary = useCallback(async () => {
     try {
       setLoadingSummary(true);
+      const params = buildParams(
+        quarter,
+        startDate,
+        endDate,
+        month,
+        fiscalYear,
+        entityId,
+      );
       const response = await api.get("/api/accounting/summary", { params });
       setSummary(response.data.data);
     } catch (error) {
@@ -66,12 +69,19 @@ export function useAccounting(
     } finally {
       setLoadingSummary(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quarter, startDate, endDate, month, fiscalYear, entityId]);
 
   const fetchLedger = useCallback(async () => {
     try {
       setLoadingLedger(true);
+      const params = buildParams(
+        quarter,
+        startDate,
+        endDate,
+        month,
+        fiscalYear,
+        entityId,
+      );
       const ledgerParams = { ...params };
       if (ledgerType && ledgerType !== "all") ledgerParams.type = ledgerType;
       const response = await api.get("/api/ledger/get-ledger", {
@@ -87,7 +97,6 @@ export function useAccounting(
     } finally {
       setLoadingLedger(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quarter, ledgerType, startDate, endDate, month, fiscalYear, entityId]);
 
   useEffect(() => {
@@ -119,19 +128,19 @@ export function useRevenueSummary(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const params = buildParams(
-    quarter,
-    startDate,
-    endDate,
-    month,
-    fiscalYear,
-    entityId,
-  );
-
   const fetch = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      // BUG FIX: params built inside useCallback to avoid stale closure
+      const params = buildParams(
+        quarter,
+        startDate,
+        endDate,
+        month,
+        fiscalYear,
+        entityId,
+      );
       const response = await api.get("/api/accounting/revenue-summary", {
         params,
       });
@@ -142,7 +151,6 @@ export function useRevenueSummary(
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quarter, startDate, endDate, month, fiscalYear, entityId]);
 
   useEffect(() => {
@@ -166,19 +174,19 @@ export function useExpenseSummary(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const params = buildParams(
-    quarter,
-    startDate,
-    endDate,
-    month,
-    fiscalYear,
-    entityId,
-  );
-
   const fetch = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      // BUG FIX: params built inside useCallback to avoid stale closure
+      const params = buildParams(
+        quarter,
+        startDate,
+        endDate,
+        month,
+        fiscalYear,
+        entityId,
+      );
       const response = await api.get("/api/accounting/expense-summary", {
         params,
       });
@@ -189,7 +197,6 @@ export function useExpenseSummary(
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quarter, startDate, endDate, month, fiscalYear, entityId]);
 
   useEffect(() => {

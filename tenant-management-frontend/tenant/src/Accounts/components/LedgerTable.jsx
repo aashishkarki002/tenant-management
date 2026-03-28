@@ -1,12 +1,11 @@
 /**
- * LedgerTable.jsx (fixed)
+ * LedgerTable.jsx
  *
- * Change: date cells previously called `new Date(entry.date).toLocaleDateString()`
- * which renders English dates in whatever the browser locale happens to be.
- * This is a Nepali-calendar application — we import toBSDate from
- * nepaliCalendar.js and render "DD Month YYYY" in BS format consistently.
+ * Date cells use toBSDate (Nepali calendar) instead of toLocaleDateString.
  *
- * No other logic changed.
+ * Order: entries are rendered in API order. The ledger endpoint returns rows
+ * chronological ascending (FIFO: earliest at top, latest at bottom) with
+ * runningBalance computed server-side — no client sorting.
  */
 
 import { usePagination } from "../hooks/usePagination";

@@ -141,7 +141,7 @@ function Tile({
             }}
         >
             {/* Body */}
-            <div className="flex items-start justify-between px-4 pt-4 pb-3 gap-3">
+            <div className="flex items-start justify-between px-4 py-3 gap-3">
                 <div className="flex-1 min-w-0">
 
                     {/* Label */}
@@ -207,22 +207,7 @@ function Tile({
                 </div>
             </div>
 
-            {/* Footer */}
-            <div
-                className="flex items-center justify-between px-4 py-2 border-t mt-auto"
-                style={{ borderColor: "var(--color-border)" }}
-            >
-                <span
-                    className="text-[10px] font-medium uppercase tracking-wide"
-                    style={{ color: "var(--color-text-sub)" }}
-                >
-                    View details
-                </span>
-                <ChevronRight
-                    className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5"
-                    style={{ color: "var(--color-text-sub)" }}
-                />
-            </div>
+
         </Link>
     );
 }
