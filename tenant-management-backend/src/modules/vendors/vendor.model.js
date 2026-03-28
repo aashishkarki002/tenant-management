@@ -17,6 +17,7 @@ const vendorSchema = new Schema(
         "electrical",
         "plumbing",
         "it",
+        "courtyard_vendor",
         "other",
       ],
       required: true,

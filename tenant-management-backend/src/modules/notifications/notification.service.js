@@ -31,12 +31,19 @@ export async function createAndEmitNotification({
     targetAdminIds = admins.map((a) => a._id.toString());
   }
 
+  // Remove duplicates to prevent multiple notifications to the same admin
+  targetAdminIds = [...new Set(targetAdminIds)];
+
   if (targetAdminIds.length === 0) {
     console.warn(
       "[notification] createAndEmitNotification called but no active admins found",
     );
     return [];
   }
+
+  console.log(
+    `[notification] Creating notification — type: ${type}, title: "${title}", target admins: ${targetAdminIds.length}`,
+  );
 
   // 2. Bulk insert — one document per admin
   const docs = targetAdminIds.map((adminId) => ({

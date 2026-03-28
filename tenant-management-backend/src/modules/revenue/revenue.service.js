@@ -270,6 +270,7 @@ async function createRevenue(revenueData) {
       entityId,
       propertyId,
       splitAllocations,
+      blockId,
     } = revenueData;
 
     // ── Scope validation ────────────────────────────────────────────────────
@@ -422,6 +423,10 @@ async function createRevenue(revenueData) {
 
     if (scope === "building") {
       revenueDoc.propertyId = propertyId;
+      if (!blockId) {
+        throw new Error("blockId is required for building-scoped revenue");
+      }
+      revenueDoc.blockId = new mongoose.Types.ObjectId(blockId);
     } else if (scope === "split") {
       revenueDoc.splitAllocations = splitAllocations;
     }

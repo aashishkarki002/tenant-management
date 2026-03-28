@@ -487,10 +487,72 @@ class ElectricityService {
       session,
     );
 
-    // Entry 2: NEA cost → Expense (only when NEA rate was configured at read time)
+    // Entry 2: NEA cost → Liability (only when NEA rate was configured at read time)
+    // This records: DR Electricity Expense (NEA) | CR NEA Payable
+    // The Rs 1500 NEA cost is a LIABILITY at this point — not yet a cash expense.
+    // It only becomes a real cash expense when you physically pay the NEA bill.
+    // The dashboard must NOT count ELECTRICITY_NEA_COST transactions as actual expenses.
     if (electricity.neaCostPaisa != null && electricity.neaCostPaisa > 0) {
       const neaExpensePayload = buildElectricityNeaCostJournal(electricity);
       await ledgerService.postJournalEntry(neaExpensePayload, session);
+    }
+
+    // Entry 3: Create Revenue record for the MARGIN only (at charge time, not payment time).
+    // Revenue recognised = customRate amount (Rs 2000). NEA cost is a liability — not yet
+    // an expense. The margin (Rs 500) is your true earned revenue on electricity billing.
+    //
+    // WHY HERE (not in recordElectricityPayment):
+    //   Accrual accounting: revenue is earned when the bill is raised, not when cash arrives.
+    //   Recording at payment time would cause the Revenue collection to double-count:
+    //   the journal already credits UTILITY_REVENUE at charge time.
+    if (electricity.meterType === "unit" && electricity.tenant) {
+      try {
+        let utilitySource = await RevenueSource.findOne({
+          code: "UTILITY",
+        }).session(session);
+        if (!utilitySource) {
+          [utilitySource] = await RevenueSource.create(
+            [{ code: "UTILITY", name: "Electricity / Utility" }],
+            { session },
+          );
+        }
+
+        const tenantObjectId =
+          electricity.tenant instanceof mongoose.Types.ObjectId
+            ? electricity.tenant
+            : new mongoose.Types.ObjectId(
+                electricity.tenant._id ?? electricity.tenant,
+              );
+
+        // Record the full tenant charge as revenue (accrual basis).
+        // The NEA cost will reduce net income via the ELECTRICITY_NEA_COST expense
+        // transaction — but only when that payable is settled (NEA bill paid).
+        await Revenue.create(
+          [
+            {
+              source: utilitySource._id,
+              amountPaisa: electricity.totalAmountPaisa,
+              date: electricity.readingDate ?? new Date(),
+              npYear: electricity.nepaliYear,
+              npMonth: electricity.nepaliMonth,
+              description: `Electricity charge — ${electricity.consumption} units`,
+              payerType: "TENANT",
+              tenant: tenantObjectId,
+              referenceType: "ELECTRICITY",
+              referenceId: electricity._id,
+              createdBy: electricity.createdBy,
+              notes: `Electricity charge – ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
+            },
+          ],
+          { session },
+        );
+      } catch (error) {
+        console.error(
+          "Failed to create revenue record for electricity charge:",
+          error.message,
+        );
+        throw error; // abort transaction
+      }
     }
 
     return { success: true, transaction, ledgerEntries };
@@ -554,50 +616,14 @@ class ElectricityService {
       session,
     );
 
-    // 3. Create Revenue record for tenant-billed payments only
-    if (electricity.meterType === "unit" && rawTenantId) {
-      try {
-        let utilitySource = await RevenueSource.findOne({
-          code: "UTILITY",
-        }).session(session);
-        if (!utilitySource) {
-          [utilitySource] = await RevenueSource.create(
-            [{ code: "UTILITY", name: "Electricity / Utility" }],
-            { session },
-          );
-        }
+    // NOTE: Revenue record is intentionally NOT created here.
+    // Revenue is recognised at charge time (accrual basis) in recordElectricityCharge —
+    // when the bill is raised, not when cash is received. Creating a Revenue doc here
+    // would double-count: the charge journal already credited UTILITY_REVENUE and a
+    // Revenue document was already written at that point.
+    // The payment journal (DR Cash | CR Accounts Receivable) is all that's needed here.
 
-        const tenantObjectId =
-          rawTenantId instanceof mongoose.Types.ObjectId
-            ? rawTenantId
-            : new mongoose.Types.ObjectId(rawTenantId);
-
-        await Revenue.create(
-          [
-            {
-              source: utilitySource._id,
-              amountPaisa: paymentAmountPaisa,
-              date: paymentData.paymentDate ?? new Date(),
-              payerType: "TENANT",
-              tenant: tenantObjectId,
-              referenceType: "ELECTRICITY",
-              referenceId: electricity._id,
-              createdBy: paymentData.createdBy,
-              notes: `Electricity payment – ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
-            },
-          ],
-          { session },
-        );
-      } catch (error) {
-        console.error(
-          "Failed to create revenue record for electricity payment:",
-          error.message,
-        );
-        throw error; // abort transaction
-      }
-    }
-
-    // 4. Update bank balance
+    // 3. Update bank balance
     const bankAccountId = paymentData.bankAccountId ?? paymentData.bankAccount;
     const paymentMethod =
       paymentData.paymentMethod || (bankAccountId ? "bank_transfer" : "cash");

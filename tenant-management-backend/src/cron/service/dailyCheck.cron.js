@@ -78,13 +78,18 @@ async function resolveAdminIds(scope = "all") {
   if (!ids.length && process.env.SYSTEM_ADMIN_ID) {
     ids = [process.env.SYSTEM_ADMIN_ID];
   }
-  return ids;
+  
+  // Remove duplicates that might cause multiple notifications to the same admin
+  return [...new Set(ids)];
 }
 
 // ─── Notify + push helpers ────────────────────────────────────────────────────
 
 async function notifyAdmins({ type, title, message, data, adminIds }) {
   const io = getIO();
+  console.log(
+    `[dailyCheck.cron] notifyAdmins called — type: ${type}, adminIds count: ${adminIds.length}, adminIds: ${adminIds.join(", ")}`,
+  );
   for (const adminId of adminIds) {
     try {
       const notification = await Notification.create({
@@ -313,9 +318,9 @@ export async function sendMidMorningEscalation() {
   );
 
   const startOfDay = new Date(englishToday);
-  startOfDay.setHours(0, 0, 0, 0);
+  startOfDay.setUTCHours(0, 0, 0, 0);
   const endOfDay = new Date(englishToday);
-  endOfDay.setHours(23, 59, 59, 999);
+  endOfDay.setUTCHours(23, 59, 59, 999);
 
   const pendingResults = await ChecklistResult.find({
     checkDate: { $gte: startOfDay, $lte: endOfDay },
@@ -415,9 +420,9 @@ export async function sendEndOfDayWarning() {
   );
 
   const startOfDay = new Date(englishToday);
-  startOfDay.setHours(0, 0, 0, 0);
+  startOfDay.setUTCHours(0, 0, 0, 0);
   const endOfDay = new Date(englishToday);
-  endOfDay.setHours(23, 59, 59, 999);
+  endOfDay.setUTCHours(23, 59, 59, 999);
 
   const incompleteResults = await ChecklistResult.find({
     checkDate: { $gte: startOfDay, $lte: endOfDay },

@@ -55,3 +55,6 @@ export const updateEntity = async (id, data) => {
 export const getEntityById = async (id) => {
   return OwnershipEntity.findById(id).lean();
 };
+export const preFlightCheck = async (id) => {
+  return OwnershipEntity.findById(id).lean();
+};

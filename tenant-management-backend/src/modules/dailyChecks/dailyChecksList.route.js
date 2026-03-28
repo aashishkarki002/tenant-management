@@ -1,23 +1,3 @@
-/**
- * dailyChecksList.route.js  (v2 — Template + Result split)
- *
- * Route map:
- *
- *   Templates (admin setup):
- *     GET    /api/checklists/templates              → list templates
- *     POST   /api/checklists/templates              → create template
- *     GET    /api/checklists/templates/:id          → get template (full sections)
- *     POST   /api/checklists/templates/:id/rebuild  → regenerate sections from factory
- *
- *   Results (daily operational):
- *     GET    /api/checklists/results                → list results (paginated)
- *     POST   /api/checklists/results                → create result for a template+date
- *     GET    /api/checklists/summary                → aggregated health summary
- *     GET    /api/checklists/results/:id            → full merged view
- *     PATCH  /api/checklists/results/:id/submit     → submit outcome delta
- *     DELETE /api/checklists/results/:id            → delete (admin only)
- */
-
 import { Router } from "express";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";

@@ -13,10 +13,7 @@ export const getAllEntities = async (req, res) => {
 // POST /api/ownership
 export const createEntity = async (req, res) => {
   try {
-    const entity = await ownershipService.createEntity(
-      req.body,
-      req.admin?.id,
-    );
+    const entity = await ownershipService.createEntity(req.body, req.admin?.id);
     return res.status(201).json({ success: true, data: entity });
   } catch (error) {
     if (error.name === "ValidationError") {
@@ -44,10 +41,7 @@ export const getEntityById = async (req, res) => {
 // PATCH /api/ownership/:id
 export const updateEntity = async (req, res) => {
   try {
-    const entity = await ownershipService.updateEntity(
-      req.params.id,
-      req.body,
-    );
+    const entity = await ownershipService.updateEntity(req.params.id, req.body);
     if (!entity) {
       return res
         .status(404)
@@ -58,6 +52,14 @@ export const updateEntity = async (req, res) => {
     if (error.name === "ValidationError") {
       return res.status(400).json({ success: false, message: error.message });
     }
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+export const preFlightCheck = async (req, res) => {
+  try {
+    const result = await preFlightCheck(req.params.id);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };

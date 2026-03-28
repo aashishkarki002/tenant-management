@@ -230,10 +230,11 @@ export async function createResult(templateId, dateData, adminId) {
   }
 
   // Idempotency guard: one result per template per day
+  // Use UTC to avoid timezone issues
   const startOfDay = new Date(checkDate);
-  startOfDay.setHours(0, 0, 0, 0);
+  startOfDay.setUTCHours(0, 0, 0, 0);
   const endOfDay = new Date(checkDate);
-  endOfDay.setHours(23, 59, 59, 999);
+  endOfDay.setUTCHours(23, 59, 59, 999);
 
   const existing = await ChecklistResult.findOne({
     template: templateId,

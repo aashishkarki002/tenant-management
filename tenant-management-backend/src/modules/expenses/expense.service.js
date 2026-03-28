@@ -261,6 +261,7 @@ export async function createExpense(expenseData, externalSession = null) {
       entityId,
       propertyId,
       splitAllocations,
+      blockId,
     } = expenseData;
 
     // ── Resolve scope from entity type (frontend only needs to send entityId) ─
@@ -380,6 +381,10 @@ export async function createExpense(expenseData, externalSession = null) {
     // Attach scope-specific fields
     if (scope === "building") {
       expenseDoc.propertyId = propertyId;
+      if (!blockId) {
+        throw new Error("blockId is required for building-scoped expenses");
+      }
+      expenseDoc.blockId = new mongoose.Types.ObjectId(blockId);
     } else if (scope === "split") {
       expenseDoc.splitAllocations = splitAllocations;
     }

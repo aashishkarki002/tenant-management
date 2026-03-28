@@ -254,31 +254,50 @@ export async function getAccountingSummary({
     },
   ]);
 
-  // ── Expenses from ledger ──────────────────────────────────────────────────
-  // Pass entityId so ledgerService can scope its account queries too
+  // ── Expenses from Expense collection ─────────────────────────────────────
+  //
+  // IMPORTANT: Revenue comes from the Revenue collection, expenses from the
+  // Expense collection — both are the single source of truth for P&L.
+  // The Ledger is for double-entry audit trail only, not for summary totals.
+  //
+  // We explicitly EXCLUDE referenceType "ELECTRICITY_NEA_COST" here because
+  // that represents an unsettled NEA Payable (liability) — it is not a cash
+  // expense until the NEA bill is actually paid and the payable is cleared.
+  const expenseMatch = { ...entityFilter };
+  // Expense model uses EnglishDate (capital E and D) — not 'date' like Revenue.
+  // Using the wrong field would silently return all expenses regardless of filter.
+  if (dateFilter) expenseMatch.EnglishDate = dateFilter;
+  expenseMatch.referenceType = { $ne: "ELECTRICITY_NEA_COST" };
+
+  const expenseAggregation = await Expense.aggregate([
+    { $match: expenseMatch },
+    {
+      $group: {
+        _id: "$source",
+        totalAmountPaisa: { $sum: "$amountPaisa" },
+      },
+    },
+  ]);
+
+  // Also fetch the ledger summary for the audit trail / ledger tab only
+  // (not used for P&L totals — that comes from Revenue + Expense collections)
   const ledgerSummary = await ledgerService.getLedgerSummary({
     startDate: resolvedStart,
     endDate: resolvedEnd,
     nepaliYear,
     quarter,
-    entityId, // NEW — threaded through to ledger service
+    entityId,
   });
-  const accounts = ledgerSummary.accounts || [];
-  const byType = (type) =>
-    accounts.filter(
-      (acc) => acc.accountType === type || acc.accountDetails?.type === type,
-    );
-  const sumNet = (list) =>
-    list.reduce((sum, acc) => sum + (acc.netBalance || 0), 0);
-
-  const expenseAccounts = byType("EXPENSE");
-  const totalExpenses = sumNet(expenseAccounts);
 
   const totalRevenue = revenueAggregation.reduce(
     (sum, item) => sum + paisaToRupees(item.totalAmountPaisa || 0),
     0,
   );
   const totalLiabilities = liabilityAggregation.reduce(
+    (sum, item) => sum + paisaToRupees(item.totalAmountPaisa || 0),
+    0,
+  );
+  const totalExpenses = expenseAggregation.reduce(
     (sum, item) => sum + paisaToRupees(item.totalAmountPaisa || 0),
     0,
   );
@@ -314,10 +333,12 @@ export async function getAccountingSummary({
     amount: Math.abs(paisaToRupees(item.totalAmountPaisa || 0)),
   }));
 
-  const expensesBreakdown = expenseAccounts.map((item) => ({
-    code: item.accountCode,
-    name: item.accountName || item.accountCode || "expense",
-    amount: Math.abs(item.netBalance || 0),
+  // expensesBreakdown now comes from Expense collection (not ledger accounts)
+  // so it is consistent with totalExpenses above.
+  const expensesBreakdown = expenseAggregation.map((item) => ({
+    code: String(item._id ?? "unknown"),
+    name: String(item._id ?? "expense"),
+    amount: paisaToRupees(item.totalAmountPaisa || 0),
   }));
 
   return {
@@ -358,33 +379,97 @@ export async function getMonthlyChartData({
     months = getLastNMonths(5);
   }
 
-  const results = await Promise.all(
-    months.map(async ({ year, month0 }) => {
-      const { startDate, endDate } = bsMonthToDateRange(year, month0);
-      try {
-        const summary = await getAccountingSummary({
-          startDate,
-          endDate,
-          entityId, // forwarded
-        });
-        return {
-          key: `${year}-${String(month0 + 1).padStart(2, "0")}`,
-          label: NEPALI_MONTH_NAMES[month0],
-          revenue: summary.totals.totalRevenue,
-          expenses: summary.totals.totalExpenses,
-          liabilities: summary.totals.totalLiabilities,
-        };
-      } catch {
-        return {
-          key: `${year}-${String(month0 + 1).padStart(2, "0")}`,
-          label: NEPALI_MONTH_NAMES[month0],
-          revenue: 0,
-          expenses: 0,
-          liabilities: 0,
-        };
-      }
-    }),
+  // FIX: Was N sequential getAccountingSummary() calls (one per month).
+  // Replaced with 3 single aggregations (Revenue, Expense, Liability) that
+  // fetch all months at once and group by year+month in-memory.
+  // For a 12-month allYear view this goes from 12×3 DB round-trips → 3.
+
+  // Build the date range covering all target months
+  const firstMonth = months[0];
+  const lastMonth = months[months.length - 1];
+  const { startDate: rangeStart } = bsMonthToDateRange(
+    firstMonth.year,
+    firstMonth.month0,
   );
+  const { endDate: rangeEnd } = bsMonthToDateRange(
+    lastMonth.year,
+    lastMonth.month0,
+  );
+
+  const dateFilter = buildDateFilter(rangeStart, rangeEnd);
+  const entityFilter = buildEntityFilter(entityId);
+
+  const revMatch = { ...entityFilter };
+  if (dateFilter) revMatch.date = dateFilter;
+
+  const expMatch = { ...entityFilter };
+  if (dateFilter) expMatch.EnglishDate = dateFilter;
+  expMatch.referenceType = { $ne: "ELECTRICITY_NEA_COST" }; // exclude unsettled NEA liability
+
+  const liabMatch = { ...entityFilter };
+  if (dateFilter) liabMatch.date = dateFilter;
+
+  const [revDocs, expDocs, liabDocs] = await Promise.all([
+    Revenue.aggregate([
+      { $match: revMatch },
+      {
+        $group: {
+          _id: { year: "$npYear", month: "$npMonth" },
+          total: { $sum: "$amountPaisa" },
+        },
+      },
+    ]),
+    Expense.aggregate([
+      { $match: expMatch },
+      {
+        $group: {
+          _id: { year: "$nepaliYear", month: "$nepaliMonth" },
+          total: { $sum: "$amountPaisa" },
+        },
+      },
+    ]),
+    Liability.aggregate([
+      { $match: liabMatch },
+      {
+        $group: {
+          _id: { year: "$npYear", month: "$npMonth" },
+          total: { $sum: "$amountPaisa" },
+        },
+      },
+    ]),
+  ]);
+
+  // Index by "YYYY-MM" key for O(1) lookup
+  const revByKey = new Map(
+    revDocs.map((d) => [
+      `${d._id.year}-${String(d._id.month).padStart(2, "0")}`,
+      d.total,
+    ]),
+  );
+  const expByKey = new Map(
+    expDocs.map((d) => [
+      `${d._id.year}-${String(d._id.month).padStart(2, "0")}`,
+      d.total,
+    ]),
+  );
+  const liabByKey = new Map(
+    liabDocs.map((d) => [
+      `${d._id.year}-${String(d._id.month).padStart(2, "0")}`,
+      d.total,
+    ]),
+  );
+
+  const results = months.map(({ year, month0 }) => {
+    const nepaliMonth = month0 + 1; // DB stores 1-based
+    const key = `${year}-${String(nepaliMonth).padStart(2, "0")}`;
+    return {
+      key,
+      label: NEPALI_MONTH_NAMES[month0],
+      revenue: paisaToRupees(revByKey.get(key) ?? 0),
+      expenses: paisaToRupees(expByKey.get(key) ?? 0),
+      liabilities: paisaToRupees(liabByKey.get(key) ?? 0),
+    };
+  });
 
   return results;
 }

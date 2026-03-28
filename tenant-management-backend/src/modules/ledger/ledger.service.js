@@ -16,6 +16,7 @@
  */
 
 import mongoose from "mongoose";
+import NepaliDate from "nepali-datetime";
 import { Account } from "./accounts/Account.Model.js";
 import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
@@ -26,6 +27,88 @@ import {
   computeBalanceChange,
   resolveAccountsByEntity,
 } from "./domains/accountBalanceManger.js";
+
+/** Nepal fiscal quarters (0-based BS month), aligned with accounting.service.js */
+const FISCAL_QUARTER_MONTHS = {
+  1: [3, 4, 5],
+  2: [6, 7, 8],
+  3: [9, 10, 11],
+  4: [0, 1, 2],
+};
+
+const FISCAL_YEAR_MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+
+function bsMonthToDateRange(year, month0) {
+  const firstNp = new NepaliDate(year, month0, 1);
+  const lastDay = NepaliDate.getDaysOfMonth(year, month0);
+  const lastNp = new NepaliDate(year, month0, lastDay);
+  const toISO = (nd) => nd.getDateObject().toISOString().split("T")[0];
+  return { startDate: toISO(firstNp), endDate: toISO(lastNp) };
+}
+
+function getQuarterMonths(quarter, fiscalYear) {
+  const year = fiscalYear ?? new NepaliDate().getYear();
+  return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({ year, month0 }));
+}
+
+function getFiscalYearMonths(fiscalYear) {
+  return FISCAL_YEAR_MONTH_ORDER.map((month0) => {
+    const year = month0 <= 2 ? fiscalYear + 1 : fiscalYear;
+    return { year, month0 };
+  });
+}
+
+function resolveMonthToDateRange(month, fiscalYear) {
+  const month0 = month - 1;
+  const year = fiscalYear ?? new NepaliDate().getYear();
+  return bsMonthToDateRange(year, month0);
+}
+
+/**
+ * Match accounting summary precedence: explicit start/end > month > quarter > full FY.
+ * When none apply, returns no range (caller may still use nepaliMonth / legacy quarter).
+ */
+function resolveLedgerGregorianRange(filters) {
+  if (filters.startDate || filters.endDate) {
+    return {
+      resolvedStart: filters.startDate,
+      resolvedEnd: filters.endDate,
+    };
+  }
+
+  const fyRaw = filters.fiscalYear;
+  const fiscalYear =
+    fyRaw !== undefined && fyRaw !== null && fyRaw !== ""
+      ? Number(fyRaw)
+      : undefined;
+
+  if (filters.month) {
+    const r = resolveMonthToDateRange(Number(filters.month), fiscalYear);
+    return { resolvedStart: r.startDate, resolvedEnd: r.endDate };
+  }
+
+  if (filters.quarter) {
+    const months = getQuarterMonths(Number(filters.quarter), fiscalYear);
+    const first = bsMonthToDateRange(months[0].year, months[0].month0);
+    const last = bsMonthToDateRange(
+      months[months.length - 1].year,
+      months[months.length - 1].month0,
+    );
+    return { resolvedStart: first.startDate, resolvedEnd: last.endDate };
+  }
+
+  if (fiscalYear != null && Number.isFinite(fiscalYear)) {
+    const fyMonths = getFiscalYearMonths(fiscalYear);
+    const first = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
+    const last = bsMonthToDateRange(
+      fyMonths[fyMonths.length - 1].year,
+      fyMonths[fyMonths.length - 1].month0,
+    );
+    return { resolvedStart: first.startDate, resolvedEnd: last.endDate };
+  }
+
+  return { resolvedStart: undefined, resolvedEnd: undefined };
+}
 
 class LedgerService {
   // ─────────────────────────────────────────────────────────────────────────
@@ -198,6 +281,11 @@ class LedgerService {
   // ─────────────────────────────────────────────────────────────────────────
   // getLedger
   // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * Returns ledger lines in chronological order (FIFO): oldest transaction first,
+   * newest last. Running balances are computed in that same sequence. Clients
+   * should render `entries` as-is without reordering.
+   */
   async getLedger(filters = {}) {
     try {
       const query = {};
@@ -209,23 +297,24 @@ class LedgerService {
       if (filters.entityId)
         query.entityId = new mongoose.Types.ObjectId(filters.entityId);
 
-      if (filters.startDate || filters.endDate) {
+      const { resolvedStart, resolvedEnd } = resolveLedgerGregorianRange(filters);
+
+      if (resolvedStart || resolvedEnd) {
         query.transactionDate = {};
-        if (filters.startDate)
-          query.transactionDate.$gte = new Date(filters.startDate);
-        if (filters.endDate) {
-          const end = new Date(filters.endDate);
+        if (resolvedStart)
+          query.transactionDate.$gte = new Date(resolvedStart);
+        if (resolvedEnd) {
+          const end = new Date(resolvedEnd);
           end.setHours(23, 59, 59, 999);
           query.transactionDate.$lte = end;
         }
-      }
-
-      if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
-      if (filters.nepaliMonth) query.nepaliMonth = Number(filters.nepaliMonth);
-
-      if (filters.quarter) {
-        const months = getMonthsInQuarter(parseInt(filters.quarter));
-        query.nepaliMonth = { $in: months };
+      } else {
+        if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
+        if (filters.nepaliMonth) query.nepaliMonth = Number(filters.nepaliMonth);
+        if (filters.quarter) {
+          const months = getMonthsInQuarter(parseInt(filters.quarter));
+          query.nepaliMonth = { $in: months };
+        }
       }
 
       if (filters.accountCode) {
@@ -283,7 +372,7 @@ class LedgerService {
         .populate("tenant", "name email phone")
         .populate("property", "name address type")
         .populate("entityId", "name type")
-        .sort({ transactionDate: 1, createdAt: 1 })
+        .sort({ transactionDate: 1, transaction: 1, _id: 1 })
         .lean();
 
       const runningBalances = {};

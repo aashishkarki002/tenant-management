@@ -8,7 +8,9 @@ import { ledgerService } from "./ledger.service.js";
  * - endDate: End date (English calendar) - ISO format
  * - nepaliMonth: Nepali month name (e.g., "बैशाख")
  * - nepaliYear: Nepali year (e.g., 2081)
- * - quarter: Quarter number (1-4)
+ * - quarter: Quarter number (1-4), Nepal fiscal quarter (with fiscalYear)
+ * - month: BS month 1–12 (with fiscalYear), same as accounting summary
+ * - fiscalYear: BS year (e.g. 2081)
  * - accountCode: Filter by specific account code
  * - propertyId: Filter by specific property
  */
@@ -21,6 +23,8 @@ export const getLedger = async (req, res) => {
       nepaliMonth,
       nepaliYear,
       quarter,
+      month,
+      fiscalYear,
       accountCode,
       propertyId,
       entityId,
@@ -58,6 +62,8 @@ export const getLedger = async (req, res) => {
       nepaliMonth,
       nepaliYear: nepaliYear ? parseInt(nepaliYear) : undefined,
       quarter: quarter ? parseInt(quarter) : undefined,
+      month: month ? parseInt(month, 10) : undefined,
+      fiscalYear: fiscalYear ? parseInt(fiscalYear, 10) : undefined,
       accountCode,
       propertyId,
       type: type || "all", // Default to 'all' if not specified

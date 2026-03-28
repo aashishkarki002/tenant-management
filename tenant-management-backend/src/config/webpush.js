@@ -25,10 +25,20 @@ export function initializeWebPush() {
  * Silently no-ops if VAPID is not configured.
  */
 export async function sendPushToAdmin(adminId, { title, body, data = {} }) {
-  if (!initialized) return;
+  if (!initialized) {
+    console.warn(
+      `[webpush] Cannot send push to admin ${adminId} — VAPID not initialized`,
+    );
+    return;
+  }
 
   const subscriptions = await PushSubscription.find({ admin: adminId });
-  if (!subscriptions.length) return;
+  if (!subscriptions.length) {
+    console.warn(
+      `[webpush] No push subscriptions found for admin ${adminId}`,
+    );
+    return;
+  }
 
   const payload = JSON.stringify({ title, body, data });
 

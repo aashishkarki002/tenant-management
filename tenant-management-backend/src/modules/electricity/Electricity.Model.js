@@ -235,7 +235,13 @@ electricitySchema.virtual("isSubMeterReading").get(function () {
 // ─── pre-save hook ────────────────────────────────────────────────────────────
 electricitySchema.pre("save", async function () {
   // 1. Set billTo based on meterType
-  this.billTo = this.meterType === METER_TYPES.UNIT ? "tenant" : "property";
+  if (this.meterType === METER_TYPES.UNIT) {
+    this.billTo = "tenant";
+  } else if (this.meterType === METER_TYPES.VENDOR) {
+    this.billTo = "vendor";
+  } else {
+    this.billTo = "property";
+  }
 
   // 2. Conditional reference validation
   if (this.meterType === METER_TYPES.UNIT) {
