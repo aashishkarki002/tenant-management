@@ -9,11 +9,12 @@ import {
 
 export async function createExpenseController(req, res) {
   try {
-    const { nepaliDate, ...rest } = req.body;
+    const { nepaliDate, nepaliDateStr, ...rest } = req.body;
 
     const result = await createExpense({
       ...rest,
-      nepaliDateStr: nepaliDate, // rename to what the service expects
+      // Accept either key from clients (AddExpenseDialog sends nepaliDate like revenue)
+      nepaliDateStr: nepaliDate ?? nepaliDateStr,
       createdBy: req.admin.id,
     });
 

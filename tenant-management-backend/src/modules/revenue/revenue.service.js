@@ -32,6 +32,7 @@ import { buildRevenueReceivedJournal } from "../ledger/journal-builders/index.js
 import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
 import { rupeesToPaisa, formatMoney } from "../../utils/moneyUtil.js";
 import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
+import BankAccount from "../banks/BankAccountModel.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL HELPERS

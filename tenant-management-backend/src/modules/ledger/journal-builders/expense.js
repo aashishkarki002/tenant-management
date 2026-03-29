@@ -24,10 +24,20 @@ import {
 import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
 import NepaliDate from "nepali-datetime";
 
+/** AD "YYYY-MM-DD" must become a JS Date before NepaliDate — bare strings are parsed as BS. */
+function toJsDateForNepaliConversion(value) {
+  if (value instanceof Date) return value;
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s);
+  }
+  return value;
+}
+
 function resolveNepaliDateString(raw, fallback) {
   if (typeof raw === "string" && raw.length > 0) return raw;
   const base = raw instanceof Date ? raw : fallback;
-  return formatNepaliISO(new NepaliDate(base));
+  return formatNepaliISO(new NepaliDate(toJsDateForNepaliConversion(base)));
 }
 
 const EXPENSE_TYPE_MAP = {

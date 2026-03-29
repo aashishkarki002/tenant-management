@@ -28,10 +28,20 @@ import {
 } from "../../../utils/paymentAccountUtils.js";
 import NepaliDate from "nepali-datetime";
 
+/** AD "YYYY-MM-DD" must become a JS Date before NepaliDate — the library parses bare strings as BS. */
+function toJsDateForNepaliConversion(value) {
+  if (value instanceof Date) return value;
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s);
+  }
+  return value;
+}
+
 function resolveNepaliDateString(raw, fallback) {
   if (typeof raw === "string" && raw.length > 0) return raw;
   const base = raw instanceof Date ? raw : fallback;
-  return formatNepaliISO(new NepaliDate(base));
+  return formatNepaliISO(new NepaliDate(toJsDateForNepaliConversion(base)));
 }
 
 /**
@@ -101,9 +111,18 @@ export function buildRevenueReceivedJournal(revenue, options, bankAccountCode) {
   let nepaliMonth = optNepaliMonth;
   let nepaliYear = optNepaliYear;
   if (!nepaliMonth || !nepaliYear) {
-    const nd = new NepaliDate(transactionDate);
-    nepaliMonth = nepaliMonth ?? nd.getMonth() + 1;
-    nepaliYear = nepaliYear ?? nd.getYear();
+    if (typeof rawNepaliDate === "string" && rawNepaliDate.length > 0) {
+      const [y, m] = rawNepaliDate.split("-").map(Number);
+      if (Number.isFinite(y) && Number.isFinite(m)) {
+        nepaliYear = nepaliYear ?? y;
+        nepaliMonth = nepaliMonth ?? m;
+      }
+    }
+    if (!nepaliMonth || !nepaliYear) {
+      const nd = new NepaliDate(toJsDateForNepaliConversion(transactionDate));
+      nepaliMonth = nepaliMonth ?? nd.getMonth() + 1;
+      nepaliYear = nepaliYear ?? nd.getYear();
+    }
   }
 
   // ── 4. Description ───────────────────────────────────────────────────────

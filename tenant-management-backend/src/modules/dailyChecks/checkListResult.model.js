@@ -172,6 +172,17 @@ checklistResultSchema.index({ block: 1, checkDate: -1 });
 checklistResultSchema.index({ nepaliYear: 1, nepaliMonth: 1, category: 1 });
 checklistResultSchema.index({ hasIssues: 1, status: 1 });
 checklistResultSchema.index({ template: 1, checkDate: -1 });
+// One result per template per Nepali calendar day (see createResult upsert)
+checklistResultSchema.index(
+  { template: 1, nepaliDate: 1 },
+  {
+    unique: true,
+    name: "uniq_checklist_template_nepali_date",
+    partialFilterExpression: {
+      nepaliDate: { $exists: true, $type: "string", $gt: "" },
+    },
+  },
+);
 
 // ─── Optional TTL: auto-expire results after 2 years ─────────────────────────
 // Remove or adjust to match your retention policy. The template is never expired.

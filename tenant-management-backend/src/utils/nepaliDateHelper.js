@@ -564,6 +564,28 @@ function resolveNepaliPeriod({ nepaliMonth, nepaliYear, fallbackDate }) {
     nepaliYear: derived.nepaliYear,
   };
 }
+
+/**
+ * UTC midnight Date for the Nepal wall-calendar day that contains `instant`,
+ * using the same +5:45 offset convention as getNepaliToday (server TZ is ignored).
+ * Use for storing a stable checkDate and matching cron's englishToday.
+ *
+ * @param {Date|string|number} instant
+ * @returns {Date}
+ */
+function getNepalCivilUtcMidnightForInstant(instant) {
+  const js = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(js.getTime())) {
+    throw new Error("Invalid date for getNepalCivilUtcMidnightForInstant");
+  }
+  const NPT_OFFSET_MS = (5 * 60 + 45) * 60 * 1000;
+  const npt = new Date(js.getTime() + NPT_OFFSET_MS);
+  const y = npt.getUTCFullYear();
+  const m = npt.getUTCMonth();
+  const d = npt.getUTCDate();
+  return new Date(Date.UTC(y, m, d));
+}
+
 // ============================================================================
 // EXPORTS
 // ============================================================================
@@ -589,6 +611,7 @@ export {
   getNepalTime,
   toNepalMidnight,
   getNepaliToday,
+  getNepalCivilUtcMidnightForInstant,
 
   // Nepali date extraction
   getNepaliYearMonthFromDate,

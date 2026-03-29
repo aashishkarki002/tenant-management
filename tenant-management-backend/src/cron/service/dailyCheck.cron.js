@@ -25,7 +25,9 @@ import cron from "node-cron";
 import Admin from "../../modules/auth/admin.Model.js";
 import { ChecklistTemplate } from "../../modules/dailyChecks/checkListTemplate.model.js";
 import { ChecklistResult } from "../../modules/dailyChecks/checkListResult.model.js";
-import Notification from "../../modules/notifications/notification.model.js";
+import Notification, {
+  NOTIFICATION_TYPES,
+} from "../../modules/notifications/notification.model.js";
 import { sendPushToAdmin } from "../../config/webpush.js";
 import { getIO } from "../../config/socket.js";
 import { CronLog } from "../model/CronLog.js";
@@ -43,6 +45,14 @@ const NOTIF = {
   ESCALATION: "DAILY_CHECKLIST_ESCALATION",
   EOD_WARNING: "DAILY_CHECKLIST_EOD_WARNING",
 };
+
+for (const v of Object.values(NOTIF)) {
+  if (!NOTIFICATION_TYPES.includes(v)) {
+    throw new Error(
+      `[dailyCheck.cron] Notification type "${v}" is not listed in NOTIFICATION_TYPES — fix notification.model.js`,
+    );
+  }
+}
 
 // ─── Today meta builder ───────────────────────────────────────────────────────
 

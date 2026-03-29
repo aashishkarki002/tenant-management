@@ -19,11 +19,15 @@
  */
 
 import mongoose from "mongoose";
+import NepaliDate from "nepali-datetime";
 import { ChecklistTemplate } from "./checkListTemplate.model.js";
 import { ChecklistResult } from "./checkListResult.model.js";
 import { Maintenance } from "../maintenance/Maintenance.Model.js";
 import { buildChecklistSections } from "./checkListTemplate.js";
-import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
+import {
+  formatNepaliISO,
+  getNepalCivilUtcMidnightForInstant,
+} from "../../utils/nepaliDateHelper.js";
 import { createAndEmitNotification } from "../notifications/notification.service.js";
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -203,7 +207,7 @@ export async function getTemplateById(id) {
 /**
  * Create a thin ChecklistResult for today, linked to a template.
  * The cron calls this for every active template every morning.
- * Idempotent — returns the existing result if one already exists for today.
+ * Idempotent — atomic upsert on (template, nepaliDate) plus unique index.
  *
  * @param {string} templateId
  * @param {object} dateData  — { checkDate, nepaliDate?, nepaliMonth?, nepaliYear? }
@@ -218,66 +222,142 @@ export async function createResult(templateId, dateData, adminId) {
     return { success: false, message: "Template is inactive", data: null };
   }
 
-  const { checkDate, nepaliDate, nepaliMonth, nepaliYear } = dateData;
-
-  // Derive Nepali date from English date if not provided
-  let resolvedNepaliMonth = nepaliMonth;
-  let resolvedNepaliYear = nepaliYear;
-  if (checkDate && (!resolvedNepaliMonth || !resolvedNepaliYear)) {
-    const derived = getNepaliYearMonthFromDate(checkDate);
-    resolvedNepaliMonth = resolvedNepaliMonth ?? derived.npMonth;
-    resolvedNepaliYear = resolvedNepaliYear ?? derived.npYear;
+  const { checkDate, nepaliMonth, nepaliYear } = dateData;
+  if (!checkDate) {
+    return { success: false, message: "checkDate is required", data: null };
   }
 
-  // Idempotency guard: one result per template per day
-  // Use UTC to avoid timezone issues
-  const startOfDay = new Date(checkDate);
-  startOfDay.setUTCHours(0, 0, 0, 0);
-  const endOfDay = new Date(checkDate);
-  endOfDay.setUTCHours(23, 59, 59, 999);
-
-  const existing = await ChecklistResult.findOne({
-    template: templateId,
-    checkDate: { $gte: startOfDay, $lte: endOfDay },
-  })
-    .select("_id status")
-    .lean();
-
-  if (existing) {
-    return {
-      success: true,
-      message: "Result already exists for today",
-      data: existing,
-      alreadyExisted: true,
-    };
+  let canonicalNepalMidnight;
+  try {
+    canonicalNepalMidnight = getNepalCivilUtcMidnightForInstant(checkDate);
+  } catch {
+    return { success: false, message: "Invalid checkDate", data: null };
   }
 
-  // Create the thin result — no sections array, just the reference + counters
-  const result = await ChecklistResult.create({
-    template: templateId,
+  const nextNepalCivilUtcMidnight = new Date(canonicalNepalMidnight);
+  nextNepalCivilUtcMidnight.setUTCDate(
+    nextNepalCivilUtcMidnight.getUTCDate() + 1,
+  );
+
+  const npFromNepalDay = new NepaliDate(canonicalNepalMidnight);
+  const canonicalNepaliDate = formatNepaliISO(npFromNepalDay);
+  const resolvedNepaliMonth = nepaliMonth ?? npFromNepalDay.getMonth() + 1;
+  const resolvedNepaliYear = nepaliYear ?? npFromNepalDay.getYear();
+
+  let createdByOid;
+  try {
+    createdByOid = new mongoose.Types.ObjectId(adminId);
+  } catch {
+    return { success: false, message: "Invalid adminId", data: null };
+  }
+
+  const setOnInsert = {
+    template: template._id,
     property: template.property,
     block: template.block,
     category: template.category,
     checklistType: template.checklistType,
-    checkDate: new Date(checkDate),
-    nepaliDate: nepaliDate ?? null,
-    nepaliMonth: resolvedNepaliMonth ?? null,
-    nepaliYear: resolvedNepaliYear ?? null,
-    itemResults: [], // empty until submitted
-    totalItems: template.totalItems, // copied from template — no join needed later
-    passedItems: 0, // 0 until submitted — correctly reflects "not yet checked"
+    checkDate: canonicalNepalMidnight,
+    nepaliDate: canonicalNepaliDate,
+    nepaliMonth: resolvedNepaliMonth,
+    nepaliYear: resolvedNepaliYear,
+    itemResults: [],
+    totalItems: template.totalItems,
+    passedItems: 0,
     failedItems: 0,
     hasIssues: false,
     status: "PENDING",
-    createdBy: adminId,
-  });
-
-  return {
-    success: true,
-    message: "Checklist result created",
-    data: result,
-    alreadyExisted: false,
+    createdBy: createdByOid,
   };
+
+  const filter = { template: templateId, nepaliDate: canonicalNepaliDate };
+
+  async function resolveAfterDuplicateKey() {
+    const doc = await ChecklistResult.findOne(filter);
+    if (doc) {
+      return {
+        success: true,
+        message: "Result already exists for today",
+        data: doc,
+        alreadyExisted: true,
+      };
+    }
+    return null;
+  }
+
+  // Legacy rows: same Nepal day but missing nepaliDate (claim oldest first)
+  try {
+    const legacy = await ChecklistResult.findOneAndUpdate(
+      {
+        template: templateId,
+        checkDate: {
+          $gte: canonicalNepalMidnight,
+          $lt: nextNepalCivilUtcMidnight,
+        },
+        $or: [
+          { nepaliDate: null },
+          { nepaliDate: "" },
+          { nepaliDate: { $exists: false } },
+        ],
+      },
+      {
+        $set: {
+          nepaliDate: canonicalNepaliDate,
+          nepaliMonth: resolvedNepaliMonth,
+          nepaliYear: resolvedNepaliYear,
+        },
+      },
+      { new: true, sort: { createdAt: 1 } },
+    );
+    if (legacy) {
+      return {
+        success: true,
+        message: "Result already exists for today",
+        data: legacy,
+        alreadyExisted: true,
+      };
+    }
+  } catch (err) {
+    if (err.code === 11000 || err.codeName === "DuplicateKey") {
+      const resolved = await resolveAfterDuplicateKey();
+      if (resolved) return resolved;
+    }
+    throw err;
+  }
+
+  try {
+    const meta = await ChecklistResult.findOneAndUpdate(
+      filter,
+      { $setOnInsert: setOnInsert },
+      {
+        upsert: true,
+        new: true,
+        includeResultMetadata: true,
+        runValidators: true,
+      },
+    );
+
+    const leo = meta.lastErrorObject;
+    const wasInsert =
+      leo?.updatedExisting === false ||
+      meta.upsertedCount === 1 ||
+      meta.upsertedId != null;
+
+    return {
+      success: true,
+      message: wasInsert
+        ? "Checklist result created"
+        : "Result already exists for today",
+      data: meta.value,
+      alreadyExisted: !wasInsert,
+    };
+  } catch (err) {
+    if (err.code === 11000 || err.codeName === "DuplicateKey") {
+      const resolved = await resolveAfterDuplicateKey();
+      if (resolved) return resolved;
+    }
+    throw err;
+  }
 }
 
 /**
