@@ -20,6 +20,7 @@ import { useFormik } from "formik";
 import api from "../../../plugins/axios";
 import { Loader2, Building2, User, Users, CheckCircle2 } from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
+import dateConverter from "nepali-datetime/dateConverter";
 import { PAYMENT_METHODS } from "../../Tenant/addTenant/constants/tenant.constant.js";
 import {
   getCurrentNepaliMonth,
@@ -29,6 +30,25 @@ import {
 import useOwnership from "../../hooks/use-ownership";
 
 const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
+
+const formatBsFromParts = (y, m, d) =>
+  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+/** BS "YYYY-MM-DD" for an AD day (same as DualCalendarTailwind). */
+function englishIsoToNepaliString(iso) {
+  if (!iso || typeof iso !== "string") return "";
+  try {
+    const [enYear, enMonthHuman, enDay] = iso.split("-").map(Number);
+    const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
+      enYear,
+      enMonthHuman - 1,
+      enDay,
+    );
+    return formatBsFromParts(npYear, npMonth0 + 1, npDay);
+  } catch {
+    return "";
+  }
+}
 
 // ─── Payee type config ────────────────────────────────────────────────────────
 const PAYEE_TYPES = [
@@ -110,6 +130,7 @@ function blocksForOwnershipEntity(blocks, entityId) {
 }
 
 function getInitialValues() {
+  const date = new Date().toISOString().split("T")[0];
   return {
     payeeType: "EXTERNAL",
     // Tenant
@@ -130,8 +151,8 @@ function getInitialValues() {
     referenceType: "MANUAL",
     referenceId: "",
     amount: "",
-    date: new Date().toISOString().split("T")[0],
-    nepaliDateStr: "",
+    date,
+    nepaliDate: englishIsoToNepaliString(date),
     notes: "",
     paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
     bankAccountId: "",
@@ -202,14 +223,14 @@ export function AddExpenseDialog({
       try {
         const { payeeType } = values;
         const englishDate = values.date || new Date().toISOString().split("T")[0];
+        const bsDate =
+          values.nepaliDate?.trim() || englishIsoToNepaliString(englishDate);
 
         const rawMethod = values.paymentMethod;
         const paymentMethod =
           typeof rawMethod === "string" && VALID_PAYMENT_METHODS.includes(rawMethod)
             ? rawMethod
             : PAYMENT_METHODS.BANK_TRANSFER;
-
-        const nepaliDateStr = values.nepaliDateStr || null;
 
         // Determine transactionScope from selected entity type
         const entity = allEntities.find((e) => e._id === values.entityId);
@@ -226,7 +247,7 @@ export function AddExpenseDialog({
           source: values.source,
           amount: Number(values.amount),
           EnglishDate: englishDate,
-          nepaliDateStr,
+          nepaliDate: bsDate || undefined,
           referenceType: values.referenceType || "MANUAL",
           referenceId: values.referenceId || undefined,
           notes: values.notes || undefined,
@@ -790,7 +811,10 @@ export function AddExpenseDialog({
                 value={formik.values.date ?? ""}
                 onChange={(englishDate, nepaliDateStr) => {
                   formik.setFieldValue("date", englishDate);
-                  formik.setFieldValue("nepaliDateStr", nepaliDateStr ?? "");
+                  formik.setFieldValue(
+                    "nepaliDate",
+                    nepaliDateStr ?? englishIsoToNepaliString(englishDate),
+                  );
                 }}
               />
             </div>

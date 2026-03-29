@@ -205,7 +205,7 @@ function ItemRow({ item, isLast }) {
     return (
         <Link
             to={item.to}
-            className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-secondary/60"
+            className="group flex items-start gap-3.5 px-4 py-3.5 transition-colors hover:bg-secondary/50"
             style={{ borderBottom: isLast ? "none" : "1px solid var(--color-secondary)" }}
         >
             <div className="mt-0.5 shrink-0 relative">
@@ -225,12 +225,12 @@ function ItemRow({ item, isLast }) {
 
             <div className="flex-1 min-w-0">
                 <p
-                    className="text-xs font-semibold leading-tight truncate"
+                    className="text-xs font-semibold leading-relaxed truncate"
                     style={{ color: item.isSummary ? sev.dot : "var(--color-foreground)" }}
                 >
                     {item.title}
                 </p>
-                <p className="text-[10px] mt-0.5 leading-tight truncate text-muted-foreground">
+                <p className="text-[10px] mt-1 leading-relaxed truncate text-muted-foreground">
                     {item.sub}
                 </p>
             </div>
@@ -406,56 +406,45 @@ export default function BuildingHealthPanel({ stats, loading }) {
     const totalCount = attentionItems.length;
 
     return (
-        <div className="rounded-2xl border border-border overflow-hidden h-full flex flex-col bg-card">
-
-            {/* Building Health Status Section */}
-            <div className="px-4 py-4 border-b border-secondary">
-                <div className="flex items-center gap-2 mb-3">
-                    <Shield className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-sm font-bold text-foreground">Building Health</span>
-                </div>
-
-                <div className="flex flex-col items-center gap-3">
-                    <HealthRing completionRate={buildingHealth.rate} size={100} />
-
-                    <div className="w-full space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">Daily Checks</span>
-                            <span className="font-semibold text-foreground">
-                                {buildingHealth.completed} / {buildingHealth.total}
-                            </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">Avg Pass Rate</span>
-                            <span className="font-semibold" style={{
-                                color: buildingHealth.avgPassRate === 100
-                                    ? 'var(--success)'
-                                    : buildingHealth.avgPassRate >= 70
-                                        ? 'var(--warning)'
-                                        : 'var(--destructive)'
-                            }}>
-                                {buildingHealth.avgPassRate}%
-                            </span>
-                        </div>
-                    </div>
-
-                    <Link
-                        to="/admin-daily-checks"
-                        className="w-full mt-2 py-2 px-3 rounded-lg text-xs font-semibold 
-                                 bg-primary/10 text-primary hover:bg-primary/20 
-                                 transition-colors flex items-center justify-center gap-2"
-                    >
-                        View All Checks
-                        <ChevronRight className="w-3 h-3" />
-                    </Link>
-                </div>
+        <div className="bg-card dark:bg-card rounded-2xl shadow-sm border border-border overflow-hidden h-full flex flex-col">
+            {/* Header */}
+            <div className="px-5 py-4 flex items-center justify-between border-b border-border">
+                <h3 className="text-sm font-medium text-foreground">Building Health</h3>
+                <Link
+                    to="/admin-daily-checks"
+                    className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                >
+                    View All
+                    <ChevronRight className="w-3 h-3" />
+                </Link>
             </div>
 
+            {/* Health Visualization */}
+            <div className="flex flex-col items-center px-5 py-6 gap-4">
+                <HealthRing completionRate={buildingHealth.rate} size={100} />
 
-
-
-
-
+                <div className="w-full space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Daily Checks</span>
+                        <span className="font-semibold text-foreground">
+                            {buildingHealth.completed} / {buildingHealth.total}
+                        </span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Avg Pass Rate</span>
+                        <span
+                            className={`font-semibold ${buildingHealth.avgPassRate === 100
+                                ? 'text-success'
+                                : buildingHealth.avgPassRate >= 70
+                                    ? 'text-warning'
+                                    : 'text-destructive'
+                                }`}
+                        >
+                            {buildingHealth.avgPassRate}%
+                        </span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

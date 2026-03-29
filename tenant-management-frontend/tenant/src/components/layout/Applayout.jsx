@@ -19,34 +19,41 @@ export default function AppLayout({ children }) {
         <SidebarProvider>
           {isAdmin ? <AppSidebar /> : <StaffSidebar />}
 
-          <SidebarInset className="relative flex flex-col min-h-screen bg-background overflow-x-hidden">
+          <SidebarInset className="relative flex flex-col h-screen bg-background overflow-hidden">
 
-            {/* ── Top bar — sticky, minimal ── */}
             <header
-              className="sticky top-0 z-40 flex items-center gap-3 px-4 min-h-14 shrink-0
-                        border-b border-border bg-card/95 overflow-hidden
-                        backdrop-blur supports-[backdrop-filter]:bg-card/80"
+              className="z-40 flex items-center shrink-0 border-b border-border bg-card"
+              style={{ height: "57px" }}
             >
-              {/* Sidebar toggle — pinned to top so it stays aligned with sidebar logo row */}
-              <SidebarTrigger
-                className="w-8 h-8 rounded-md flex items-center justify-center self-start mt-3
-                         border border-border bg-card
-                         hover:bg-secondary text-accent
-                         hover:text-primary transition-all shrink-0"
-              />
+              {/*
+                KEY FIX: w-[--sidebar-width] makes this wrapper exactly as wide
+                as the sidebar — no hardcoding, it just tracks the CSS variable
+                that SidebarProvider sets on :root. The border-r then lands
+                perfectly on top of the sidebar's right border.
 
-              {/* Vertical divider — full height so it always lines up with sidebar's right border */}
-              <div className="self-stretch w-px shrink-0 bg-border" />
+                When the sidebar collapses, --sidebar-width changes automatically
+                and the separator follows with the same ease-linear transition
+                that shadcn uses internally for the sidebar animation.
+              */}
+              <div
+                className="flex items-center justify-center self-stretch shrink-0 border-r border-border
+                           w-[--sidebar-width] transition-[width] duration-200 ease-linear"
+              >
+                <SidebarTrigger
+                  className="w-7 h-7 rounded-md flex items-center justify-center
+                             hover:bg-sidebar-accent text-muted-foreground
+                             hover:text-foreground transition-all"
+                />
+              </div>
 
-              {/* Header fills remaining space; its toolbar scrolls internally */}
-              <div className="flex-1 min-w-0 overflow-hidden py-2.5">
+              {/* Header content */}
+              <div className="flex-1 min-w-0 overflow-hidden px-4">
                 <Header />
               </div>
             </header>
 
-            {/* ── Page content ── */}
-            <main className="flex-1 overflow-x-hidden">
-              <div className="mx-auto max-w-6xl w-full px-4 py-4">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden">
+              <div className="w-full">
                 {children}
               </div>
             </main>

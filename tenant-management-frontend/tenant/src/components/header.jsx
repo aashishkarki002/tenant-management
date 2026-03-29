@@ -466,7 +466,7 @@ export default function Header() {
   };
 
   return (
-    <header className="w-full py-1 px-4 sm:px-6">
+    <header className="w-full ">
       <div className="flex flex-col w-full gap-2">
         <PushNotificationBanner />
 

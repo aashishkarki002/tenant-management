@@ -136,7 +136,7 @@ export default function AppSidebar() {
       <SidebarRail />
 
       {/* ================= BRAND ================= */}
-      <div className="flex items-center gap-2.5 px-4 py-4 border-b border-sidebar-border">
+      <div className="flex items-center gap-2.5 px-2 py-2.5 border-b border-sidebar-border">
         <img
           src="/logo.jpeg"
           alt="Sallyan House"

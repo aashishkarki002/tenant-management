@@ -134,10 +134,11 @@ function Tile({
     return (
         <Link
             to={to}
-            className="group rounded-2xl border flex flex-col overflow-hidden transition-all duration-150 hover:shadow-sm"
+            className="group rounded-2xl border flex flex-col overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
             style={{
                 backgroundColor: "var(--color-surface)",
                 borderColor,
+                boxShadow: "0 1px 2px 0 rgb(0 0 0 / 0.03)",
             }}
         >
             {/* Body */}
@@ -162,7 +163,7 @@ function Tile({
                         )
                         : (
                             <p
-                                className="text-base sm:text-xl lg:text-2xl font-bold tabular-nums leading-none truncate"
+                                className="text-lg sm:text-xl xl:text-2xl font-bold tabular-nums leading-none truncate"
                                 style={valueStyle}
                             >
                                 {value}
@@ -441,7 +442,7 @@ export default function KpiStrip({ stats, loading }) {
         };
 
     return (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             {/* 1 — Collected */}
             <Tile
                 loading={loading}

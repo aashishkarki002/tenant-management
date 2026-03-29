@@ -138,7 +138,33 @@ function HeaderMeta({ monthlyData, currentMonth, currentYear }) {
     const mthName = NEPALI_MONTH_NAMES[currentMonth - 1] ?? '';
 
     return (
-        <div className="flex items-center gap-2 ">
+        <div className="flex items-center gap-2 flex-wrap">
+            {/* CURRENT MONTH - PROMINENT FIRST for at-a-glance viewing */}
+            {currentPoint && !currentPoint.isEmpty && (
+                <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold"
+                    style={{
+                        background: 'var(--color-accent-light)',
+                        borderLeft: `3px solid ${C.barHighlight}`,
+                    }}
+                >
+                    <span className="text-[11px] font-bold" style={{ color: C.barHighlight }}>
+                        {mthName}
+                    </span>
+                    <span className="text-[11px] font-bold tabular-nums" style={{ color: C.axisStrong }}>
+                        {fmtFull(currentPoint.revenue)}
+                    </span>
+                    {currentPoint.momChange != null && (
+                        <span
+                            className="text-[10px] font-bold tabular-nums"
+                            style={{ color: currentPoint.momChange > 0 ? C.up : C.down }}
+                        >
+                            ({currentPoint.momChange > 0 ? '+' : ''}{currentPoint.momChange}%)
+                        </span>
+                    )}
+                </span>
+            )}
+
             {/* Trend pill */}
             <span
                 className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
@@ -168,33 +194,6 @@ function HeaderMeta({ monthlyData, currentMonth, currentYear }) {
                 </svg>
                 3-mo avg
             </span>
-
-            {/* Current month — inline, no separate row */}
-            {currentPoint && !currentPoint.isEmpty && (
-                <>
-                    <span style={{ color: C.grid }}>·</span>
-                    <span className="flex items-center gap-1 text-[10px]">
-                        <span
-                            className="w-1.5 h-1.5 rounded-full shrink-0"
-                            style={{ background: C.barHighlight }}
-                        />
-                        <span className="font-semibold" style={{ color: C.axisStrong }}>
-                            {mthName}
-                        </span>
-                        <span className="font-bold tabular-nums" style={{ color: C.axisStrong }}>
-                            {fmtFull(currentPoint.revenue)}
-                        </span>
-                        {currentPoint.momChange != null && (
-                            <span
-                                className="font-semibold tabular-nums"
-                                style={{ color: currentPoint.momChange > 0 ? C.up : C.down }}
-                            >
-                                ({currentPoint.momChange > 0 ? '+' : ''}{currentPoint.momChange}%)
-                            </span>
-                        )}
-                    </span>
-                </>
-            )}
         </div>
     );
 }
@@ -413,7 +412,7 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
     const qBands = useMemo(() => buildQBands(fyMonths), [fyMonths]);
 
     return (
-        <Card className="rounded-none border-0 shadow-none h-full flex flex-col bg-card">
+        <Card className="rounded-none border-0 shadow-none h-full flex flex-col bg-gradient-to-br from-card via-card to-secondary/5">
 
             {/* ── Compact header: title + FY label + quarter tabs + verdict + callout ── */}
             <CardHeader className="px-4 pt-2 pb-1.5 gap-1 flex flex-col">
@@ -472,7 +471,7 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                     ) : hasNoData ? (
                         <EmptyState />
                     ) : (
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="90%">
                             <ComposedChart
                                 data={filteredData}
                                 margin={{ top: 14, right: 6, left: 0, bottom: 0 }}

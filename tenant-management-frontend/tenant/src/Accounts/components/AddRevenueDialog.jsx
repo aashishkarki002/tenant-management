@@ -29,10 +29,30 @@ import {
 } from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
 import useOwnership from "../../hooks/use-ownership";
+import dateConverter from "nepali-datetime/dateConverter";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+const formatBsFromParts = (y, m, d) =>
+  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+/** BS "YYYY-MM-DD" for an AD calendar day (same logic as DualCalendarTailwind). */
+function englishIsoToNepaliString(iso) {
+  if (!iso || typeof iso !== "string") return "";
+  try {
+    const [enYear, enMonthHuman, enDay] = iso.split("-").map(Number);
+    const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
+      enYear,
+      enMonthHuman - 1,
+      enDay,
+    );
+    return formatBsFromParts(npYear, npMonth0 + 1, npDay);
+  } catch {
+    return "";
+  }
+}
 
 function getEntityBadgeColor(type) {
   switch (type) {
@@ -78,14 +98,17 @@ function blocksForOwnershipEntity(blocks, entityId) {
   return blocks.filter((b) => ownershipEntityIdFromBlock(b) === target);
 }
 
-const getInitialValues = () => ({
+const getInitialValues = () => {
+  const date = new Date().toISOString().split("T")[0];
+  return {
   payerType: "tenant",
   tenantId: "",
   externalPayerName: "",
   externalPayerType: "PERSON",
   sourceId: "",
   amount: "",
-  date: new Date().toISOString().split("T")[0],
+  date,
+  nepaliDate: englishIsoToNepaliString(date),
   notes: "",
   paymentMethod: "bank_transfer",
   bankAccountId: "",
@@ -95,7 +118,8 @@ const getInitialValues = () => ({
   transactionScope: "building",
   // Manual override flag
   entityOverridden: false,
-});
+};
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entity Resolution Banner
@@ -352,10 +376,14 @@ export function AddRevenueDialog({
         const payerType = values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
         const paymentMethod = String(values.paymentMethod || "bank_transfer").toLowerCase();
 
+        const adDate = values.date || new Date().toISOString().split("T")[0];
+        const bsDate =
+          values.nepaliDate?.trim() || englishIsoToNepaliString(adDate);
         const payload = {
           source: values.sourceId,
           amount: Number(values.amount),
-          date: values.date || new Date().toISOString().split("T")[0],
+          date: adDate,
+          nepaliDate: bsDate || undefined,
           payerType,
           referenceType: "MANUAL",
           notes: values.notes || undefined,
@@ -1003,9 +1031,13 @@ export function AddRevenueDialog({
                 </Label>
                 <DualCalendarTailwind
                   value={formik.values.date ?? ""}
-                  onChange={(englishDate) =>
-                    formik.setFieldValue("date", englishDate)
-                  }
+                  onChange={(englishDate, nepaliDateStr) => {
+                    formik.setFieldValue("date", englishDate);
+                    formik.setFieldValue(
+                      "nepaliDate",
+                      nepaliDateStr ?? englishIsoToNepaliString(englishDate),
+                    );
+                  }}
                 />
               </div>
             </div>
