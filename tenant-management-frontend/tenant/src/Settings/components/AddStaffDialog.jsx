@@ -190,6 +190,38 @@ function AddStaffDialog({ open, onOpenChange }) {
                             />
                             <ErrorMsg name="confirmPassword" formik={formik} />
                         </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="staff-salary" className="font-semibold">Salary </Label>
+                            <Select
+                                value={formik.values.salary}
+                                onValueChange={(value) => formik.setFieldValue('salary', value)}
+                                placeholder="Select salary type"
+                            >
+                                <SelectTrigger id="staff-salary-department" className="bg-input border-border h-10">
+                                    <SelectValue placeholder="Select salary type" />
+                                </SelectTrigger>
+                                <SelectContent className="border-border bg-card">
+                                    <SelectItem value="monthly">Monthly</SelectItem>
+                                    <SelectItem value="daily">Daily</SelectItem>
+                                    <SelectItem value="hourly">Hourly</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <ErrorMsg name="salary" formik={formik} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="staff-designation" className="font-semibold">Department</Label>
+                            <Input
+                                id="staff-department"
+                                name="department"
+                                value={formik.values.department}
+                                onChange={formik.handleChange}
+                                onBlur={formik.handleBlur}
+                                className="bg-input border-border placeholder:text-muted-foreground h-10"
+                                placeholder="Enter department"
+                            />
+                            <ErrorMsg name="department" formik={formik} />
+                        </div>
                     </div>
 
                     <p className="text-xs text-muted-foreground">

@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import api from "../../../../plugins/axios";
+import api from "../../../plugins/axios";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Clock, RefreshCw, AlertCircle, Building2 } from "lucide-react";
 
-import { useOwnership } from "../../hooks/useOwnership";
+import { useOwnership } from "../../Settings/hooks/useOwnership";
 import { EntityBadge } from "./EntityBadge";
 import { EntityCard } from "./EntityCard";
 import { EntityFormDialog } from "./EntityFormDialog";

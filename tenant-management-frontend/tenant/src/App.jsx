@@ -32,6 +32,7 @@ import Units from "./units/units";
 import api from "../plugins/axios";
 import { useAuth } from "./context/AuthContext";
 import Buildings from "./Buildings/Buildings";
+import Staff from "./staff/staff";
 
 // Roles that can access admin-level features
 const ADMIN_ROLES = ["admin", "super_admin"];
@@ -89,6 +90,9 @@ export default function App() {
       />
       <Route path="/maintenance"
         element={<ProtectedRoutes><Maintenance /></ProtectedRoutes>}
+      />
+      <Route path="/staff"
+        element={<ProtectedRoutes><Staff /></ProtectedRoutes>}
       />
       <Route path="/maintenance/generator"
         element={<ProtectedRoutes><Generator /></ProtectedRoutes>}

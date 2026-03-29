@@ -122,10 +122,6 @@ function KpiCard({ config, kpis }) {
       }}
     >
       {/* Left accent bar */}
-      <div
-        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
-        style={{ backgroundColor: accentColor }}
-      />
 
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">

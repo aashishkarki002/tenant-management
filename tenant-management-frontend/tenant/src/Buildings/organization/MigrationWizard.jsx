@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { EntityBadge } from "./EntityBadge";
 import { toast } from "sonner";
-import api from "../../../../plugins/axios";
+import api from "../../../plugins/axios";
 import {
     CheckCircle2, AlertTriangle, ChevronRight, X, Loader2,
 } from "lucide-react";
