@@ -1,4 +1,4 @@
-// src/hooks/usePushNotification.js
+// src/hooks/usePushNotification.ts
 import { useEffect, useState, useCallback } from "react";
 import api from "../../plugins/axios";
 
@@ -26,16 +26,15 @@ export function usePushNotifications(user) {
     (window.matchMedia("(display-mode: standalone)").matches ||
       window.navigator.standalone === true);
 
-  // ── Unchanged: check if a local push subscription already exists ────────────
+  const browserSupportsPush =
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    window.isSecureContext;
+
+  // ── Check if a local push subscription already exists ──────────────────────
   const checkSubscription = useCallback(async () => {
-    if (
-      !VAPID_PUBLIC_KEY ||
-      !("serviceWorker" in navigator) ||
-      !("PushManager" in window) ||
-      !window.isSecureContext
-    ) {
-      return;
-    }
+    if (!VAPID_PUBLIC_KEY || !browserSupportsPush) return;
     try {
       const registration =
         await navigator.serviceWorker.getRegistration("/sw.js");
@@ -46,45 +45,30 @@ export function usePushNotifications(user) {
     } catch {
       setIsSubscribed(false);
     }
-  }, []);
+  }, [browserSupportsPush]);
 
-  // ── NEW: silent renewal — runs on every app open, no UI, no token needed ────
-  // The browser already holds the subscription. We just ping /api/push/renew
-  // (no Authorization header — raw fetch bypasses the axios interceptor) so the
-  // server keeps its DB record fresh even after weeks of inactivity.
+  // ── Silent renewal on every app open ───────────────────────────────────────
   const silentRenew = useCallback(async () => {
-    if (
-      !VAPID_PUBLIC_KEY ||
-      !("serviceWorker" in navigator) ||
-      !("PushManager" in window) ||
-      !window.isSecureContext
-    )
-      return;
-
+    if (!VAPID_PUBLIC_KEY || !browserSupportsPush) return;
     try {
       const registration =
         await navigator.serviceWorker.getRegistration("/sw.js");
       if (!registration) return;
-
       const sub = await registration.pushManager.getSubscription();
       if (!sub) return;
-
-      // Raw fetch — no Authorization header, no axios interceptor
       await fetch("/api/push/renew", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: sub.toJSON() }),
       });
     } catch {
-      // Always silent — renewal failure should never surface to the user
+      // Always silent
     }
-  }, []);
+  }, [browserSupportsPush]);
 
-  // ── UPDATED: subscribe flow now handles the renew → fallback pattern ─────────
+  // ── Subscribe ───────────────────────────────────────────────────────────────
   const requestPermissionAndSubscribe = useCallback(async () => {
-    if (!user || !VAPID_PUBLIC_KEY) return;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    if (!window.isSecureContext) return;
+    if (!user || !VAPID_PUBLIC_KEY || !browserSupportsPush) return;
     if (Notification.permission === "denied") return;
 
     try {
@@ -100,58 +84,71 @@ export function usePushNotifications(user) {
       const existing = await registration.pushManager.getSubscription();
 
       if (existing) {
-        // CHANGED: don't just setIsSubscribed and return.
-        // Try to renew on the server first — this is the path that runs when
-        // the user explicitly opens the PWA after a long gap and the banner
-        // triggers requestPermissionAndSubscribe.
         const renewRes = await fetch("/api/push/renew", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ subscription: existing.toJSON() }),
         });
         const renewData = await renewRes.json();
-
         if (renewData.success) {
-          // Server recognises this endpoint — all good, no token needed
           setIsSubscribed(true);
           return;
         }
-
-        // Server returned unknown_endpoint: our DB has no record of this
-        // subscription (e.g. DB restored from backup, new device).
-        // Fall through to create a fresh subscription with auth.
-        if (import.meta.env.DEV)
-          console.log(
-            "[push] unknown endpoint — falling back to full subscribe",
-          );
       }
 
-      // Either no local subscription at all, or renewal said unknown_endpoint.
-      // This is the only path that needs a valid access token.
       const newSubscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-
       await api.post("/api/push/subscribe", {
         subscription: newSubscription.toJSON(),
       });
       setIsSubscribed(true);
-      if (import.meta.env.DEV) console.log("[push] ✅ Subscribed and saved");
     } catch (err) {
       const msg = err.message || String(err);
-      if (import.meta.env.DEV) {
-        console.warn("[push] Registration failed:", msg);
-      } else if (
-        !msg.includes("push service") &&
-        !msg.includes("Registration failed")
-      ) {
-        console.warn("[push] Setup failed:", msg);
-      }
+      if (import.meta.env.DEV) console.warn("[push] Registration failed:", msg);
     }
-  }, [user]);
+  }, [user, browserSupportsPush]);
 
-  // ── UPDATED: added silentRenew() call on every mount ─────────────────────────
+  // ── NEW: Unsubscribe ────────────────────────────────────────────────────────
+  const unsubscribe = useCallback(async () => {
+    if (!browserSupportsPush) return;
+    try {
+      const registration =
+        await navigator.serviceWorker.getRegistration("/sw.js");
+      if (!registration) {
+        setIsSubscribed(false);
+        return;
+      }
+      const sub = await registration.pushManager.getSubscription();
+      if (!sub) {
+        setIsSubscribed(false);
+        return;
+      }
+
+      await sub.unsubscribe(); // removes from browser
+      // Tell the server to purge the DB record
+      await fetch("/api/push/unsubscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+      setIsSubscribed(false);
+    } catch (err) {
+      if (import.meta.env.DEV) console.warn("[push] Unsubscribe failed:", err);
+    }
+  }, [browserSupportsPush]);
+
+  // ── NEW: Re-subscribe (fixes stale/broken subscriptions) ───────────────────
+  // This is the "I'm not getting notifications" recovery action.
+  // Forces a fresh subscription end-to-end — clears old browser record,
+  // removes the server DB entry, then creates a brand-new subscription.
+  const resubscribe = useCallback(async () => {
+    await unsubscribe();
+    await requestPermissionAndSubscribe();
+  }, [unsubscribe, requestPermissionAndSubscribe]);
+
+  // ── Effect ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) {
       setIsReady(false);
@@ -159,19 +156,11 @@ export function usePushNotifications(user) {
     }
     if (!VAPID_PUBLIC_KEY) {
       if (import.meta.env.DEV)
-        console.warn("[push] VITE_VAPID_PUBLIC_KEY not set in .env");
+        console.warn("[push] VITE_VAPID_PUBLIC_KEY not set");
       setIsReady(false);
       return;
     }
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      if (import.meta.env.DEV)
-        console.warn("[push] Browser does not support Web Push");
-      setIsReady(false);
-      return;
-    }
-    if (!window.isSecureContext) {
-      if (import.meta.env.DEV)
-        console.warn("[push] Web Push requires HTTPS (or localhost)");
+    if (!browserSupportsPush) {
       setIsReady(false);
       return;
     }
@@ -179,11 +168,8 @@ export function usePushNotifications(user) {
     setPermissionState(Notification.permission);
     setIsReady(true);
     checkSubscription();
-
-    // Silently keep the server DB record alive on every app open.
-    // Uses raw fetch (no token), so safe regardless of auth state.
     silentRenew();
-  }, [user, checkSubscription, silentRenew]);
+  }, [user, browserSupportsPush, checkSubscription, silentRenew]);
 
   return {
     permissionState,
@@ -191,23 +177,16 @@ export function usePushNotifications(user) {
     isSubscribed,
     isIOS,
     isStandalone,
+    browserSupportsPush,
     requestPermissionAndSubscribe,
+    unsubscribe,
+    resubscribe, // ← the key recovery action
   };
 }
 
-// ── SW message listener ───────────────────────────────────────────────────────
-// Wire this once in App.jsx so notification taps deep-link and mark as read.
-//
-// Usage in App.jsx:
-//   import { setupSwMessageListener } from "./hooks/usePushNotification";
-//   useEffect(() => {
-//     return setupSwMessageListener(navigate, async (id) => {
-//       await api.patch(`/api/notification/mark-notification-as-read/${id}`);
-//     });
-//   }, [navigate]);
+// ── SW message listener ────────────────────────────────────────────────────────
 export function setupSwMessageListener(navigate, onNotificationRead) {
   if (!("serviceWorker" in navigator)) return () => {};
-
   const handler = (event) => {
     if (event.data?.type !== "NOTIFICATION_CLICK") return;
     const { url, notificationId } = event.data;
@@ -215,7 +194,6 @@ export function setupSwMessageListener(navigate, onNotificationRead) {
     if (notificationId && onNotificationRead)
       onNotificationRead(notificationId);
   };
-
   navigator.serviceWorker.addEventListener("message", handler);
   return () => navigator.serviceWorker.removeEventListener("message", handler);
 }

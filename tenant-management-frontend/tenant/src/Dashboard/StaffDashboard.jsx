@@ -13,7 +13,7 @@
  * onto its existing fetchData so both datasets share one loading state.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
     Wrench, Zap, AlertTriangle, Fuel, CheckCircle2,
@@ -25,7 +25,6 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useTime } from "./hooks/UseTime";
 import { useStaffStats } from "./hooks/useStaffStats";
-import api from "../../plugins/axios";
 
 // ─── Category metadata (mirrors dailyChecks.jsx) ─────────────────────────────
 
@@ -40,7 +39,6 @@ const CATEGORY_META = {
 };
 
 const ALL_CATEGORIES = Object.keys(CATEGORY_META);
-const OWNERSHIP_ENTITY_ID = "69b11f16ce3a098bb6ba5424";
 
 // ─── Priority / status tokens (unchanged from original) ──────────────────────
 
@@ -67,10 +65,6 @@ const GENERATOR_STATUS_CONFIG = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function todayISO() {
-    return new Date().toISOString().split("T")[0];
-}
 
 function formatDate(d) {
     if (!d) return "";
@@ -123,26 +117,17 @@ function CircularProgress({ pct, size = 120, strokeWidth = 8, color = "var(--col
 // The #1 above-the-fold element. Shows a big ring + per-category chips.
 // Completed categories are LOCKED — no link, no click, visually sealed.
 
-function DailyChecksHero({ todaysChecklists, loadingChecklists }) {
+function DailyChecksHero({ safety, loadingChecklists }) {
     const navigate = useNavigate();
-
-    const completedCats = useMemo(
-        () => new Set(todaysChecklists.filter((c) => c.status === "COMPLETED").map((c) => c.category)),
-        [todaysChecklists],
-    );
-
-    const doneCount = completedCats.size;
-    const totalCount = ALL_CATEGORIES.length;
-    const pct = Math.round((doneCount / totalCount) * 100);
+    const doneCount = Number.isFinite(safety?.completed) ? safety.completed : 0;
+    const totalCount = Number.isFinite(safety?.total) ? safety.total : ALL_CATEGORIES.length;
+    const pct = Number.isFinite(safety?.completionRate) ? safety.completionRate : 0;
     const allDone = doneCount === totalCount;
 
     // Ring color transitions green when all done
     const ringColor = allDone ? "#10b981" : doneCount >= totalCount / 2 ? "#f59e0b" : "var(--color-accent)";
 
     function handleCategoryClick(cat) {
-        // HARD LOCK: already completed — do nothing. Belt + suspenders on top of
-        // the guard in dailyChecks.jsx's handleCategorySelect.
-        if (completedCats.has(cat)) return;
         navigate("/checklists", { state: { autoStart: cat } });
     }
 
@@ -199,16 +184,14 @@ function DailyChecksHero({ todaysChecklists, loadingChecklists }) {
                     {ALL_CATEGORIES.map((cat) => {
                         const meta = CATEGORY_META[cat];
                         const Icon = meta.icon;
-                        const done = completedCats.has(cat);
-                        const inProgress = todaysChecklists.find(
-                            (c) => c.category === cat && c.status !== "COMPLETED"
-                        );
+                        const done = false;
+                        const inProgress = false;
 
                         return (
                             <button
                                 key={cat}
                                 onClick={() => handleCategoryClick(cat)}
-                                disabled={done || loadingChecklists}
+                                disabled={loadingChecklists}
                                 aria-label={meta.label}
                                 className={`
                                     group flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left
@@ -234,12 +217,7 @@ function DailyChecksHero({ todaysChecklists, loadingChecklists }) {
                                     {meta.urgency && !done && (
                                         <p className="text-[9px] font-bold text-red-500 uppercase tracking-wide">Critical</p>
                                     )}
-                                    {inProgress && !done && (
-                                        <p className="text-[9px] font-bold text-amber-600 uppercase tracking-wide">In progress</p>
-                                    )}
-                                    {done && (
-                                        <p className="text-[9px] text-[var(--color-success)] font-semibold">Done ✓</p>
-                                    )}
+                                    <p className="text-[9px] text-[var(--color-text-weak)] font-semibold">Open checklist</p>
                                 </div>
                                 {done
                                     ? <Lock className="w-3 h-3 text-[var(--color-success)] opacity-50 shrink-0" />
@@ -530,50 +508,17 @@ export default function StaffDashboard() {
     const { greeting } = useTime();
     const {
         maintenance, openTasks, urgentTasks, completedTasks, cancelledTasks,
-        generators, generatorsWithIssues, loading, error, refetch,
+        generators, generatorsWithIssues, safety, loading, error, refetch,
     } = useStaffStats(user);
 
     const { tabs, active, setActive, displayedTasks } = useTaskTabs({
         openTasks, completedTasks, cancelledTasks, maintenance,
     });
 
-    // ── Today's checklists — fetched independently of useStaffStats ───────────
-    // We keep this separate so it refreshes on its own and doesn't block
-    // the maintenance/generator data from rendering.
-    const [todaysChecklists, setTodaysChecklists] = useState([]);
-    const [loadingChecklists, setLoadingChecklists] = useState(true);
-    const checklistAbortRef = useRef(null);
-
-    const fetchTodaysChecklists = useCallback(async () => {
-        checklistAbortRef.current?.abort();
-        const controller = new AbortController();
-        checklistAbortRef.current = controller;
-        setLoadingChecklists(true);
-        try {
-            const today = todayISO();
-            const res = await api.get("/api/checklists", {
-                params: { propertyId: OWNERSHIP_ENTITY_ID, startDate: today, endDate: today, limit: 20 },
-                signal: controller.signal,
-            });
-            if (!controller.signal.aborted) {
-                setTodaysChecklists(res.data?.data ?? []);
-            }
-        } catch (err) {
-            if (err.name === "CanceledError" || err.name === "AbortError") return;
-            console.error("[StaffDashboard] checklist fetch failed:", err);
-        } finally {
-            if (!controller.signal.aborted) setLoadingChecklists(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchTodaysChecklists();
-        return () => checklistAbortRef.current?.abort();
-    }, [fetchTodaysChecklists]);
+    const loadingChecklists = loading;
 
     function handleRefreshAll() {
         refetch();
-        fetchTodaysChecklists();
     }
 
     const firstName = user?.name?.split(" ")[0] ?? "there";
@@ -633,7 +578,7 @@ export default function StaffDashboard() {
                     HERO: Daily Checks — #1 priority element, first thing staff sees
                 ══════════════════════════════════════════════════════════════ */}
                 <DailyChecksHero
-                    todaysChecklists={todaysChecklists}
+                    safety={safety}
                     loadingChecklists={loadingChecklists}
                 />
 

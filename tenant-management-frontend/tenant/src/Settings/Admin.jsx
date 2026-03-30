@@ -44,15 +44,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Settings, Users, TrendingUp, Building2, Shield, Plus, Trash2,
   Pencil, Camera, Upload, Lock, Save, Phone, CreditCard, Zap,
-  CheckCircle2, AlertTriangle, Info, Clock,
+  CheckCircle2, AlertTriangle, Info, Clock, Bell,
 } from "lucide-react";
 
 // Sub-components
 import AddBankAccount from "./components/AddBankAccount";
 import EditBankAccount from "./components/EditBankAccount";
-import AddStaffDialog from "./components/AddStaffDialog";
 import ElectricityRateTab from "./components/electricityRateTab";
-import { OrganizationTab } from "../Buildings/organization/OrganizationTab";
+import NotificationSettings from "./components/NotificationSettings";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 const getInitials = (name) =>
@@ -668,7 +667,7 @@ export default function AdminRoot() {
     { value: "general", Icon: Settings, label: "General" },
 
     { value: "rates", Icon: TrendingUp, label: "Rates & Fees" },
-    { value: "organization", Icon: Building2, label: "Organization" },
+    { value: "notification", Icon: Bell, label: "Notification" },
   ];
 
   return (
@@ -715,7 +714,9 @@ export default function AdminRoot() {
             <RatesTab propertyId={propertyId} />
           </TabsContent>
 
-
+          <TabsContent value="notification">
+            <NotificationSettings />
+          </TabsContent>
         </Tabs>
       </div>
     </div>

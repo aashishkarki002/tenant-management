@@ -8,6 +8,7 @@ import Header from "../header";
 import { useAuth } from "../../context/AuthContext";
 import { HeaderSlotProvider } from "../../context/HeaderSlotContext";
 import { ThemeProvider } from "../../context/ThemeContext";
+import PushNotificationBanner from "../PushNotificationBanner";
 
 export default function AppLayout({ children }) {
   const { user } = useAuth();
@@ -51,6 +52,7 @@ export default function AppLayout({ children }) {
                 <Header />
               </div>
             </header>
+            <PushNotificationBanner />
 
             <main className="flex-1 overflow-y-auto overflow-x-hidden">
               <div className="w-full">

@@ -359,12 +359,29 @@ function normalizeDashboardStats(raw) {
       })
     : [];
 
+  const safety = raw.safety ?? {
+    completionRate: 0,
+    completed: 0,
+    total: 0,
+    pending: 0,
+    issues: 0,
+  };
+  const maintenanceSummary = raw.maintenanceSummary ?? {
+    open: 0,
+    inProgress: 0,
+    completed: 0,
+  };
+  const notifications = raw.notifications ?? { unread: 0 };
+
   return {
     // Spread all raw fields first so nothing is lost
     ...raw,
 
     // ── Pre-computed KPI block — single source of truth for KpiStrip ──
     kpi,
+    safety,
+    maintenanceSummary,
+    notifications,
 
     collection: {
       totalCollected,

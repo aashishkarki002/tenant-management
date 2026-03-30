@@ -25,6 +25,7 @@ import api from "../../../plugins/axios";
 export function useStaffStats(user) {
   const [maintenance, setMaintenance] = useState([]);
   const [generators, setGenerators] = useState([]);
+  const [safety, setSafety] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -52,11 +53,14 @@ export function useStaffStats(user) {
       // /my-tasks: server filters by req.admin.id (from JWT) — never sends
       //            another staff member's data to this client.
       // /generator/all: staff need to see all generators for status overview.
-      const [maintenanceRes, generatorRes] = await Promise.all([
+      const [maintenanceRes, generatorRes, dashboardRes] = await Promise.all([
         api.get("/api/maintenance/my-tasks", {
           signal: controller.signal,
         }),
         api.get("/api/maintenance/generator/all", {
+          signal: controller.signal,
+        }),
+        api.get("/api/payment/dashboard-stats", {
           signal: controller.signal,
         }),
       ]);
@@ -69,9 +73,12 @@ export function useStaffStats(user) {
       const allGenerators = Array.isArray(generatorRes.data?.data)
         ? generatorRes.data.data
         : [];
+      const dashboardData = dashboardRes.data?.data ?? dashboardRes.data ?? {};
+      const safetySummary = dashboardData.safety ?? null;
 
       setMaintenance(myTasks);
       setGenerators(allGenerators);
+      setSafety(safetySummary);
     } catch (err) {
       // Ignore AbortError — it is not a real error, just request cancellation
       if (err.name === "CanceledError" || err.name === "AbortError") return;
@@ -128,6 +135,7 @@ export function useStaffStats(user) {
     // Raw data
     maintenance, // all tasks assigned to this staff member
     generators, // all active generators
+    safety, // backend-computed safety summary
 
     // Derived — ready to display, no further filtering needed in components
     openTasks, // OPEN + IN_PROGRESS
