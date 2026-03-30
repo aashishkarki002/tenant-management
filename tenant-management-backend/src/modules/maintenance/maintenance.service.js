@@ -8,7 +8,9 @@ import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
 import { sendMaintenanceAssignmentEmail } from "../../config/nodemailer.js";
 import { createAndEmitNotification } from "../notifications/notification.service.js";
 import mongoose from "mongoose";
-// ─── Helper ──────────────────────────────────────────────────────────────────
+
+// ─── Notification helpers ─────────────────────────────────────────────────────
+
 function _notifyAssignedStaff(maintenance) {
   const staff = maintenance.assignedTo;
   if (!staff?.email) return;
@@ -25,10 +27,9 @@ function _notifyAssignedStaff(maintenance) {
     unitName: maintenance.unit?.name,
     maintenanceId: maintenance._id.toString(),
   });
-  // Intentionally NOT awaited — email is a fire-and-forget side-effect
 
   createAndEmitNotification({
-    type: "MAINTENANCE_ASSIGNED", // add this to the notification model enum
+    type: "MAINTENANCE_ASSIGNED",
     title: "Maintenance Task Assigned",
     message: `You have been assigned to "${maintenance.title}" scheduled on ${new Date(maintenance.scheduledDate).toLocaleDateString()}${maintenance.property?.name ? ` at ${maintenance.property.name}` : ""}.`,
     data: {
@@ -39,37 +40,46 @@ function _notifyAssignedStaff(maintenance) {
       propertyName: maintenance.property?.name,
       unitName: maintenance.unit?.name,
     },
-    adminIds: [staff._id.toString()], // ← staff only, not all admins
+    adminIds: [staff._id.toString()],
   }).catch((err) =>
     console.error("[maintenance] failed to emit assignment notification:", err),
   );
 }
+
 function _notifyAllAdmins({ type, title, message, data }) {
-  // Omitting adminIds → createAndEmitNotification targets ALL active admins
   createAndEmitNotification({ type, title, message, data }).catch((err) =>
     console.error(`[maintenance] failed to emit ${type} notification:`, err),
   );
 }
 
-// ─── Entity resolver ─────────────────────────────────────────────────────────
+// ─── Entity resolver ──────────────────────────────────────────────────────────
 /**
  * Resolve the OwnershipEntity for a maintenance task by walking the hierarchy:
  *   unit → InnerBlock → Block → OwnershipEntity
  *   block → OwnershipEntity  (fallback when no unit)
  *
- * Returns the entityId ObjectId, or null if the hierarchy is incomplete
- * (e.g. legacy data before entity migration). Never throws — callers handle null.
- *
- * @param {{ unitId?: string|ObjectId, blockId?: string|ObjectId }} params
- * @returns {Promise<ObjectId|null>}
+ * Returns the entityId ObjectId, or null if the hierarchy is incomplete.
+ * Never throws — callers handle null.
  */
-async function resolveEntityFromHierarchy({ unitId, blockId }) {
-  // ── Path 1: unit → InnerBlock → Block → entityId ─────────────────────────
+async function resolveEntityFromHierarchy({
+  unitId,
+  blockId,
+  maintenanceData,
+}) {
+  if (!maintenanceData.scope) {
+    if (maintenanceData.unit) {
+      maintenanceData.scope = "UNIT";
+    } else if (maintenanceData.block) {
+      maintenanceData.scope = "BLOCK";
+    } else if (maintenanceData.property) {
+      maintenanceData.scope = "PROPERTY";
+    }
+    // If none of the above, default in schema handles it ("UNIT")
+  }
   if (unitId) {
     const Unit = mongoose.model("Unit");
     const unit = await Unit.findById(unitId).select("innerBlock block").lean();
 
-    // Unit may reference an InnerBlock or directly a Block
     const innerBlockId = unit?.innerBlock;
     const directBlockId = unit?.block || blockId;
 
@@ -88,7 +98,6 @@ async function resolveEntityFromHierarchy({ unitId, blockId }) {
       }
     }
 
-    // Unit references a Block directly (no InnerBlock layer)
     if (directBlockId) {
       const Block = mongoose.model("Block");
       const block = await Block.findById(directBlockId)
@@ -99,7 +108,6 @@ async function resolveEntityFromHierarchy({ unitId, blockId }) {
     }
   }
 
-  // ── Path 2: block → entityId (no unit provided) ───────────────────────────
   if (blockId) {
     const Block = mongoose.model("Block");
     const block = await Block.findById(blockId)
@@ -112,11 +120,26 @@ async function resolveEntityFromHierarchy({ unitId, blockId }) {
   return null;
 }
 
+// ─── Role constants ───────────────────────────────────────────────────────────
+// Centralised here so the service never imports from Express or req objects.
+// Controllers resolve req.admin.role → one of these strings before calling.
+const ROLE = {
+  SUPER_ADMIN: "super_admin",
+  ADMIN: "admin",
+  STAFF: "staff",
+};
+const ALLOWED_TRANSITIONS = {
+  OPEN: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["OPEN", "PENDING_SETTLEMENT", "CANCELLED"],
+  PENDING_SETTLEMENT: ["CANCELLED"], // admin can cancel even after work is done
+  COMPLETED: [], // terminal
+  CANCELLED: [], // terminal
+};
+
 // ─── Service functions ────────────────────────────────────────────────────────
 
 export async function createMaintenance(maintenanceData) {
   try {
-    // Normalise rupee → paisa if caller passed the human-readable field
     if (
       maintenanceData.amountPaisa === undefined &&
       maintenanceData.amount !== undefined
@@ -132,23 +155,19 @@ export async function createMaintenance(maintenanceData) {
       );
     }
 
-    // Denormalize Nepali scheduled date fields at write time so they are
-    // queryable via the compound index without a runtime conversion.
     if (maintenanceData.scheduledDate) {
       const { npYear, npMonth } = getNepaliYearMonthFromDate(
         maintenanceData.scheduledDate,
       );
       maintenanceData.scheduledNepaliYear = npYear;
-      maintenanceData.scheduledNepaliMonth = npMonth; // 1-based
+      maintenanceData.scheduledNepaliMonth = npMonth;
     }
 
-    // Resolve and denormalize entityId at write time by walking the hierarchy:
-    // unit → InnerBlock → Block → OwnershipEntity.
-    // Stored on the document so expense creation never needs to re-walk.
     if (!maintenanceData.entityId) {
       const resolvedEntityId = await resolveEntityFromHierarchy({
         unitId: maintenanceData.unit,
         blockId: maintenanceData.block,
+        maintenanceData: maintenanceData,
       });
       if (resolvedEntityId) maintenanceData.entityId = resolvedEntityId;
     }
@@ -160,9 +179,9 @@ export async function createMaintenance(maintenanceData) {
         .populate("assignedTo", "name email")
         .populate("property", "name")
         .populate("unit", "name");
-
       _notifyAssignedStaff(populated);
     }
+
     _notifyAllAdmins({
       type: "MAINTENANCE_CREATED",
       title: "New Maintenance Task",
@@ -190,20 +209,59 @@ export async function createMaintenance(maintenanceData) {
   }
 }
 
-export async function getAllMaintenance() {
+export async function getAllMaintenance(filters = {}) {
   try {
-    const maintenanceTasks = await Maintenance.find()
-      .populate("tenant")
-      .populate("unit")
-      .populate("property")
-      .populate("block")
-      .populate("createdBy")
-      .populate("assignedTo", "name email phone profilePicture");
+    const {
+      status,
+      scope,
+      propertyId,
+      blockId,
+      assignedTo,
+      sourceType,
+      priority,
+      nepaliYear,
+      nepaliMonth,
+      page = 1,
+      limit = 30,
+    } = filters;
+
+    const query = {};
+    if (status) query.status = status;
+    if (scope) query.scope = scope;
+    if (propertyId) query.property = propertyId;
+    if (blockId) query.block = blockId;
+    if (assignedTo) query.assignedTo = assignedTo;
+    if (sourceType) query.sourceType = sourceType;
+    if (priority) query.priority = priority;
+    if (nepaliYear) query.scheduledNepaliYear = Number(nepaliYear);
+    if (nepaliMonth) query.scheduledNepaliMonth = Number(nepaliMonth);
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [tasks, total] = await Promise.all([
+      Maintenance.find(query)
+        .populate("tenant", "name")
+        .populate("unit", "name")
+        .populate("property", "name")
+        .populate("block", "name")
+        .populate("createdBy", "name")
+        .populate("assignedTo", "name email phone profilePicture")
+        .sort({ scheduledDate: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      Maintenance.countDocuments(query),
+    ]);
 
     return {
       success: true,
       message: "Maintenance tasks fetched successfully",
-      data: maintenanceTasks,
+      data: tasks,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        pages: Math.ceil(total / Number(limit)),
+      },
     };
   } catch (error) {
     throw new Error(error.message || "Failed to get maintenance tasks");
@@ -238,31 +296,25 @@ export async function getMaintenanceById(id) {
   }
 }
 
-/**
- * Update maintenance status + payment info.
- *
- * ─── Nepali date handling ─────────────────────────────────────────────────────
- * The frontend sends { nepaliDate, nepaliMonth, nepaliYear } from the
- * DualCalendarTailwind picker. If any of these are missing the service
- * derives them from the current server time using getNepaliYearMonthFromDate()
- * (Nepali calendar), NOT from JS Date.getMonth() which returns an English
- * month index.
- *
- * ─── Overpayment handling ────────────────────────────────────────────────────
- * findByIdAndUpdate bypasses Mongoose pre-save hooks, so the model-level
- * guard never fires on status updates. Business rules are enforced here.
- *
- * If allowOverpayment:true is passed the check is skipped and paymentStatus
- * is automatically set to "overpaid" so accounting can flag it.
- * ─────────────────────────────────────────────────────────────────────────────
- */
+// ─── updateMaintenanceStatus ──────────────────────────────────────────────────
+//
+// Handles ALL status transitions EXCEPT the final PENDING_SETTLEMENT→COMPLETED
+// step, which is owned exclusively by settlePayment() below.
+//
+// Financial fields (paidAmount, paymentMethod, bankAccountId, contractor) are
+// intentionally NOT accepted here. Any attempt to pass them is silently ignored
+// so that a malicious or buggy client cannot sneak money data through this path.
+//
+// Who can call what:
+//   STAFF       → OPEN↔IN_PROGRESS, IN_PROGRESS→PENDING_SETTLEMENT
+//                 (must be the assigned staff member)
+//   ADMIN       → →CANCELLED only
+//   SUPER_ADMIN → →CANCELLED only
+
 export async function updateMaintenanceStatus(
   id,
   status,
-  paymentStatus,
-  paidAmountRupees = null, // rupees value from the controller (req.body.paidAmount)
-  lastPaidBy = null,
-  options = {},
+  { callerId, callerRole } = {},
 ) {
   const existing = await Maintenance.findById(id);
   if (!existing) {
@@ -270,249 +322,82 @@ export async function updateMaintenanceStatus(
       success: false,
       message: "Maintenance task not found",
       data: null,
-      expense: null,
     };
   }
 
-  // ── Guard: invalid status transitions ────────────────────────────────────
-  // Industry standard: use a state machine / adjacency list rather than
-  // allowing free transitions, to prevent re-opening completed tasks and
-  // accidental double-expense creation.
-  const ALLOWED_TRANSITIONS = {
-    OPEN: ["IN_PROGRESS", "CANCELLED"],
-    IN_PROGRESS: ["OPEN", "COMPLETED", "CANCELLED"],
-    COMPLETED: [], // terminal — no transitions allowed
-    CANCELLED: [], // terminal — no transitions allowed
-  };
-
   const currentStatus = existing.status;
+
+  // ── Guard: valid transition ───────────────────────────────────────────────
   if (
-    currentStatus !== status && // allow no-op patches
+    currentStatus !== status &&
     !ALLOWED_TRANSITIONS[currentStatus]?.includes(status)
   ) {
     return {
       success: false,
       message: `Cannot transition from ${currentStatus} to ${status}.`,
       data: null,
-      expense: null,
     };
   }
 
-  // ── Guard: block payment on CANCELLED tasks ──────────────────────────────
-  if (
-    status === "CANCELLED" &&
-    paidAmountRupees !== null &&
-    paidAmountRupees > 0
-  ) {
+  // ── Guard: COMPLETED is only reachable via settlePayment() ───────────────
+  // Double-lock: even if someone calls this function directly with COMPLETED,
+  // it is rejected. The only path to COMPLETED is settlePayment().
+  if (status === "COMPLETED") {
     return {
       success: false,
-      message: "Cannot record a payment on a cancelled task.",
+      message:
+        "Tasks cannot be marked COMPLETED directly. Use the payment settlement flow.",
       data: null,
-      expense: null,
     };
   }
 
-  // ── Resolve the paid amount in paisa ──────────────────────────────────────
-  const finalPaidAmountPaisa =
-    paidAmountRupees !== null ? rupeesToPaisa(paidAmountRupees) : null;
-
-  // ── Overpayment guard ─────────────────────────────────────────────────────
-  // Only validate when a paid amount is being set and the task has an estimate.
-  // Zero-estimate tasks (amountPaisa === 0) skip this because the admin may
-  // not have set a budget yet.
-  const estimatedPaisa = existing.amountPaisa ?? 0;
-
-  if (
-    finalPaidAmountPaisa !== null &&
-    estimatedPaisa > 0 &&
-    finalPaidAmountPaisa > estimatedPaisa
-  ) {
-    if (!options.allowOverpayment) {
-      // Return a structured error so the controller sends 409 with
-      // isOverpayment:true — the frontend uses this flag to show a
-      // confirmation dialog instead of a generic error toast.
+  // ── Guard: role-based permission ─────────────────────────────────────────
+  if (callerRole === ROLE.SUPER_ADMIN || callerRole === ROLE.ADMIN) {
+    // Admin tier: cancel only
+    if (status !== "CANCELLED" && status !== currentStatus) {
       return {
         success: false,
-        isOverpayment: true,
-        message: `Paid amount (₹${paidAmountRupees}) exceeds estimated amount (₹${estimatedPaisa / 100}). Confirm to proceed.`,
-        overpaymentDiffRupees: (finalPaidAmountPaisa - estimatedPaisa) / 100,
+        message: "Admins can only cancel a maintenance task.",
         data: null,
-        expense: null,
       };
     }
-
-    // Overpayment explicitly confirmed — mark it so accounting is aware
-    paymentStatus = "overpaid";
+  } else {
+    // STAFF: must be the assigned person
+    const assignedId = existing.assignedTo?.toString();
+    if (!assignedId || assignedId !== callerId?.toString()) {
+      return {
+        success: false,
+        message:
+          "Only the assigned staff member can update this task's status.",
+        data: null,
+      };
+    }
+    if (status === "CANCELLED") {
+      return {
+        success: false,
+        message: "Staff cannot cancel a maintenance task. Contact an admin.",
+        data: null,
+      };
+    }
   }
 
-  // ── Resolve Nepali date for the expense record ────────────────────────────
-  // Priority: frontend-supplied values → server-derived Nepali date.
-  //
-  // BUG FIX: The old code fell back to now.getMonth() + 1 and now.getFullYear()
-  // which are English calendar values. getNepaliYearMonthFromDate converts the
-  // current JS Date into the correct Nepali year and 1-based month.
-  const now = new Date();
-  const { npYear: fallbackNpYear, npMonth: fallbackNpMonth } =
-    getNepaliYearMonthFromDate(now);
-
-  const {
-    adminId,
-    nepaliDate: rawNepaliDate,
-    nepaliMonth: rawNepaliMonth,
-    nepaliYear: rawNepaliYear,
-    allowOverpayment,
-    paymentMethod: paymentMethodOption,
-    bankAccountId: bankAccountIdOption,
-    contractor: contractorOption,
-  } = options;
-
-  // Coerce string values coming from req.body to numbers (express body-parser
-  // keeps numeric strings as strings unless you use express-validator transforms)
-  const resolvedNepaliMonth =
-    typeof rawNepaliMonth === "number"
-      ? rawNepaliMonth
-      : Number.isFinite(Number(rawNepaliMonth))
-        ? Number(rawNepaliMonth)
-        : fallbackNpMonth; // ← Nepali month, not English
-
-  const resolvedNepaliYear =
-    typeof rawNepaliYear === "number"
-      ? rawNepaliYear
-      : Number.isFinite(Number(rawNepaliYear))
-        ? Number(rawNepaliYear)
-        : fallbackNpYear; // ← Nepali year, not English
-
-  const resolvedNepaliDate = rawNepaliDate ? new Date(rawNepaliDate) : now;
-
-  // ── Build update fields ───────────────────────────────────────────────────
-  const updateFields = { status, paymentStatus };
-
-  if (finalPaidAmountPaisa !== null) {
-    updateFields.paidAmountPaisa = finalPaidAmountPaisa;
-  }
-  if (lastPaidBy) updateFields.lastPaidBy = lastPaidBy;
-
-  // Stamp contractor when transitioning to IN_PROGRESS
-  if (status === "IN_PROGRESS" && contractorOption) {
-    updateFields.contractor = contractorOption;
-  }
-
-  // Denormalize completion Nepali date when the task is being completed
-  if (status === "COMPLETED") {
-    updateFields.completedAt = now;
-    updateFields.completionNepaliDate = resolvedNepaliDate;
-    updateFields.completionNepaliMonth = resolvedNepaliMonth;
-    updateFields.completionNepaliYear = resolvedNepaliYear;
-  }
-
+  // ── Apply update ──────────────────────────────────────────────────────────
   const updatedTask = await Maintenance.findByIdAndUpdate(
     id,
-    { $set: updateFields },
+    { $set: { status } },
     { returnDocument: "after" },
   );
 
-  // ── Auto-create expense on COMPLETED + paid/overpaid ─────────────────────
-  let expense = null;
-  const isCompleted = updatedTask?.status === "COMPLETED";
-  const isSettled = ["paid", "overpaid"].includes(updatedTask?.paymentStatus);
-
-  if (isCompleted && isSettled) {
-    const resolvedPaidPaisa = updatedTask.paidAmountPaisa ?? 0;
-
-    if (resolvedPaidPaisa > 0) {
-      // Idempotency guard: never create a second expense for the same task
-      const existingExpense = await Expense.findOne({
-        referenceType: "MAINTENANCE",
-        referenceId: updatedTask._id,
-      });
-
-      if (existingExpense) {
-        expense = existingExpense;
-      } else {
-        const maintenanceSource = await ExpenseSource.findOne({
-          code: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_SOURCE_CODE,
-        });
-
-        if (!maintenanceSource) {
-          throw new Error(
-            "Maintenance ExpenseSource with code MAINTENANCE not found",
-          );
-        }
-
-        // Maintenance expenses are always EXTERNAL — the work is done by a
-        // contractor or vendor, never by the tenant or the assigned staff.
-        // assignedTo = internal overseer, tenant = affected party — neither is the payee.
-        const payeeType = "EXTERNAL";
-
-        // Re-resolve entityId if not already on the task (handles legacy docs
-        // created before entity migration, or if hierarchy walk failed at creation).
-        let resolvedEntityId = updatedTask.entityId;
-        if (!resolvedEntityId) {
-          resolvedEntityId = await resolveEntityFromHierarchy({
-            unitId: updatedTask.unit,
-            blockId: updatedTask.block,
-          });
-        }
-
-        if (!resolvedEntityId) {
-          throw new Error(
-            `Cannot create expense: maintenance task ${updatedTask._id} has no ` +
-              `resolvable entityId. Ensure the unit/block hierarchy is linked to an OwnershipEntity.`,
-          );
-        }
-
-        const expenseData = {
-          source: maintenanceSource._id,
-          amountPaisa: resolvedPaidPaisa,
-          amount: resolvedPaidPaisa / 100,
-          EnglishDate: now,
-          // Use the resolved Nepali values — these are now guaranteed to be
-          // Nepali calendar values, not English month/year.
-          nepaliDate: resolvedNepaliDate,
-          nepaliMonth: resolvedNepaliMonth,
-          nepaliYear: resolvedNepaliYear,
-          payeeType,
-          externalPayee: {
-            name: updatedTask.contractor?.name || "Contractor",
-            type: updatedTask.contractor?.type || "CONTRACTOR",
-            ...(updatedTask.contractor?.phone && {
-              contactInfo: updatedTask.contractor.phone,
-            }),
-          },
-          referenceType: "MAINTENANCE",
-          referenceId: updatedTask._id,
-          status: "RECORDED",
-          notes:
-            updatedTask.completionNotes ||
-            "Auto-created from maintenance completion",
-          createdBy: adminId || updatedTask.createdBy,
-          expenseCode: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE,
-          entityId: resolvedEntityId,
-          transactionScope: "building",
-          ...(paymentMethodOption && { paymentMethod: paymentMethodOption }),
-          ...(bankAccountIdOption && { bankAccountId: bankAccountIdOption }),
-        };
-
-        const result = await createExpense(expenseData);
-        if (!result.success) {
-          throw new Error(
-            result.error || result.message || "Failed to create expense",
-          );
-        }
-
-        expense = result.data;
-      }
-    }
-  }
-  if (status === "COMPLETED") {
+  // ── Notifications ─────────────────────────────────────────────────────────
+  if (status === "PENDING_SETTLEMENT") {
     _notifyAllAdmins({
-      type: "MAINTENANCE_COMPLETED",
-      title: "Maintenance Task Completed",
-      message: `Maintenance task "${updatedTask.title}" has been marked as completed.`,
+      type: "MAINTENANCE_PENDING_SETTLEMENT",
+      title: "Maintenance Awaiting Payment Settlement",
+      message: `"${updatedTask.title}" work has been completed by staff. Payment settlement required.`,
       data: {
         maintenanceId: updatedTask._id,
         title: updatedTask.title,
-        paidAmountPaisa: updatedTask.paidAmountPaisa,
+        priority: updatedTask.priority,
       },
     });
   }
@@ -525,15 +410,264 @@ export async function updateMaintenanceStatus(
       data: { maintenanceId: updatedTask._id, title: updatedTask.title },
     });
   }
+
   return {
     success: true,
     message: "Maintenance status updated successfully",
+    data: updatedTask,
+  };
+}
+
+// ─── settlePayment ────────────────────────────────────────────────────────────
+//
+// The ONLY function that writes financial data and creates an Expense record.
+// Only callable by ADMIN or SUPER_ADMIN.
+// Task must be in PENDING_SETTLEMENT status — staff must have completed the
+// physical work before any money can be recorded.
+//
+// This is the accounting gate. Nothing reaches the ledger except through here.
+
+export async function settlePayment(
+  id,
+  {
+    paidAmountRupees,
+    paymentStatus,
+    paymentMethod,
+    bankAccountId,
+    contractor,
+    nepaliDate: rawNepaliDate,
+    nepaliMonth: rawNepaliMonth,
+    nepaliYear: rawNepaliYear,
+    allowOverpayment = false,
+    adminId,
+    callerRole,
+  } = {},
+) {
+  console.log(
+    "settlePayment",
+    id,
+    paidAmountRupees,
+    paymentStatus,
+    paymentMethod,
+    bankAccountId,
+    contractor,
+    rawNepaliDate,
+    rawNepaliMonth,
+    rawNepaliYear,
+    allowOverpayment,
+    adminId,
+    callerRole,
+  );
+  // ── Guard: admin-only ─────────────────────────────────────────────────────
+  if (callerRole !== ROLE.SUPER_ADMIN && callerRole !== ROLE.ADMIN) {
+    return {
+      success: false,
+      message: "Only admins can record payment settlements.",
+      data: null,
+      expense: null,
+    };
+  }
+
+  const existing = await Maintenance.findById(id);
+  if (!existing) {
+    return {
+      success: false,
+      message: "Maintenance task not found",
+      data: null,
+      expense: null,
+    };
+  }
+
+  // ── Guard: must be in PENDING_SETTLEMENT ──────────────────────────────────
+  // Prevents admins from settling a task that staff haven't finished yet,
+  // and prevents double-settlement of already-completed tasks.
+  if (existing.status !== "PENDING_SETTLEMENT") {
+    return {
+      success: false,
+      message: `Cannot settle payment: task is "${existing.status}". Only tasks with status PENDING_SETTLEMENT can be settled.`,
+      data: null,
+      expense: null,
+    };
+  }
+
+  // ── Guard: block payment on zero amount ───────────────────────────────────
+  if (!paidAmountRupees || paidAmountRupees <= 0) {
+    return {
+      success: false,
+      message: "A paid amount greater than zero is required to settle.",
+      data: null,
+      expense: null,
+    };
+  }
+
+  const finalPaidAmountPaisa = rupeesToPaisa(paidAmountRupees);
+  const estimatedPaisa = existing.amountPaisa ?? 0;
+
+  // ── Overpayment guard ─────────────────────────────────────────────────────
+  if (estimatedPaisa > 0 && finalPaidAmountPaisa > estimatedPaisa) {
+    if (!allowOverpayment) {
+      return {
+        success: false,
+        isOverpayment: true,
+        message: `Paid amount (₹${paidAmountRupees}) exceeds estimated amount (₹${estimatedPaisa / 100}). Confirm to proceed.`,
+        overpaymentDiffRupees: (finalPaidAmountPaisa - estimatedPaisa) / 100,
+        data: null,
+        expense: null,
+      };
+    }
+    // Confirmed overpayment — override paymentStatus so accounting flags it
+    paymentStatus = "overpaid";
+  }
+
+  // ── Resolve Nepali date ───────────────────────────────────────────────────
+  const now = new Date();
+  const { npYear: fallbackNpYear, npMonth: fallbackNpMonth } =
+    getNepaliYearMonthFromDate(now);
+
+  const resolvedNepaliMonth =
+    typeof rawNepaliMonth === "number"
+      ? rawNepaliMonth
+      : Number.isFinite(Number(rawNepaliMonth))
+        ? Number(rawNepaliMonth)
+        : fallbackNpMonth;
+
+  const resolvedNepaliYear =
+    typeof rawNepaliYear === "number"
+      ? rawNepaliYear
+      : Number.isFinite(Number(rawNepaliYear))
+        ? Number(rawNepaliYear)
+        : fallbackNpYear;
+
+  const resolvedNepaliDate = rawNepaliDate ? new Date(rawNepaliDate) : now;
+
+  // ── Persist financial fields + transition to COMPLETED ────────────────────
+  const updateFields = {
+    status: "COMPLETED",
+    paymentStatus: paymentStatus || "paid",
+    paidAmountPaisa: finalPaidAmountPaisa,
+    lastPaidBy: adminId,
+    completedAt: now,
+    completionNepaliDate: resolvedNepaliDate,
+    completionNepaliMonth: resolvedNepaliMonth,
+    completionNepaliYear: resolvedNepaliYear,
+    ...(contractor && { contractor }),
+  };
+
+  const updatedTask = await Maintenance.findByIdAndUpdate(
+    id,
+    { $set: updateFields },
+    { returnDocument: "after" },
+  );
+
+  // ── Create Expense record ─────────────────────────────────────────────────
+  // Idempotency guard: never create a second expense for the same task.
+  let expense = null;
+  const existingExpense = await Expense.findOne({
+    referenceType: "MAINTENANCE",
+    referenceId: updatedTask._id,
+  });
+
+  if (existingExpense) {
+    expense = existingExpense;
+  } else {
+    const maintenanceSource = await ExpenseSource.findOne({
+      code: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_SOURCE_CODE,
+    });
+
+    if (!maintenanceSource) {
+      throw new Error(
+        "Maintenance ExpenseSource with code MAINTENANCE not found",
+      );
+    }
+
+    // Re-resolve entityId for legacy tasks created before entity migration.
+    let resolvedEntityId = updatedTask.entityId;
+    if (!resolvedEntityId) {
+      resolvedEntityId = await resolveEntityFromHierarchy({
+        unitId: updatedTask.unit,
+        blockId: updatedTask.block,
+        maintenanceData: updatedTask,
+      });
+    }
+
+    if (!resolvedEntityId) {
+      throw new Error(
+        `Cannot create expense: maintenance task ${updatedTask._id} has no ` +
+          `resolvable entityId. Ensure the unit/block hierarchy is linked to an OwnershipEntity.`,
+      );
+    }
+
+    const expenseData = {
+      source: maintenanceSource._id,
+      amountPaisa: finalPaidAmountPaisa,
+      amount: paidAmountRupees,
+      EnglishDate: now,
+      nepaliDate: resolvedNepaliDate,
+      nepaliMonth: resolvedNepaliMonth,
+      nepaliYear: resolvedNepaliYear,
+      payeeType: "EXTERNAL",
+      externalPayee: {
+        name: updatedTask.contractor?.name || "Contractor",
+        type: updatedTask.contractor?.type || "CONTRACTOR",
+        ...(updatedTask.contractor?.phone && {
+          contactInfo: updatedTask.contractor.phone,
+        }),
+      },
+      referenceType: "MAINTENANCE",
+      referenceId: updatedTask._id,
+      status: "RECORDED",
+      notes:
+        updatedTask.completionNotes ||
+        "Auto-created from maintenance payment settlement",
+      createdBy: adminId || updatedTask.createdBy,
+      expenseCode: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE,
+      entityId: resolvedEntityId,
+      transactionScope: "building",
+      ...(paymentMethod && { paymentMethod }),
+      ...(bankAccountId && { bankAccountId }),
+    };
+
+    const result = await createExpense(expenseData);
+    if (!result.success) {
+      throw new Error(
+        result.error || result.message || "Failed to create expense",
+      );
+    }
+
+    expense = result.data;
+  }
+
+  _notifyAllAdmins({
+    type: "MAINTENANCE_COMPLETED",
+    title: "Maintenance Task Completed",
+    message: `Maintenance task "${updatedTask.title}" has been settled and marked complete.`,
+    data: {
+      maintenanceId: updatedTask._id,
+      title: updatedTask.title,
+      paidAmountPaisa: updatedTask.paidAmountPaisa,
+    },
+  });
+
+  return {
+    success: true,
+    message: "Payment settled and maintenance marked as completed",
     data: updatedTask,
     expense,
   };
 }
 
-export async function updateMaintenanceAssignedTo(id, assignedTo) {
+// ─── updateMaintenanceAssignedTo ──────────────────────────────────────────────
+// SUPER_ADMIN only — enforced here, not at the route level.
+
+export async function updateMaintenanceAssignedTo(id, assignedTo, callerRole) {
+  if (callerRole !== ROLE.SUPER_ADMIN) {
+    return {
+      success: false,
+      message: "Only a Super Admin can reassign maintenance tasks.",
+      data: null,
+    };
+  }
+
   const existing = await Maintenance.findById(id);
   if (!existing) {
     return {
@@ -589,14 +723,6 @@ export async function getMaintenanceByTenantId(tenantId) {
     data: maintenance,
   };
 }
-// ─── ADD THIS FUNCTION to maintenance.service.js ─────────────────────────────
-//
-// Replaces the client-side filter in useStaffStats.
-// Fetches only the tasks assigned to a given staffId, with a compact
-// field projection — the dashboard card doesn't need populated sub-documents
-// like createdBy or block, so we skip them here for performance.
-//
-// Usage: import { getMaintenanceByAssignedStaff } from "./maintenance.service.js"
 
 export async function getMaintenanceByAssignedStaff(staffId) {
   try {
@@ -605,7 +731,7 @@ export async function getMaintenanceByAssignedStaff(staffId) {
       .populate("unit", "name")
       .populate("tenant", "name")
       .populate("block", "name")
-      .sort({ scheduledDate: 1 }); // earliest scheduled first — natural work-queue order
+      .sort({ scheduledDate: 1 });
 
     return {
       success: true,

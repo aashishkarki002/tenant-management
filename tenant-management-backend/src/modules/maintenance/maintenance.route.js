@@ -17,6 +17,7 @@ import {
   updateMaintenanceAssignedToController,
   getMaintenanceByTenantIdController,
   getMyMaintenanceTasksController, // ← new
+  settlePaymentController,
 } from "./maintenance.controller.js";
 
 const router = Router();
@@ -40,5 +41,8 @@ router.get("/:id", protect, getMaintenanceByIdController);
 // Mutations
 router.patch("/:id/status", protect, updateMaintenanceStatusController);
 router.patch("/:id/assign", protect, updateMaintenanceAssignedToController);
+
+// Payment settlement
+router.patch("/:id/settle", protect, settlePaymentController);
 
 export default router;

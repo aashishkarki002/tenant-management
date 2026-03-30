@@ -450,49 +450,55 @@ export async function recordServiceLog(generatorId, serviceData, adminId) {
 
     await generator.save({ session });
 
-    // ── 2. Post expense → transaction → ledger (only when cost is given) ─────
-    let expenseResult = null;
-    if (costPaisa > 0) {
-      _assertAccountingFields(
-        { nepaliDate, nepaliMonth, nepaliYear },
-        "service log",
-      );
+    // ── 2. Create a Maintenance task for tracked repair work ──────────────────
+    // This gives the repair an assignable lifecycle (OPEN → IN_PROGRESS →
+    // PENDING_SETTLEMENT → COMPLETED) instead of posting an Expense directly.
+    // The admin settles payment via the normal PATCH /:id/settle endpoint.
+    let maintenanceTask = null;
+    if (costPaisa > 0 || type === "Repair" || type === "FullService") {
+      const { Maintenance } =
+        await import("../maintenance/Maintenance.Model.js");
 
-      const sourceId = await _resolveExpenseSourceId("MAINTENANCE", session);
-
-      const expenseDescription =
-        description ??
-        `Generator service (${type})` + (technician ? ` by ${technician}` : "");
-
-      expenseResult = await createExpense(
-        {
-          source: sourceId,
-          amountPaisa: costPaisa,
-          EnglishDate: new Date(),
-          nepaliDate: nepaliDate,
-          nepaliMonth: Number(nepaliMonth),
-          nepaliYear: Number(nepaliYear),
-          payeeType: "EXTERNAL",
-          referenceType: "MAINTENANCE",
-          referenceId: generator._id,
-          notes: notes ?? expenseDescription,
-          createdBy: adminId,
-          paymentMethod: paymentMethod ?? "bank_transfer",
-          bankAccountId,
-        },
-        session,
-      );
-
-      if (!expenseResult.success) {
-        throw new Error(
-          `Expense creation failed: ${expenseResult.error ?? expenseResult.message}`,
-        );
-      }
+      maintenanceTask = await Maintenance.create({
+        title: `[Generator] ${type} – ${generator.name}`,
+        description:
+          description ??
+          `Generator service (${type})` +
+            (technician ? ` by ${technician}` : ""),
+        property: generator.property ?? null,
+        block: generator.block ?? null,
+        scope: "PROPERTY",
+        scheduledDate: new Date(),
+        type: "Maintenance",
+        priority: type === "Repair" ? "High" : "Medium",
+        status: costPaisa > 0 ? "PENDING_SETTLEMENT" : "OPEN",
+        amountPaisa: costPaisa,
+        contractor: technician
+          ? { name: technician, type: "CONTRACTOR" }
+          : undefined,
+        createdBy: adminId,
+        // ── Origin tracing ────────────────────────────────────────────────────
+        sourceType: "GENERATOR",
+        sourceRef: generator._id,
+        sourceRefModel: "Generator",
+        ...(nextServiceDate && {
+          scheduledNepaliMonth: Number(nepaliMonth ?? 0) || null,
+          scheduledNepaliYear: Number(nepaliYear ?? 0) || null,
+        }),
+      });
     }
 
     await session.commitTransaction();
     session.endSession();
 
+    return {
+      success: true,
+      message:
+        "Service log recorded" +
+        (maintenanceTask ? " and maintenance task created for settlement" : ""),
+      data: generator,
+      maintenanceTask: maintenanceTask ?? null,
+    };
     return {
       success: true,
       message:

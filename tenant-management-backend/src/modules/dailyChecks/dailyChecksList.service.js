@@ -448,6 +448,7 @@ export async function submitResult(resultId, updateData, adminId) {
           `Issue detected during ${result.category} daily checklist on ${new Date(result.checkDate).toLocaleDateString()}.`,
         property: result.property._id ?? result.property,
         block: result.block ?? null,
+        scope: "COMMON_AREA", // checklist failures are always common-area/building-level
         scheduledDate: new Date(),
         type: "Repair",
         priority: _inferPriority(ir.sectionKey, result.category),
@@ -455,6 +456,10 @@ export async function submitResult(resultId, updateData, adminId) {
         createdBy: adminId,
         scheduledNepaliMonth: result.nepaliMonth ?? null,
         scheduledNepaliYear: result.nepaliYear ?? null,
+        // ── Origin tracing ──────────────────────────────────────────────────────
+        sourceType: "CHECKLIST",
+        sourceRef: result._id, // the ChecklistResult that spawned this
+        sourceRefModel: "ChecklistResult",
       });
 
       ir.linkedMaintenanceId = task._id;

@@ -39,7 +39,37 @@ const maintenanceSchema = new mongoose.Schema(
       // Not required — legacy tasks created before entity migration will be null.
       // The expense service handles null gracefully via resolveTransactionScope.
     },
-
+    // ── Scope — what level of the property hierarchy this task covers ─────────────
+    // Auto-derived in createMaintenance() from which refs are populated.
+    // Can be set explicitly for COMMON_AREA tasks (hallways, lobbies, parking).
+    scope: {
+      type: String,
+      enum: ["UNIT", "BLOCK", "PROPERTY", "COMMON_AREA"],
+      default: "UNIT",
+    },
+    // ── Origin tracing — what created this task ──────────────────────────────────
+    // MANUAL       → created by an admin/staff directly
+    // CHECKLIST    → auto-spawned by dailyChecksList submitResult()
+    // GENERATOR    → spawned from a generator service log
+    // RECURRING    → spawned by the recurrence cron from a previous completed task
+    sourceType: {
+      type: String,
+      enum: ["MANUAL", "CHECKLIST", "GENERATOR", "RECURRING"],
+      default: "MANUAL",
+    },
+    // Points to ChecklistResult._id, Generator._id, or parent Maintenance._id
+    // depending on sourceType. Null for MANUAL.
+    sourceRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      refPath: "sourceRefModel",
+      default: null,
+    },
+    // Companion discriminator for populate() to resolve the right collection
+    sourceRefModel: {
+      type: String,
+      enum: ["ChecklistResult", "Generator", "Maintenance"],
+      default: null,
+    },
     scheduledDate: {
       type: Date,
       required: true,
@@ -56,7 +86,13 @@ const maintenanceSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["OPEN", "IN_PROGRESS", "COMPLETED", "CANCELLED"],
+      enum: [
+        "OPEN",
+        "IN_PROGRESS",
+        "PENDING_SETTLEMENT",
+        "COMPLETED",
+        "CANCELLED",
+      ],
       default: "OPEN",
     },
     createdBy: {
@@ -151,8 +187,8 @@ maintenanceSchema.index({ status: 1, priority: 1, scheduledDate: -1 });
 maintenanceSchema.index({ tenant: 1 });
 maintenanceSchema.index({ entityId: 1, scheduledDate: -1 });
 maintenanceSchema.index({ property: 1, unit: 1 });
-// Nepali calendar filters — the primary reason for denormalizing these fields.
-// Allows O(log n) queries like: find all tasks completed in Baisakh 2082.
+maintenanceSchema.index({ scope: 1, property: 1, status: 1 });
+maintenanceSchema.index({ sourceType: 1, sourceRef: 1 });
 maintenanceSchema.index({ scheduledNepaliYear: 1, scheduledNepaliMonth: 1 });
 maintenanceSchema.index({ completionNepaliYear: 1, completionNepaliMonth: 1 });
 

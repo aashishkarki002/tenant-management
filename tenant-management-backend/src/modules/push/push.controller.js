@@ -118,7 +118,6 @@ export const deletePushSubscription = async (req, res) => {
 
     await PushSubscription.deleteOne({
       "subscription.endpoint": endpoint,
-      admin: req.admin.id,
     });
 
     res.status(200).json({ success: true, message: "Subscription removed" });
