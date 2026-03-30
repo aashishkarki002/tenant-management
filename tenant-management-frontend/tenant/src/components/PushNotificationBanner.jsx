@@ -1,13 +1,10 @@
 // src/components/PushNotificationBanner.jsx
-// Rendered inside <Header /> — renders as a fixed floating element,
-// completely outside document flow so it NEVER affects layout.
-
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, BellOff, Share, X } from "lucide-react";
 import { usePushNotifications } from "../hooks/usePushNotification";
 import { useAuth } from "../context/AuthContext";
 
-// Slide-in animation injected once
 const STYLE = `
 @keyframes pnb-slide-in {
   from { opacity: 0; transform: translateY(-8px) scale(0.97); }
@@ -29,8 +26,10 @@ export default function PushNotificationBanner() {
         requestPermissionAndSubscribe,
     } = usePushNotifications(user);
 
+    // FIX 1: Don't pre-dismiss when user is null — that's just auth loading.
+    // The render guard below already handles the !user case correctly.
     const [dismissed, setDismissed] = useState(() => {
-        if (!user) return true;
+        if (!user) return false;
         return localStorage.getItem(`pushDismissed_${user._id || user.id}`) === "true";
     });
 
@@ -39,12 +38,9 @@ export default function PushNotificationBanner() {
         setDismissed(true);
     };
 
-    // Never show if: dismissed, no user, hook not ready, already subscribed/granted
+    // All early-exit conditions
     if (dismissed || !user || !isReady || isSubscribed || permissionState === "granted") return null;
 
-    // ── Shared container: fixed floating card ────────────────────────────────
-    // top-[57px] = sits just below the 56px sticky header (h-14)
-    // right-3 sm:right-4 with fixed width on desktop; near-full-width on mobile
     const container = `
     pnb-enter
     fixed top-[57px] right-3 left-3
@@ -56,72 +52,62 @@ export default function PushNotificationBanner() {
     backdrop-blur-sm
   `.replace(/\s+/g, " ").trim();
 
-    // ── iOS: not installed as PWA yet ─────────────────────────────────────────
+    // FIX 2: Compute content into a variable so we portal it once at the end,
+    // instead of three separate returns that each need their own createPortal.
+    let content;
+
     if (isIOS && !isStandalone) {
-        return (
-            <>
-                <style>{STYLE}</style>
-                <div
-                    className={container}
-                    style={{ background: "rgba(212,228,245,0.97)", borderColor: "rgba(46,90,140,0.2)" }}
-                >
-                    <Share className="w-3.5 h-3.5 mt-[3px] shrink-0" style={{ color: "#2E5A8C" }} />
-                    <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold leading-snug" style={{ color: "#1A2E4A" }}>
-                            Add to Home Screen for notifications
-                        </p>
-                        <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "#4A78A8" }}>
-                            Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then allow notifications.
-                        </p>
-                    </div>
-                    <button
-                        onClick={dismiss}
-                        className="shrink-0 mt-0.5 rounded-md p-0.5 transition-opacity hover:opacity-60"
-                        style={{ color: "#4A78A8" }}
-                        aria-label="Dismiss"
-                    >
-                        <X className="w-3.5 h-3.5" />
-                    </button>
+        content = (
+            <div
+                className={container}
+                style={{ background: "rgba(212,228,245,0.97)", borderColor: "rgba(46,90,140,0.2)" }}
+            >
+                <Share className="w-3.5 h-3.5 mt-[3px] shrink-0" style={{ color: "#2E5A8C" }} />
+                <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold leading-snug" style={{ color: "#1A2E4A" }}>
+                        Add to Home Screen for notifications
+                    </p>
+                    <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "#4A78A8" }}>
+                        Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then allow notifications.
+                    </p>
                 </div>
-            </>
-        );
-    }
-
-    // ── Permission explicitly denied ──────────────────────────────────────────
-    if (permissionState === "denied") {
-        return (
-            <>
-                <style>{STYLE}</style>
-                <div
-                    className={container}
-                    style={{ background: "rgba(245,213,213,0.97)", borderColor: "rgba(176,32,32,0.18)" }}
+                <button
+                    onClick={dismiss}
+                    className="shrink-0 mt-0.5 rounded-md p-0.5 transition-opacity hover:opacity-60"
+                    style={{ color: "#4A78A8" }}
+                    aria-label="Dismiss"
                 >
-                    <BellOff className="w-3.5 h-3.5 mt-[3px] shrink-0" style={{ color: "#B02020" }} />
-                    <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold leading-snug" style={{ color: "#5C1414" }}>
-                            Notifications blocked
-                        </p>
-                        <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "#B02020" }}>
-                            Go to <strong>Site Settings → Notifications</strong> and allow this site.
-                        </p>
-                    </div>
-                    <button
-                        onClick={dismiss}
-                        className="shrink-0 mt-0.5 rounded-md p-0.5 transition-opacity hover:opacity-60"
-                        style={{ color: "#C47272" }}
-                        aria-label="Dismiss"
-                    >
-                        <X className="w-3.5 h-3.5" />
-                    </button>
-                </div>
-            </>
+                    <X className="w-3.5 h-3.5" />
+                </button>
+            </div>
         );
-    }
-
-    // ── Default: prompt user to enable ───────────────────────────────────────
-    return (
-        <>
-            <style>{STYLE}</style>
+    } else if (permissionState === "denied") {
+        content = (
+            <div
+                className={container}
+                style={{ background: "rgba(245,213,213,0.97)", borderColor: "rgba(176,32,32,0.18)" }}
+            >
+                <BellOff className="w-3.5 h-3.5 mt-[3px] shrink-0" style={{ color: "#B02020" }} />
+                <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold leading-snug" style={{ color: "#5C1414" }}>
+                        Notifications blocked
+                    </p>
+                    <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "#B02020" }}>
+                        Go to <strong>Site Settings → Notifications</strong> and allow this site.
+                    </p>
+                </div>
+                <button
+                    onClick={dismiss}
+                    className="shrink-0 mt-0.5 rounded-md p-0.5 transition-opacity hover:opacity-60"
+                    style={{ color: "#C47272" }}
+                    aria-label="Dismiss"
+                >
+                    <X className="w-3.5 h-3.5" />
+                </button>
+            </div>
+        );
+    } else {
+        content = (
             <div
                 className={container}
                 style={{ background: "rgba(238,233,229,0.97)", borderColor: "#DDD6D0" }}
@@ -140,7 +126,6 @@ export default function PushNotificationBanner() {
                         onClick={requestPermissionAndSubscribe}
                         className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all
                        hover:opacity-90 active:scale-95 text-white bg-primary"
-
                     >
                         Enable
                     </button>
@@ -154,6 +139,17 @@ export default function PushNotificationBanner() {
                     </button>
                 </div>
             </div>
-        </>
+        );
+    }
+
+    // Single portal call — mounts directly on document.body, completely
+    // outside the header/sidebar DOM tree, so no ancestor transform or
+    // overflow can ever re-anchor or clip the fixed positioning.
+    return createPortal(
+        <>
+            <style>{STYLE}</style>
+            {content}
+        </>,
+        document.body
     );
 }

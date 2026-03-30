@@ -33,6 +33,7 @@ import api from "../plugins/axios";
 import { useAuth } from "./context/AuthContext";
 import Buildings from "./Buildings/Buildings";
 import Staff from "./staff/staff";
+import CheckListResultDetails from "./adminDailyChecks/checkListResultDetails/checkListResultDetails";
 
 // Roles that can access admin-level features
 const ADMIN_ROLES = ["admin", "super_admin"];
@@ -166,6 +167,9 @@ export default function App() {
       />
       <Route path="/buildings"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Buildings /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/admin-daily-checks/check-result-details/:id"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><CheckListResultDetails /></RoleRoute></ProtectedRoutes>}
       />
     </Routes>
   );
