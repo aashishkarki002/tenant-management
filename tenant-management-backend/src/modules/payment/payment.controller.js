@@ -157,7 +157,9 @@ export async function getRentSummary(req, res) {
 
 export async function getDashboardStats(req, res) {
   try {
-    const result = await getDashboardStatsData();
+    const result = await getDashboardStatsData({
+      adminId: req.user?._id ?? req.admin?.id,
+    });
     return res.json(result);
   } catch (err) {
     return res.status(500).json({

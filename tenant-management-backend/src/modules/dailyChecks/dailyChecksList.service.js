@@ -629,16 +629,31 @@ export async function getResultById(id) {
  */
 export async function getResultSummary(propertyId, nepaliYear, nepaliMonth) {
   const match = { property: new mongoose.Types.ObjectId(propertyId) };
+
   if (nepaliYear) match.nepaliYear = Number(nepaliYear);
   if (nepaliMonth) match.nepaliMonth = Number(nepaliMonth);
 
-  const summary = await ChecklistResult.aggregate([
+  const results = await ChecklistResult.aggregate([
     { $match: match },
+
     {
       $group: {
         _id: "$category",
+
         totalRuns: { $sum: 1 },
-        withIssues: { $sum: { $cond: ["$hasIssues", 1, 0] } },
+
+        completedRuns: {
+          $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
+        },
+
+        pendingRuns: {
+          $sum: { $cond: [{ $eq: ["$status", "PENDING"] }, 1, 0] },
+        },
+
+        withIssues: {
+          $sum: { $cond: ["$hasIssues", 1, 0] },
+        },
+
         avgPassRate: {
           $avg: {
             $cond: [
@@ -650,16 +665,52 @@ export async function getResultSummary(propertyId, nepaliYear, nepaliMonth) {
             ],
           },
         },
+
         lastChecked: { $max: "$checkDate" },
-        pendingCount: {
-          $sum: { $cond: [{ $eq: ["$status", "PENDING"] }, 1, 0] },
-        },
       },
     },
-    { $sort: { _id: 1 } },
   ]);
 
-  return { success: true, message: "Summary fetched", data: summary };
+  const totalCategories = results.length;
+
+  const completedCategories = results.filter((r) => r.completedRuns > 0).length;
+
+  const pendingCategories = totalCategories - completedCategories;
+
+  const completionRate =
+    totalCategories > 0
+      ? Math.round((completedCategories / totalCategories) * 100)
+      : 0;
+
+  const avgPassRate =
+    results.length > 0
+      ? Math.round(
+          results.reduce((acc, r) => acc + (r.avgPassRate || 0), 0) /
+            results.length,
+        )
+      : 0;
+
+  const lastChecked =
+    results.length > 0
+      ? results.reduce(
+          (max, r) => (r.lastChecked > max ? r.lastChecked : max),
+          new Date(0),
+        )
+      : null;
+
+  return {
+    success: true,
+    message: "Safety summary fetched",
+    data: {
+      totalCategories,
+      completedCategories,
+      pendingCategories,
+      completionRate,
+      avgPassRate,
+      lastChecked,
+      categories: results,
+    },
+  };
 }
 
 export async function deleteResult(id) {

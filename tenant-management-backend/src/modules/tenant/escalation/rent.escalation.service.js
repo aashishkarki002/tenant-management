@@ -701,6 +701,14 @@ export async function getEscalationData(tenantId) {
       appliesTo: escalation.appliesTo ?? "rent_only",
     },
     schedule: {
+      steps: (escalation.scheduled ?? []).map((s) => ({
+        // note: field is "scheduled" in the model
+        intervalMonths: s.intervalMonths,
+        type: s.type,
+        value: s.value,
+        label: s.label,
+        appliesTo: s.appliesTo,
+      })),
       nextEscalationDate: escalation.nextEscalationDate ?? null,
       nextEscalationNepaliDate: escalation.nextEscalationNepaliDate ?? null,
       nextEscalationNepaliMonth: nextNpDate ? nextNpDate.getMonth() + 1 : null, // 1-based

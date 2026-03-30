@@ -15,6 +15,18 @@ import { Payment } from "../payment/payment.model.js";
 import { Transaction } from "../ledger/transactions/Transaction.Model.js";
 import { Generator } from "../maintenance/generators/Generator.Model.js";
 import { Cam } from "../cam/cam.model.js";
+import { ChecklistResult } from "../dailyChecks/checkListResult.model.js";
+import Notification from "../notifications/notification.model.js";
+
+const SAFETY_CATEGORIES = [
+  "CCTV",
+  "ELECTRICAL",
+  "SANITARY",
+  "COMMON_AREA",
+  "PARKING",
+  "FIRE",
+  "WATER_TANK",
+];
 
 // ─── Nepali FY Quarter definitions ────────────────────────────────────────────
 //
@@ -192,9 +204,84 @@ async function buildBuildingPerformance({ npYear, npMonth, nepaliTodayDate }) {
   });
 }
 
+async function buildSafetySummary({ npYear, npMonth }) {
+  const categorySummary = await ChecklistResult.aggregate([
+    {
+      $match: {
+        nepaliYear: npYear,
+        nepaliMonth: npMonth,
+        category: { $in: SAFETY_CATEGORIES },
+      },
+    },
+    {
+      $group: {
+        _id: "$category",
+        completedRuns: {
+          $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
+        },
+        issueRuns: { $sum: { $cond: ["$hasIssues", 1, 0] } },
+      },
+    },
+  ]);
+
+  const completedCategories = categorySummary.reduce(
+    (count, item) => count + (item.completedRuns > 0 ? 1 : 0),
+    0,
+  );
+  const totalCategories = SAFETY_CATEGORIES.length;
+  const pendingCategories = Math.max(0, totalCategories - completedCategories);
+  const completionRate =
+    totalCategories > 0
+      ? Math.round((completedCategories / totalCategories) * 100)
+      : 0;
+  const issuesCount = categorySummary.reduce(
+    (count, item) => count + (item.issueRuns || 0),
+    0,
+  );
+
+  return {
+    completionRate,
+    completed: completedCategories,
+    total: totalCategories,
+    pending: pendingCategories,
+    issues: issuesCount,
+  };
+}
+
+async function buildMaintenanceSummary() {
+  const statusCounts = await Maintenance.aggregate([
+    { $match: { isDeleted: { $ne: true } } },
+    { $group: { _id: "$status", count: { $sum: 1 } } },
+  ]);
+
+  const countByStatus = statusCounts.reduce((acc, item) => {
+    acc[item._id] = item.count;
+    return acc;
+  }, {});
+
+  return {
+    open: countByStatus.OPEN || 0,
+    inProgress: countByStatus.IN_PROGRESS || 0,
+    completed: countByStatus.COMPLETED || 0,
+  };
+}
+
+async function buildNotificationSummary(adminId) {
+  if (!adminId) {
+    return { unread: 0 };
+  }
+
+  const unread = await Notification.countDocuments({
+    admin: adminId,
+    isRead: false,
+  });
+
+  return { unread };
+}
+
 // ─── Main data fetcher ────────────────────────────────────────────────────────
 
-export async function getDashboardStatsData() {
+export async function getDashboardStatsData({ adminId } = {}) {
   // getNepaliMonthDates() is the single authoritative source for all Nepali
   // date values used throughout this function. No manual date arithmetic below.
   //
@@ -833,6 +920,12 @@ export async function getDashboardStatsData() {
       buildBuildingPerformance({ npYear, npMonth, nepaliTodayDate }),
     ]);
 
+  const [safety, maintenanceSummary, notifications] = await Promise.all([
+    buildSafetySummary({ npYear, npMonth }),
+    buildMaintenanceSummary(),
+    buildNotificationSummary(adminId),
+  ]);
+
   /* ===============================
      7️⃣ RECENT ACTIVITY FEED
   =============================== */
@@ -1106,6 +1199,9 @@ export async function getDashboardStatsData() {
 
       // ── Maintenance ───────────────────────────────────────────────────────
       maintenance: maintenanceAll,
+      maintenanceSummary,
+      safety,
+      notifications,
       upcomingMaintenance,
       generatorsDueService,
 
@@ -1135,7 +1231,9 @@ export async function getDashboardStatsData() {
 
 export async function getDashboardStats(req, res) {
   try {
-    const result = await getDashboardStatsData();
+    const result = await getDashboardStatsData({
+      adminId: req.user?._id ?? req.admin?.id,
+    });
     res.json(result);
   } catch (error) {
     console.error("Dashboard stats error:", error);
