@@ -204,50 +204,77 @@ async function buildBuildingPerformance({ npYear, npMonth, nepaliTodayDate }) {
   });
 }
 
-async function buildSafetySummary({ npYear, npMonth }) {
-  const categorySummary = await ChecklistResult.aggregate([
-    {
-      $match: {
-        nepaliYear: npYear,
-        nepaliMonth: npMonth,
-        category: { $in: SAFETY_CATEGORIES },
-      },
-    },
-    {
-      $group: {
-        _id: "$category",
-        completedRuns: {
-          $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
+async function buildSafetySummary({ npYear, npMonth, nepaliTodayDate }) {
+  const baseDate =
+    nepaliTodayDate instanceof Date ? nepaliTodayDate : new Date();
+  const sevenDaysAgo = new Date(baseDate);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+
+  const [todayResults, trendResults] = await Promise.all([
+    // Today only — operational signal
+    ChecklistResult.aggregate([
+      {
+        $match: {
+          checkDate: {
+            $gte: new Date(baseDate.toDateString()), // midnight today
+            $lt: new Date(baseDate.getTime() + 86400000),
+          },
+          category: { $in: SAFETY_CATEGORIES },
         },
-        issueRuns: { $sum: { $cond: ["$hasIssues", 1, 0] } },
       },
-    },
+      {
+        $group: {
+          _id: "$category",
+          completed: {
+            $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
+          },
+          hasIssues: { $max: { $cond: ["$hasIssues", 1, 0] } },
+        },
+      },
+    ]),
+
+    // Past 7 days — one doc per day per category
+    ChecklistResult.aggregate([
+      {
+        $match: {
+          checkDate: { $gte: sevenDaysAgo, $lte: baseDate },
+          category: { $in: SAFETY_CATEGORIES },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$checkDate" } },
+          completedCategories: {
+            $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
+          },
+          hasIssues: { $max: { $cond: ["$hasIssues", 1, 0] } },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
   ]);
 
-  const completedCategories = categorySummary.reduce(
-    (count, item) => count + (item.completedRuns > 0 ? 1 : 0),
-    0,
-  );
-  const totalCategories = SAFETY_CATEGORIES.length;
-  const pendingCategories = Math.max(0, totalCategories - completedCategories);
-  const completionRate =
-    totalCategories > 0
-      ? Math.round((completedCategories / totalCategories) * 100)
-      : 0;
-  const issuesCount = categorySummary.reduce(
-    (count, item) => count + (item.issueRuns || 0),
-    0,
+  const completedToday = todayResults.filter((r) => r.completed > 0).length;
+  const completionRate = Math.round(
+    (completedToday / SAFETY_CATEGORIES.length) * 100,
   );
 
   return {
     completionRate,
-    completed: completedCategories,
-    total: totalCategories,
-    pending: pendingCategories,
-    issues: issuesCount,
+    completed: completedToday,
+    total: SAFETY_CATEGORIES.length,
+    pending: SAFETY_CATEGORIES.length - completedToday,
+    issues: todayResults.filter((r) => r.hasIssues).length,
+    // New: 7-day trend
+    trend: trendResults.map((d) => ({
+      date: d._id,
+      rate: Math.round(
+        (d.completedCategories / SAFETY_CATEGORIES.length) * 100,
+      ),
+      hasIssues: d.hasIssues === 1,
+    })),
   };
 }
-
 async function buildMaintenanceSummary() {
   const statusCounts = await Maintenance.aggregate([
     { $match: { isDeleted: { $ne: true } } },
@@ -921,7 +948,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
     ]);
 
   const [safety, maintenanceSummary, notifications] = await Promise.all([
-    buildSafetySummary({ npYear, npMonth }),
+    buildSafetySummary({ npYear, npMonth, nepaliTodayDate }),
     buildMaintenanceSummary(),
     buildNotificationSummary(adminId),
   ]);

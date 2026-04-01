@@ -720,3 +720,360 @@ export async function deleteResult(id) {
   }
   return { success: true, message: "Result deleted" };
 }
+export async function getCalendarSummary(propertyId, nepaliYear, nepaliMonth) {
+  if (!propertyId) {
+    return { success: false, message: "propertyId is required" };
+  }
+
+  const match = { property: new mongoose.Types.ObjectId(propertyId) };
+  if (nepaliYear) match.nepaliYear = Number(nepaliYear);
+  if (nepaliMonth) match.nepaliMonth = Number(nepaliMonth);
+
+  const rows = await ChecklistResult.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: "$nepaliDate",
+        englishDate: { $first: "$checkDate" },
+        total: { $sum: 1 },
+        completed: {
+          $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
+        },
+        pending: { $sum: { $cond: [{ $eq: ["$status", "PENDING"] }, 1, 0] } },
+        withIssues: { $sum: { $cond: ["$hasIssues", 1, 0] } },
+        sumPassed: { $sum: "$passedItems" },
+        sumTotal: { $sum: "$totalItems" },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  const days = rows.map((r) => ({
+    nepaliDate: r._id,
+    englishDate: r.englishDate,
+    total: r.total,
+    completed: r.completed,
+    pending: r.pending,
+    withIssues: r.withIssues,
+    passRate:
+      r.sumTotal > 0 ? Math.round((r.sumPassed / r.sumTotal) * 100) : null,
+  }));
+
+  return { success: true, message: "Calendar summary fetched", data: days };
+}
+
+/**
+ * getTodayResults
+ *
+ * Fetch all results for a given nepaliDate (defaults to today).
+ * Returns the full list — no pagination needed since a single day
+ * will have at most (categories × blocks) results, typically < 30.
+ *
+ * Called by GET /api/checklists/today?propertyId=&nepaliDate=
+ */
+export async function getTodayResults(propertyId, nepaliDate) {
+  if (!propertyId) {
+    return { success: false, message: "propertyId is required" };
+  }
+
+  // Default to today's Nepali date if not provided
+  let targetDate = nepaliDate;
+  if (!targetDate) {
+    const nd = new NepaliDate(new Date());
+    targetDate = formatNepaliISO(nd);
+  }
+
+  const results = await ChecklistResult.find({
+    property: propertyId,
+    nepaliDate: targetDate,
+  })
+    .populate("block", "name")
+    .populate("submittedBy", "name")
+    .populate("template", "name totalItems")
+    .sort({ category: 1 })
+    .lean();
+
+  return {
+    success: true,
+    message: "Today's results fetched",
+    data: results,
+    meta: { nepaliDate: targetDate, count: results.length },
+  };
+}
+export async function addSectionToTemplate(templateId, sectionData, adminId) {
+  const { sectionKey, sectionLabel, items = [] } = sectionData;
+
+  if (!sectionKey || !sectionLabel) {
+    return {
+      success: false,
+      message: "sectionKey and sectionLabel are required",
+    };
+  }
+
+  const template = await ChecklistTemplate.findById(templateId);
+  if (!template) return { success: false, message: "Template not found" };
+
+  const exists = template.sections.some((s) => s.sectionKey === sectionKey);
+  if (exists) {
+    return {
+      success: false,
+      message: `Section key "${sectionKey}" already exists in this template`,
+    };
+  }
+
+  template.sections.push({
+    sectionKey,
+    sectionLabel,
+    items: items.map(({ label, quantity = null }) => ({ label, quantity })),
+  });
+
+  template.lastRebuiltAt = new Date();
+  template.lastRebuiltBy = adminId;
+  await template.save(); // pre-save hook recounts totalItems
+
+  return {
+    success: true,
+    message: `Section "${sectionLabel}" added. Template now has ${template.totalItems} items.`,
+    data: template,
+  };
+}
+/**
+ * Rename a section's label (sectionKey is immutable — it's used as the foreign key
+ * in result itemResults[].sectionKey; changing it would orphan old results).
+ *
+ * Body shape: { sectionLabel: "New Label" }
+ */
+export async function updateSectionInTemplate(
+  templateId,
+  sectionKey,
+  updates,
+  adminId,
+) {
+  const template = await ChecklistTemplate.findById(templateId);
+  if (!template) return { success: false, message: "Template not found" };
+
+  const section = template.sections.find((s) => s.sectionKey === sectionKey);
+  if (!section) {
+    return {
+      success: false,
+      message: `Section "${sectionKey}" not found in template`,
+    };
+  }
+
+  // Only label is editable; sectionKey is intentionally locked
+  if (updates.sectionLabel) section.sectionLabel = updates.sectionLabel;
+
+  template.lastRebuiltAt = new Date();
+  template.lastRebuiltBy = adminId;
+  template.markModified("sections");
+  await template.save();
+
+  return { success: true, message: "Section updated", data: template };
+}
+/**
+ * Remove an entire section from a template.
+ *
+ * IMPORTANT: existing ChecklistResult documents that reference itemIds from
+ * this section will have orphaned itemResults entries. The getResultById
+ * merge already handles missing items gracefully (shows "Item removed").
+ * Still, prefer deactivating / emptying a section over hard-removing it
+ * when the template has recent results.
+ */
+export async function removeSectionFromTemplate(
+  templateId,
+  sectionKey,
+  adminId,
+) {
+  const template = await ChecklistTemplate.findById(templateId);
+  if (!template) return { success: false, message: "Template not found" };
+
+  const idx = template.sections.findIndex((s) => s.sectionKey === sectionKey);
+  if (idx === -1) {
+    return {
+      success: false,
+      message: `Section "${sectionKey}" not found in template`,
+    };
+  }
+
+  template.sections.splice(idx, 1);
+  template.lastRebuiltAt = new Date();
+  template.lastRebuiltBy = adminId;
+  await template.save();
+
+  return {
+    success: true,
+    message: `Section "${sectionKey}" removed. Template now has ${template.totalItems} items.`,
+    data: template,
+  };
+}
+/**
+ * Add a single item to an existing section.
+ *
+ * Body shape: { label: "Emergency Light – Corridor B2", quantity: 4 }
+ */
+export async function addItemToTemplate(templateId, sectionKey, item, adminId) {
+  const { label, quantity = null } = item;
+
+  if (!label?.trim()) {
+    return { success: false, message: "Item label is required" };
+  }
+
+  const template = await ChecklistTemplate.findById(templateId);
+  if (!template) return { success: false, message: "Template not found" };
+
+  const section = template.sections.find((s) => s.sectionKey === sectionKey);
+  if (!section) {
+    return {
+      success: false,
+      message: `Section "${sectionKey}" not found in template`,
+    };
+  }
+
+  section.items.push({ label: label.trim(), quantity });
+  template.lastRebuiltAt = new Date();
+  template.lastRebuiltBy = adminId;
+  template.markModified("sections");
+  await template.save();
+
+  // Return the new item's _id so the frontend can reference it immediately
+  const newItem = section.items[section.items.length - 1];
+
+  return {
+    success: true,
+    message: `Item "${label}" added to ${sectionKey}`,
+    data: { template, newItemId: newItem._id },
+  };
+}
+/**
+ * Edit an existing item's label or quantity.
+ *
+ * Body shape: { label?: "Updated label", quantity?: 6 }
+ *
+ * NOTE: The item's _id (used as itemId in result.itemResults) is NOT changed.
+ * Old results pointing to this itemId will automatically show the updated label
+ * because getResultById re-fetches from the template at read time.
+ */
+export async function updateItemInTemplate(
+  templateId,
+  sectionKey,
+  itemId,
+  updates,
+  adminId,
+) {
+  const template = await ChecklistTemplate.findById(templateId);
+  if (!template) return { success: false, message: "Template not found" };
+
+  const section = template.sections.find((s) => s.sectionKey === sectionKey);
+  if (!section) {
+    return {
+      success: false,
+      message: `Section "${sectionKey}" not found in template`,
+    };
+  }
+
+  const item = section.items.id(itemId);
+  if (!item) {
+    return {
+      success: false,
+      message: `Item "${itemId}" not found in section "${sectionKey}"`,
+    };
+  }
+
+  if (updates.label !== undefined) item.label = updates.label.trim();
+  if (updates.quantity !== undefined) item.quantity = updates.quantity;
+
+  template.lastRebuiltAt = new Date();
+  template.lastRebuiltBy = adminId;
+  template.markModified("sections");
+  await template.save();
+
+  return { success: true, message: "Item updated", data: template };
+}
+
+/**
+ * Remove a single item from a section.
+ *
+ * Same orphan caveat as removeSectionFromTemplate — old results that have
+ * itemResults referencing this itemId become orphans. getResultById handles
+ * this gracefully already.
+ */
+export async function removeItemFromTemplate(
+  templateId,
+  sectionKey,
+  itemId,
+  adminId,
+) {
+  const template = await ChecklistTemplate.findById(templateId);
+  if (!template) return { success: false, message: "Template not found" };
+
+  const section = template.sections.find((s) => s.sectionKey === sectionKey);
+  if (!section) {
+    return {
+      success: false,
+      message: `Section "${sectionKey}" not found in template`,
+    };
+  }
+
+  const itemIndex = section.items.findIndex(
+    (it) => it._id.toString() === itemId,
+  );
+  if (itemIndex === -1) {
+    return {
+      success: false,
+      message: `Item "${itemId}" not found in section "${sectionKey}"`,
+    };
+  }
+
+  section.items.splice(itemIndex, 1);
+  template.lastRebuiltAt = new Date();
+  template.lastRebuiltBy = adminId;
+  template.markModified("sections");
+  await template.save();
+
+  return {
+    success: true,
+    message: `Item removed. Section "${sectionKey}" now has ${section.items.length} items.`,
+    data: template,
+  };
+}
+
+/**
+ * Reorder sections by providing a full ordered list of sectionKeys.
+ * All existing sectionKeys must be present — this is a reorder, not a delete.
+ *
+ * Body shape: { orderedSectionKeys: ["ELEC_PANEL", "COMMON_AREA_B1", "PARKING_B2"] }
+ */
+export async function reorderSectionsInTemplate(
+  templateId,
+  orderedSectionKeys,
+  adminId,
+) {
+  const template = await ChecklistTemplate.findById(templateId);
+  if (!template) return { success: false, message: "Template not found" };
+
+  const existingKeys = template.sections.map((s) => s.sectionKey);
+
+  // Validate: every existing key must appear in the new order (no deletions)
+  const missing = existingKeys.filter((k) => !orderedSectionKeys.includes(k));
+  if (missing.length) {
+    return {
+      success: false,
+      message: `orderedSectionKeys is missing: ${missing.join(", ")}`,
+    };
+  }
+
+  const sectionMap = Object.fromEntries(
+    template.sections.map((s) => [s.sectionKey, s]),
+  );
+
+  template.sections = orderedSectionKeys
+    .filter((k) => sectionMap[k]) // ignore unknown keys gracefully
+    .map((k) => sectionMap[k]);
+
+  template.lastRebuiltAt = new Date();
+  template.lastRebuiltBy = adminId;
+  template.markModified("sections");
+  await template.save();
+
+  return { success: true, message: "Sections reordered", data: template };
+}

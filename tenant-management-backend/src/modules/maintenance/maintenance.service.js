@@ -9,7 +9,12 @@ import { sendMaintenanceAssignmentEmail } from "../../config/nodemailer.js";
 import { createAndEmitNotification } from "../notifications/notification.service.js";
 import { Block } from "../blocks/Block.Model.js";
 import InnerBlock from "../blocks/innerBlocks/InnerBlock.Model.js";
-import { Unit } from "../units/Unit.Model.js";
+let Unit;
+try {
+  ({ Unit } = await import("../units/Unit.Model.js"));
+} catch {
+  ({ Unit } = await import("../units/unit.Model.js"));
+}
 
 // ─── Notification helpers ─────────────────────────────────────────────────────
 

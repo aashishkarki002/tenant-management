@@ -13,6 +13,15 @@ import {
   getResultById,
   getResultSummary,
   deleteResult,
+  getCalendarSummary,
+  getTodayResults,
+  addSectionToTemplate,
+  updateSectionInTemplate,
+  removeSectionFromTemplate,
+  addItemToTemplate,
+  updateItemInTemplate,
+  removeItemFromTemplate,
+  reorderSectionsInTemplate,
 } from "./dailyChecksList.service.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,6 +147,135 @@ export async function deleteResultController(req, res) {
   try {
     const result = await deleteResult(req.params.id);
     return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+export async function getCalendarSummaryController(req, res) {
+  try {
+    const { propertyId, nepaliYear, nepaliMonth } = req.query;
+    const result = await getCalendarSummary(
+      propertyId,
+      nepaliYear ? Number(nepaliYear) : null,
+      nepaliMonth ? Number(nepaliMonth) : null,
+    );
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// GET /api/checklists/today?propertyId=&nepaliDate=
+export async function getTodayResultsController(req, res) {
+  try {
+    const { propertyId, nepaliDate } = req.query;
+    const result = await getTodayResults(propertyId, nepaliDate);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+export async function addSectionController(req, res) {
+  try {
+    const result = await addSectionToTemplate(
+      req.params.id,
+      req.body,
+      req.admin.id,
+    );
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// PATCH /api/checklists/templates/:id/sections/:sectionKey
+// Body: { sectionLabel }
+export async function updateSectionController(req, res) {
+  try {
+    const result = await updateSectionInTemplate(
+      req.params.id,
+      req.params.sectionKey,
+      req.body,
+      req.admin.id,
+    );
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// DELETE /api/checklists/templates/:id/sections/:sectionKey
+export async function removeSectionController(req, res) {
+  try {
+    const result = await removeSectionFromTemplate(
+      req.params.id,
+      req.params.sectionKey,
+      req.admin.id,
+    );
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// POST /api/checklists/templates/:id/sections/:sectionKey/items
+// Body: { label, quantity? }
+export async function addItemController(req, res) {
+  try {
+    const result = await addItemToTemplate(
+      req.params.id,
+      req.params.sectionKey,
+      req.body,
+      req.admin.id,
+    );
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// PATCH /api/checklists/templates/:id/sections/:sectionKey/items/:itemId
+// Body: { label?, quantity? }
+export async function updateItemController(req, res) {
+  try {
+    const result = await updateItemInTemplate(
+      req.params.id,
+      req.params.sectionKey,
+      req.params.itemId,
+      req.body,
+      req.admin.id,
+    );
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// DELETE /api/checklists/templates/:id/sections/:sectionKey/items/:itemId
+export async function removeItemController(req, res) {
+  try {
+    const result = await removeItemFromTemplate(
+      req.params.id,
+      req.params.sectionKey,
+      req.params.itemId,
+      req.admin.id,
+    );
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// PATCH /api/checklists/templates/:id/sections/reorder
+// Body: { orderedSectionKeys: ["KEY_A", "KEY_B", ...] }
+export async function reorderSectionsController(req, res) {
+  try {
+    const result = await reorderSectionsInTemplate(
+      req.params.id,
+      req.body.orderedSectionKeys,
+      req.admin.id,
+    );
+    return res.status(result.success ? 200 : 400).json(result);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

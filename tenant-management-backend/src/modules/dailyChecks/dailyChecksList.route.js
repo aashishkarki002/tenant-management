@@ -13,6 +13,15 @@ import {
   getResultByIdController,
   getResultSummaryController,
   deleteResultController,
+  getCalendarSummaryController,
+  getTodayResultsController,
+  addSectionController,
+  updateSectionController,
+  removeSectionController,
+  addItemController,
+  updateItemController,
+  removeItemController,
+  reorderSectionsController,
 } from "./dailyChecksList.controller.js";
 
 const router = Router();
@@ -35,6 +44,31 @@ router.post(
   authorize("admin", "super_admin"),
   rebuildTemplateController,
 );
+router.post("/templates/:id/sections", addSectionController);
+router.patch(
+  "/templates/:id/sections/:sectionKey",
+  updateSectionController,
+);
+router.delete(
+  "/templates/:id/sections/:sectionKey",
+  removeSectionController,
+);
+router.post(
+  "/templates/:id/sections/:sectionKey/items",
+  addItemController,
+);
+router.patch(
+  "/templates/:id/sections/:sectionKey/items/:itemId",
+  updateItemController,
+);
+router.delete(
+  "/templates/:id/sections/:sectionKey/items/:itemId",
+  removeItemController,
+);
+router.post(
+  "/templates/:id/sections/reorder",
+  reorderSectionsController,
+);
 
 // ── Result routes ─────────────────────────────────────────────────────────────
 
@@ -51,5 +85,8 @@ router.delete(
   authorize("admin", "super_admin"),
   deleteResultController,
 );
+// router.get("/calendar", getCalendarSummaryController);
+router.get("/calendar", getCalendarSummaryController);
+router.get("/today", getTodayResultsController);
 
 export default router;
