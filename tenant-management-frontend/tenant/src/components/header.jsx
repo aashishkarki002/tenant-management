@@ -1,12 +1,11 @@
 // src/components/header/Header.jsx
 import {
   Command, CommandInput, CommandList, CommandEmpty,
-  CommandGroup, CommandItem, CommandSeparator,
+  CommandGroup, CommandItem,
 } from "@/components/ui/command";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
-  Bell, Search, X, CheckCheck,
-  ChevronRight,
+  Bell, Search, X, CheckCheck, ChevronRight,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
@@ -19,7 +18,6 @@ import api from "../../plugins/axios";
 import { useNavigate } from "react-router-dom";
 import { useAppBadge } from "../hooks/useBadge";
 import { HeaderSlot } from "../context/HeaderSlotContext";
-import PushNotificationBanner from "./PushNotificationBanner";
 import {
   DEFAULT_NOTIFICATION_CONFIG,
   NOTIFICATION_CONFIG,
@@ -46,7 +44,6 @@ export function GlobalSearch() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  // ⌘K / Ctrl+K shortcut
   useEffect(() => {
     const down = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -58,7 +55,6 @@ export function GlobalSearch() {
     return () => document.removeEventListener("keydown", down);
   }, []);
 
-  // Debounced search
   useEffect(() => {
     if (!query || query.trim().length < 2) {
       setResults([]);
@@ -100,21 +96,21 @@ export function GlobalSearch() {
       {/* ── Search trigger ── */}
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm
+        className="flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm
                    transition-all duration-150
                    focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30"
         style={{
           borderColor: "var(--color-border)",
           background: "var(--color-surface)",
           color: "var(--color-text-weak)",
-          minWidth: isMobile ? "auto" : 220,
+          width: isMobile ? "auto" : 220,
         }}
       >
-        <Search className="w-4 h-4 shrink-0" style={{ color: "var(--color-text-weak)" }} />
+        <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-text-weak)" }} />
         {!isMobile && (
           <>
-            <span className="flex-1 text-left text-[13px]" style={{ color: "var(--color-text-weak)" }}>
-              Search tenants, units…
+            <span className="flex-1 text-left text-[12.5px]" style={{ color: "var(--color-text-weak)" }}>
+              Search…
             </span>
             <kbd
               className="hidden sm:inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium"
@@ -133,7 +129,6 @@ export function GlobalSearch() {
           style={{ borderColor: "var(--color-border)", background: "var(--color-surface-raised)" }}
         >
           <Command className="border-none" shouldFilter={false}>
-            {/* Input row */}
             <div
               className="flex items-center border-b px-3"
               style={{ borderColor: "var(--color-border)" }}
@@ -158,7 +153,6 @@ export function GlobalSearch() {
             </div>
 
             <CommandList className="max-h-80">
-              {/* Loading spinner */}
               {loading && (
                 <div className="flex items-center justify-center py-8">
                   <div
@@ -171,7 +165,6 @@ export function GlobalSearch() {
                 </div>
               )}
 
-              {/* Empty state */}
               {!loading && query && results.length === 0 && (
                 <CommandEmpty
                   className="py-8 text-center text-sm"
@@ -181,7 +174,6 @@ export function GlobalSearch() {
                 </CommandEmpty>
               )}
 
-              {/* Search results */}
               {!loading && results.length > 0 && (
                 <CommandGroup heading="Results">
                   {results.map((item) => {
@@ -205,18 +197,22 @@ export function GlobalSearch() {
                           <Icon className="w-3.5 h-3.5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate" style={{ color: "var(--color-text-strong)" }}>
-                            {item.label || item.name}
-                          </p>
-                          {(item.sublabel || item.sub) && (
+                          <p className="text-sm font-medium truncate">{item.name || item.title}</p>
+                          {item.subtitle && (
                             <p className="text-xs truncate" style={{ color: "var(--color-text-sub)" }}>
-                              {item.sublabel || item.sub}
+                              {item.subtitle}
                             </p>
                           )}
                         </div>
-                        {dotColor && (
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dotColor }} />
+                        {(item.badge || item.status) && dotColor && (
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                            style={{ background: dotColor.bg, color: dotColor.text }}
+                          >
+                            {item.badge || item.status}
+                          </span>
                         )}
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-text-weak)" }} />
                       </CommandItem>
                     );
                   })}
@@ -234,47 +230,42 @@ export function GlobalSearch() {
                           key={item._id || item.id}
                           onSelect={() => handleSelect(item)}
                           className="flex items-center gap-3 px-3 py-2 cursor-pointer"
+                          style={{ color: "var(--color-text-body)" }}
                         >
-                          <Icon className="w-4 h-4 shrink-0" style={{ color: "var(--color-text-weak)" }} />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm truncate block" style={{ color: "var(--color-text-body)" }}>
-                              {item.label || item.name}
-                            </span>
-                            {(item.sublabel || item.sub) && (
-                              <span className="text-xs truncate block" style={{ color: "var(--color-text-sub)" }}>
-                                {item.sublabel || item.sub}
-                              </span>
-                            )}
-                          </div>
+                          <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-text-sub)" }} />
+                          <span className="text-sm">{item.name || item.title}</span>
                         </CommandItem>
                       );
                     })}
                   </CommandGroup>
-                  <CommandSeparator style={{ background: "var(--color-border)" }} />
                 </>
               )}
 
               {/* Quick actions */}
               {!query && (
-                <CommandGroup heading="Quick actions">
-                  {SEARCH_QUICK_ACTIONS.map((a) => (
-                    <CommandItem
-                      key={a.label}
-                      onSelect={() => { setOpen(false); navigate(a.route); }}
-                      className="flex items-center gap-3 px-3 py-2 cursor-pointer"
-                    >
-                      <div
-                        className="rounded-md p-1.5 shrink-0"
-                        style={{ background: "var(--color-surface)", color: "var(--color-accent)" }}
+                <CommandGroup heading="Quick Actions">
+                  {SEARCH_QUICK_ACTIONS.map((action) => {
+                    const Icon = action.icon;
+                    return (
+                      <CommandItem
+                        key={action.label}
+                        onSelect={() => {
+                          setOpen(false);
+                          navigate(action.url);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 cursor-pointer"
+                        style={{ color: "var(--color-text-body)" }}
                       >
-                        <a.icon className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="text-sm" style={{ color: "var(--color-text-body)" }}>
-                        {a.label}
-                      </span>
-                      <ChevronRight className="w-3.5 h-3.5 ml-auto" style={{ color: "var(--color-text-weak)" }} />
-                    </CommandItem>
-                  ))}
+                        <div
+                          className="rounded-md p-1.5 shrink-0"
+                          style={{ background: "var(--color-surface)", color: "var(--color-text-sub)" }}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="text-sm">{action.label}</span>
+                      </CommandItem>
+                    );
+                  })}
                 </CommandGroup>
               )}
             </CommandList>
@@ -286,91 +277,60 @@ export function GlobalSearch() {
 }
 
 // ─── Notification Item ────────────────────────────────────────────────────────
-function NotificationItem({ notification, onMarkRead }) {
-  const [expanded, setExpanded] = useState(false);
-  const config = NOTIFICATION_CONFIG[notification.type] ?? DEFAULT_NOTIFICATION_CONFIG;
+function NotificationItem({ notification: n, onMarkRead }) {
+  const config = NOTIFICATION_CONFIG[n.type] ?? DEFAULT_NOTIFICATION_CONFIG;
   const Icon = config.icon;
-
-  const handleExpand = (e) => {
-    e.stopPropagation();
-    if (!notification.isRead) onMarkRead(notification._id || notification.id);
-    setExpanded(v => !v);
-  };
+  const dotColor = STATUS_DOT_COLOR[n.status];
 
   return (
     <div
-      className="rounded-xl p-3.5 border transition-all duration-150"
+      className={`flex gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${!n.isRead ? "border-[var(--color-accent-mid)]" : "border-transparent hover:border-[var(--color-border)]"
+        }`}
       style={{
-        borderColor: config.borderVar,
-        background: notification.isRead ? "var(--color-surface)" : "var(--color-surface-raised)",
-        opacity: notification.isRead ? 0.7 : 1,
+        background: n.isRead ? "var(--color-surface)" : "var(--color-accent-light)",
       }}
+      onClick={() => !n.isRead && onMarkRead(n._id || n.id)}
     >
-      <div className="flex items-start gap-3">
-        {/* Type icon */}
-        <div
-          className="rounded-lg p-2 shrink-0"
-          style={{ background: config.bgVar }}
-        >
-          <Icon className="w-4 h-4" style={{ color: config.colorVar }} />
+      <div
+        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+        style={{ background: config.bg, color: config.color }}
+      >
+        <Icon className="w-3.5 h-3.5" />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--color-text-strong)" }}>
+            {n.title}
+          </p>
+          {!n.isRead && (
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
+              style={{ background: "var(--color-accent)" }}
+            />
+          )}
         </div>
 
-        <div className="flex-1 min-w-0">
-          {/* Label row */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
-              style={{ background: config.labelBg, color: config.labelColor }}
-            >
-              {config.label}
-            </span>
-            {!notification.isRead && (
-              <span
-                className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ background: "var(--color-accent)" }}
-              />
-            )}
-          </div>
-
-          {/* Title */}
-          <p
-            className="text-sm font-semibold mt-1"
-            style={{ color: notification.isRead ? "var(--color-text-sub)" : "var(--color-text-strong)" }}
-          >
-            {notification.title}
+        {n.message && (
+          <p className="text-[12px] mt-0.5 line-clamp-2" style={{ color: "var(--color-text-sub)" }}>
+            {n.message}
           </p>
+        )}
 
-          {/* Expand toggle */}
-          <button
-            onClick={handleExpand}
-            className="flex items-center gap-1 text-xs mt-1 transition-colors"
-            style={{ color: "var(--color-text-weak)" }}
-          >
-            <ChevronRight
-              className={`w-3 h-3 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
-            />
-            {expanded ? "Hide" : "Details"}
-          </button>
-
-          {/* Expanded message */}
-          {expanded && (
-            <p
-              className="text-xs mt-1.5 leading-relaxed rounded-lg px-2.5 py-2 border"
-              style={{
-                color: "var(--color-text-body)",
-                background: "var(--color-surface)",
-                borderColor: "var(--color-border)",
-              }}
-            >
-              {notification.message}
-            </p>
-          )}
-
-          {/* Timestamp */}
-          {notification.createdAt && (
-            <p className="text-[11px] mt-1.5" style={{ color: "var(--color-text-weak)" }}>
-              {timeAgo(notification.createdAt)}
-            </p>
+        <div className="flex items-center gap-2 mt-1.5">
+          <span className="text-[11px]" style={{ color: "var(--color-text-weak)" }}>
+            {timeAgo(n.createdAt)}
+          </span>
+          {dotColor && (
+            <>
+              <span className="text-[11px]" style={{ color: "var(--color-text-weak)" }}>·</span>
+              <span
+                className="text-[11px] font-medium"
+                style={{ color: dotColor.text }}
+              >
+                {n.status}
+              </span>
+            </>
           )}
         </div>
       </div>
@@ -383,10 +343,8 @@ export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const { user, loading } = useAuth();
-
   const navigate = useNavigate();
 
-  // ── Fetch notifications ──────────────────────────────────────────────────
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     try {
@@ -398,7 +356,6 @@ export default function Header() {
   useEffect(() => { if (!loading && user) fetchNotifications(); }, [user, loading, fetchNotifications]);
   useEffect(() => { if (sheetOpen && user) fetchNotifications(); }, [sheetOpen, user, fetchNotifications]);
 
-  // ── Listen for external read events ─────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
       const id = e.detail;
@@ -408,7 +365,6 @@ export default function Header() {
     return () => window.removeEventListener("notification:read", handler);
   }, []);
 
-  // ── Mark read helpers ────────────────────────────────────────────────────
   const markAsRead = useCallback(async (id) => {
     setNotifications(prev => prev.map(n => (n._id || n.id) === id ? { ...n, isRead: true } : n));
     try { await api.patch(`/api/notification/mark-notification-as-read/${id}`); }
@@ -421,7 +377,6 @@ export default function Header() {
     catch { fetchNotifications(); }
   }, [fetchNotifications]);
 
-  // ── Socket setup ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) { socket.disconnect(); return; }
     if (!socket.connected) socket.connect();
@@ -459,129 +414,126 @@ export default function Header() {
     if (open) navigator.clearAppBadge?.();
   };
 
-  // ── Shared icon button style ─────────────────────────────────────────────
-  const iconBtnStyle = {
-    borderColor: "var(--color-border)",
-    background: "var(--color-surface-raised)",
-  };
-
   return (
-    <header className="w-full ">
-      <div className="flex flex-col w-full gap-2">
+    /*
+      Header is a single flex row: [slot/search grows] [actions pinned right]
+      The outer AppLayout header is 57px tall — this fills it edge-to-edge.
+    */
+    <div className="flex items-center w-full gap-3 h-full">
 
+      {/* ── Left: page-injected slot or global search ── */}
+      <div className="flex flex-1 min-w-0 items-center">
+        <HeaderSlot fallback={<GlobalSearch />} />
+      </div>
 
-        <div className="flex items-center w-full gap-2 min-w-0">
-
-          {/* ── Search / page-injected slot ── */}
-          <div className="flex flex-1 min-w-0">
-            <HeaderSlot fallback={<GlobalSearch />} />
-          </div>
-
-          {/* ── Theme toggle ── */}
-
-
-          {/* ── Notifications ── */}
-          <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-            <SheetTrigger asChild>
-              <button
-                className={iconBtnBase}
-                style={iconBtnStyle}
-                aria-label={hasUnread ? `${unreadCount} unread notifications` : "Notifications"}
-              >
-                <Bell
-                  className="w-4 h-4"
-                  style={{ color: hasUnread ? "var(--color-accent)" : "var(--color-text-sub)" }}
-                />
-                {hasUnread && (
-                  <span
-                    className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full
-                               flex items-center justify-center text-[10px] font-bold px-1"
-                    style={{ background: "var(--color-danger)", color: "#fff" }}
-                  >
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
-              </button>
-            </SheetTrigger>
-
-            {/* ── Notification sheet ── */}
-            <SheetContent
-              className="flex flex-col p-0 gap-0 w-full sm:max-w-md"
+      {/* ── Right: action group ── */}
+      <div
+        className="flex items-center gap-1 shrink-0 pl-3 border-l"
+        style={{ borderColor: "var(--color-border)" }}
+      >
+        {/* Notification bell */}
+        <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+          <SheetTrigger asChild>
+            <button
+              className={iconBtnBase}
               style={{
-                background: "var(--color-surface-raised)",
                 borderColor: "var(--color-border)",
+                background: "var(--color-surface-raised)",
               }}
+              aria-label={hasUnread ? `${unreadCount} unread notifications` : "Notifications"}
             >
-              <SheetHeader
-                className="px-5 pt-5 pb-4 border-b"
-                style={{ borderColor: "var(--color-border)" }}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <SheetTitle
-                      className="text-base font-semibold"
-                      style={{ color: "var(--color-text-strong)" }}
-                    >
-                      Notifications
-                    </SheetTitle>
-                    {hasUnread && (
-                      <p className="text-xs mt-0.5" style={{ color: "var(--color-text-sub)" }}>
-                        {unreadCount} unread
-                      </p>
-                    )}
-                  </div>
+              <Bell
+                className="w-4 h-4"
+                style={{ color: hasUnread ? "var(--color-accent)" : "var(--color-text-sub)" }}
+              />
+              {hasUnread && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[16px] h-[16px] rounded-full
+                             flex items-center justify-center text-[9px] font-bold px-1"
+                  style={{ background: "var(--color-danger)", color: "#fff" }}
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+          </SheetTrigger>
+
+          <SheetContent
+            className="flex flex-col p-0 gap-0 w-full sm:max-w-md"
+            style={{
+              background: "var(--color-surface-raised)",
+              borderColor: "var(--color-border)",
+            }}
+          >
+            <SheetHeader
+              className="px-5 pt-5 pb-4 border-b"
+              style={{ borderColor: "var(--color-border)" }}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <SheetTitle
+                    className="text-base font-semibold"
+                    style={{ color: "var(--color-text-strong)" }}
+                  >
+                    Notifications
+                  </SheetTitle>
                   {hasUnread && (
-                    <button
-                      onClick={markAllAsRead}
-                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
-                                 rounded-lg border transition-colors duration-150"
-                      style={{
-                        color: "var(--color-accent)",
-                        borderColor: "var(--color-accent-mid)",
-                        background: "var(--color-accent-light)",
-                      }}
-                    >
-                      <CheckCheck className="w-3.5 h-3.5" />
-                      Mark all read
-                    </button>
+                    <p className="text-xs mt-0.5" style={{ color: "var(--color-text-sub)" }}>
+                      {unreadCount} unread
+                    </p>
                   )}
                 </div>
-              </SheetHeader>
-
-              <div
-                className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
-                style={{ background: "var(--color-bg)" }}
-              >
-                {notifications.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
-                      style={{ background: "var(--color-surface)" }}
-                    >
-                      <Bell className="w-5 h-5" style={{ color: "var(--color-text-weak)" }} />
-                    </div>
-                    <p className="text-sm font-medium" style={{ color: "var(--color-text-sub)" }}>
-                      All caught up
-                    </p>
-                    <p className="text-xs mt-1" style={{ color: "var(--color-text-weak)" }}>
-                      No new notifications
-                    </p>
-                  </div>
-                ) : (
-                  notifications.map(n => (
-                    <NotificationItem
-                      key={n._id || n.id}
-                      notification={n}
-                      onMarkRead={markAsRead}
-                    />
-                  ))
+                {hasUnread && (
+                  <button
+                    onClick={markAllAsRead}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5
+                               rounded-lg border transition-colors duration-150"
+                    style={{
+                      color: "var(--color-accent)",
+                      borderColor: "var(--color-accent-mid)",
+                      background: "var(--color-accent-light)",
+                    }}
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    Mark all read
+                  </button>
                 )}
               </div>
-            </SheetContent>
-          </Sheet>
+            </SheetHeader>
 
-        </div>
+            <div
+              className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
+              style={{ background: "var(--color-bg)" }}
+            >
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+                    style={{ background: "var(--color-surface)" }}
+                  >
+                    <Bell className="w-5 h-5" style={{ color: "var(--color-text-weak)" }} />
+                  </div>
+                  <p className="text-sm font-medium" style={{ color: "var(--color-text-sub)" }}>
+                    All caught up
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "var(--color-text-weak)" }}>
+                    No new notifications
+                  </p>
+                </div>
+              ) : (
+                notifications.map(n => (
+                  <NotificationItem
+                    key={n._id || n.id}
+                    notification={n}
+                    onMarkRead={markAsRead}
+                  />
+                ))
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
-    </header>
+
+    </div>
   );
 }

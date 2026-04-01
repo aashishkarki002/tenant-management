@@ -7,153 +7,179 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Calendar, Building2 } from "lucide-react";
-// ─── Single authoritative Nepali date source ──────────────────────────────────
-// getMonthSelectOptions and getYearSelectOptions are pre-built option arrays
-// that handle the 0-based ↔ 1-based translation internally. No need for inline
-// loop or the plugins/useNepaliDate shim.
 import {
   getMonthSelectOptions,
   getYearSelectOptions,
   getCurrentBillingPeriod,
 } from "../../../utils/nepaliMonthBridge";
-// ─────────────────────────────────────────────────────────────────────────────
-
-
-
 
 export function ElectricityFilters({
   filterValues,
   onChange,
   allBlocks = [],
   availableInnerBlocks = [],
-  periodLabel,
 }) {
   const { blockId, innerBlockId, month, year } = filterValues ?? {};
   const { nepaliYear: currentYear, nepaliMonth: currentMonth } = getCurrentBillingPeriod();
 
-  // Both option arrays come from the bridge — no inline construction needed.
-  // getMonthSelectOptions returns [{ value: 1, label: "Baisakh" }, …, { value: 12, label: "Chaitra" }]
-  // getYearSelectOptions returns descending year options from startYear to current year.
   const monthOptions = useMemo(() => getMonthSelectOptions(), []);
   const yearOptions = useMemo(() => getYearSelectOptions(currentYear - 5), [currentYear]);
 
+  const triggerStyle = {
+    height: "32px",
+    fontSize: "13px",
+    backgroundColor: "var(--color-muted-fill)",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-md)",
+  };
+
   return (
-    <div className="bg-surface-raised rounded-xl border border-muted-fill px-4 py-3.5 shadow-sm">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+    <div
+      style={{
+        backgroundColor: "var(--color-surface-raised)",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-lg)",
+        padding: "10px 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: "20px",
+        flexWrap: "wrap",
+      }}
+    >
+      {/* Period */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <Calendar style={{ width: "13px", height: "13px", color: "var(--color-text-sub)", flexShrink: 0 }} />
+        <span
+          style={{
+            fontSize: "10px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+            color: "var(--color-text-sub)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Period
+        </span>
+        <Select
+          value={String(month ?? currentMonth)}
+          onValueChange={(v) => onChange?.("month", Number(v))}
+        >
+          <SelectTrigger style={{ ...triggerStyle, width: "120px" }}>
+            <SelectValue placeholder="Month" />
+          </SelectTrigger>
+          <SelectContent>
+            {monthOptions.map((opt) => (
+              <SelectItem key={opt.value} value={String(opt.value)}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        {/* Billing Period */}
-        <div className="flex items-center gap-2.5">
-          <Calendar className="w-4 h-4 text-text-sub shrink-0" />
-          <span className="text-xs font-bold text-text-sub uppercase tracking-wider whitespace-nowrap">
-            Period
-          </span>
-          <Select
-            value={String(month ?? currentMonth)}
-            onValueChange={(value) => onChange?.("month", Number(value))}
-          >
-            <SelectTrigger className="w-[130px] h-9 text-sm bg-muted-fill border-muted-fill
-              hover:border-accent transition-colors">
-              <SelectValue placeholder="Month" />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map((opt) => (
-                <SelectItem key={opt.value} value={String(opt.value)}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={String(year ?? currentYear)}
-            onValueChange={(value) => onChange?.("year", Number(value))}
-          >
-            <SelectTrigger className="w-[90px] h-9 text-sm bg-muted-fill border-muted-fill
-              hover:border-muted-fill transition-colors">
-              <SelectValue placeholder="Year" />
-            </SelectTrigger>
-            <SelectContent>
-              {yearOptions.map((opt) => (
-                <SelectItem key={opt.value} value={String(opt.value)}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="w-px h-7 bg-muted-fill hidden sm:block" />
-
-        {/* Building */}
-        <div className="flex items-center gap-2.5">
-          <Building2 className="w-4 h-4 text-text-sub shrink-0" />
-          <span className="text-xs font-bold text-text-sub uppercase tracking-wider whitespace-nowrap">
-            Building
-          </span>
-          <Select
-            value={blockId ?? "all"}
-            onValueChange={(value) => {
-              onChange?.("blockId", value);
-              onChange?.("innerBlockId", "");
-            }}
-          >
-            <SelectTrigger className="w-[150px] h-9 text-sm bg-muted-fill border-muted-fill
-              hover:border-muted-fill transition-colors">
-              <SelectValue placeholder="Select building" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Buildings</SelectItem>
-              {allBlocks.length > 0 ? (
-                allBlocks.map((block) => (
-                  <SelectItem key={block._id} value={block._id}>
-                    {block.name}
-                  </SelectItem>
-                ))
-              ) : (
-                <SelectItem value="no-block" disabled>
-                  No blocks available
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Inner Block — shown only when a specific building is selected */}
-        {blockId && blockId !== "all" && (
-          <>
-            <div className="w-px h-7 bg-muted-fill hidden sm:block" />
-            <div className="flex items-center gap-2.5">
-              <span className="text-xs font-bold text-text-sub uppercase tracking-wider whitespace-nowrap">
-                Floor
-              </span>
-              <Select
-                value={innerBlockId ?? ""}
-                onValueChange={(value) => onChange?.("innerBlockId", value)}
-              >
-                <SelectTrigger className="w-[130px] h-9 text-sm bg-muted-fill border-muted-fill
-                  hover:border-muted-fill transition-colors">
-                  <SelectValue placeholder="Select floor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableInnerBlocks.length > 0 ? (
-                    availableInnerBlocks.map((innerBlock) => (
-                      <SelectItem key={innerBlock._id} value={innerBlock._id}>
-                        {innerBlock.name}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="no-inner-block" disabled>
-                      No inner blocks
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
-
-
+        <Select
+          value={String(year ?? currentYear)}
+          onValueChange={(v) => onChange?.("year", Number(v))}
+        >
+          <SelectTrigger style={{ ...triggerStyle, width: "80px" }}>
+            <SelectValue placeholder="Year" />
+          </SelectTrigger>
+          <SelectContent>
+            {yearOptions.map((opt) => (
+              <SelectItem key={opt.value} value={String(opt.value)}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {/* Divider */}
+      <div style={{ width: "1px", height: "18px", backgroundColor: "var(--color-border)" }} />
+
+      {/* Building */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <Building2 style={{ width: "13px", height: "13px", color: "var(--color-text-sub)", flexShrink: 0 }} />
+        <span
+          style={{
+            fontSize: "10px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+            color: "var(--color-text-sub)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Building
+        </span>
+        <Select
+          value={blockId ?? "all"}
+          onValueChange={(v) => {
+            onChange?.("blockId", v);
+            onChange?.("innerBlockId", "");
+          }}
+        >
+          <SelectTrigger style={{ ...triggerStyle, width: "150px" }}>
+            <SelectValue placeholder="Select building" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Buildings</SelectItem>
+            {allBlocks.length > 0 ? (
+              allBlocks.map((block) => (
+                <SelectItem key={block._id} value={block._id}>
+                  {block.name}
+                </SelectItem>
+              ))
+            ) : (
+              <SelectItem value="no-block" disabled>
+                No blocks available
+              </SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Floor — conditional */}
+      {blockId && blockId !== "all" && (
+        <>
+          <div style={{ width: "1px", height: "18px", backgroundColor: "var(--color-border)" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+                color: "var(--color-text-sub)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Floor
+            </span>
+            <Select
+              value={innerBlockId ?? ""}
+              onValueChange={(v) => onChange?.("innerBlockId", v)}
+            >
+              <SelectTrigger style={{ ...triggerStyle, width: "130px" }}>
+                <SelectValue placeholder="Select floor" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableInnerBlocks.length > 0 ? (
+                  availableInnerBlocks.map((ib) => (
+                    <SelectItem key={ib._id} value={ib._id}>
+                      {ib.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-inner-block" disabled>
+                    No inner blocks
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      )}
     </div>
   );
 }

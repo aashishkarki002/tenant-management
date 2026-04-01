@@ -4,7 +4,6 @@ import { ElectricityPagination } from "./ElectricityPagination";
 import { isFlagged } from "../utils/electricityCalculations";
 import { PAGE_SIZE } from "../utils/electricityConstants";
 import { Zap, PlusCircle, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 const TABS = [
   { label: "All", value: "all", typeKey: null },
@@ -14,25 +13,32 @@ const TABS = [
   { label: "Sub-Meter", value: "sub_meter", typeKey: "sub_meter" },
 ];
 
+const COLUMNS = [
+  { label: "Name", width: "160px" },
+  { label: "Type", width: "100px" },
+  { label: "Building", width: "130px" },
+  { label: "Prev (kWh)", width: "90px" },
+  { label: "Curr (kWh)", width: "90px" },
+  { label: "Consumption", width: "110px" },
+  { label: "Bill Amount", width: "100px" },
+  { label: "Status", width: "90px" },
+  { label: "Reading Date", width: "110px" },
+  { label: "", width: "90px" },
+];
+
 export function ElectricityTable({
   loading,
   readings = [],
-  newRows = [],
-  units = [],
   activeTab,
   onTabChange,
   currentPage,
   onPageChange,
-  onUpdateNewRow,
-  onRemoveNewRow,
   onPaymentRecorded,
   countsByType = {},
   onAddReading,
 }) {
   const filteredData = React.useMemo(() => {
-    if (activeTab === "flagged") {
-      return readings.filter((r) => isFlagged(r));
-    }
+    if (activeTab === "flagged") return readings.filter((r) => isFlagged(r));
     return readings;
   }, [readings, activeTab]);
 
@@ -46,157 +52,250 @@ export function ElectricityTable({
     return filteredData.slice(start, start + PAGE_SIZE);
   }, [filteredData, currentPage]);
 
-  const COLUMNS = [
-    "Name",
-    "Type",
-    "Building",
-    "Prev (kWh)",
-    "Curr (kWh)",
-    "Consumption",
-    "Bill Amount",
-    "Status",
-    "Reading Date",
-    "Actions",
-  ];
-
   return (
-    <div className="bg-surface-raised rounded-xl border border-muted-fill overflow-hidden">
-      {/* Header bar */}
-      <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-muted-fill">
-        <h3 className="text-sm font-semibold text-text-strong">Meter Readings</h3>
-        <span className="text-xs text-text-sub">
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        backgroundColor: "var(--color-surface-raised)",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-lg)",
+        overflow: "hidden",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          padding: "12px 16px",
+          borderBottom: "1px solid var(--color-border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
+          gap: "16px",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <h3 style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-text-strong)", margin: 0 }}>
+            Meter Readings
+          </h3>
+
+          {/* Tabs */}
+          <div style={{ display: "flex", gap: "2px" }}>
+            {TABS.map((tab) => {
+              const count = tab.typeKey ? (countsByType[tab.typeKey] ?? 0) : null;
+              const isActive = activeTab === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => onTabChange(tab.value)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "4px 10px",
+                    borderRadius: "var(--radius-md)",
+                    border: "none",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    backgroundColor: isActive ? "var(--color-accent)" : "transparent",
+                    color: isActive ? "#fff" : "var(--color-text-sub)",
+                    transition: "background-color 0.1s, color 0.1s",
+                  }}
+                >
+                  {tab.label}
+                  {count != null && count > 0 && (
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        padding: "1px 5px",
+                        borderRadius: "99px",
+                        backgroundColor: isActive ? "rgba(255,255,255,0.2)" : "var(--color-muted-fill)",
+                        color: isActive ? "#fff" : "var(--color-text-sub)",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            {flaggedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => onTabChange("flagged")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  padding: "4px 10px",
+                  borderRadius: "var(--radius-md)",
+                  border: "none",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  backgroundColor: activeTab === "flagged" ? "var(--color-danger)" : "transparent",
+                  color: activeTab === "flagged" ? "#fff" : "var(--color-danger)",
+                }}
+              >
+                Flagged
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    padding: "1px 5px",
+                    borderRadius: "99px",
+                    backgroundColor: "var(--color-danger-bg)",
+                    color: "var(--color-danger)",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {flaggedCount}
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <span style={{ fontSize: "12px", color: "var(--color-text-sub)" }}>
           {filteredData.length} {filteredData.length === 1 ? "reading" : "readings"}
         </span>
       </div>
 
-      <div className="px-5 py-4">
-        {/* Tabs */}
-        <div className="flex gap-1 mb-4 flex-wrap border-b border-muted-fill pb-3">
-          {TABS.map((tab) => {
-            const count = tab.typeKey ? (countsByType[tab.typeKey] ?? 0) : null;
-            const isActive = activeTab === tab.value;
-
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => onTabChange(tab.value)}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5
-                  ${isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-text-sub hover:bg-muted-fill hover:text-text-strong"
-                  }`}
-              >
-                {tab.label}
-                {count != null && count > 0 && (
-                  <span
-                    className={`text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none
-                      ${isActive
-                        ? "bg-primary/20 text-primary"
-                        : "bg-primary/20 text-primary"
-                      }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
-          {flaggedCount > 0 && (
-            <button
-              type="button"
-              onClick={() => onTabChange("flagged")}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5
-                ${activeTab === "flagged"
-                  ? "bg-destructive text-destructive-foreground"
-                  : "text-destructive hover:bg-destructive"
-                }`}
-            >
-              Flagged
-              <span
-                className={`text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none
-                  ${activeTab === "flagged"
-                    ? "bg-primary/20 text-primary"
-                    : "bg-destructive text-destructive-foreground"
-                  }`}
-              >
-                {flaggedCount}
-              </span>
-            </button>
-          )}
-        </div>
-
-        {/* Table */}
+      {/* Body — scrollable */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "auto" }}>
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-text-sub">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm font-medium">Loading readings...</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              padding: "64px 24px",
+              color: "var(--color-text-sub)",
+            }}
+          >
+            <Loader2 style={{ width: "18px", height: "18px", animation: "spin 1s linear infinite" }} />
+            <span style={{ fontSize: "13px", fontWeight: 500 }}>Loading readings…</span>
           </div>
-        ) : filteredData.length === 0 && newRows.length === 0 ? (
-          /* Empty state */
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-muted-fill flex items-center justify-center mb-4">
-              <Zap className="w-7 h-7 text-text-sub" />
+        ) : filteredData.length === 0 ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "64px 24px",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "var(--radius-lg)",
+                backgroundColor: "var(--color-muted-fill)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "16px",
+              }}
+            >
+              <Zap style={{ width: "22px", height: "22px", color: "var(--color-text-sub)" }} />
             </div>
-            <h4 className="text-base font-semibold text-text-strong mb-1">
-              No electricity readings recorded
+            <h4 style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-text-strong)", marginBottom: "6px" }}>
+              No readings recorded
             </h4>
-            <p className="text-sm text-text-sub mb-5 max-w-sm">
-              No electricity readings have been recorded for this billing period.
-              Start by adding your first reading.
+            <p style={{ fontSize: "13px", color: "var(--color-text-sub)", marginBottom: "20px", maxWidth: "320px" }}>
+              No electricity readings for this billing period. Add your first reading to get started.
             </p>
             {onAddReading && (
-              <Button
+              <button
                 type="button"
                 onClick={onAddReading}
-                className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-5 py-2.5"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 16px",
+                  borderRadius: "var(--radius-md)",
+                  border: "none",
+                  backgroundColor: "var(--color-accent)",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
               >
-                <PlusCircle className="w-4 h-4" />
+                <PlusCircle style={{ width: "14px", height: "14px" }} />
                 Add First Reading
-              </Button>
+              </button>
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-muted-fill mt-1">
-            <table className="w-full table-auto border-collapse min-w-[900px]">
-              <thead>
-                <tr className="bg-muted-fill">
-                  {COLUMNS.map((col) => (
-                    <th
-                      key={col}
-                      className="py-2.5 px-4 text-left text-[10px] font-bold text-text-sub uppercase tracking-wider"
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-muted-fill">
-                {paginatedData.map((record, index) => (
-                  <ElectricityTableRow
-                    key={record._id ?? index}
-                    record={record}
-                    index={(currentPage - 1) * PAGE_SIZE + index}
-                    onPaymentRecorded={onPaymentRecorded}
-                    countsByType={countsByType}
-                  />
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "900px" }}>
+            <thead>
+              <tr style={{ backgroundColor: "var(--color-surface)", position: "sticky", top: 0, zIndex: 1 }}>
+                {COLUMNS.map((col) => (
+                  <th
+                    key={col.label}
+                    style={{
+                      padding: "9px 14px",
+                      textAlign: "left",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.07em",
+                      color: "var(--color-text-sub)",
+                      borderBottom: "1px solid var(--color-border)",
+                      whiteSpace: "nowrap",
+                      width: col.width,
+                    }}
+                  >
+                    {col.label}
+                  </th>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedData.map((record, index) => (
+                <ElectricityTableRow
+                  key={record._id ?? index}
+                  record={record}
+                  index={(currentPage - 1) * PAGE_SIZE + index}
+                  onPaymentRecorded={onPaymentRecorded}
+                />
+              ))}
+            </tbody>
+          </table>
         )}
+      </div>
 
-        {/* Pagination */}
-        {filteredData.length > PAGE_SIZE && (
+      {/* Pagination — pinned to bottom */}
+      {filteredData.length > PAGE_SIZE && (
+        <div
+          style={{
+            padding: "0 16px 12px",
+            flexShrink: 0,
+            borderTop: "1px solid var(--color-border)",
+          }}
+        >
           <ElectricityPagination
             currentPage={currentPage}
             totalItems={filteredData.length}
             onPageChange={onPageChange}
             pageSize={PAGE_SIZE}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

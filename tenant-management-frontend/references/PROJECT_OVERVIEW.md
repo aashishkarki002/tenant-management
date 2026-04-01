@@ -6,6 +6,18 @@ The **Tenant Management System** is a comprehensive web application designed to 
 
 This is a full-stack application built with a modern tech stack, featuring a React-based frontend and a Node.js/Express backend with MongoDB database.
 
+**Documentation**: Long-form guides and reference notes for this repo live under `tenant-management-frontend/references/` (for example this file and `QUICK_REFERENCE.md`).
+
+---
+
+## 🔄 Recent updates (2026)
+
+- **Dashboard UI**: Responsive **bento grid** layout with breakpoint-specific column rules; **fiscal year (FY) picker** (current vs previous Nepali FY) drives the revenue chart and related stats; **Needs Attention** panel (`NeedsAttentionPanel.jsx`) replaces the older attention banner components, with severity styling and links into workflows; compact **BarDiagram** height with **KpiStrip**, **BuildingHealthPanel**, **RecentActivities**, and **BuildingPerformanceGrid**. Header uses a **slot pattern** (`HeaderSlotContext`) for **global search** plus quick actions (add tenant, record payment). Loading and error states include a **retry** control.
+- **App shell**: **AppLayout** coordinates sidebar width with the header via CSS variable `--sidebar-width`; **ThemeProvider** and collapsible sidebar; admin navigation grouped in `app-sidebar.jsx`.
+- **Ledger / journal builders**: **Revenue received** journals require an explicit **`paymentMethod`**; **`bankAccountCode`** is required for bank transfer and cheque (no silent default to the generic cash control account). **Nepali dates** on journal payloads are normalized to BS `YYYY-MM-DD` strings; English `YYYY-MM-DD` strings are converted through `Date` before `NepaliDate` to avoid misparsing AD as BS. **Expense** journals use the same nepali-date resolution and credit-account helpers (`paymentAccountUtils`).
+- **Revenue service**: Bank account code resolution is explicit (`bankAccountCode`, `bankAccountId`, `paymentMethod`); journal posting aligns with the stricter builder contract.
+- **Expenses API**: Create expense accepts **`nepaliDate`** (same shape as revenue dialogs) or **`nepaliDateStr`** for backward compatibility.
+
 ---
 
 ## 🏗️ Architecture
@@ -72,31 +84,31 @@ This is a full-stack application built with a modern tech stack, featuring a Rea
 - **Payment Filters**: Filter by tenant, date range, status
 - **Rent Dashboard**: Comprehensive rent payment interface with tables and summaries
 
-### 4. **Dashboard** ✅ (70% Complete)
-- **Statistics Cards**:
-  - Total tenants count
-  - Active tenants
-  - Occupancy rate
-  - Total units vs occupied units
-  - Rent collection summary
-  - Monthly revenue
-- **Quick Actions**: Navigate to key features
-- **Building Status**: Progress bars for occupancy and rent collection
-- **Upcoming Deadlines**: Overdue rents, contracts ending soon
-- **Nepali Date Display**: Current date in Nepali calendar
+### 4. **Dashboard** ✅ (75% Complete)
+- **Layout**: CSS Grid **bento** layout from mobile through `2xl` breakpoints; chart + attention/health sidebar uses a ~2:1 width split on large screens
+- **KPI strip** (`KpiStrip`): Key metrics with loading states
+- **Fiscal year scope**: Nepali FY toggle (**this year** / **last year**) for chart and period-aware stats (`getFYLabel`, `getFYStartYear`, `getTodayNepali`)
+- **Revenue trend**: `BarDiagram` receives `stats`, `period`, and error/loading props
+- **Needs attention**: `NeedsAttentionPanel` surfaces prioritized items (overdue rent, contracts, maintenance, electricity, etc.) from normalized dashboard stats, with severity and deep links
+- **Building health & performance**: `BuildingHealthPanel`, `BuildingPerformanceGrid`
+- **Recent activity**: `RecentActivities` feed
+- **Header actions**: Optional slot content—**global search**, **Add Tenant**, **Record Payment** (`Dashboard.jsx` + `HeaderSlotContext`)
+- **Nepali date**: Greeting/time hooks (`UseTime`) and FY labels
 
 ### 5. **Accounting Module** ✅ (Basic Implementation)
 - **Accounting Summary**: Dashboard statistics
-- **Ledger Management**: Track financial transactions
+- **Ledger Management**: Track financial transactions; journal builders enforce **double-entry** with explicit **payment method** and **bank sub-accounts** where applicable (revenue received and expense flows)
 - **Account Management**: Manage chart of accounts
 - **Transaction Recording**: Record debit/credit transactions
 - **Revenue & Liabilities Tracking**: Separate tracking for revenue sources and liability sources
+- **Data integrity**: Manual revenue and expense postings use shared helpers so **Nepali ledger dates** stay as BS strings and **cash vs bank** postings match the selected instrument
 
 ### 6. **Revenue Management** ✅
-- **Create Revenue Records**: Track various revenue sources
+- **Create Revenue Records**: Track various revenue sources; UI (`AddRevenueDialog`) aligned with **payment method** and **bank account** selection for ledger posting
 - **Revenue Sources**: Categorize revenue (rent, CAM, other)
 - **Revenue Analytics**: View revenue by source
 - **Get All Revenue**: List all revenue records with filtering
+- **Backend**: Service resolves `bankAccountCode` / `bankAccountId` per entity and passes validated options into `buildRevenueReceivedJournal`
 
 ### 7. **Bank Account Management** ✅ (80% Complete)
 - **Add Bank Account**: Create bank account records
@@ -181,6 +193,7 @@ tenant-management-backend/
 │   │   ├── payment/              # Payment processing
 │   │   ├── accounting/           # Accounting module
 │   │   ├── revenue/              # Revenue tracking
+│   │   ├── expenses/             # Expense records & sources
 │   │   ├── banks/                # Bank account management
 │   │   ├── ledger/               # Ledger & transactions
 │   │   ├── electricity/          # Electricity tracking
@@ -193,32 +206,40 @@ tenant-management-backend/
 
 ### Frontend Structure
 ```
-tenant-management-frontend/tenant/
-├── src/
-│   ├── main.jsx                  # App entry point
-│   ├── App.jsx                   # Main app component with routes
-│   ├── components/
-│   │   ├── ui/                   # shadcn/ui components
-│   │   ├── layout/               # Layout components
-│   │   └── [feature-components]  # Feature-specific components
-│   ├── context/
-│   │   └── AuthContext.jsx       # Authentication context
-│   ├── hooks/                    # Custom React hooks
-│   ├── plugins/
-│   │   ├── axios.js              # Axios configuration
-│   │   └── socket.js             # Socket.io client
-│   ├── Accounts/                 # Accounting module
-│   ├── RentPaymentDashboard/     # Rent payment interface
-│   ├── Dashboard.jsx             # Main dashboard
-│   ├── tenants.jsx               # Tenant list
-│   ├── addTenants.jsx            # Add tenant form
-│   ├── editTenant.jsx            # Edit tenant form
-│   ├── Revenue.jsx               # Revenue management
-│   ├── Maintenance.jsx          # Maintenance requests
-│   ├── Electricity.jsx           # Electricity tracking
-│   ├── Cheque_drafts.jsx         # Cheque management
-│   ├── payments.jsx              # Payment history
-│   └── Admin.jsx                 # Admin settings
+tenant-management-frontend/
+├── references/                   # Project docs (overview, quick reference, domain notes)
+└── tenant/
+    └── src/
+        ├── main.jsx                  # App entry point
+        ├── App.jsx                   # Main app component with routes
+        ├── components/
+        │   ├── ui/                   # shadcn/ui components
+        │   ├── layout/               # AppLayout, shell (sidebar + header slot)
+        │   ├── header.jsx            # Top bar; supports HeaderSlotContext
+        │   ├── app-sidebar.jsx       # Admin navigation
+        │   └── ...
+        ├── context/
+        │   ├── AuthContext.jsx
+        │   ├── HeaderSlotContext.jsx # Injects dashboard actions / search into header
+        │   └── ThemeContext.jsx
+        ├── hooks/
+        ├── plugins/
+        │   ├── axios.js
+        │   └── socket.js
+        ├── Dashboard/
+        │   ├── Dashboard.jsx         # Main dashboard (bento grid, FY picker)
+        │   └── component/            # KpiStrip, BarDiagram, NeedsAttentionPanel, etc.
+        ├── Accounts/                 # Accounting module, AddRevenueDialog, AddExpenseDialog
+        ├── RentPaymentDashboard/
+        ├── tenants.jsx
+        ├── addTenants.jsx
+        ├── editTenant.jsx
+        ├── Revenue.jsx
+        ├── Maintenance.jsx
+        ├── Electricity.jsx
+        ├── Cheque_drafts.jsx
+        ├── payments.jsx
+        └── Admin.jsx
 ```
 
 ---
@@ -265,6 +286,7 @@ tenant-management-frontend/tenant/
    - Chart of accounts
    - Debit/Credit transactions
    - Account balances
+   - Journal builders (`ledger/journal-builders/`) tie revenue and expenses to **payment method** and **bank/cash** accounts; nepali posting dates stored as BS strings
 
 7. **Revenue Model**
    - Revenue source
@@ -387,15 +409,15 @@ tenant-management-frontend/tenant/
 
 ## 📊 Current Status
 
-### Overall Completion: ~50-55%
+### Overall Completion: ~52-57%
 
 #### ✅ Fully Implemented Modules (6)
 1. Payment Module - 100%
-2. Revenue Module - 100%
-3. Accounting Module - 80% (basic implementation)
-4. Dashboard Module - 70%
+2. Revenue Module - 100% (ledger posting rules tightened for bank/cash accuracy)
+3. Accounting Module - 80% (basic implementation; journal/date fixes in progress)
+4. Dashboard Module - ~75% (redesigned layout, FY-scoped chart, needs-attention panel)
 5. Bank Account Management - 80%
-6. Ledger & Transactions - 80%
+6. Ledger & Transactions - ~85% (stricter revenue/expense journal contracts)
 
 #### ⚠️ Partially Implemented Modules (5)
 1. Tenant Management - 85%
@@ -457,7 +479,7 @@ npm run dev
 5. Email verification flow completion
 
 ### Low Priority
-1. Advanced dashboard charts
+1. Further dashboard analytics beyond FY-scoped revenue trend
 2. Contract renewal management
 3. Mobile responsiveness improvements
 4. Performance optimizations
@@ -467,7 +489,8 @@ npm run dev
 
 ## 📝 Notes
 
-- The system uses **Nepali calendar** extensively for date handling
+- The system uses **Nepali calendar** extensively for date handling; API and ledger code normalize **BS `YYYY-MM-DD`** strings and avoid passing raw `Date` objects where a string is required
+- Converting English calendar strings to Nepali uses an explicit **`Date`** intermediate where libraries would otherwise interpret `YYYY-MM-DD` as Bikram Sambat
 - **Soft deletes** are implemented for most models (isDeleted flag)
 - **Real-time updates** via Socket.io (partially implemented)
 - **File storage** handled via Cloudinary
@@ -492,6 +515,6 @@ npm run dev
 
 ---
 
-**Last Updated**: January 27, 2026  
+**Last Updated**: March 29, 2026  
 **Project Status**: Active Development  
 **Version**: 1.0.0 (Development)

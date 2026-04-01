@@ -1,3 +1,4 @@
+// src/components/app-sidebar.jsx
 import {
   LayoutDashboard,
   Users,
@@ -21,11 +22,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useTheme } from "../context/ThemeContext";
-import { Button } from "@/components/ui/button";
-
-import {
-  Sun, Moon,
-} from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -41,13 +38,19 @@ import api from "../../plugins/axios";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
-/* ================= NAV STRUCTURE ================= */
-
-const PRIMARY_ITEMS = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-];
+/* ─── NAV STRUCTURE ─────────────────────────────────────────────────────────
+   Industry standard: flatten the nav into uniform groups. No separate
+   PRIMARY_ITEMS treatment — Dashboard is just the first item in the first
+   group. Uniform item sizing prevents the visual rhythm break.
+─────────────────────────────────────────────────────────────────────────── */
 
 const NAV_GROUPS = [
+  {
+    label: null, // No label for the top-level single item
+    items: [
+      { title: "Dashboard", url: "/", icon: LayoutDashboard, end: true },
+    ],
+  },
   {
     label: "Core",
     items: [
@@ -67,30 +70,27 @@ const NAV_GROUPS = [
   {
     label: "Operations",
     items: [
-      {
-        title: "Daily Checks",
-        url: "/admin-daily-checks",
-        icon: ClipboardCheck,
-        highlight: true,
-      },
+      { title: "Daily Checks", url: "/admin-daily-checks", icon: ClipboardCheck, badge: "Today" },
       { title: "Maintenance", url: "/maintenance", icon: Wrench },
     ],
   },
   {
     label: "Utilities",
-    items: [{ title: "Electricity", url: "/electricity", icon: Zap }],
+    items: [
+      { title: "Electricity", url: "/electricity", icon: Zap },
+    ],
+  },
+  {
+    label: "More",
+    collapsible: true, // Only this group collapses
+    items: [
+      { title: "Loans", url: "/loans", icon: Landmark },
+      { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
+    ],
   },
 ];
 
-const MORE_GROUP = {
-  label: "More",
-  items: [
-    { title: "Loans", url: "/loans", icon: Landmark },
-    { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
-  ],
-};
-
-/* ================= HELPERS ================= */
+/* ─── HELPERS ────────────────────────────────────────────────────────────── */
 
 function getInitials(name) {
   if (!name) return "AD";
@@ -102,27 +102,63 @@ function getInitials(name) {
     .join("");
 }
 
-/* ================= COMPONENT ================= */
+/* ─── NAV ITEM ───────────────────────────────────────────────────────────── */
+
+function NavItem({ item, onClick }) {
+  return (
+    <NavLink
+      to={item.url}
+      end={item.end ?? false}
+      onClick={onClick}
+      className={({ isActive }) =>
+        cn(
+          "group flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors",
+          isActive
+            ? "bg-sidebar-primary text-sidebar-primary-foreground"
+            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {/* Active indicator bar — consistent across all items */}
+          <span
+            className={cn(
+              "w-0.5 h-3.5 rounded-full shrink-0 transition-colors",
+              isActive ? "bg-sidebar-ring" : "bg-transparent"
+            )}
+          />
+          <item.icon className="w-3.5 h-3.5 shrink-0" />
+          <span className="flex-1 truncate">{item.title}</span>
+          {item.badge && (
+            <span className="text-[9px] font-semibold bg-green-500/15 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-full border border-green-500/20">
+              {item.badge}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+/* ─── COMPONENT ──────────────────────────────────────────────────────────── */
 
 export default function AppSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
-  const iconBtnBase = "size-7 p-0 rounded-full hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors";
-  const iconBtnStyle = { color: "var(--color-text-sub)" };
-
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState({});
 
   const handleNav = () => {
     if (isMobile) setOpenMobile(false);
   };
 
-  const SignOut = async () => {
-    try {
-      await api.post("/api/auth/logout");
-    } catch (_) { }
+  const toggleGroup = (label) =>
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
 
+  const SignOut = async () => {
+    try { await api.post("/api/auth/logout"); } catch (_) { }
     logout();
     navigate("/login");
     toast.success("Signed out successfully");
@@ -132,178 +168,119 @@ export default function AppSidebar() {
   const avatarSrc = user?.profilePicture || undefined;
 
   return (
+    /*
+      FIX: --sidebar-width is now set on SidebarProvider in AppLayout.
+      Do NOT set it here — it would be scoped to the sidebar element only
+      and not readable by the header separator in AppLayout.
+    */
     <Sidebar className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       <SidebarRail />
 
-      {/* ================= BRAND ================= */}
-      <div className="flex items-center gap-2.5 px-2 py-2.5 border-b border-sidebar-border">
+      {/* ── BRAND ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2.5 px-3 py-3 border-b border-sidebar-border shrink-0">
         <img
           src="/logo.jpeg"
           alt="Sallyan House"
           className="w-7 h-7 rounded-md object-contain shrink-0"
         />
-
         <div className="min-w-0">
-          <p className="text-[13px] font-semibold truncate">
+          <p className="text-[13px] font-semibold truncate leading-tight">
             Sallyan House
           </p>
-          <p className="text-[10px] uppercase tracking-[0.22em] opacity-60">
+          <p className="text-[10px] uppercase tracking-[0.22em] opacity-50 leading-tight">
             Management
           </p>
         </div>
       </div>
 
-      {/* ================= NAVIGATION ================= */}
-      <SidebarContent className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
+      {/* ── NAVIGATION ────────────────────────────────────────────────────
+          FIX: overflow-y-auto (not overflow-hidden) so items are never
+          clipped on shorter viewports. Any number of new nav items can be
+          added safely — the area scrolls instead of cutting off.
+      ─────────────────────────────────────────────────────────────────── */}
+      <SidebarContent className="flex-1 overflow-y-auto py-2 px-1.5 flex flex-col gap-1">
 
-        {/* Primary Items (No Group Label) */}
-        <nav className="flex flex-col gap-1">
-          {PRIMARY_ITEMS.map((item) => (
-            <NavLink
-              key={item.title}
-              to={item.url}
-              end={item.url === "/"}
-              onClick={handleNav}
-              className={({ isActive }) =>
-                [
-                  "group flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors",
-                  isActive
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                ].join(" ")
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span
-                    className={`w-0.5 h-4 rounded-full ${isActive ? "bg-sidebar-ring" : "bg-transparent"
-                      }`}
-                  />
-                  <item.icon className="w-3.5 h-3.5 shrink-0" />
-                  <span>{item.title}</span>
-                </>
+        {NAV_GROUPS.map((group, gi) => {
+          const isCollapsible = group.collapsible;
+          const isOpen = openGroups[group.label] ?? false;
+
+          return (
+            <div key={group.label ?? `group-${gi}`} className={gi > 0 ? "mt-3" : ""}>
+
+              {/* Group label ─────────────────────────────────────────────
+                  Industry standard (Linear/Vercel/Notion): labels sit at
+                  ~60-70% opacity, NOT 50%, so the visual hierarchy reads
+                  as: label → items, not label ≈ items. Collapsible groups
+                  get a chevron.
+              ──────────────────────────────────────────────────────────── */}
+              {group.label && (
+                isCollapsible ? (
+                  <button
+                    onClick={() => toggleGroup(group.label)}
+                    className="w-full flex items-center justify-between px-2.5 mb-1 text-[10px] font-semibold
+                               tracking-[0.16em] uppercase transition-colors"
+                    style={{ color: "var(--sidebar-foreground, currentColor)", opacity: 0.5 }}
+                  >
+                    <span>{group.label}</span>
+                    <ChevronDown
+                      className={cn(
+                        "w-3 h-3 transition-transform duration-200",
+                        isOpen && "rotate-180"
+                      )}
+                    />
+                  </button>
+                ) : (
+                  <p
+                    className="px-2.5 mb-1 text-[10px] font-semibold tracking-[0.16em] uppercase"
+                    style={{ color: "var(--sidebar-foreground, currentColor)", opacity: 0.5 }}
+                  >
+                    {group.label}
+                  </p>
+                )
               )}
-            </NavLink>
-          ))}
-        </nav>
 
-        {/* Grouped Navigation */}
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label}>
-            <p
-              className={`px-2 mb-1.5 text-[9px] font-medium tracking-[0.24em] uppercase ${group.label === "Finance" ? "text-primary" : "opacity-60"
-                }`}
-            >
-              {group.label}
-            </p>
+              {/* Items ──────────────────────────────────────────────────── */}
+              <nav
+                className={cn(
+                  "flex flex-col gap-0.5",
+                  isCollapsible && "overflow-hidden transition-all duration-200",
+                  isCollapsible && (isOpen ? "max-h-96" : "max-h-0")
+                )}
+              >
+                {group.items.map((item) => (
+                  <NavItem key={item.title} item={item} onClick={handleNav} />
+                ))}
+              </nav>
+            </div>
+          );
+        })}
 
-            <nav className="flex flex-col gap-1">
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.title}
-                  to={item.url}
-                  end={item.url === "/"}
-                  onClick={handleNav}
-                  className={({ isActive }) =>
-                    [
-                      "group flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors",
-                      isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    ].join(" ")
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <span
-                        className={`w-0.5 h-4 rounded-full ${isActive ? "bg-sidebar-ring" : "bg-transparent"
-                          }`}
-                      />
-                      <item.icon className="w-3.5 h-3.5 shrink-0" />
-
-                      <span className="flex items-center gap-2">
-                        {item.title}
-
-                        {/* Highlight Daily Checks */}
-                        {item.highlight && (
-                          <span className="text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded">
-                            Today
-                          </span>
-                        )}
-                      </span>
-                    </>
-                  )}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-        ))}
-
-        {/* ================= MORE (COLLAPSIBLE) ================= */}
-        <div>
-          <button
-            onClick={() => setMoreOpen(!moreOpen)}
-            className="w-full flex items-center justify-between px-2 mb-1.5 text-[9px] font-medium tracking-[0.24em] uppercase opacity-60"
-          >
-            More
-            <ChevronDown
-              className={`w-3.5 h-3.5 transition-transform ${moreOpen ? "rotate-180" : ""
-                }`}
-            />
-          </button>
-
-          <div
-            className={`overflow-hidden transition-all duration-300 ${moreOpen ? "max-h-40" : "max-h-0"
-              }`}
-          >
-            <nav className="flex flex-col gap-1 mt-1">
-              {MORE_GROUP.items.map((item) => (
-                <NavLink
-                  key={item.title}
-                  to={item.url}
-                  onClick={handleNav}
-                  className={({ isActive }) =>
-                    [
-                      "group flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors",
-                      isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    ].join(" ")
-                  }
-                >
-                  <item.icon className="w-3.5 h-3.5 shrink-0" />
-                  <span>{item.title}</span>
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-        </div>
       </SidebarContent>
 
-      {/* ================= FOOTER ================= */}
-      <SidebarFooter className="p-3 border-t border-sidebar-border">
+      {/* ── FOOTER ────────────────────────────────────────────────────── */}
+      <SidebarFooter className="p-3 border-t border-sidebar-border shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md hover:bg-sidebar-accent transition">
-              <Avatar className="h-7 w-7 shrink-0">
+            <button className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors">
+              <Avatar className="h-6 w-6 shrink-0">
                 {avatarSrc && (
                   <AvatarImage src={avatarSrc} alt={user?.name ?? "Profile"} />
                 )}
-                <AvatarFallback className="text-[11px] font-semibold bg-sidebar-accent">
+                <AvatarFallback className="text-[10px] font-semibold bg-sidebar-accent">
                   {initials}
                 </AvatarFallback>
               </Avatar>
 
               <div className="flex flex-col text-left leading-tight min-w-0 flex-1">
-                <span className="text-[13px] font-medium truncate">
+                <span className="text-[12px] font-medium truncate">
                   {user?.name ?? "Admin"}
                 </span>
-                <span className="text-[11px] opacity-60 truncate">
+                <span className="text-[11px] truncate" style={{ opacity: 0.5 }}>
                   {user?.email ?? "admin@sallyanhouse.com"}
                 </span>
               </div>
 
-              <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+              <ChevronDown className="w-3 h-3 shrink-0" style={{ opacity: 0.5 }} />
             </button>
           </DropdownMenuTrigger>
 
@@ -315,9 +292,7 @@ export default function AppSidebar() {
               <span className="text-sm">Appearance</span>
               <div className={cn(
                 "flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium transition-colors",
-                isDark
-                  ? "bg-zinc-700 text-zinc-200"
-                  : "bg-zinc-100 text-zinc-600"
+                isDark ? "bg-zinc-700 text-zinc-200" : "bg-zinc-100 text-zinc-600"
               )}>
                 {isDark ? <Moon className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
                 {isDark ? "Dark" : "Light"}
@@ -326,10 +301,7 @@ export default function AppSidebar() {
             <DropdownMenuItem onClick={() => navigate("/admin")}>
               Account settings
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={SignOut}
-              className="text-destructive"
-            >
+            <DropdownMenuItem onClick={SignOut} className="text-destructive">
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

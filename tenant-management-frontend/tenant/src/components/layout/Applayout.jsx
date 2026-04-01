@@ -17,7 +17,14 @@ export default function AppLayout({ children }) {
   return (
     <ThemeProvider>
       <HeaderSlotProvider>
-        <SidebarProvider>
+        {/*
+          FIX: --sidebar-width must live on SidebarProvider, not on <Sidebar>.
+          SidebarProvider writes this var to :root; any child reading
+          w-[--sidebar-width] (e.g. the header separator) will now track it
+          correctly. Previously Sidebar set 220px but Provider defaulted to
+          240px → 20px misalignment = the visible "gap".
+        */}
+        <SidebarProvider style={{ "--sidebar-width": "220px" }}>
           {isAdmin ? <AppSidebar /> : <StaffSidebar />}
 
           <SidebarInset className="relative flex flex-col h-screen bg-background overflow-hidden">
@@ -27,14 +34,9 @@ export default function AppLayout({ children }) {
               style={{ height: "57px" }}
             >
               {/*
-                KEY FIX: w-[--sidebar-width] makes this wrapper exactly as wide
-                as the sidebar — no hardcoding, it just tracks the CSS variable
-                that SidebarProvider sets on :root. The border-r then lands
-                perfectly on top of the sidebar's right border.
-
-                When the sidebar collapses, --sidebar-width changes automatically
-                and the separator follows with the same ease-linear transition
-                that shadcn uses internally for the sidebar animation.
+                This wrapper mirrors the sidebar width exactly so the
+                SidebarTrigger sits flush over the sidebar's right border.
+                transition-[width] matches shadcn's collapse animation timing.
               */}
               <div
                 className="flex items-center justify-center self-stretch shrink-0 border-r border-border
@@ -52,6 +54,7 @@ export default function AppLayout({ children }) {
                 <Header />
               </div>
             </header>
+
             <PushNotificationBanner />
 
             <main className="flex-1 overflow-y-auto overflow-x-hidden">

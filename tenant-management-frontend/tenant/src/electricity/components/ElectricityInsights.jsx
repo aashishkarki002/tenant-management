@@ -5,26 +5,16 @@ import { getConsumption } from "../utils/electricityCalculations";
 const METER_TYPE_KEYS = ["unit", "common_area", "parking", "sub_meter"];
 
 const fmt = {
-  kwh: (n) =>
-    Number(n).toLocaleString("en-NP", {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }),
-  rs: (n) =>
-    `Rs ${Number(n).toLocaleString("en-NP", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    })}`,
+  kwh: (n) => Number(n).toLocaleString("en-NP", { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+  rs: (n) => `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`,
 };
 
 export function ElectricityInsights({ grouped = {} }) {
   const insights = useMemo(() => {
     let allReadings = [];
     for (const key of METER_TYPE_KEYS) {
-      const readings = grouped[key]?.readings ?? [];
-      allReadings = allReadings.concat(readings);
+      allReadings = allReadings.concat(grouped[key]?.readings ?? []);
     }
-
     if (allReadings.length === 0) return null;
 
     let highest = null;
@@ -34,16 +24,11 @@ export function ElectricityInsights({ grouped = {} }) {
 
     for (const r of allReadings) {
       const consumption = r.unitsConsumed != null ? Number(r.unitsConsumed) : getConsumption(r);
-      const name =
-        r.unit?.name ?? r.unit?.unitName ?? r.subMeter?.name ?? "Unknown";
+      const name = r.unit?.name ?? r.unit?.unitName ?? r.subMeter?.name ?? "Unknown";
 
       if (consumption > 0) {
-        if (!highest || consumption > highest.consumption) {
-          highest = { name, consumption };
-        }
-        if (!lowest || consumption < lowest.consumption) {
-          lowest = { name, consumption };
-        }
+        if (!highest || consumption > highest.consumption) highest = { name, consumption };
+        if (!lowest || consumption < lowest.consumption) lowest = { name, consumption };
       }
 
       const status = String(r.status ?? "pending").toLowerCase();
@@ -63,9 +48,8 @@ export function ElectricityInsights({ grouped = {} }) {
     highest && {
       id: "highest",
       icon: TrendingUp,
-      iconBg: "bg-danger-bg",
-      iconColor: "text-danger",
-      borderColor: "border-danger-border",
+      iconBg: "var(--color-danger-bg)",
+      iconColor: "var(--color-danger)",
       label: "Highest Consumption",
       value: `${fmt.kwh(highest.consumption)} kWh`,
       detail: highest.name,
@@ -73,9 +57,8 @@ export function ElectricityInsights({ grouped = {} }) {
     lowest && {
       id: "lowest",
       icon: TrendingDown,
-      iconBg: "bg-success-bg",
-      iconColor: "text-success",
-      borderColor: "border-success-border",
+      iconBg: "var(--color-success-bg)",
+      iconColor: "var(--color-success)",
       label: "Lowest Consumption",
       value: `${fmt.kwh(lowest.consumption)} kWh`,
       detail: lowest.name,
@@ -83,39 +66,75 @@ export function ElectricityInsights({ grouped = {} }) {
     unpaidCount > 0 && {
       id: "unpaid",
       icon: AlertCircle,
-      iconBg: "bg-warning-bg",
-      iconColor: "text-warning",
-      borderColor: "border-warning-border",
-      label: "Unpaid Electricity Total",
+      iconBg: "var(--color-warning-bg)",
+      iconColor: "var(--color-warning)",
+      label: "Unpaid Total",
       value: fmt.rs(unpaidTotal),
-      detail: `Across ${unpaidCount} tenant${unpaidCount !== 1 ? "s" : ""}`,
+      detail: `${unpaidCount} tenant${unpaidCount !== 1 ? "s" : ""}`,
     },
   ].filter(Boolean);
 
   if (cards.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {cards.map((card, index) => {
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(3, minmax(0, 1fr))`, gap: "10px" }}>
+      {cards.map((card) => {
         const Icon = card.icon;
         return (
           <div
             key={card.id}
-            className={`group flex items-center gap-3 bg-surface-raised rounded-xl border ${card.borderColor ?? "border-muted-fill"} 
-              px-4 py-3.5 transition-all duration-200 hover:shadow-md hover:scale-[1.02]
-              animate-in fade-in slide-in-from-left-2`}
-            style={{ animationDelay: `${index * 75}ms` }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              backgroundColor: "var(--color-surface-raised)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-lg)",
+              padding: "12px 16px",
+              boxShadow: "var(--shadow-card)",
+            }}
           >
-            <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${card.iconBg} shrink-0
-              transition-transform duration-200 group-hover:scale-110 shadow-sm`}>
-              <Icon className={`w-5 h-5 ${card.iconColor}`} />
+            <div
+              style={{
+                width: "34px",
+                height: "34px",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: card.iconBg,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Icon style={{ width: "15px", height: "15px", color: card.iconColor }} />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold tracking-wider uppercase text-text-sub mb-0.5">
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
+                  color: "var(--color-text-sub)",
+                  marginBottom: "2px",
+                }}
+              >
                 {card.label}
               </p>
-              <p className="text-base font-bold text-text-strong truncate leading-tight">{card.value}</p>
-              <p className="text-xs text-text-sub truncate mt-1">{card.detail}</p>
+              <p
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "var(--color-text-strong)",
+                  letterSpacing: "-0.01em",
+                  lineHeight: 1.2,
+                }}
+              >
+                {card.value}
+              </p>
+              <p style={{ fontSize: "12px", color: "var(--color-text-sub)", marginTop: "2px" }}>
+                {card.detail}
+              </p>
             </div>
           </div>
         );

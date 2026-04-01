@@ -524,9 +524,7 @@ export default function StaffDashboard() {
     // Maintenance completion ring (secondary)
     const totalAssigned = maintenance.length;
     const completedCount = completedTasks.length;
-    const completionPct = totalAssigned > 0 ? Math.round((completedCount / totalAssigned) * 100) : 0;
-    const ringCircumference = 2 * Math.PI * 20;
-    const ringOffset = ringCircumference - (completionPct / 100) * ringCircumference;
+    const completionPct = totalAssigned > 0 ? Math.max(0, Math.min(100, Math.round((completedCount / totalAssigned) * 100))) : 0;
 
     // ── Page header — matches Dashboard.jsx PageHeader ────────────────────────
     const PageHeader = (
@@ -697,22 +695,7 @@ export default function StaffDashboard() {
                                     <Empty icon={TrendingUp} message="No tasks yet" subMessage="Tasks will appear here once assigned" />
                                 ) : (
                                     <>
-                                        {/* Inline SVG ring — consistent with DailyChecksHero ring style */}
-                                        <div className="relative flex items-center justify-center" style={{ width: 100, height: 100 }}>
-                                            <svg width="100" height="100" style={{ transform: "rotate(-90deg)" }}>
-                                                <circle cx="50" cy="50" r="40" fill="none" stroke="var(--color-muted)" strokeWidth="7" />
-                                                <circle cx="50" cy="50" r="40" fill="none" stroke="var(--color-accent)" strokeWidth="7"
-                                                    strokeLinecap="round"
-                                                    strokeDasharray={ringCircumference * 2}
-                                                    strokeDashoffset={ringCircumference * 2 - (completionPct / 100) * ringCircumference * 2}
-                                                    style={{ transition: "stroke-dashoffset 0.6s ease" }}
-                                                />
-                                            </svg>
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                                <span className="text-2xl font-black tabular-nums text-[var(--color-text-strong)] leading-none">{completionPct}%</span>
-                                                <span className="text-[10px] font-semibold text-[var(--color-text-sub)] mt-0.5">done</span>
-                                            </div>
-                                        </div>
+                                        <CircularProgress pct={completionPct} size={100} strokeWidth={7} label="done" />
                                         <div className="w-full space-y-2 text-center">
                                             <p className="text-sm font-semibold text-[var(--color-text-strong)]">
                                                 {completedCount} of {totalAssigned}

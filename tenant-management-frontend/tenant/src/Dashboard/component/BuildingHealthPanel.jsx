@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Circle } from "lucide-react";
 
 // ─── Building Health Progress Ring ───────────────────────────────────────────
 function HealthRing({ completionRate = 0, size = 120 }) {
@@ -63,6 +63,7 @@ export default function BuildingHealthPanel({ stats, loading }) {
     const total = Number.isFinite(safety.total) ? safety.total : 0;
     const pending = Number.isFinite(safety.pending) ? safety.pending : 0;
     const issues = Number.isFinite(safety.issues) ? safety.issues : 0;
+    const trend = stats?.safety?.trend ?? [];
 
     return (
         <div className="bg-card dark:bg-card rounded-2xl shadow-sm border border-border overflow-hidden h-full flex flex-col">
@@ -98,6 +99,21 @@ export default function BuildingHealthPanel({ stats, loading }) {
                         <span className="font-semibold text-foreground">{issues}</span>
                     </div>
                 </div>
+                <div className="flex items-center justify-between px-1 mt-2">
+                    {Array.from({ length: 7 }, (_, i) => {
+                        const day = trend[i];
+                        const color = !day ? 'var(--color-border-secondary)'
+                            : day.hasIssues ? 'var(--warning)'
+                                : day.rate === 100 ? 'var(--success)'
+                                    : day.rate > 0 ? 'var(--warning)'
+                                        : 'var(--destructive)';
+                        return (
+                            <div key={i} title={day ? `${day.date}: ${day.rate}%` : 'No data'}
+                                className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                        );
+                    })}
+                </div>
+                <p className="text-[9px] text-muted-foreground text-center mt-1">Past 7 days</p>
             </div>
         </div>
     );

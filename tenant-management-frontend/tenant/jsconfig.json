@@ -1,5 +1,5 @@
 {
-  "files": [],
+  "files": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx"],
   "references": [],
   "compilerOptions": {
     "baseUrl": ".",

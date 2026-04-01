@@ -11,9 +11,6 @@ import { getConsumption, formatConsumption } from "../utils/electricityCalculati
 import ElectricityPaymentDialog from "./ElectricityPaymentDialog";
 import { useNavigate } from "react-router-dom";
 
-// ─── Status config ────────────────────────────────────────────────────────────
-// All values use CSS variables — no Tailwind colour classes that may be purged.
-
 const STATUS_CONFIG = {
   paid: {
     badgeBg: "var(--color-success-bg)",
@@ -50,31 +47,39 @@ const FALLBACK_STATUS = {
 
 const PAYABLE_STATUSES = new Set(["pending", "partially_paid", "overdue"]);
 
-// ─── Formatters ───────────────────────────────────────────────────────────────
-
 const fmtRs = (n) =>
   `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
-
-// ─── Chip / badge ─────────────────────────────────────────────────────────────
 
 function Chip({ label, bg, text, border }) {
   return (
     <span
-      className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
-      style={{ backgroundColor: bg, color: text, border: `1px solid ${border}` }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "1px 6px",
+        borderRadius: "99px",
+        fontSize: "10px",
+        fontWeight: 600,
+        backgroundColor: bg,
+        color: text,
+        border: `1px solid ${border}`,
+      }}
     >
       {label}
     </span>
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+const TD = ({ children, style = {} }) => (
+  <td style={{ padding: "10px 14px", fontSize: "13px", color: "var(--color-text-body)", ...style }}>
+    {children}
+  </td>
+);
 
 export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const navigate = useNavigate();
 
-  // Resolve display name from whichever populated field is present.
   const unitName =
     record.unit?.name ??
     record.unit?.unitName ??
@@ -106,115 +111,94 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
   return (
     <>
       <tr
-        className="transition-colors hover:bg-surface"
-        style={{ backgroundColor: statusConfig.rowBg }}
+        style={{
+          backgroundColor: statusConfig.rowBg,
+          borderBottom: "1px solid var(--color-border)",
+          transition: "background-color 0.1s",
+        }}
+        onMouseEnter={(e) => {
+          if (!statusConfig.rowBg || statusConfig.rowBg === "transparent") {
+            e.currentTarget.style.backgroundColor = "var(--color-surface)";
+          }
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = statusConfig.rowBg;
+        }}
       >
-        {/* Name + tags */}
-        <td className="py-3 px-4">
-          <p
-            className="text-sm font-medium"
-            style={{ color: "var(--color-text-strong)" }}
-          >
+        {/* Name */}
+        <TD>
+          <p style={{ fontWeight: 600, color: "var(--color-text-strong)", fontSize: "13px" }}>
             {unitName}
           </p>
-          <div className="flex flex-wrap gap-1 mt-1">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "3px" }}>
             {record.meterType === "sub_meter" &&
               record.subMeter?.name?.startsWith("Generator –") && (
-                <Chip
-                  label="Generator"
-                  bg="var(--color-warning-bg)"
-                  text="var(--color-warning)"
-                  border="var(--color-warning-border)"
-                />
+                <Chip label="Generator" bg="var(--color-warning-bg)" text="var(--color-warning)" border="var(--color-warning-border)" />
               )}
             {record.isTenantTransition && (
-              <Chip
-                label="Transition"
-                bg="var(--color-warning-bg)"
-                text="var(--color-warning)"
-                border="var(--color-warning-border)"
-              />
+              <Chip label="Transition" bg="var(--color-warning-bg)" text="var(--color-warning)" border="var(--color-warning-border)" />
             )}
             {!record.tenant && record.meterType === "unit" && (
-              <Chip
-                label="Vacant"
-                bg="var(--color-surface)"
-                text="var(--color-text-sub)"
-                border="var(--color-border)"
-              />
+              <Chip label="Vacant" bg="var(--color-surface)" text="var(--color-text-sub)" border="var(--color-border)" />
             )}
           </div>
-        </td>
+        </TD>
 
         {/* Type */}
-        <td className="py-3 px-4">
-          <span
-            className="text-xs font-medium capitalize"
-            style={{ color: "var(--color-text-sub)" }}
-          >
-            {record.meterType?.replace("_", " ") || "—"}
-          </span>
-        </td>
+        <TD style={{ color: "var(--color-text-sub)", fontSize: "12px" }}>
+          {record.meterType?.replace("_", " ") || "—"}
+        </TD>
 
         {/* Building */}
-        <td
-          className="py-3 px-4 text-sm"
-          style={{ color: "var(--color-text-sub)" }}
-        >
+        <TD style={{ color: "var(--color-text-sub)", fontSize: "12px" }}>
           {record.unit?.block?.name ?? record.subMeter?.block?.name ?? "—"}
-        </td>
+        </TD>
 
-        {/* Previous reading */}
-        <td
-          className="py-3 px-4 text-sm tabular-nums"
-          style={{ color: "var(--color-text-sub)" }}
-        >
-          {Number(record.previousReading) > 0
-            ? Number(record.previousReading).toFixed(1)
-            : "—"}
-        </td>
+        {/* Previous */}
+        <TD style={{ color: "var(--color-text-sub)", fontVariantNumeric: "tabular-nums" }}>
+          {Number(record.previousReading) > 0 ? Number(record.previousReading).toFixed(1) : "—"}
+        </TD>
 
-        {/* Current reading */}
-        <td
-          className="py-3 px-4 text-sm tabular-nums"
-          style={{ color: "var(--color-text-sub)" }}
-        >
-          {Number(record.currentReading) > 0
-            ? Number(record.currentReading).toFixed(1)
-            : "—"}
-        </td>
+        {/* Current */}
+        <TD style={{ color: "var(--color-text-sub)", fontVariantNumeric: "tabular-nums" }}>
+          {Number(record.currentReading) > 0 ? Number(record.currentReading).toFixed(1) : "—"}
+        </TD>
 
         {/* Consumption */}
-        <td className="py-3 px-4">
+        <TD>
           {consumption > 0 ? (
             <span
-              className="text-sm font-semibold tabular-nums"
-              style={{ color: "var(--color-accent)" }}
+              style={{
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "var(--color-accent)",
+                fontVariantNumeric: "tabular-nums",
+              }}
             >
               {formatConsumption(consumption)} kWh
             </span>
           ) : (
-            <span className="text-sm" style={{ color: "var(--color-text-sub)" }}>
-              —
-            </span>
+            <span style={{ color: "var(--color-text-sub)" }}>—</span>
           )}
-        </td>
+        </TD>
 
         {/* Bill amount */}
-        <td className="py-3 px-4">
-          <span
-            className="text-sm font-medium tabular-nums"
-            style={{ color: "var(--color-text-strong)" }}
-          >
-            {fmtRs(totalAmount)}
-          </span>
-        </td>
+        <TD style={{ fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+          {fmtRs(totalAmount)}
+        </TD>
 
-        {/* Status badge */}
-        <td className="py-3 px-4">
+        {/* Status */}
+        <TD>
           <span
-            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "2px 8px",
+              borderRadius: "99px",
+              fontSize: "10px",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
               backgroundColor: statusConfig.badgeBg,
               color: statusConfig.badgeText,
               border: `1px solid ${statusConfig.badgeBorder}`,
@@ -222,52 +206,63 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
           >
             {status.replace("_", " ")}
           </span>
-        </td>
+        </TD>
 
-        {/* Reading date */}
-        <td
-          className="py-3 px-4 text-xs tabular-nums whitespace-nowrap"
-          style={{ color: "var(--color-text-sub)" }}
-        >
+        {/* Date */}
+        <TD style={{ color: "var(--color-text-sub)", fontSize: "12px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
           {record.nepaliDate ?? record.readingDate?.slice(0, 10) ?? "—"}
-        </td>
+        </TD>
 
         {/* Actions */}
-        <td className="py-3 px-4">
-          <div className="flex items-center gap-1">
+        <TD>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "flex-end" }}>
             {isPayable && (
-              <Button
-                size="sm"
+              <button
+                type="button"
                 onClick={() => setPaymentDialogOpen(true)}
-                className="h-7 px-2.5 text-xs rounded-md"
                 style={{
+                  height: "26px",
+                  padding: "0 10px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  borderRadius: "var(--radius-md)",
+                  border: "none",
                   backgroundColor: "var(--color-accent)",
                   color: "#fff",
-                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
                 }}
               >
-                <CreditCard className="w-3 h-3 mr-1" />
+                <CreditCard style={{ width: "11px", height: "11px" }} />
                 Pay
-              </Button>
+              </button>
             )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 rounded-md"
-                  style={{ color: "var(--color-text-sub)" }}
+                <button
+                  type="button"
+                  style={{
+                    width: "26px",
+                    height: "26px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--color-border)",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: "var(--color-text-sub)",
+                  }}
                 >
-                  <MoreHorizontal className="w-4 h-4" />
-                </Button>
+                  <MoreHorizontal style={{ width: "13px", height: "13px" }} />
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
                 {record.tenant?._id && (
-                  <DropdownMenuItem
-                    onClick={handleViewDetails}
-                    className="text-sm cursor-pointer"
-                  >
+                  <DropdownMenuItem onClick={handleViewDetails} className="text-sm cursor-pointer">
                     <Eye className="w-3.5 h-3.5 mr-2" />
                     View Details
                   </DropdownMenuItem>
@@ -279,7 +274,7 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </td>
+        </TD>
       </tr>
 
       <ElectricityPaymentDialog

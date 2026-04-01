@@ -1,171 +1,85 @@
-import { useCallback } from "react";
+/**
+ * dailychecks.jsx  — redesigned page
+ *
+ * Two-tab layout:
+ *   Tab 1 "Today"   → TodayBoard  (primary, daily-use view)
+ *   Tab 2 "History" → ChecklistCalendar  (month grid → click day → see results)
+ *
+ * The old card-grid history is gone.
+ * No infinite scroll. No pagination of individual result cards.
+ */
+
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { RefreshCw, SlidersHorizontal, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import NepaliDate from "nepali-datetime";
+import TodayBoard from "./components/TodayBoard";
+import ChecklistCalendar from "./components/ChecklistCalendar";
 
-import useChecklistHistory from "./hooks/useCheckListHistory";
-import DayGroup from "./components/DayGroup";
-import ChecklistPagination from "./components/CheckListPagination";
-import ChecklistHistorySkeleton from "./components/CheckListHistorySkeleton";
-import ChecklistHistoryEmpty from "./components/CheckListHistoryEmpty";
-import { CATEGORY_LABELS } from "./constants/checkListConstants";
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const OWNERSHIP_ENTITY_ID = "6970f5a7464f3514eb16051c";
+/**
+ * Zero-padded Nepali ISO date string from a NepaliDate instance.
+ * "2082-03-14"
+ */
+function toNepaliISO(nd) {
+  const y = nd.getYear();
+  const m = String(nd.getMonth() + 1).padStart(2, "0");
+  const d = String(nd.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
-const STATUS_OPTIONS = [
-  { value: "PENDING", label: "Pending" },
-  { value: "IN_PROGRESS", label: "In Progress" },
-  { value: "COMPLETED", label: "Completed" },
-  { value: "INCOMPLETE", label: "Incomplete" },
+function getCurrentNepaliYearMonth() {
+  const nd = new NepaliDate(new Date());
+  return { year: nd.getYear(), month: nd.getMonth() + 1 };
+}
+
+// ─── Tab bar ──────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: "today", label: "Today" },
+  { id: "history", label: "History" },
 ];
 
-// ─── Active filter pill ───────────────────────────────────────────────────────
-function FilterPill({ label, onRemove }) {
+function TabBar({ activeTab, onTabChange }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-primary/8 text-primary rounded-full px-2.5 py-1 ring-1 ring-inset ring-primary/20">
-      {label}
-      <button
-        onClick={onRemove}
-        className="hover:text-destructive transition-colors ml-0.5"
-        aria-label={`Remove ${label} filter`}
-      >
-        <X className="h-2.5 w-2.5" />
-      </button>
-    </span>
-  );
-}
-
-// ─── Legend ───────────────────────────────────────────────────────────────────
-function Legend() {
-  return (
-    <div className="flex items-center gap-4">
-      {[
-        { color: "bg-emerald-400", label: "Passed" },
-        { color: "bg-rose-400", label: "Failed" },
-        { color: "bg-zinc-200", label: "Pending" },
-      ].map(({ color, label }) => (
-        <span key={label} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className={`inline-block w-2 h-2 rounded-sm ${color}`} />
-          {label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// ─── Inline filter bar ────────────────────────────────────────────────────────
-function FilterBar({ filters, setFilters, blocks, isLoading }) {
-  function set(key, val) {
-    setFilters((prev) => ({ ...prev, [key]: val === "__ALL__" ? "" : val }));
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {/* Category */}
-      <Select
-        value={filters.category || "__ALL__"}
-        onValueChange={(v) => set("category", v)}
-        disabled={isLoading}
-      >
-        <SelectTrigger className="h-8 w-44 text-xs">
-          <SelectValue placeholder="All categories" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__ALL__">All categories</SelectItem>
-          {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-            <SelectItem key={key} value={key}>{label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Block */}
-      {blocks.length > 0 && (
-        <Select
-          value={filters.blockId || "__ALL__"}
-          onValueChange={(v) => set("blockId", v)}
-          disabled={isLoading}
+    <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
+      {TABS.map(({ id, label }) => (
+        <button
+          key={id}
+          onClick={() => onTabChange(id)}
+          className={[
+            "px-4 py-1.5 rounded-md text-xs font-medium transition-all duration-100",
+            activeTab === id
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          ].join(" ")}
         >
-          <SelectTrigger className="h-8 w-36 text-xs">
-            <SelectValue placeholder="All blocks" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__ALL__">All blocks</SelectItem>
-            {blocks.map((b) => (
-              <SelectItem key={b._id} value={b._id}>{b.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {/* Status */}
-      <Select
-        value={filters.status || "__ALL__"}
-        onValueChange={(v) => set("status", v)}
-        disabled={isLoading}
-      >
-        <SelectTrigger className="h-8 w-36 text-xs">
-          <SelectValue placeholder="All statuses" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__ALL__">All statuses</SelectItem>
-          {STATUS_OPTIONS.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Issues */}
-      <Select
-        value={filters.hasIssues === "" ? "__ALL__" : String(filters.hasIssues)}
-        onValueChange={(v) => set("hasIssues", v === "__ALL__" ? "" : v)}
-        disabled={isLoading}
-      >
-        <SelectTrigger className="h-8 w-32 text-xs">
-          <SelectValue placeholder="Any result" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__ALL__">Any result</SelectItem>
-          <SelectItem value="true">Has issues</SelectItem>
-          <SelectItem value="false">No issues</SelectItem>
-        </SelectContent>
-      </Select>
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const OWNERSHIP_ENTITY_ID = "6970f5a7464f3514eb16051c";
+
 /**
- * ChecklistHistory — redesigned page
+ * DailyChecksPage
  *
  * Props:
- *   propertyId  string
- *   blocks      [{ _id, name }]
+ *   propertyId  string   — passed in from route/parent
  */
-function ChecklistHistory({ propertyId, blocks = [] }) {
+function DailyChecksPage({ propertyId }) {
   const navigate = useNavigate();
   const effectivePropertyId = propertyId ?? OWNERSHIP_ENTITY_ID;
 
-  const {
-    groupedDays,
-    filters,
-    setFilters,
-    pagination,
-    goToPage,
-    isLoading,
-    error,
-    refetch,
-  } = useChecklistHistory(effectivePropertyId);
+  const [activeTab, setActiveTab] = useState("today");
 
-  const activeFilterEntries = Object.entries(filters).filter(([, v]) => v !== "");
-  const hasActiveFilters = activeFilterEntries.length > 0;
+  // Today's Nepali date — used to highlight calendar cell and as TodayBoard default
+  const todayNepaliDate = toNepaliISO(new NepaliDate(new Date()));
+  const { year: currentYear, month: currentMonth } = getCurrentNepaliYearMonth();
 
   const handleCardClick = useCallback(
     (result) => {
@@ -174,127 +88,41 @@ function ChecklistHistory({ propertyId, blocks = [] }) {
     [navigate],
   );
 
-  const clearAll = useCallback(
-    () => setFilters({ category: "", blockId: "", status: "", hasIssues: "" }),
-    [setFilters],
-  );
-
-  function clearFilter(key) {
-    setFilters((prev) => ({ ...prev, [key]: "" }));
-  }
-
-  // Labels for active filter pills
-  const FILTER_LABEL_MAP = {
-    category: (v) => CATEGORY_LABELS[v] ?? v,
-    blockId: (v) => blocks.find((b) => b._id === v)?.name ?? v,
-    status: (v) => STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v,
-    hasIssues: (v) => (v === "true" ? "Has Issues" : "No Issues"),
-  };
-
   return (
     <div className="space-y-5 p-6">
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
+      {/* ── Page header ─────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        {/* Left: title + filter toggle icon */}
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-foreground">
-            Inspection History
-          </h2>
-          <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground/50" />
+        <div>
+          <h1 className="text-base font-semibold text-foreground tracking-tight">
+            Daily Checks
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {todayNepaliDate}
+          </p>
         </div>
-
-        {/* Right: refresh */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={refetch}
-          disabled={isLoading}
-          className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground shrink-0"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
 
-      {/* ── Filter bar + legend row ──────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <FilterBar
-          filters={filters}
-          setFilters={setFilters}
-          blocks={blocks}
-          isLoading={isLoading}
-        />
-        <Legend />
-      </div>
-
-      {/* ── Active filter pills (when filters are set) ───────────────────── */}
-      {hasActiveFilters && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {activeFilterEntries.map(([key, val]) => (
-            <FilterPill
-              key={key}
-              label={FILTER_LABEL_MAP[key]?.(String(val)) ?? String(val)}
-              onRemove={() => clearFilter(key)}
-            />
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearAll}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-          >
-            Clear all
-          </Button>
-        </div>
-      )}
-
-      {/* ── Divider ──────────────────────────────────────────────────────── */}
       <div className="h-px bg-border/50" />
 
-      {/* ── Content ─────────────────────────────────────────────────────── */}
-      {isLoading ? (
-        <ChecklistHistorySkeleton rows={3} />
-      ) : error ? (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-6 text-center space-y-2">
-          <p className="text-sm font-medium text-destructive">{error}</p>
-          <Button
-            variant="link"
-            size="sm"
-            onClick={refetch}
-            className="h-auto p-0 text-xs text-destructive underline"
-          >
-            Try again
-          </Button>
-        </div>
-      ) : groupedDays.length === 0 ? (
-        <ChecklistHistoryEmpty
-          hasActiveFilters={hasActiveFilters}
-          onClearFilters={clearAll}
+      {/* ── View content ────────────────────────────────────────────────── */}
+      {activeTab === "today" ? (
+        <TodayBoard
+          propertyId={effectivePropertyId}
+          onCardClick={handleCardClick}
         />
       ) : (
-        <>
-          <div>
-            {groupedDays.map((day, idx) => (
-              <DayGroup
-                key={day.nepaliDate ?? idx}
-                dayData={day}
-                prevDayData={idx > 0 ? groupedDays[idx - 1] : null}
-                onCardClick={handleCardClick}
-              />
-            ))}
-          </div>
-
-          <ChecklistPagination
-            pagination={pagination}
-            goToPage={goToPage}
-            isLoading={isLoading}
-          />
-        </>
+        <ChecklistCalendar
+          propertyId={effectivePropertyId}
+          initialYear={currentYear}
+          initialMonth={currentMonth}
+          todayNepaliDate={todayNepaliDate}
+          onCardClick={handleCardClick}
+        />
       )}
     </div>
   );
 }
 
-export default ChecklistHistory;
+export default DailyChecksPage;
