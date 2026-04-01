@@ -21,10 +21,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
+import { Eye, EyeOff } from "lucide-react";
+
 export default function LoginForm({ className, ...props }) {
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { fetchMe } = useAuth();
+
   const formik = useFormik({
     initialValues: {
       email: "",
@@ -34,7 +38,6 @@ export default function LoginForm({ className, ...props }) {
       setLoading(true);
       try {
         const response = await api.post("/api/auth/login", {
-
           email: values.email,
           password: values.password,
         });
@@ -42,9 +45,7 @@ export default function LoginForm({ className, ...props }) {
         const data = response.data;
 
         if (data.success) {
-
           await fetchMe(true);
-          // Navigate to home page
           navigate("/");
         } else {
           toast.error(data.message);
@@ -58,6 +59,7 @@ export default function LoginForm({ className, ...props }) {
       setLoading(false);
     },
   });
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
@@ -93,20 +95,34 @@ export default function LoginForm({ className, ...props }) {
                     Forgot your password?
                   </a>
                 </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  formik={formik}
-                  onChange={formik.handleChange}
-                  value={formik.values.password}
-                  name="password"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    formik={formik}
+                    onChange={formik.handleChange}
+                    value={formik.values.password}
+                    name="password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </Field>
               <Field>
                 <Button type="submit">{loading ? <Spinner /> : "Login"}</Button>
-
-
               </Field>
             </FieldGroup>
           </form>
