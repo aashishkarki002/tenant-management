@@ -14,9 +14,9 @@ import {
 // Centralised here so every controller gets the same mapping.
 function resolveCallerRole(role) {
   switch (role) {
-    case "SUPER_ADMIN":
+    case "super_admin":
       return "super_admin";
-    case "ADMIN":
+    case "admin":
       return "admin";
     default:
       return "staff";

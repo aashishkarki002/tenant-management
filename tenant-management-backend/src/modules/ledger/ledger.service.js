@@ -22,6 +22,7 @@ import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
 import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
+import { buildEntityFilter } from "../../utils/buildEntityFilter.js";
 import {
   applyJournalBalances,
   computeBalanceChange,
@@ -294,8 +295,9 @@ class LedgerService {
         query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
       if (filters.propertyId)
         query.property = new mongoose.Types.ObjectId(filters.propertyId);
-      if (filters.entityId)
-        query.entityId = new mongoose.Types.ObjectId(filters.entityId);
+      if (filters.entityId) {
+        Object.assign(query, buildEntityFilter(filters.entityId));
+      }
 
       const { resolvedStart, resolvedEnd } = resolveLedgerGregorianRange(filters);
 
@@ -466,16 +468,7 @@ class LedgerService {
         query.tenant = new mongoose.Types.ObjectId(filters.tenantId);
       if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
       if (filters.entityId) {
-        if (filters.entityId === "private") {
-          // Private entity: include legacy entries with null/missing entityId
-          query.$or = [{ entityId: null }, { entityId: { $exists: false } }];
-        } else {
-          try {
-            query.entityId = new mongoose.Types.ObjectId(filters.entityId);
-          } catch {
-            // If parsing fails, fall back to merged (safe default)
-          }
-        }
+        Object.assign(query, buildEntityFilter(filters.entityId));
       }
 
       if (filters.quarter) {

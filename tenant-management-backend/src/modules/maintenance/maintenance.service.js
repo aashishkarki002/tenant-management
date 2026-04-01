@@ -7,7 +7,9 @@ import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
 import { sendMaintenanceAssignmentEmail } from "../../config/nodemailer.js";
 import { createAndEmitNotification } from "../notifications/notification.service.js";
-import mongoose from "mongoose";
+import { Block } from "../blocks/Block.Model.js";
+import InnerBlock from "../blocks/innerBlocks/InnerBlock.Model.js";
+import { Unit } from "../units/Unit.Model.js";
 
 // ─── Notification helpers ─────────────────────────────────────────────────────
 
@@ -67,59 +69,57 @@ async function resolveEntityFromHierarchy({
   maintenanceData,
 }) {
   if (!maintenanceData.scope) {
-    if (maintenanceData.unit) {
-      maintenanceData.scope = "UNIT";
-    } else if (maintenanceData.block) {
-      maintenanceData.scope = "BLOCK";
-    } else if (maintenanceData.property) {
-      maintenanceData.scope = "PROPERTY";
-    }
-    // If none of the above, default in schema handles it ("UNIT")
+    if (maintenanceData.unit) maintenanceData.scope = "UNIT";
+    else if (maintenanceData.block) maintenanceData.scope = "BLOCK";
+    else if (maintenanceData.property) maintenanceData.scope = "PROPERTY";
   }
+
+  // ✅ These must be declared before use
+  let innerBlockId = null;
+  let directBlockId = blockId ?? null;
+
   if (unitId) {
-    const Unit = mongoose.model("Unit");
     const unit = await Unit.findById(unitId).select("innerBlock block").lean();
+    innerBlockId = unit?.innerBlock ?? null;
+    console.log("innerBlockId", innerBlockId);
+    directBlockId = unit?.block ?? blockId ?? null;
+    console.log("directBlockId", directBlockId);
+  }
 
-    const innerBlockId = unit?.innerBlock;
-    const directBlockId = unit?.block || blockId;
-
-    if (innerBlockId) {
-      const InnerBlock = mongoose.model("InnerBlock");
-      const innerBlock = await InnerBlock.findById(innerBlockId)
-        .select("block")
-        .lean();
-      if (innerBlock?.block) {
-        const Block = mongoose.model("Block");
-        const block = await Block.findById(innerBlock.block)
-          .select("ownershipEntityId")
-          .lean();
-        const eid = block?.ownershipEntityId;
-        if (eid) return eid;
-      }
-    }
-
-    if (directBlockId) {
-      const Block = mongoose.model("Block");
-      const block = await Block.findById(directBlockId)
+  if (innerBlockId) {
+    const innerBlock = await InnerBlock.findById(innerBlockId)
+      .select("block")
+      .lean();
+    if (innerBlock?.block) {
+      const block = await Block.findById(innerBlock.block)
         .select("ownershipEntityId")
         .lean();
-      const eid = block?.ownershipEntityId;
-      if (eid) return eid;
+      if (block?.ownershipEntityId) {
+        return { entityId: block.ownershipEntityId, blockId: innerBlock.block };
+      }
+    }
+  }
+
+  if (directBlockId) {
+    const block = await Block.findById(directBlockId)
+      .select("ownershipEntityId")
+      .lean();
+    if (block?.ownershipEntityId) {
+      return { entityId: block.ownershipEntityId, blockId: directBlockId };
     }
   }
 
   if (blockId) {
-    const Block = mongoose.model("Block");
     const block = await Block.findById(blockId)
       .select("ownershipEntityId")
       .lean();
-    const eid = block?.ownershipEntityId;
-    if (eid) return eid;
+    if (block?.ownershipEntityId) {
+      return { entityId: block.ownershipEntityId, blockId };
+    }
   }
 
-  return null;
+  return { entityId: null, blockId: null };
 }
-
 // ─── Role constants ───────────────────────────────────────────────────────────
 // Centralised here so the service never imports from Express or req objects.
 // Controllers resolve req.admin.role → one of these strings before calling.
@@ -140,6 +140,7 @@ const ALLOWED_TRANSITIONS = {
 
 export async function createMaintenance(maintenanceData) {
   try {
+    console.log("maintenanceData", maintenanceData);
     if (
       maintenanceData.amountPaisa === undefined &&
       maintenanceData.amount !== undefined
@@ -164,12 +165,17 @@ export async function createMaintenance(maintenanceData) {
     }
 
     if (!maintenanceData.entityId) {
-      const resolvedEntityId = await resolveEntityFromHierarchy({
-        unitId: maintenanceData.unit,
-        blockId: maintenanceData.block,
-        maintenanceData: maintenanceData,
-      });
+      const { entityId: resolvedEntityId, blockId: resolvedBlockId } =
+        await resolveEntityFromHierarchy({
+          unitId: maintenanceData.unit,
+          blockId: maintenanceData.block,
+          maintenanceData: maintenanceData,
+        });
+      console.log("resolvedEntityId", resolvedEntityId);
+      console.log("resolvedBlockId", resolvedBlockId);
       if (resolvedEntityId) maintenanceData.entityId = resolvedEntityId;
+      if (resolvedBlockId && !maintenanceData.block)
+        maintenanceData.block = resolvedBlockId;
     }
 
     const maintenance = await Maintenance.create(maintenanceData);
@@ -295,21 +301,6 @@ export async function getMaintenanceById(id) {
     throw new Error(error.message || "Failed to get maintenance task");
   }
 }
-
-// ─── updateMaintenanceStatus ──────────────────────────────────────────────────
-//
-// Handles ALL status transitions EXCEPT the final PENDING_SETTLEMENT→COMPLETED
-// step, which is owned exclusively by settlePayment() below.
-//
-// Financial fields (paidAmount, paymentMethod, bankAccountId, contractor) are
-// intentionally NOT accepted here. Any attempt to pass them is silently ignored
-// so that a malicious or buggy client cannot sneak money data through this path.
-//
-// Who can call what:
-//   STAFF       → OPEN↔IN_PROGRESS, IN_PROGRESS→PENDING_SETTLEMENT
-//                 (must be the assigned staff member)
-//   ADMIN       → →CANCELLED only
-//   SUPER_ADMIN → →CANCELLED only
 
 export async function updateMaintenanceStatus(
   id,
@@ -443,21 +434,6 @@ export async function settlePayment(
     callerRole,
   } = {},
 ) {
-  console.log(
-    "settlePayment",
-    id,
-    paidAmountRupees,
-    paymentStatus,
-    paymentMethod,
-    bankAccountId,
-    contractor,
-    rawNepaliDate,
-    rawNepaliMonth,
-    rawNepaliYear,
-    allowOverpayment,
-    adminId,
-    callerRole,
-  );
   // ── Guard: admin-only ─────────────────────────────────────────────────────
   if (callerRole !== ROLE.SUPER_ADMIN && callerRole !== ROLE.ADMIN) {
     return {
@@ -539,6 +515,26 @@ export async function settlePayment(
         : fallbackNpYear;
 
   const resolvedNepaliDate = rawNepaliDate ? new Date(rawNepaliDate) : now;
+  // Re-resolve entityId for legacy tasks created before entity migration.
+  let resolvedEntityId = existing.entityId;
+  let resolvedBlockId = existing.block ?? null; // ← grab from stored task first
+
+  if (!resolvedEntityId) {
+    const resolved = await resolveEntityFromHierarchy({
+      unitId: existing.unit,
+      blockId: existing.block,
+      maintenanceData: existing,
+    });
+    resolvedEntityId = resolved.entityId;
+    resolvedBlockId = resolved.blockId ?? resolvedBlockId; // prefer freshly resolved
+  }
+
+  if (!resolvedEntityId) {
+    throw new Error(
+      `Cannot create expense: maintenance task ${existing._id} has no ` +
+        `resolvable entityId. Ensure the unit/block hierarchy is linked to an OwnershipEntity.`,
+    );
+  }
 
   // ── Persist financial fields + transition to COMPLETED ────────────────────
   const updateFields = {
@@ -550,6 +546,7 @@ export async function settlePayment(
     completionNepaliDate: resolvedNepaliDate,
     completionNepaliMonth: resolvedNepaliMonth,
     completionNepaliYear: resolvedNepaliYear,
+    entityId: resolvedEntityId,
     ...(contractor && { contractor }),
   };
 
@@ -580,29 +577,12 @@ export async function settlePayment(
       );
     }
 
-    // Re-resolve entityId for legacy tasks created before entity migration.
-    let resolvedEntityId = updatedTask.entityId;
-    if (!resolvedEntityId) {
-      resolvedEntityId = await resolveEntityFromHierarchy({
-        unitId: updatedTask.unit,
-        blockId: updatedTask.block,
-        maintenanceData: updatedTask,
-      });
-    }
-
-    if (!resolvedEntityId) {
-      throw new Error(
-        `Cannot create expense: maintenance task ${updatedTask._id} has no ` +
-          `resolvable entityId. Ensure the unit/block hierarchy is linked to an OwnershipEntity.`,
-      );
-    }
-
     const expenseData = {
       source: maintenanceSource._id,
       amountPaisa: finalPaidAmountPaisa,
       amount: paidAmountRupees,
       EnglishDate: now,
-      nepaliDate: resolvedNepaliDate,
+      nepaliDate: rawNepaliDate ?? null,
       nepaliMonth: resolvedNepaliMonth,
       nepaliYear: resolvedNepaliYear,
       payeeType: "EXTERNAL",
@@ -622,6 +602,7 @@ export async function settlePayment(
       createdBy: adminId || updatedTask.createdBy,
       expenseCode: ACCOUNTING_CONFIG.MAINTENANCE_EXPENSE_CODE,
       entityId: resolvedEntityId,
+      blockId: resolvedBlockId,
       transactionScope: "building",
       ...(paymentMethod && { paymentMethod }),
       ...(bankAccountId && { bankAccountId }),

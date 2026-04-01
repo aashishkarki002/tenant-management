@@ -7,7 +7,7 @@ import { LiabilitySource } from "../liabilities/LiabilitesSource.Model.js";
 import { Expense } from "../expenses/Expense.Model.js";
 import ExpenseSource from "../expenses/ExpenseSource.Model.js";
 import { paisaToRupees } from "../../utils/moneyUtil.js";
-import mongoose from "mongoose";
+import { buildEntityFilter } from "../../utils/buildEntityFilter.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -111,38 +111,6 @@ function resolveMonthToDateRange(month, fiscalYear) {
 function pctChange(base, next) {
   if (!base) return null;
   return +(((next - base) / base) * 100).toFixed(2);
-}
-
-// ─── Entity filter builder ────────────────────────────────────────────────────
-
-/**
- * Build a MongoDB match clause for entity-scoped queries.
- *
- * Rules (mirrors migrationsV2 Decision 5 + correction.md):
- *   entityId = null / undefined  → no filter (merged view — include ALL records)
- *   entityId = "private"         → { $or: [{ entityId: null }, { entityId: { $exists: false } }] }
- *                                    legacy entries (null entityId) are implicitly private
- *   entityId = <ObjectId string> → { entityId: new ObjectId(entityId) }
- *
- * The special string "private" is a sentinel for the "show private entity only"
- * case — it avoids requiring the caller to know the actual private entity's _id
- * when the legacy data has entityId: null.
- *
- * @param {string|null|undefined} entityId
- * @returns {object}  MongoDB $match fragment (may be empty object = match all)
- */
-function buildEntityFilter(entityId) {
-  if (!entityId) return {}; // merged / all — no filter
-  if (entityId === "private") {
-    // Private entity: include records explicitly tagged private OR legacy null
-    return { $or: [{ entityId: null }, { entityId: { $exists: false } }] };
-  }
-  try {
-    return { entityId: new mongoose.Types.ObjectId(entityId) };
-  } catch {
-    // If parsing fails, fall back to merged (safe default)
-    return {};
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
