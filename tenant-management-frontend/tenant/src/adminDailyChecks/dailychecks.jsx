@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom";
 import NepaliDate from "nepali-datetime";
 import { toast } from "sonner";
 import TodayBoard from "./components/TodayBoard";
-import ChecklistCalendar from "./components/ChecklistCalendar";
+import ChecklistCalendar from "./components/CheckListCalendar";
 import { Button } from "@/components/ui/button";
 import { Settings2 } from "lucide-react";
 import TemplateEditor from "./components/TemplateEditor";
