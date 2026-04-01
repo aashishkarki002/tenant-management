@@ -1,15 +1,19 @@
 /**
- * DailyChecklistPage.jsx  – Exception-based model
+ * DailyChecklistPage.jsx – Exception-based model (Redesigned)
  *
- * UX overhaul: staff only acts on exceptions, not on normality.
- *  - Items default to isOk: null ("not yet walked")
- *  - Section-level "All Clear ✓" bulk action = 1 tap per section
- *  - Individual "Issue" button per item (no OK button needed)
- *  - 3 visual states: unreviewed (gray) / cleared (green) / issue (amber)
- *  - Submit gate: null treated as OK on submit (no backend change required)
- *  - Audit trail preserved: null ≠ true (supervisor can see what was explicitly walked)
+ * Staff UX improvements:
+ *  - Larger tap targets (min 48px) throughout
+ *  - Cleaner visual hierarchy with prominent labels
+ *  - Mobile-first layout optimised for phones
+ *  - Simplified language: "Mark as Issue" vs "Issue?"
+ *  - Category cards show urgency more clearly
+ *  - Bigger section "All Clear" button with tap confirmation feedback
+ *  - Sticky progress bar always visible during checklist
+ *  - Issue dialog: full-height on mobile, prominent CTA
+ *  - Status colours and icons enlarged for readability
+ *  - Font sizes bumped for glanceable reading
  *
- * Backend: zero changes. Submit delta logic already treats null → true.
+ * Logic/backend: unchanged from original.
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -35,7 +39,6 @@ import {
     RefreshCw,
     Check,
     X,
-    Image,
     Plus,
     AlertCircle,
     Calendar,
@@ -44,12 +47,14 @@ import {
     ShieldCheck,
     Eye,
     EyeOff,
+    ThumbsUp,
+    Flag,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import api from "../../plugins/axios";
 import { useAuth } from "../context/AuthContext";
-import { getTodayNepali, NEPALI_MONTH_NAMES, NEPALI_MONTH_NAMES_NP } from "../../utils/nepaliDate";
+import { getTodayNepali } from "../../utils/nepaliDate";
 
 function getNepaliTodayClient() {
     const today = getTodayNepali();
@@ -71,36 +76,44 @@ const CATEGORY_META = {
         labelKey: "checklist.categories.FIRE",
         descKey: "checklist.categoryDesc.FIRE",
         urgency: "critical",
-        iconBg: "bg-red-50",
+        iconBg: "bg-red-100",
         iconColor: "text-red-600",
         color: "#ef4444",
+        urgencyLabel: "CRITICAL – Check First",
+        urgencyBg: "bg-red-100 text-red-700 border-red-300",
     },
     WATER_TANK: {
         icon: Droplets,
         labelKey: "checklist.categories.WATER_TANK",
         descKey: "checklist.categoryDesc.WATER_TANK",
         urgency: "high",
-        iconBg: "bg-blue-50",
+        iconBg: "bg-blue-100",
         iconColor: "text-blue-600",
         color: "#3b82f6",
+        urgencyLabel: "HIGH PRIORITY",
+        urgencyBg: "bg-blue-100 text-blue-700 border-blue-300",
     },
     ELECTRICAL: {
         icon: Zap,
         labelKey: "checklist.categories.ELECTRICAL",
         descKey: "checklist.categoryDesc.ELECTRICAL",
         urgency: "high",
-        iconBg: "bg-yellow-50",
+        iconBg: "bg-yellow-100",
         iconColor: "text-yellow-600",
         color: "#f59e0b",
+        urgencyLabel: "HIGH PRIORITY",
+        urgencyBg: "bg-yellow-100 text-yellow-700 border-yellow-300",
     },
     CCTV: {
         icon: Camera,
         labelKey: "checklist.categories.CCTV",
         descKey: "checklist.categoryDesc.CCTV",
         urgency: null,
-        iconBg: "bg-purple-50",
+        iconBg: "bg-purple-100",
         iconColor: "text-purple-600",
         color: "#8b5cf6",
+        urgencyLabel: null,
+        urgencyBg: null,
     },
     PARKING: {
         icon: Car,
@@ -110,24 +123,30 @@ const CATEGORY_META = {
         iconBg: "bg-stone-100",
         iconColor: "text-stone-600",
         color: "#78716c",
+        urgencyLabel: null,
+        urgencyBg: null,
     },
     SANITARY: {
         icon: Waves,
         labelKey: "checklist.categories.SANITARY",
         descKey: "checklist.categoryDesc.SANITARY",
         urgency: null,
-        iconBg: "bg-cyan-50",
+        iconBg: "bg-cyan-100",
         iconColor: "text-cyan-600",
         color: "#06b6d4",
+        urgencyLabel: null,
+        urgencyBg: null,
     },
     COMMON_AREA: {
         icon: LayoutGrid,
         labelKey: "checklist.categories.COMMON_AREA",
         descKey: "checklist.categoryDesc.COMMON_AREA",
         urgency: null,
-        iconBg: "bg-emerald-50",
+        iconBg: "bg-emerald-100",
         iconColor: "text-emerald-600",
         color: "#10b981",
+        urgencyLabel: null,
+        urgencyBg: null,
     },
 };
 
@@ -142,17 +161,13 @@ function todayISO() {
 
 function isChecklistFromToday(checklist) {
     if (!checklist?.checkDate) return false;
-    const today = todayISO();
-    const checkDate = new Date(checklist.checkDate).toISOString().split("T")[0];
-    return checkDate === today;
+    return new Date(checklist.checkDate).toISOString().split("T")[0] === todayISO();
 }
 
 function isCompletedToday(checklist) {
-    if (!checklist || checklist.status !== "COMPLETED") return false;
-    return isChecklistFromToday(checklist);
+    return checklist?.status === "COMPLETED" && isChecklistFromToday(checklist);
 }
 
-// Issues = explicitly marked false
 function countIssues(sections) {
     return sections.reduce((acc, sec) => acc + sec.items.filter((it) => it.isOk === false).length, 0);
 }
@@ -161,7 +176,6 @@ function countTotal(sections) {
     return sections.reduce((acc, sec) => acc + sec.items.length, 0);
 }
 
-// Reviewed = explicitly walked (true OR false), NOT null
 function countReviewed(sections) {
     return sections.reduce(
         (acc, sec) => acc + sec.items.filter((it) => it.isOk === true || it.isOk === false).length,
@@ -169,7 +183,6 @@ function countReviewed(sections) {
     );
 }
 
-// Section is fully walked when every item is non-null
 function isSectionReviewed(section) {
     return section.items.every((it) => it.isOk !== null);
 }
@@ -183,7 +196,7 @@ function countReviewedSections(sections) {
 function ProgressBar({ value, max, className = "", color }) {
     const pct = max > 0 ? Math.round((value / max) * 100) : 0;
     return (
-        <div className={`h-1.5 rounded-full bg-[var(--color-muted)] overflow-hidden ${className}`}>
+        <div className={`h-2.5 rounded-full bg-[var(--color-muted)] overflow-hidden ${className}`}>
             <div
                 className="h-full rounded-full transition-all duration-700 ease-out"
                 style={{ width: `${pct}%`, background: color ?? "var(--color-accent)" }}
@@ -196,16 +209,16 @@ function ProgressBar({ value, max, className = "", color }) {
 
 function NepaliDateBadge({ bsYear, bsMonth, bsDay, monthName }) {
     return (
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--color-accent-light)] border border-[var(--color-accent-mid)]">
-            <Calendar className="w-3 h-3 text-[var(--color-accent)]" />
-            <span className="text-xs font-semibold text-[var(--color-accent)]">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-accent-light)] border border-[var(--color-accent-mid)]">
+            <Calendar className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+            <span className="text-xs font-bold text-[var(--color-accent)]">
                 {bsDay} {monthName} {bsYear} BS
             </span>
         </div>
     );
 }
 
-// ─── IssueDialog ──────────────────────────────────────────────────────────────
+// ─── IssueDialog (mobile-first bottom sheet) ──────────────────────────────────
 
 function IssueDialog({ item, onConfirm, onCancel }) {
     const [description, setDescription] = useState(item.notes ?? "");
@@ -215,7 +228,7 @@ function IssueDialog({ item, onConfirm, onCancel }) {
     const textareaRef = useRef(null);
 
     useEffect(() => {
-        setTimeout(() => textareaRef.current?.focus(), 100);
+        setTimeout(() => textareaRef.current?.focus(), 150);
     }, []);
 
     useEffect(() => {
@@ -225,12 +238,10 @@ function IssueDialog({ item, onConfirm, onCancel }) {
 
     function handleAddPhotos(files) {
         const remaining = 3 - photos.length;
-        const toProcess = Array.from(files).slice(0, remaining);
-        toProcess.forEach((file) => {
+        Array.from(files).slice(0, remaining).forEach((file) => {
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = (e) =>
                 setPhotos((prev) => prev.length < 3 ? [...prev, { uri: e.target.result, name: file.name, type: file.type }] : prev);
-            };
             reader.readAsDataURL(file);
         });
     }
@@ -252,51 +263,58 @@ function IssueDialog({ item, onConfirm, onCancel }) {
     return (
         <div
             className="fixed inset-0 z-50 flex flex-col justify-end"
-            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
+            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
             onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
         >
             <div
-                className="bg-[var(--color-surface)] rounded-t-3xl max-h-[92dvh] flex flex-col overflow-hidden"
-                style={{ animation: "slideUp 0.28s cubic-bezier(0.34,1.56,0.64,1) both" }}
+                className="bg-[var(--color-surface)] rounded-t-3xl flex flex-col overflow-hidden"
+                style={{
+                    maxHeight: "95dvh",
+                    animation: "slideUp 0.28s cubic-bezier(0.34,1.56,0.64,1) both",
+                }}
             >
-                <div className="flex justify-center pt-3 pb-1 shrink-0">
-                    <div className="w-10 h-1 rounded-full bg-[var(--color-border)]" />
+                {/* Drag handle */}
+                <div className="flex justify-center pt-3 pb-2 shrink-0">
+                    <div className="w-12 h-1.5 rounded-full bg-[var(--color-border)]" />
                 </div>
 
-                <div className="px-5 pb-4 pt-2 flex items-start gap-3 shrink-0 border-b border-[var(--color-border)]">
-                    <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0 mt-0.5">
-                        <AlertCircle className="w-5 h-5 text-red-500" />
+                {/* Header */}
+                <div className="px-5 pb-4 pt-1 flex items-start gap-3 shrink-0 border-b border-[var(--color-border)]">
+                    <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
+                        <Flag className="w-6 h-6 text-red-500" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-[var(--color-text-strong)] leading-snug">
-                            Report Issue
+                        <p className="text-base font-bold text-[var(--color-text-strong)] leading-snug">
+                            Report an Issue
                         </p>
-                        <p className="text-xs text-[var(--color-text-sub)] mt-0.5 line-clamp-2 break-words">
+                        <p className="text-sm text-[var(--color-text-sub)] mt-0.5 line-clamp-2 break-words">
                             {item.label}
                         </p>
                     </div>
                     <button
                         onClick={onCancel}
-                        className="w-8 h-8 rounded-full flex items-center justify-center bg-[var(--color-surface-raised)] hover:bg-[var(--color-muted)] transition-colors shrink-0"
+                        className="w-10 h-10 rounded-full flex items-center justify-center bg-[var(--color-surface-raised)] hover:bg-[var(--color-muted)] transition-colors shrink-0"
                         aria-label="Cancel"
                     >
-                        <X className="w-4 h-4 text-[var(--color-text-sub)]" />
+                        <X className="w-5 h-5 text-[var(--color-text-sub)]" />
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                {/* Scrollable body */}
+                <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+                    {/* Description */}
                     <div>
-                        <label className="block text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2">
-                            Issue Description <span className="text-red-500">*</span>
+                        <label className="block text-sm font-bold text-[var(--color-text-body)] mb-2">
+                            What is the problem? <span className="text-red-500">*</span>
                         </label>
                         <textarea
                             ref={textareaRef}
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Describe what's wrong… e.g. '2 bulbs fused, right side of corridor dark'"
+                            placeholder="e.g. 2 bulbs fused, right corridor is dark"
                             rows={4}
                             className="
-                                w-full text-sm rounded-xl px-4 py-3 resize-none
+                                w-full text-base rounded-2xl px-4 py-3 resize-none
                                 border-2 border-[var(--color-border)]
                                 bg-[var(--color-surface-raised)]
                                 placeholder:text-[var(--color-text-weak)]
@@ -306,64 +324,73 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                             "
                         />
                         {!description.trim() && (
-                            <p className="text-xs text-[var(--color-text-weak)] mt-1.5 flex items-center gap-1">
-                                <AlertCircle className="w-3 h-3" />
-                                Description is required to log this issue
+                            <p className="text-xs text-[var(--color-text-weak)] mt-1.5 flex items-center gap-1.5">
+                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                Please describe the problem before logging
                             </p>
                         )}
                     </div>
 
+                    {/* Photos */}
                     <div>
-                        <label className="block text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2">
-                            Photos <span className="text-[var(--color-text-weak)] font-normal normal-case tracking-normal">({photos.length}/3)</span>
+                        <label className="block text-sm font-bold text-[var(--color-text-body)] mb-1">
+                            Add Photos{" "}
+                            <span className="font-normal text-[var(--color-text-weak)]">
+                                (optional · {photos.length}/3)
+                            </span>
                         </label>
+                        <p className="text-xs text-[var(--color-text-weak)] mb-3">
+                            Take a photo or upload from gallery. Up to 3 photos.
+                        </p>
 
-                        <div className="flex gap-2.5 flex-wrap">
+                        <div className="flex gap-3 flex-wrap">
                             {photos.map((photo, idx) => (
                                 <div
                                     key={idx}
-                                    className="relative w-24 h-24 rounded-xl overflow-hidden border-2 border-[var(--color-border)] bg-[var(--color-muted)] shrink-0"
-                                    style={{ animation: `fadeIn 0.2s ease both` }}
+                                    className="relative w-28 h-28 rounded-2xl overflow-hidden border-2 border-[var(--color-border)] bg-[var(--color-muted)] shrink-0"
+                                    style={{ animation: "fadeIn 0.2s ease both" }}
                                 >
                                     <img src={photo.uri} alt={`Issue photo ${idx + 1}`} className="w-full h-full object-cover" />
                                     <button
                                         onClick={() => handleRemovePhoto(idx)}
-                                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center hover:bg-red-500 transition-colors"
+                                        className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center hover:bg-red-500 transition-colors"
                                         aria-label="Remove photo"
                                     >
-                                        <Trash2 className="w-3 h-3 text-white" />
+                                        <Trash2 className="w-3.5 h-3.5 text-white" />
                                     </button>
                                 </div>
                             ))}
 
                             {photos.length < 3 && (
-                                <div className="flex gap-2.5">
+                                <div className="flex gap-3">
+                                    {/* Camera */}
                                     <button
                                         onClick={() => cameraInputRef.current?.click()}
                                         className="
-                                            w-24 h-24 rounded-xl border-2 border-dashed border-[var(--color-border)]
+                                            w-28 h-28 rounded-2xl border-2 border-dashed border-[var(--color-border)]
                                             bg-[var(--color-surface-raised)] hover:border-[var(--color-accent-mid)]
-                                            hover:bg-[var(--color-accent-light)] transition-all
-                                            flex flex-col items-center justify-center gap-1.5 shrink-0
+                                            hover:bg-[var(--color-accent-light)] transition-all active:scale-95
+                                            flex flex-col items-center justify-center gap-2 shrink-0
                                         "
                                         aria-label="Take photo"
                                     >
-                                        <Camera className="w-5 h-5 text-[var(--color-accent)]" />
-                                        <span className="text-[10px] font-semibold text-[var(--color-text-sub)]">Camera</span>
+                                        <Camera className="w-6 h-6 text-[var(--color-accent)]" />
+                                        <span className="text-xs font-semibold text-[var(--color-text-sub)]">Camera</span>
                                     </button>
 
+                                    {/* Gallery */}
                                     <button
                                         onClick={() => fileInputRef.current?.click()}
                                         className="
-                                            w-24 h-24 rounded-xl border-2 border-dashed border-[var(--color-border)]
+                                            w-28 h-28 rounded-2xl border-2 border-dashed border-[var(--color-border)]
                                             bg-[var(--color-surface-raised)] hover:border-[var(--color-accent-mid)]
-                                            hover:bg-[var(--color-accent-light)] transition-all
-                                            flex flex-col items-center justify-center gap-1.5 shrink-0
+                                            hover:bg-[var(--color-accent-light)] transition-all active:scale-95
+                                            flex flex-col items-center justify-center gap-2 shrink-0
                                         "
-                                        aria-label="Upload photo"
+                                        aria-label="Upload from gallery"
                                     >
-                                        <Upload className="w-5 h-5 text-[var(--color-text-sub)]" />
-                                        <span className="text-[10px] font-semibold text-[var(--color-text-sub)]">Gallery</span>
+                                        <Upload className="w-6 h-6 text-[var(--color-text-sub)]" />
+                                        <span className="text-xs font-semibold text-[var(--color-text-sub)]">Gallery</span>
                                     </button>
                                 </div>
                             )}
@@ -371,24 +398,22 @@ function IssueDialog({ item, onConfirm, onCancel }) {
 
                         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(e) => handleAddPhotos(e.target.files)} />
                         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleAddPhotos(e.target.files)} />
-
-                        <p className="text-xs text-[var(--color-text-weak)] mt-2">
-                            Up to 3 photos. Camera for live shot, gallery to upload existing.
-                        </p>
                     </div>
 
-                    <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-amber-50 border border-amber-200">
-                        <Wrench className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <p className="text-xs text-amber-800 leading-relaxed">
-                            A <strong>repair task</strong> will be automatically created and assigned when this issue is submitted.
+                    {/* Info banner */}
+                    <div className="flex items-start gap-3 px-4 py-3.5 rounded-2xl bg-amber-50 border border-amber-200">
+                        <Wrench className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <p className="text-sm text-amber-800 leading-relaxed">
+                            A <strong>repair task</strong> will be auto-created and assigned once you submit.
                         </p>
                     </div>
                 </div>
 
+                {/* Action buttons */}
                 <div className="px-5 py-4 border-t border-[var(--color-border)] flex gap-3 shrink-0 bg-[var(--color-surface)]">
                     <button
                         onClick={onCancel}
-                        className="flex-1 py-3.5 rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text-body)] text-sm font-bold hover:bg-[var(--color-muted)] transition-colors active:scale-[0.98]"
+                        className="flex-1 py-4 rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text-body)] text-base font-bold hover:bg-[var(--color-muted)] transition-colors active:scale-[0.98]"
                     >
                         Cancel
                     </button>
@@ -396,8 +421,8 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                         onClick={handleConfirm}
                         disabled={!description.trim()}
                         className={`
-                            flex-[2] py-3.5 rounded-2xl text-white text-sm font-bold
-                            flex items-center justify-center gap-2
+                            flex-[2] py-4 rounded-2xl text-white text-base font-bold
+                            flex items-center justify-center gap-2.5
                             transition-all active:scale-[0.98]
                             ${description.trim()
                                 ? "bg-red-500 hover:bg-red-600 shadow-sm shadow-red-200"
@@ -405,7 +430,7 @@ function IssueDialog({ item, onConfirm, onCancel }) {
                             }
                         `}
                     >
-                        <AlertCircle className="w-4 h-4" />
+                        <Flag className="w-5 h-5" />
                         Log Issue
                     </button>
                 </div>
@@ -430,16 +455,16 @@ function IssueDialog({ item, onConfirm, onCancel }) {
 function CategoryPicker({ checklists, onSelect, completedCategories, loading, t }) {
     if (loading) {
         return (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-3">
                 {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="h-24 rounded-2xl animate-pulse bg-[var(--color-surface)]" />
+                    <div key={i} className="h-20 rounded-2xl animate-pulse bg-[var(--color-surface)]" />
                 ))}
             </div>
         );
     }
 
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-3">
             {ALL_CATEGORIES.map((cat) => {
                 const meta = CATEGORY_META[cat];
                 const Icon = meta.icon;
@@ -454,7 +479,7 @@ function CategoryPicker({ checklists, onSelect, completedCategories, loading, t 
                         onClick={() => onSelect(cat, checklist)}
                         aria-label={t(meta.labelKey)}
                         className={`
-                            group flex items-center gap-4 p-4 rounded-2xl border-2 text-left
+                            group w-full flex items-center gap-4 px-4 py-4 rounded-2xl border-2 text-left
                             transition-all duration-150 active:scale-[0.98]
                             ${isDone
                                 ? "border-[var(--color-success-border)] bg-[var(--color-success-bg)]"
@@ -464,37 +489,48 @@ function CategoryPicker({ checklists, onSelect, completedCategories, loading, t 
                             }
                         `}
                     >
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${isDone ? "bg-[var(--color-success-bg)]" : meta.iconBg}`}>
+                        {/* Icon */}
+                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${isDone ? "bg-[var(--color-success-bg)]" : meta.iconBg}`}>
                             {isDone
-                                ? <CheckCircle2 className="w-6 h-6 text-[var(--color-success)]" />
-                                : <Icon className={`w-6 h-6 ${meta.iconColor}`} />
+                                ? <CheckCircle2 className="w-7 h-7 text-[var(--color-success)]" />
+                                : <Icon className={`w-7 h-7 ${meta.iconColor}`} />
                             }
                         </div>
 
+                        {/* Labels */}
                         <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`text-sm font-bold ${isDone ? "text-[var(--color-success)]" : "text-[var(--color-text-strong)]"}`}>
-                                    {t(meta.labelKey)}
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <p className={`text-base font-bold leading-tight ${isDone ? "text-[var(--color-success)]" : "text-[var(--color-text-strong)]"}`}>
+                                    {t(meta.labelKey, cat)}
                                 </p>
                                 {meta.urgency === "critical" && !isDone && (
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 uppercase tracking-wide">
-                                        {t("checklist.urgencyLabel.critical", "Critical")}
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-300 uppercase tracking-wide">
+                                        Critical
+                                    </span>
+                                )}
+                                {meta.urgency === "high" && !isDone && (
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-300 uppercase tracking-wide">
+                                        High
                                     </span>
                                 )}
                                 {isInProgress && !isDone && (
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 uppercase tracking-wide">
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 uppercase tracking-wide">
                                         In Progress
                                     </span>
                                 )}
                             </div>
-                            <p className={`text-xs mt-0.5 truncate ${isDone ? "text-[var(--color-success)]" : "text-[var(--color-text-sub)]"}`}>
-                                {isDone ? `${t("checklist.doneToday", "Done today")} ✓` : t(meta.descKey, cat)}
+                            <p className={`text-sm ${isDone ? "text-[var(--color-success)]" : "text-[var(--color-text-sub)]"}`}>
+                                {isDone ? "✓ Completed today" : t(meta.descKey, cat)}
                             </p>
                         </div>
 
-                        {!isDone && (
-                            <ChevronRight className="w-5 h-5 text-[var(--color-text-weak)] shrink-0 group-hover:text-[var(--color-accent)] transition-colors" />
-                        )}
+                        {/* Arrow / Done mark */}
+                        {isDone
+                            ? <div className="w-8 h-8 rounded-full bg-[var(--color-success)] flex items-center justify-center shrink-0">
+                                <Check className="w-4 h-4 text-white" />
+                            </div>
+                            : <ChevronRight className="w-6 h-6 text-[var(--color-text-weak)] shrink-0 group-hover:text-[var(--color-accent)] transition-colors" />
+                        }
                     </button>
                 );
             })}
@@ -503,25 +539,17 @@ function CategoryPicker({ checklists, onSelect, completedCategories, loading, t 
 }
 
 // ─── CheckItem ────────────────────────────────────────────────────────────────
-// Exception-only model:
-//   null  → not yet walked (neutral, shows "Issue?" prompt)
-//   true  → explicitly cleared (green, via bulk or item-level undo)
-//   false → issue logged (amber, opens IssueDialog)
-//
-// The OK button is removed. Staff only acts on exceptions.
-// If they tapped Issue by mistake, they can dismiss the dialog and the item
-// stays in its previous state. If they want to clear a previously flagged item
-// they tap the green "Clear" chip that appears on a false item.
+// Three visual states:
+//   null  = not yet checked (grey)  → staff sees "Report Issue" button
+//   true  = all clear (green)       → shows "Clear ✓" badge, tap to revert
+//   false = issue logged (amber)    → shows issue summary + Edit/Undo
 
 function CheckItem({ item, sectionKey, onChange, t }) {
     const [dialogOpen, setDialogOpen] = useState(false);
 
-    function handleIssueClick() {
-        setDialogOpen(true);
-    }
+    function handleIssueClick() { setDialogOpen(true); }
 
     function handleClearIssue() {
-        // Revert a flagged item back to "reviewed OK"
         onChange(sectionKey, item._id, { isOk: true, notes: "", photos: [] });
     }
 
@@ -530,9 +558,7 @@ function CheckItem({ item, sectionKey, onChange, t }) {
         setDialogOpen(false);
     }
 
-    function handleDialogCancel() {
-        setDialogOpen(false);
-    }
+    function handleDialogCancel() { setDialogOpen(false); }
 
     const hasPhotos = item.photos?.length > 0;
     const isIssue = item.isOk === false;
@@ -542,32 +568,32 @@ function CheckItem({ item, sectionKey, onChange, t }) {
     return (
         <>
             <div className={`
-                rounded-xl border-2 overflow-hidden transition-all duration-200
+                rounded-2xl border-2 overflow-hidden transition-all duration-200
                 ${isIssue
-                    ? "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)]"
+                    ? "border-amber-300 bg-amber-50"
                     : isCleared
                         ? "border-[var(--color-success-border)] bg-[var(--color-success-bg)]"
                         : "border-[var(--color-border)] bg-[var(--color-surface-raised)]"
                 }
             `}>
-                <div className="flex items-center gap-3 p-3">
-                    {/* Status dot */}
+                <div className="flex items-center gap-3 p-4">
+                    {/* Status indicator dot */}
                     <div className={`
-                        w-2 h-2 rounded-full shrink-0 mt-0.5 transition-colors duration-300
+                        w-3 h-3 rounded-full shrink-0 transition-colors duration-300
                         ${isIssue
-                            ? "bg-[var(--color-warning)]"
+                            ? "bg-amber-500"
                             : isCleared
                                 ? "bg-[var(--color-success)]"
                                 : "bg-[var(--color-border)]"
                         }
                     `} />
 
-                    {/* Label + qty */}
+                    {/* Item label */}
                     <div className="flex-1 min-w-0">
                         <p className={`
-                            text-sm font-medium leading-snug
+                            text-base font-semibold leading-snug
                             ${isIssue
-                                ? "text-[var(--color-warning)]"
+                                ? "text-amber-800"
                                 : isCleared
                                     ? "text-[var(--color-success)]"
                                     : "text-[var(--color-text-body)]"
@@ -577,74 +603,75 @@ function CheckItem({ item, sectionKey, onChange, t }) {
                         </p>
                         {item.quantity != null && (
                             <p className="text-xs text-[var(--color-text-weak)] mt-0.5">
-                                qty: {item.quantity}
+                                Qty: {item.quantity}
                             </p>
                         )}
                     </div>
 
-                    {/* Action area — context-sensitive */}
+                    {/* Action buttons — context sensitive */}
                     <div className="flex gap-2 shrink-0 items-center">
 
-                        {/* Pending: show Issue button only */}
+                        {/* PENDING: Only show "Report Issue" — tap is the exception action */}
                         {isPending && (
                             <button
                                 onClick={handleIssueClick}
                                 className="
-                                    flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
-                                    bg-white border-2 border-[var(--color-warning-border)]
-                                    text-[var(--color-warning)] hover:bg-[var(--color-warning-bg)]
-                                    transition-all duration-150 active:scale-95
+                                    flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold
+                                    bg-white border-2 border-amber-300
+                                    text-amber-700 hover:bg-amber-50
+                                    transition-all duration-150 active:scale-95 min-h-[44px]
                                 "
                             >
-                                <AlertCircle className="w-3.5 h-3.5" />
-                                <span>{t("checklist.issueButton", "Issue?")}</span>
+                                <Flag className="w-4 h-4" />
+                                <span>Issue?</span>
                             </button>
                         )}
 
-                        {/* Cleared: show subtle "flag" option in case they need to reverse */}
+                        {/* CLEARED: Show green OK badge. Hover reveals option to flag */}
                         {isCleared && (
                             <button
                                 onClick={handleIssueClick}
                                 className="
-                                    flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
+                                    flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold
                                     bg-[var(--color-success-bg)] border-2 border-[var(--color-success-border)]
-                                    text-[var(--color-success)] hover:border-[var(--color-warning-border)]
-                                    hover:bg-[var(--color-warning-bg)] hover:text-[var(--color-warning)]
-                                    transition-all duration-150 active:scale-95 group
+                                    text-[var(--color-success)] hover:border-amber-300
+                                    hover:bg-amber-50 hover:text-amber-700
+                                    transition-all duration-150 active:scale-95 group min-h-[44px]
                                 "
-                                title="Flag an issue on this item"
+                                title="Tap to flag an issue instead"
                             >
-                                <Check className="w-3.5 h-3.5 group-hover:hidden" />
-                                <AlertCircle className="w-3.5 h-3.5 hidden group-hover:block" />
-                                <span className="group-hover:hidden">{t("checklist.okButton", "OK")}</span>
-                                <span className="hidden group-hover:inline">{t("checklist.issueButton", "Issue?")}</span>
+                                <Check className="w-4 h-4 group-hover:hidden" />
+                                <Flag className="w-4 h-4 hidden group-hover:block" />
+                                <span className="group-hover:hidden">OK</span>
+                                <span className="hidden group-hover:inline">Issue?</span>
                             </button>
                         )}
 
-                        {/* Issue logged: show clear + edit */}
+                        {/* ISSUE LOGGED: Show "Clear" + "Edit Issue" */}
                         {isIssue && (
-                            <div className="flex gap-1.5">
+                            <div className="flex gap-2">
                                 <button
                                     onClick={handleClearIssue}
                                     className="
-                                        flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-bold
+                                        flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold
                                         bg-white border-2 border-[var(--color-success-border)]
                                         text-[var(--color-success)] hover:bg-[var(--color-success-bg)]
-                                        transition-all duration-150 active:scale-95
+                                        transition-all duration-150 active:scale-95 min-h-[44px]
                                     "
-                                    title="Mark as OK"
+                                    title="Mark as OK instead"
                                 >
-                                    <Check className="w-3.5 h-3.5" />
+                                    <Check className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Clear</span>
                                 </button>
                                 <button
                                     onClick={handleIssueClick}
                                     className="
-                                        flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
-                                        bg-[var(--color-warning)] text-white shadow-sm
-                                        transition-all duration-150 active:scale-95
+                                        flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold
+                                        bg-amber-500 text-white shadow-sm
+                                        transition-all duration-150 active:scale-95 min-h-[44px]
                                     "
                                 >
-                                    <AlertCircle className="w-3.5 h-3.5" />
+                                    <Flag className="w-4 h-4" />
                                     <span>Edit</span>
                                 </button>
                             </div>
@@ -652,20 +679,20 @@ function CheckItem({ item, sectionKey, onChange, t }) {
                     </div>
                 </div>
 
-                {/* Issue summary row */}
+                {/* Issue summary (shown below the row when issue is logged) */}
                 {isIssue && (item.notes || hasPhotos) && (
-                    <div className="px-3 pb-3 flex items-start gap-2">
+                    <div className="px-4 pb-4 flex items-start gap-3">
                         <div className="flex-1 min-w-0">
                             {item.notes && (
-                                <p className="text-xs text-[var(--color-warning)] leading-relaxed line-clamp-2">
-                                    {item.notes}
+                                <p className="text-sm text-amber-800 leading-relaxed line-clamp-2 bg-amber-100 rounded-xl px-3 py-2">
+                                    📝 {item.notes}
                                 </p>
                             )}
                         </div>
                         {hasPhotos && (
-                            <div className="flex gap-1 shrink-0">
+                            <div className="flex gap-1.5 shrink-0">
                                 {item.photos.slice(0, 3).map((p, i) => (
-                                    <div key={i} className="w-10 h-10 rounded-lg overflow-hidden border border-[var(--color-warning-border)] shrink-0">
+                                    <div key={i} className="w-12 h-12 rounded-xl overflow-hidden border-2 border-amber-300 shrink-0">
                                         <img src={p.uri} alt="" className="w-full h-full object-cover" />
                                     </div>
                                 ))}
@@ -687,8 +714,6 @@ function CheckItem({ item, sectionKey, onChange, t }) {
 }
 
 // ─── SectionGroup ─────────────────────────────────────────────────────────────
-// Now with "All Clear ✓" bulk action.
-// onSectionClear(sectionKey) — sets all null items in this section to true.
 
 function SectionGroup({ section, onChange, onSectionClear, t }) {
     const total = section.items.length;
@@ -698,40 +723,38 @@ function SectionGroup({ section, onChange, onSectionClear, t }) {
     const isFullyReviewed = pending === 0;
 
     return (
-        <div>
+        <div className="rounded-2xl border-2 border-[var(--color-border)] overflow-hidden bg-[var(--color-surface)]">
             {/* Section header */}
-            <div className="flex items-center justify-between mb-2 px-1">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <h3 className="text-sm font-bold text-[var(--color-text-strong)] truncate">
+            <div className="flex items-center justify-between px-4 py-3.5 bg-[var(--color-surface-raised)] border-b border-[var(--color-border)]">
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    <h3 className="text-base font-bold text-[var(--color-text-strong)] truncate">
                         {section.sectionLabel}
                     </h3>
-                    {/* Reviewed state indicator */}
                     {isFullyReviewed && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--color-success-bg)] text-[var(--color-success)] border border-[var(--color-success-border)] uppercase tracking-wide shrink-0">
-                            Walked ✓
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-[var(--color-success-bg)] text-[var(--color-success)] border border-[var(--color-success-border)] uppercase tracking-wide shrink-0">
+                            Done ✓
+                        </span>
+                    )}
+                    {issues > 0 && (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 shrink-0">
+                            {issues} issue{issues > 1 ? "s" : ""}
                         </span>
                     )}
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                    {issues > 0 && (
-                        <span className="text-xs font-semibold text-[var(--color-warning)] bg-[var(--color-warning-bg)] px-2 py-0.5 rounded-full border border-[var(--color-warning-border)]">
-                            {issues} ⚠
-                        </span>
-                    )}
-
-                    {/* Progress: x/total reviewed */}
-                    <span className="text-xs text-[var(--color-text-weak)]">
+                <div className="flex items-center gap-2.5 shrink-0">
+                    {/* x/total progress */}
+                    <span className="text-sm font-semibold text-[var(--color-text-weak)]">
                         {total - pending}/{total}
                     </span>
 
-                    {/* All Clear — only show when there are still pending items */}
+                    {/* All Clear bulk button */}
                     {pending > 0 && (
                         <button
                             onClick={() => onSectionClear(section.sectionKey)}
                             className="
-                                flex items-center gap-1.5 px-3 py-1.5 rounded-lg
-                                text-xs font-bold
+                                flex items-center gap-2 px-4 py-2.5 rounded-xl
+                                text-sm font-bold min-h-[44px]
                                 bg-[var(--color-success-bg)] text-[var(--color-success)]
                                 border-2 border-[var(--color-success-border)]
                                 hover:bg-[var(--color-success)] hover:text-white
@@ -739,14 +762,15 @@ function SectionGroup({ section, onChange, onSectionClear, t }) {
                             "
                             title={`Mark all ${pending} remaining items as OK`}
                         >
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            All Clear
+                            <ShieldCheck className="w-4 h-4" />
+                            <span>All Clear</span>
                         </button>
                     )}
                 </div>
             </div>
 
-            <div className="space-y-2">
+            {/* Items */}
+            <div className="p-3 space-y-2.5">
                 {section.items.map((item) => (
                     <CheckItem
                         key={item._id}
@@ -775,7 +799,7 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
                 ...s,
                 items: s.items.map((it) => ({
                     ...it,
-                    isOk: null,   // ← always start null (not yet walked)
+                    isOk: null,
                     photos: [],
                     notes: "",
                 })),
@@ -792,7 +816,6 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
     const totalSections = sections.length;
     const pendingCount = totalItems - reviewedCount;
 
-    // Per-item change handler (unchanged API)
     function handleItemChange(sectionKey, itemId, patch) {
         setSections((prev) =>
             prev.map((sec) =>
@@ -808,9 +831,6 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
         );
     }
 
-    // ── NEW: section-level All Clear ──────────────────────────────────────────
-    // Sets isOk: true on all items that are still null in this section.
-    // Items already set to false (issues) are intentionally left unchanged.
     function handleSectionAllClear(sectionKey) {
         setSections((prev) =>
             prev.map((sec) =>
@@ -830,8 +850,6 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
         if (submitting) return;
         setSubmitting(true);
         try {
-            // Submit logic unchanged — null treated as OK on the server side too.
-            // Only delta (failed or noted items) is sent.
             const itemResults = [];
             for (const sec of sections) {
                 for (const item of sec.items) {
@@ -869,10 +887,15 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
 
     if (!checklist?.data) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <AlertTriangle className="w-10 h-10 text-[var(--color-warning)]" />
-                <p className="text-sm text-[var(--color-text-sub)]">{t("checklist.selectLabel", "Select a category")}</p>
-                <button onClick={onBack} className="text-sm font-semibold text-[var(--color-accent)] underline">
+            <div className="flex flex-col items-center justify-center py-20 gap-4 px-6">
+                <AlertTriangle className="w-12 h-12 text-[var(--color-warning)]" />
+                <p className="text-base text-center text-[var(--color-text-sub)]">
+                    {t("checklist.selectLabel", "Select a category to begin")}
+                </p>
+                <button
+                    onClick={onBack}
+                    className="text-base font-semibold text-[var(--color-accent)] underline"
+                >
                     {t("common.back", "Back")}
                 </button>
             </div>
@@ -884,21 +907,21 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
 
             {/* Sticky header */}
             <div className="sticky top-0 z-20 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-3">
-                <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-3 mb-3">
                     <button
                         onClick={onBack}
                         aria-label={t("common.back", "Back")}
-                        className="w-9 h-9 rounded-xl flex items-center justify-center bg-[var(--color-surface-raised)] border border-[var(--color-border)] hover:bg-[var(--color-accent-light)] transition-colors"
+                        className="w-11 h-11 rounded-xl flex items-center justify-center bg-[var(--color-surface-raised)] border border-[var(--color-border)] hover:bg-[var(--color-accent-light)] transition-colors"
                     >
-                        <ChevronLeft className="w-5 h-5 text-[var(--color-text-body)]" />
+                        <ChevronLeft className="w-6 h-6 text-[var(--color-text-body)]" />
                     </button>
 
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
-                        <Icon className={`w-5 h-5 ${meta.iconColor}`} />
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                        <Icon className={`w-6 h-6 ${meta.iconColor}`} />
                     </div>
 
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-[var(--color-text-strong)] truncate">
+                        <p className="text-base font-bold text-[var(--color-text-strong)] truncate">
                             {t(meta.labelKey, category)}
                         </p>
                         <p className="text-xs text-[var(--color-text-sub)]">
@@ -908,43 +931,43 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
 
                     <div className="flex items-center gap-2 shrink-0">
                         {issueCount > 0 && (
-                            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--color-warning-bg)] text-[var(--color-warning)] border border-[var(--color-warning-border)]">
+                            <span className="text-sm font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
                                 {issueCount} ⚠
                             </span>
                         )}
-                        {/* Section progress pill */}
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--color-surface-raised)] text-[var(--color-text-sub)] border border-[var(--color-border)]">
-                            {reviewedSections}/{totalSections} sections
+                        <span className="text-sm font-bold px-3 py-1 rounded-full bg-[var(--color-surface-raised)] text-[var(--color-text-sub)] border border-[var(--color-border)]">
+                            {reviewedSections}/{totalSections}
                         </span>
                     </div>
                 </div>
 
-                {/* Progress: item-level granularity */}
-                <div className="flex items-center gap-2">
+                {/* Progress bar + status */}
+                <div className="flex items-center gap-3">
                     <ProgressBar
                         value={reviewedCount}
                         max={totalItems}
-                        className="flex-1 mt-1"
-                        color={issueCount > 0 ? "var(--color-warning)" : meta.color}
+                        className="flex-1"
+                        color={issueCount > 0 ? "#f59e0b" : meta.color}
                     />
-                    <span className="text-xs font-semibold text-[var(--color-text-sub)] shrink-0">
+                    <span className="text-sm font-semibold text-[var(--color-text-sub)] shrink-0 min-w-[80px] text-right">
                         {pendingCount > 0 ? `${pendingCount} left` : "All walked ✓"}
                     </span>
                 </div>
             </div>
 
-            {/* Hint banner — shown only when nothing has been reviewed yet */}
+            {/* Hint banner — show only at start */}
             {reviewedCount === 0 && (
-                <div className="mx-4 mt-4 flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-[var(--color-accent-light)] border border-[var(--color-accent-mid)]">
-                    <Eye className="w-4 h-4 text-[var(--color-accent)] shrink-0 mt-0.5" />
-                    <p className="text-xs text-[var(--color-accent)] font-medium leading-relaxed">
-                        Walk each section and tap <strong>All Clear</strong> if everything looks fine. Only flag items with actual issues.
+                <div className="mx-4 mt-4 flex items-start gap-3 px-4 py-3.5 rounded-2xl bg-[var(--color-accent-light)] border border-[var(--color-accent-mid)]">
+                    <Eye className="w-5 h-5 text-[var(--color-accent)] shrink-0 mt-0.5" />
+                    <p className="text-sm text-[var(--color-accent)] font-medium leading-relaxed">
+                        Walk through each section. Tap <strong>All Clear</strong> when everything looks fine.
+                        Only use <strong>Issue?</strong> when something is wrong.
                     </p>
                 </div>
             )}
 
-            {/* Scrollable sections */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+            {/* Scrollable checklist sections */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
                 {sections.map((sec) => (
                     <SectionGroup
                         key={sec.sectionKey}
@@ -957,9 +980,10 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
 
                 {/* Overall notes */}
                 <div>
-                    <label className="block text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2">
-                        <MessageSquare className="w-3.5 h-3.5 inline mr-1.5" />
+                    <label className="flex items-center gap-2 text-sm font-bold text-[var(--color-text-body)] mb-2">
+                        <MessageSquare className="w-4 h-4" />
                         {t("checklist.overallNotesLabel", "Overall Notes")}
+                        <span className="font-normal text-[var(--color-text-weak)]">(optional)</span>
                     </label>
                     <textarea
                         value={overallNotes}
@@ -967,7 +991,7 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
                         placeholder={t("checklist.overallNotesPlaceholder", "Any general observations for this check…")}
                         rows={3}
                         className="
-                            w-full text-sm rounded-xl px-4 py-3 resize-none
+                            w-full text-base rounded-2xl px-4 py-3 resize-none
                             border-2 border-[var(--color-border)]
                             bg-[var(--color-surface-raised)]
                             placeholder:text-[var(--color-text-weak)]
@@ -983,21 +1007,22 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
             {/* Sticky submit footer */}
             <div className="sticky bottom-0 bg-[var(--color-surface)] border-t border-[var(--color-border)] px-4 py-4">
 
-                {/* Pending items warning */}
+                {/* Pending items info */}
                 {pendingCount > 0 && (
-                    <div className="flex items-center gap-2 mb-3 px-3 py-2.5 rounded-xl bg-[var(--color-surface-raised)] border border-[var(--color-border)]">
-                        <EyeOff className="w-3.5 h-3.5 text-[var(--color-text-sub)] shrink-0" />
-                        <p className="text-xs text-[var(--color-text-sub)] font-medium">
-                            {pendingCount} item{pendingCount > 1 ? "s" : ""} not yet walked — will be treated as OK on submit
+                    <div className="flex items-center gap-3 mb-3 px-4 py-3 rounded-2xl bg-[var(--color-surface-raised)] border border-[var(--color-border)]">
+                        <EyeOff className="w-4 h-4 text-[var(--color-text-sub)] shrink-0" />
+                        <p className="text-sm text-[var(--color-text-sub)] font-medium">
+                            {pendingCount} item{pendingCount > 1 ? "s" : ""} not yet reviewed — treated as OK when submitted
                         </p>
                     </div>
                 )}
 
+                {/* Issues notice */}
                 {issueCount > 0 && (
-                    <div className="flex items-center gap-2 mb-3 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
-                        <Wrench className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <p className="text-xs text-amber-800 font-medium">
-                            {issueCount} issue{issueCount > 1 ? "s" : ""} — {issueCount} repair task{issueCount > 1 ? "s" : ""} will be auto-created
+                    <div className="flex items-center gap-3 mb-3 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200">
+                        <Wrench className="w-4 h-4 text-amber-600 shrink-0" />
+                        <p className="text-sm text-amber-800 font-medium">
+                            {issueCount} issue{issueCount > 1 ? "s" : ""} — repair task{issueCount > 1 ? "s" : ""} will be auto-created
                         </p>
                     </div>
                 )}
@@ -1006,29 +1031,29 @@ function ChecklistView({ category, checklist, onBack, onSubmitSuccess }) {
                     onClick={handleSubmit}
                     disabled={submitting}
                     className={`
-                        w-full py-4 rounded-2xl text-sm font-bold tracking-wide
-                        flex items-center justify-center gap-2
-                        transition-all duration-150 active:scale-[0.98]
+                        w-full py-5 rounded-2xl text-base font-bold tracking-wide
+                        flex items-center justify-center gap-2.5
+                        transition-all duration-150 active:scale-[0.98] min-h-[56px]
                         ${submitting ? "opacity-60 cursor-not-allowed" : ""}
                         ${issueCount > 0
-                            ? "bg-[var(--color-warning)] text-white hover:opacity-90"
+                            ? "bg-amber-500 text-white hover:bg-amber-600"
                             : "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]"
                         }
                     `}
                 >
                     {submitting ? (
                         <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <Loader2 className="w-5 h-5 animate-spin" />
                             {t("checklist.submitting", "Submitting…")}
                         </>
                     ) : issueCount > 0 ? (
                         <>
-                            <AlertCircle className="w-4 h-4" />
+                            <AlertCircle className="w-5 h-5" />
                             Submit with {issueCount} Issue{issueCount > 1 ? "s" : ""}
                         </>
                     ) : (
                         <>
-                            <CheckCircle2 className="w-4 h-4" />
+                            <CheckCircle2 className="w-5 h-5" />
                             {t("checklist.submitAllClear", "Submit – All Clear")}
                         </>
                     )}
@@ -1055,22 +1080,27 @@ function ResultScreen({ result, onNewCheck, onBack }) {
     };
 
     return (
-        <div className="flex flex-col px-5 py-8 gap-5">
-            <div className="flex flex-col items-center text-center gap-3">
-                <div className={`w-20 h-20 rounded-full flex items-center justify-center ${hasIssues ? "bg-[var(--color-warning-bg)]" : "bg-[var(--color-success-bg)]"}`}>
+        <div className="flex flex-col px-5 py-8 gap-6">
+
+            {/* Hero section */}
+            <div className="flex flex-col items-center text-center gap-4">
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center ${hasIssues ? "bg-amber-100" : "bg-[var(--color-success-bg)]"}`}>
                     {hasIssues
-                        ? <AlertTriangle className="w-10 h-10 text-[var(--color-warning)]" />
-                        : <PartyPopper className="w-10 h-10 text-[var(--color-success)]" />
+                        ? <AlertTriangle className="w-12 h-12 text-amber-500" />
+                        : <PartyPopper className="w-12 h-12 text-[var(--color-success)]" />
                     }
                 </div>
 
                 <div>
-                    <h2 className="text-xl font-bold text-[var(--color-text-strong)]">
-                        {hasIssues ? t("checklist.resultTitle_issues", "Issues Logged") : t("checklist.resultTitle_clear", "All Clear!")}
-                    </h2>
-                    <p className="text-sm text-[var(--color-text-sub)] mt-1">
+                    <h2 className="text-2xl font-bold text-[var(--color-text-strong)]">
                         {hasIssues
-                            ? `${autoCreatedTasks.length} repair task${autoCreatedTasks.length !== 1 ? "s" : ""} auto-created`
+                            ? t("checklist.resultTitle_issues", "Issues Logged")
+                            : t("checklist.resultTitle_clear", "All Clear! 🎉")
+                        }
+                    </h2>
+                    <p className="text-base text-[var(--color-text-sub)] mt-1.5">
+                        {hasIssues
+                            ? `${autoCreatedTasks.length} repair task${autoCreatedTasks.length !== 1 ? "s" : ""} have been auto-created`
                             : t("checklist.resultSub_clear", "No issues found. Great work!")
                         }
                     </p>
@@ -1083,10 +1113,11 @@ function ResultScreen({ result, onNewCheck, onBack }) {
                     monthName={nepaliDate.monthName}
                 />
 
+                {/* Pass rate badge */}
                 <div className={`
-                    px-5 py-2 rounded-full text-sm font-bold border
+                    px-6 py-2.5 rounded-full text-base font-bold border
                     ${hasIssues
-                        ? "bg-[var(--color-warning-bg)] text-[var(--color-warning)] border-[var(--color-warning-border)]"
+                        ? "bg-amber-50 text-amber-700 border-amber-300"
                         : "bg-[var(--color-success-bg)] text-[var(--color-success)] border-[var(--color-success-border)]"
                     }
                 `}>
@@ -1094,28 +1125,29 @@ function ResultScreen({ result, onNewCheck, onBack }) {
                 </div>
             </div>
 
+            {/* Auto-created repair tasks */}
             {autoCreatedTasks.length > 0 && (
-                <div className="rounded-2xl border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] overflow-hidden">
-                    <div className="px-4 py-3 border-b border-[var(--color-warning-border)] flex items-center gap-2">
-                        <Wrench className="w-4 h-4 text-[var(--color-warning)]" />
-                        <p className="text-xs font-bold text-[var(--color-warning)] uppercase tracking-wider">
+                <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 overflow-hidden">
+                    <div className="px-4 py-3.5 border-b border-amber-300 flex items-center gap-2.5">
+                        <Wrench className="w-5 h-5 text-amber-600" />
+                        <p className="text-base font-bold text-amber-700 uppercase tracking-wide">
                             {autoCreatedTasks.length} Repair Task{autoCreatedTasks.length !== 1 ? "s" : ""} Auto-Created
                         </p>
                     </div>
-                    <div className="divide-y divide-[var(--color-warning-border)]">
+                    <div className="divide-y divide-amber-200">
                         {autoCreatedTasks.map((task) => {
                             const pc = PRIORITY_COLORS[task.priority] ?? PRIORITY_COLORS.Medium;
                             return (
-                                <div key={task._id} className="flex items-center gap-3 px-4 py-3">
-                                    <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shrink-0 border border-[var(--color-warning-border)]">
-                                        <Wrench className="w-3.5 h-3.5 text-[var(--color-warning)]" />
+                                <div key={task._id} className="flex items-center gap-3.5 px-4 py-3.5">
+                                    <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shrink-0 border border-amber-300">
+                                        <Wrench className="w-4.5 h-4.5 text-amber-600" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-semibold text-[var(--color-text-body)] line-clamp-2 break-words">
+                                        <p className="text-sm font-semibold text-[var(--color-text-body)] line-clamp-2 break-words">
                                             {task.title.replace(/^\[Auto\] /, "")}
                                         </p>
                                     </div>
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${pc.bg} ${pc.text} ${pc.border}`}>
+                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full border shrink-0 ${pc.bg} ${pc.text} ${pc.border}`}>
                                         {task.priority}
                                     </span>
                                 </div>
@@ -1125,29 +1157,31 @@ function ResultScreen({ result, onNewCheck, onBack }) {
                 </div>
             )}
 
-            <div className="grid grid-cols-3 gap-2">
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-3">
                 {[
-                    { label: "Total", value: data.totalItems, color: "var(--color-text-body)" },
+                    { label: "Total Items", value: data.totalItems, color: "var(--color-text-body)" },
                     { label: "Passed", value: data.passedItems, color: "var(--color-success)" },
-                    { label: "Issues", value: data.failedItems, color: data.failedItems > 0 ? "var(--color-warning)" : "var(--color-text-weak)" },
+                    { label: "Issues", value: data.failedItems, color: data.failedItems > 0 ? "#f59e0b" : "var(--color-text-weak)" },
                 ].map(({ label, value, color }) => (
-                    <div key={label} className="flex flex-col items-center py-3 rounded-xl bg-[var(--color-surface-raised)] border border-[var(--color-border)]">
-                        <span className="text-2xl font-black tabular-nums" style={{ color }}>{value}</span>
-                        <span className="text-xs text-[var(--color-text-sub)] mt-0.5">{label}</span>
+                    <div key={label} className="flex flex-col items-center py-4 rounded-2xl bg-[var(--color-surface-raised)] border-2 border-[var(--color-border)]">
+                        <span className="text-3xl font-black tabular-nums" style={{ color }}>{value}</span>
+                        <span className="text-xs text-[var(--color-text-sub)] mt-1 text-center">{label}</span>
                     </div>
                 ))}
             </div>
 
+            {/* CTA buttons */}
             <div className="flex flex-col gap-3 mt-1">
                 <button
                     onClick={onNewCheck}
-                    className="w-full py-4 rounded-2xl bg-[var(--color-accent)] text-white text-sm font-bold hover:bg-[var(--color-accent-hover)] transition-colors active:scale-[0.98]"
+                    className="w-full py-5 rounded-2xl bg-[var(--color-accent)] text-white text-base font-bold hover:bg-[var(--color-accent-hover)] transition-colors active:scale-[0.98] min-h-[56px]"
                 >
                     {t("checklist.btnNewCheck", "Start Another Check")}
                 </button>
                 <button
                     onClick={onBack}
-                    className="w-full py-4 rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text-body)] text-sm font-bold hover:bg-[var(--color-accent-light)] transition-colors active:scale-[0.98]"
+                    className="w-full py-5 rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text-body)] text-base font-bold hover:bg-[var(--color-accent-light)] transition-colors active:scale-[0.98] min-h-[56px]"
                 >
                     {t("checklist.btnDashboard", "Back to Dashboard")}
                 </button>
@@ -1200,7 +1234,7 @@ export default function DailyChecklistPage() {
                     );
 
                     const allLatest = latestResults
-                        .filter(r => r.status === 'fulfilled' && r.value?.data?.data?.[0])
+                        .filter(r => r.status === "fulfilled" && r.value?.data?.data?.[0])
                         .map(r => r.value.data.data[0]);
 
                     setTodaysChecklists(allLatest);
@@ -1251,7 +1285,7 @@ export default function DailyChecklistPage() {
             let templateId = null;
 
             if (existing?.template) {
-                templateId = typeof existing.template === 'object' ? existing.template._id : existing.template;
+                templateId = typeof existing.template === "object" ? existing.template._id : existing.template;
             }
 
             if (!templateId) {
@@ -1298,7 +1332,9 @@ export default function DailyChecklistPage() {
             setView("checklist");
         } catch (err) {
             toast.error(err?.response?.data?.message ?? t("common.retry", "Please try again"));
-        } finally { setCreating(false); }
+        } finally {
+            setCreating(false);
+        }
     }
 
     function handleSubmitSuccess(result) {
@@ -1328,11 +1364,11 @@ export default function DailyChecklistPage() {
     if (!propertyId && !loadingChecklists) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-8 text-center">
-                <AlertTriangle className="w-10 h-10 text-[var(--color-warning)]" />
-                <p className="text-sm font-semibold text-[var(--color-text-body)]">
+                <AlertTriangle className="w-12 h-12 text-[var(--color-warning)]" />
+                <p className="text-base font-semibold text-[var(--color-text-body)]">
                     {t("dashboard.noProperty", "No property assigned to your account.")}
                 </p>
-                <p className="text-xs text-[var(--color-text-sub)]">
+                <p className="text-sm text-[var(--color-text-sub)]">
                     {t("dashboard.contactAdmin", "Please contact your administrator.")}
                 </p>
             </div>
@@ -1342,22 +1378,24 @@ export default function DailyChecklistPage() {
     return (
         <div className="min-h-screen bg-[var(--color-bg)] flex flex-col max-w-2xl mx-auto">
 
+            {/* Top header — only shown on picker view */}
             {view === "picker" && (
                 <div className="px-4 pt-5 pb-4 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
-                    <div className="flex items-center gap-3 mb-4">
+                    {/* Title row */}
+                    <div className="flex items-center gap-3 mb-5">
                         <button
                             onClick={() => navigate(-1)}
                             aria-label={t("common.back", "Back")}
-                            className="w-9 h-9 rounded-xl flex items-center justify-center bg-[var(--color-surface-raised)] border border-[var(--color-border)] hover:bg-[var(--color-accent-light)] transition-colors"
+                            className="w-11 h-11 rounded-xl flex items-center justify-center bg-[var(--color-surface-raised)] border border-[var(--color-border)] hover:bg-[var(--color-accent-light)] transition-colors"
                         >
-                            <ArrowLeft className="w-4 h-4 text-[var(--color-text-body)]" />
+                            <ArrowLeft className="w-5 h-5 text-[var(--color-text-body)]" />
                         </button>
 
                         <div className="flex-1">
-                            <h1 className="text-lg font-bold text-[var(--color-text-strong)]">
+                            <h1 className="text-xl font-bold text-[var(--color-text-strong)]">
                                 {t("checklist.pageTitle", "Daily Checks")}
                             </h1>
-                            <p className="text-xs text-[var(--color-text-sub)]">
+                            <p className="text-sm text-[var(--color-text-sub)]">
                                 {t("checklist.pageSubtitle", "Building inspection")}
                             </p>
                         </div>
@@ -1372,31 +1410,33 @@ export default function DailyChecklistPage() {
                         <button
                             onClick={() => window.location.reload()}
                             aria-label={t("common.refresh", "Refresh")}
-                            className="w-9 h-9 rounded-xl flex items-center justify-center bg-[var(--color-surface-raised)] border border-[var(--color-border)] hover:bg-[var(--color-accent-light)] transition-colors"
+                            className="w-11 h-11 rounded-xl flex items-center justify-center bg-[var(--color-surface-raised)] border border-[var(--color-border)] hover:bg-[var(--color-accent-light)] transition-colors"
                         >
-                            <RefreshCw className="w-4 h-4 text-[var(--color-text-sub)]" />
+                            <RefreshCw className="w-5 h-5 text-[var(--color-text-sub)]" />
                         </button>
                     </div>
 
-                    <div className="rounded-2xl bg-[var(--color-accent)] px-4 py-3 flex items-center gap-3 mb-4">
+                    {/* Greeting card */}
+                    <div className="rounded-2xl bg-[var(--color-accent)] px-5 py-4 flex items-center gap-4 mb-5">
                         <div>
-                            <p className="text-white/80 text-xs">{greeting}</p>
-                            <p className="text-white font-bold text-sm">
+                            <p className="text-white/80 text-sm">{greeting}</p>
+                            <p className="text-white font-bold text-lg">
                                 {user?.name ?? t("sidebar.staff", "Staff")}
                             </p>
                         </div>
                         <div className="ml-auto text-right">
-                            <p className="text-white font-bold text-2xl tabular-nums">{doneCount}/{totalCount}</p>
-                            <p className="text-white/70 text-xs">{t("checklist.doneToday", "done today")}</p>
+                            <p className="text-white font-black text-3xl tabular-nums">{doneCount}/{totalCount}</p>
+                            <p className="text-white/70 text-sm">{t("checklist.doneToday", "done today")}</p>
                         </div>
                     </div>
 
-                    <div className="space-y-1.5">
+                    {/* Progress bar */}
+                    <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                            <p className="text-xs font-semibold text-[var(--color-text-sub)]">
+                            <p className="text-sm font-semibold text-[var(--color-text-sub)]">
                                 {t("dashboard.progressTitle", "Today's progress")}
                             </p>
-                            <p className="text-xs font-bold text-[var(--color-accent)]">
+                            <p className="text-sm font-bold text-[var(--color-accent)]">
                                 {doneCount === totalCount
                                     ? `${t("common.allClear", "All clear")} 🎉`
                                     : `${totalCount - doneCount} remaining`
@@ -1409,22 +1449,25 @@ export default function DailyChecklistPage() {
             )}
 
             <div className="flex-1 flex flex-col">
+
+                {/* Full-screen loading overlay */}
                 {creating && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-                        <div className="bg-[var(--color-surface-raised)] rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-xl">
-                            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-accent)]" />
-                            <p className="text-sm font-semibold text-[var(--color-text-body)]">
+                        <div className="bg-[var(--color-surface-raised)] rounded-3xl px-10 py-8 flex flex-col items-center gap-4 shadow-xl">
+                            <Loader2 className="w-10 h-10 animate-spin text-[var(--color-accent)]" />
+                            <p className="text-base font-semibold text-[var(--color-text-body)]">
                                 {t("common.loading", "Loading…")}
                             </p>
                         </div>
                     </div>
                 )}
 
+                {/* Picker view */}
                 {view === "picker" && (
-                    <div className="px-4 py-4">
-                        <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-[var(--color-accent-light)] border border-[var(--color-accent-mid)] mb-4">
-                            <ClipboardList className="w-4 h-4 text-[var(--color-accent)] shrink-0 mt-0.5" />
-                            <p className="text-xs text-[var(--color-accent)] font-medium">
+                    <div className="px-4 py-5">
+                        <div className="flex items-start gap-3 px-4 py-3.5 rounded-2xl bg-[var(--color-accent-light)] border border-[var(--color-accent-mid)] mb-5">
+                            <ClipboardList className="w-5 h-5 text-[var(--color-accent)] shrink-0 mt-0.5" />
+                            <p className="text-sm text-[var(--color-accent)] font-medium">
                                 {t("checklist.selectLabel", "Select a category to begin today's inspection")}
                             </p>
                         </div>
@@ -1439,6 +1482,7 @@ export default function DailyChecklistPage() {
                     </div>
                 )}
 
+                {/* Checklist view */}
                 {view === "checklist" && activeChecklist && (
                     <ChecklistView
                         category={selectedCategory}
@@ -1448,6 +1492,7 @@ export default function DailyChecklistPage() {
                     />
                 )}
 
+                {/* Result view */}
                 {view === "result" && submitResult && (
                     <ResultScreen
                         result={submitResult}

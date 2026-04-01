@@ -218,7 +218,7 @@ export function OrganizationTab() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="p-6">
 
             {/* ── Sync indicator ─────────────────────────────────────────────────── */}
             {syncActive && (
@@ -238,7 +238,7 @@ export function OrganizationTab() {
             <KpiStrip blocks={blocks} />
 
             {/* ── Entities ────────────────────────────────────────────────────────── */}
-            <Card className="border-border">
+            <Card className="border-border mt-6">
                 <CardHeader className="pb-4 border-b border-border">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">

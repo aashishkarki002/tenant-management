@@ -1,16 +1,17 @@
 /**
- * StaffDashboard.jsx — redesigned
+ * StaffDashboard.jsx — redesigned to match Dashboard.jsx layout
+ *
+ * Layout strategy mirrors Dashboard.jsx:
+ * - Same PageHeader pattern (greeting + action button)
+ * - Same bento grid container (px-3/4/5, pb-6/8)
+ * - Same responsive column system (1 → sm:2 → lg:4 → xl:6)
+ * - Same card/shadow conventions from the petrol design system
  *
  * PM decision: Daily Checks is the #1 job. It owns the hero slot.
- * Everything else (maintenance tasks, generators) is secondary context below.
+ * Everything else (KPI strip, maintenance tasks, generators) is secondary context below.
  *
  * Duplicate-submission guard: a category is LOCKED (non-clickable, visually
- * sealed) as soon as its status === "COMPLETED" in todaysChecklists. The lock
- * is enforced in the hero panel here AND remains in dailyChecks.jsx's
- * handleCategorySelect. Belt AND suspenders.
- *
- * useStaffStats is extended minimally — we piggyback today's checklists
- * onto its existing fetchData so both datasets share one loading state.
+ * sealed) as soon as its status === "COMPLETED" in todaysChecklists.
  */
 
 import { useState } from "react";
@@ -20,13 +21,13 @@ import {
     ChevronRight, RefreshCw, AlertCircle, XCircle,
     ClipboardList, Clock, TrendingUp, Activity,
     Flame, Droplets, Car, Waves, LayoutGrid, Camera,
-    Lock, ArrowRight, CheckCheck,
+    Lock, ArrowRight, CheckCheck, Loader2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTime } from "./hooks/UseTime";
 import { useStaffStats } from "./hooks/useStaffStats";
 
-// ─── Category metadata (mirrors dailyChecks.jsx) ─────────────────────────────
+// ─── Category metadata ────────────────────────────────────────────────────────
 
 const CATEGORY_META = {
     FIRE: { icon: Flame, label: "Fire", iconBg: "bg-red-50", iconColor: "text-red-500", ring: "#ef4444", urgency: true },
@@ -40,13 +41,13 @@ const CATEGORY_META = {
 
 const ALL_CATEGORIES = Object.keys(CATEGORY_META);
 
-// ─── Priority / status tokens (unchanged from original) ──────────────────────
+// ─── Priority / status tokens ─────────────────────────────────────────────────
 
 const PRIORITY_CONFIG = {
     Urgent: { pill: "bg-[var(--color-danger-bg)] text-[var(--color-danger)] border border-[var(--color-danger-border)]", dot: "bg-[var(--color-danger)]" },
     High: { pill: "bg-orange-50 text-orange-700 border border-orange-200", dot: "bg-orange-500" },
     Medium: { pill: "bg-[var(--color-warning-bg)] text-[var(--color-warning)] border border-[var(--color-warning-border)]", dot: "bg-yellow-400" },
-    Low: { pill: "bg-[var(--color-surface)] text-[var(--color-text-sub)] border border-[var(--color-border)]", dot: "bg-[var(--color-muted-fill)]" },
+    Low: { pill: "bg-[var(--color-surface)] text-[var(--color-text-sub)] border border-[var(--color-border)]", dot: "bg-[var(--color-muted)]" },
 };
 
 const STATUS_CONFIG = {
@@ -58,10 +59,10 @@ const STATUS_CONFIG = {
 
 const GENERATOR_STATUS_CONFIG = {
     RUNNING: { pill: "bg-[var(--color-success-bg)] text-[var(--color-success)]", dot: "bg-[var(--color-success)] animate-pulse" },
-    IDLE: { pill: "bg-[var(--color-surface)] text-[var(--color-text-sub)]", dot: "bg-[var(--color-muted-fill)]" },
+    IDLE: { pill: "bg-[var(--color-surface)] text-[var(--color-text-sub)]", dot: "bg-[var(--color-muted)]" },
     MAINTENANCE: { pill: "bg-orange-50 text-orange-700", dot: "bg-orange-400" },
     FAULT: { pill: "bg-[var(--color-danger-bg)] text-[var(--color-danger)]", dot: "bg-[var(--color-danger)] animate-pulse" },
-    DECOMMISSIONED: { pill: "bg-[var(--color-surface)] text-[var(--color-text-weak)]", dot: "bg-[var(--color-muted-fill)]" },
+    DECOMMISSIONED: { pill: "bg-[var(--color-surface)] text-[var(--color-text-weak)]", dot: "bg-[var(--color-muted)]" },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -85,9 +86,9 @@ function daysLabel(d) {
     return `In ${n}d`;
 }
 
-// ─── CircularProgress (SVG ring) ─────────────────────────────────────────────
+// ─── CircularProgress ─────────────────────────────────────────────────────────
 
-function CircularProgress({ pct, size = 120, strokeWidth = 8, color = "var(--color-accent)", trackColor = "var(--color-muted-fill)", label, sublabel }) {
+function CircularProgress({ pct, size = 120, strokeWidth = 8, color = "var(--color-accent)", trackColor = "var(--color-muted)", label }) {
     const r = (size - strokeWidth) / 2;
     const circ = 2 * Math.PI * r;
     const offset = circ - (pct / 100) * circ;
@@ -96,12 +97,8 @@ function CircularProgress({ pct, size = 120, strokeWidth = 8, color = "var(--col
         <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
             <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
                 <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={trackColor} strokeWidth={strokeWidth} />
-                <circle
-                    cx={size / 2} cy={size / 2} r={r} fill="none"
-                    stroke={color} strokeWidth={strokeWidth}
-                    strokeLinecap="round"
-                    strokeDasharray={circ}
-                    strokeDashoffset={offset}
+                <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={strokeWidth}
+                    strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
                     style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.4,0,0.2,1)" }}
                 />
             </svg>
@@ -114,8 +111,6 @@ function CircularProgress({ pct, size = 120, strokeWidth = 8, color = "var(--col
 }
 
 // ─── DailyChecksHero ─────────────────────────────────────────────────────────
-// The #1 above-the-fold element. Shows a big ring + per-category chips.
-// Completed categories are LOCKED — no link, no click, visually sealed.
 
 function DailyChecksHero({ safety, loadingChecklists }) {
     const navigate = useNavigate();
@@ -124,8 +119,9 @@ function DailyChecksHero({ safety, loadingChecklists }) {
     const pct = Number.isFinite(safety?.completionRate) ? safety.completionRate : 0;
     const allDone = doneCount === totalCount;
 
-    // Ring color transitions green when all done
-    const ringColor = allDone ? "#10b981" : doneCount >= totalCount / 2 ? "#f59e0b" : "var(--color-accent)";
+    const ringColor = allDone
+        ? "#10b981"
+        : doneCount >= totalCount / 2 ? "#f59e0b" : "var(--color-accent)";
 
     function handleCategoryClick(cat) {
         navigate("/checklists", { state: { autoStart: cat } });
@@ -133,24 +129,25 @@ function DailyChecksHero({ safety, loadingChecklists }) {
 
     return (
         <div
-            className="rounded-3xl border border-[var(--color-border)] overflow-hidden"
+            className="rounded-2xl border border-[var(--color-border)] overflow-hidden shadow-sm ring-1 ring-black/[0.02]"
             style={{ background: "var(--color-surface-raised)", boxShadow: "var(--shadow-card)" }}
         >
-            {/* Header band */}
+            {/* Header band — mirrors Dashboard card headers */}
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[var(--color-border)]">
                 <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-weak)]">Today's Priority</p>
-                    <h2 className="text-base font-bold text-[var(--color-text-strong)] mt-0.5">Daily Checks</h2>
+                    <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted-foreground mb-1">
+                        Today's Priority
+                    </p>
+                    <h2 className="text-base font-bold text-[var(--color-text-strong)] leading-tight">Daily Checks</h2>
                 </div>
                 {allDone ? (
-                    <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-success-bg)] border border-[var(--color-success-border)] text-xs font-bold text-[var(--color-success)]">
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                                     bg-[var(--color-success-bg)] border border-[var(--color-success-border)]
+                                     text-xs font-bold text-[var(--color-success)]">
                         <CheckCheck className="w-3.5 h-3.5" /> All done
                     </span>
                 ) : (
-                    <Link
-                        to="/checklists"
-                        className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline"
-                    >
+                    <Link to="/checklists" className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline">
                         Open <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                 )}
@@ -161,14 +158,11 @@ function DailyChecksHero({ safety, loadingChecklists }) {
 
                 {/* Big ring */}
                 {loadingChecklists ? (
-                    <div className="w-[120px] h-[120px] rounded-full animate-pulse bg-[var(--color-muted-fill)] shrink-0" />
+                    <div className="w-[120px] h-[120px] rounded-full animate-pulse bg-[var(--color-muted)] shrink-0" />
                 ) : (
                     <div className="shrink-0">
                         <CircularProgress
-                            pct={pct}
-                            size={120}
-                            strokeWidth={9}
-                            color={ringColor}
+                            pct={pct} size={120} strokeWidth={9} color={ringColor}
                             label={allDone ? "Complete!" : `${doneCount}/${totalCount}`}
                         />
                         {!allDone && (
@@ -204,14 +198,16 @@ function DailyChecksHero({ safety, loadingChecklists }) {
                                     }
                                 `}
                             >
-                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${done ? "bg-[var(--color-success-bg)]" : meta.iconBg}`}>
+                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0
+                                                 ${done ? "bg-[var(--color-success-bg)]" : meta.iconBg}`}>
                                     {done
                                         ? <CheckCircle2 className="w-3.5 h-3.5 text-[var(--color-success)]" />
                                         : <Icon className={`w-3.5 h-3.5 ${meta.iconColor}`} />
                                     }
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className={`text-xs font-semibold truncate ${done ? "text-[var(--color-success)]" : "text-[var(--color-text-strong)]"}`}>
+                                    <p className={`text-xs font-semibold truncate
+                                                   ${done ? "text-[var(--color-success)]" : "text-[var(--color-text-strong)]"}`}>
                                         {meta.label}
                                     </p>
                                     {meta.urgency && !done && (
@@ -249,9 +245,9 @@ function RowSkeleton({ rows = 3 }) {
         <div className="space-y-2">
             {Array.from({ length: rows }, (_, i) => (
                 <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-                    <div className="w-9 h-9 rounded-xl animate-pulse bg-[var(--color-muted-fill)] shrink-0" />
+                    <div className="w-9 h-9 rounded-xl animate-pulse bg-[var(--color-muted)] shrink-0" />
                     <div className="flex-1 space-y-2">
-                        <div className="h-3.5 w-2/3 rounded-md animate-pulse bg-[var(--color-muted-fill)]" />
+                        <div className="h-3.5 w-2/3 rounded-md animate-pulse bg-[var(--color-muted)]" />
                         <div className="h-3 w-1/3 rounded-md animate-pulse bg-[var(--color-border)]" />
                     </div>
                     <div className="w-14 h-3 rounded-md animate-pulse bg-[var(--color-border)]" />
@@ -261,7 +257,7 @@ function RowSkeleton({ rows = 3 }) {
     );
 }
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
+// ─── Stat card — matches KpiStrip card aesthetic ──────────────────────────────
 
 function StatCard({ value, label, icon: Icon, variant = "default", loading }) {
     const variants = {
@@ -281,9 +277,10 @@ function StatCard({ value, label, icon: Icon, variant = "default", loading }) {
     };
 
     return (
-        <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${variants[variant]}`} style={{ boxShadow: "var(--shadow-card)" }}>
+        <div className={`rounded-2xl border p-4 flex flex-col gap-3 shadow-sm ring-1 ring-black/[0.02] ${variants[variant]}`}
+            style={{ boxShadow: "var(--shadow-card)" }}>
             <div className="flex items-center justify-between">
-                <p className={`text-xs font-semibold uppercase tracking-widest ${labelVariants[variant]}`}>{label}</p>
+                <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${labelVariants[variant]}`}>{label}</p>
                 <Icon className={`w-4 h-4 ${iconVariants[variant]}`} />
             </div>
             {loading
@@ -322,7 +319,7 @@ function TaskRow({ task }) {
                        bg-[var(--color-surface)] hover:border-[var(--color-accent-mid)]
                        hover:bg-[var(--color-accent-light)] transition-all duration-150"
         >
-            <div className="shrink-0 flex items-center justify-center w-9 h-9 rounded-xl bg-[var(--color-bg)]
+            <div className="shrink-0 flex items-center justify-center w-9 h-9 rounded-xl bg-background
                             border border-[var(--color-border)] group-hover:border-[var(--color-accent-mid)]">
                 <span className={`w-2 h-2 rounded-full ${priorityCfg.dot}`} />
             </div>
@@ -369,7 +366,7 @@ function FuelBar({ percent, lowThreshold, criticalThreshold }) {
                 </span>
                 <span className={`text-xs font-bold tabular-nums ${textColor}`}>{percent}%</span>
             </div>
-            <div className="h-1.5 w-full rounded-full bg-[var(--color-muted-fill)] overflow-hidden">
+            <div className="h-1.5 w-full rounded-full bg-[var(--color-muted)] overflow-hidden">
                 <div
                     className={`h-full rounded-full transition-all duration-500 ${barColor}`}
                     style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
@@ -392,12 +389,17 @@ function GeneratorCard({ gen }) {
             to="/maintenance/generator"
             className={`group rounded-2xl border p-4 flex flex-col gap-3 transition-all duration-150
                         hover:shadow-md hover:border-[var(--color-accent-mid)]
-                        ${hasProblem ? "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)]" : "border-[var(--color-border)] bg-[var(--color-surface)]"}`}
+                        ${hasProblem
+                    ? "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)]"
+                    : "border-[var(--color-border)] bg-[var(--color-surface)]"}`}
         >
             <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${hasProblem ? "bg-orange-100" : "bg-[var(--color-accent-light)]"}`}>
-                        {hasProblem ? <AlertTriangle className="w-4 h-4 text-orange-600" /> : <Zap className="w-4 h-4 text-[var(--color-accent)]" />}
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0
+                                     ${hasProblem ? "bg-orange-100" : "bg-[var(--color-accent-light)]"}`}>
+                        {hasProblem
+                            ? <AlertTriangle className="w-4 h-4 text-orange-600" />
+                            : <Zap className="w-4 h-4 text-[var(--color-accent)]" />}
                     </div>
                     <div className="min-w-0">
                         <p className="text-sm font-semibold text-[var(--color-text-strong)] truncate">{gen.name}</p>
@@ -470,11 +472,12 @@ function TabPill({ active, onClick, children, count }) {
     );
 }
 
-// ─── Section wrapper ──────────────────────────────────────────────────────────
+// ─── Section wrapper — same card conventions as Dashboard panels ──────────────
 
 function Section({ title, subtitle, actions, children }) {
     return (
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] overflow-hidden" style={{ boxShadow: "var(--shadow-card)" }}>
+        <div className="rounded-2xl border border-[var(--color-border)] bg-card overflow-hidden shadow-sm ring-1 ring-black/[0.02]"
+            style={{ boxShadow: "var(--shadow-card)" }}>
             <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-[var(--color-border)]">
                 <div>
                     <h2 className="text-sm font-semibold text-[var(--color-text-strong)]">{title}</h2>
@@ -516,180 +519,261 @@ export default function StaffDashboard() {
     });
 
     const loadingChecklists = loading;
-
-    function handleRefreshAll() {
-        refetch();
-    }
-
     const firstName = user?.name?.split(" ")[0] ?? "there";
 
-    // Maintenance completion ring (secondary — shown below daily checks)
+    // Maintenance completion ring (secondary)
     const totalAssigned = maintenance.length;
     const completedCount = completedTasks.length;
     const completionPct = totalAssigned > 0 ? Math.round((completedCount / totalAssigned) * 100) : 0;
     const ringCircumference = 2 * Math.PI * 20;
     const ringOffset = ringCircumference - (completionPct / 100) * ringCircumference;
 
+    // ── Page header — matches Dashboard.jsx PageHeader ────────────────────────
+    const PageHeader = (
+        <div className="px-4 sm:px-5 pt-4 pb-3 shrink-0 flex items-end justify-between gap-4">
+            <div>
+                <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted-foreground mb-1">
+                    Staff Portal
+                </p>
+                <h1 className="text-2xl font-bold leading-none tracking-tight text-foreground">
+                    {greeting}, {firstName}
+                </h1>
+                {!loading && (
+                    <p className="text-sm text-[var(--color-text-sub)] mt-1">
+                        {openTasks.length > 0
+                            ? `${openTasks.length} task${openTasks.length !== 1 ? "s" : ""} open${urgentTasks.length > 0 ? ` · ${urgentTasks.length} urgent` : ""}`
+                            : "All maintenance tasks clear today."}
+                    </p>
+                )}
+            </div>
+
+            {/* Refresh button — right-aligned, mirrors FY picker placement */}
+            <button
+                type="button"
+                onClick={refetch}
+                disabled={loading || loadingChecklists}
+                className="flex items-center gap-2 rounded-xl border border-border
+                           px-3.5 py-2 text-sm font-semibold bg-card text-primary
+                           transition-all hover:shadow-sm active:scale-[0.98]
+                           disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            >
+                <RefreshCw className={`w-3.5 h-3.5 ${(loading || loadingChecklists) ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">Refresh</span>
+            </button>
+        </div>
+    );
+
+    // ── Error banner — identical to Dashboard.jsx ErrorBanner ─────────────────
+    const ErrorBanner = error && !loading && (
+        <div className="mx-4 sm:mx-5 mb-2 flex items-center justify-between gap-3 shrink-0
+                        rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5">
+            <p className="text-sm font-medium text-destructive">{error}</p>
+            <button
+                onClick={refetch}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border
+                           border-destructive text-destructive hover:bg-destructive/10 transition-colors"
+            >
+                Retry
+            </button>
+        </div>
+    );
+
+    // ── Full-page loader (first load only) — mirrors Dashboard.jsx ────────────
+    if (loading && !maintenance.length && !safety) {
+        return (
+            <div className="flex flex-col bg-background min-h-screen">
+                {PageHeader}
+                {ErrorBanner}
+                <div className="flex-1 flex items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span className="text-sm font-medium">Loading…</span>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="min-h-screen bg-[var(--color-bg)]">
-            <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 space-y-5">
+        <div className="flex flex-col bg-background min-h-screen">
 
-                {/* ── Header ──────────────────────────────────────────────────── */}
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <p className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-weak)] mb-1">Staff Portal</p>
-                        <h1 className="text-2xl font-bold text-[var(--color-text-strong)] leading-tight">
-                            {greeting}, {firstName}
-                        </h1>
-                        <p className="text-sm text-[var(--color-text-sub)] mt-1">
-                            {openTasks.length > 0
-                                ? `${openTasks.length} maintenance task${openTasks.length !== 1 ? "s" : ""} open${urgentTasks.length > 0 ? ` · ${urgentTasks.length} urgent` : ""}`
-                                : "All maintenance tasks clear today."
+            {/* ─── Page Header ──────────────────────────────────────────────── */}
+            {PageHeader}
+            {ErrorBanner}
+
+            {/* ─── Main Bento Grid — same container as Dashboard.jsx ────────── */}
+            <div className="px-3 sm:px-4 lg:px-5 pb-6 lg:pb-8">
+                <div
+                    className="
+                        grid gap-3 sm:gap-4 lg:gap-5
+                        grid-cols-1
+                        sm:grid-cols-2
+                        lg:grid-cols-4
+                        xl:grid-cols-6
+                        2xl:grid-cols-6
+                    "
+                    style={{ gridAutoFlow: "dense" }}
+                >
+
+                    {/* ══ Row 1: Daily Checks Hero — full width, #1 priority ══ */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-4 xl:col-span-6 2xl:col-span-6">
+                        <DailyChecksHero safety={safety} loadingChecklists={loadingChecklists} />
+                    </div>
+
+                    {/* ══ Row 2: KPI strip — 4 stat cards ══════════════════════ */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-4 xl:col-span-6 2xl:col-span-6">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                            <StatCard label="Open Tasks" value={openTasks.length} icon={ClipboardList} variant={openTasks.length > 0 ? "accent" : "default"} loading={loading} />
+                            <StatCard label="Urgent" value={urgentTasks.length} icon={AlertTriangle} variant={urgentTasks.length > 0 ? "danger" : "default"} loading={loading} />
+                            <StatCard label="Completed" value={completedTasks.length} icon={CheckCircle2} variant={completedTasks.length > 0 ? "success" : "default"} loading={loading} />
+                            <StatCard label="Gen. Issues" value={generatorsWithIssues.length} icon={Activity} variant={generatorsWithIssues.length > 0 ? "warning" : "default"} loading={loading} />
+                        </div>
+                    </div>
+
+                    {/* ══ Row 3: Maintenance progress + Tasks ════════════════════
+                         Left (3→4 cols): My Tasks section
+                         Right (1→2 cols): Progress ring card
+                    ══════════════════════════════════════════════════════════ */}
+
+                    {/* My Maintenance Tasks */}
+                    <div className="
+                        col-span-1 sm:col-span-2
+                        lg:col-span-3
+                        xl:col-span-4
+                        2xl:col-span-4
+                    ">
+                        <Section
+                            title="My Maintenance Tasks"
+                            subtitle={loading ? null : `${maintenance.length} task${maintenance.length !== 1 ? "s" : ""} assigned to you`}
+                            actions={
+                                <>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        {tabs.map((tab) => (
+                                            <TabPill key={tab.key} active={active === tab.key} onClick={() => setActive(tab.key)} count={tab.count}>
+                                                {tab.label}
+                                            </TabPill>
+                                        ))}
+                                    </div>
+                                    <Link to="/maintenance" className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline ml-1">
+                                        View all <ChevronRight className="w-3.5 h-3.5" />
+                                    </Link>
+                                </>
                             }
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={handleRefreshAll}
-                        disabled={loading || loadingChecklists}
-                        className="flex items-center gap-1.5 text-xs text-[var(--color-text-sub)]
-                                   border border-[var(--color-border)] rounded-xl px-3 py-2
-                                   hover:bg-[var(--color-surface)] hover:text-[var(--color-text-body)]
-                                   disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${(loading || loadingChecklists) ? "animate-spin" : ""}`} />
-                        <span className="hidden sm:inline">Refresh</span>
-                    </button>
-                </div>
-
-                {/* ── Error ──────────────────────────────────────────────────── */}
-                {error && (
-                    <div className="flex items-center gap-3 rounded-xl border border-[var(--color-danger-border)]
-                                    bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span className="flex-1">{error}</span>
-                        <button type="button" onClick={handleRefreshAll} className="text-xs font-semibold underline hover:no-underline shrink-0">
-                            Retry
-                        </button>
-                    </div>
-                )}
-
-                {/* ══════════════════════════════════════════════════════════════
-                    HERO: Daily Checks — #1 priority element, first thing staff sees
-                ══════════════════════════════════════════════════════════════ */}
-                <DailyChecksHero
-                    safety={safety}
-                    loadingChecklists={loadingChecklists}
-                />
-
-                {/* ── KPI strip — maintenance context ─────────────────────────── */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <StatCard label="Open Tasks" value={openTasks.length} icon={ClipboardList} variant={openTasks.length > 0 ? "accent" : "default"} loading={loading} />
-                    <StatCard label="Urgent" value={urgentTasks.length} icon={AlertTriangle} variant={urgentTasks.length > 0 ? "danger" : "default"} loading={loading} />
-                    <StatCard label="Completed" value={completedTasks.length} icon={CheckCircle2} variant={completedTasks.length > 0 ? "success" : "default"} loading={loading} />
-                    <StatCard label="Gen. Issues" value={generatorsWithIssues.length} icon={Activity} variant={generatorsWithIssues.length > 0 ? "warning" : "default"} loading={loading} />
-                </div>
-
-                {/* ── Maintenance progress ring (small — secondary) ────────────── */}
-                {!loading && totalAssigned > 0 && (
-                    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)]
-                                    px-5 py-4 flex items-center gap-5" style={{ boxShadow: "var(--shadow-card)" }}>
-                        <div className="shrink-0">
-                            <svg width="52" height="52" viewBox="0 0 52 52">
-                                <circle cx="26" cy="26" r="20" fill="none" stroke="var(--color-muted-fill)" strokeWidth="4" />
-                                <circle cx="26" cy="26" r="20" fill="none" stroke="var(--color-accent)" strokeWidth="4"
-                                    strokeLinecap="round"
-                                    strokeDasharray={ringCircumference}
-                                    strokeDashoffset={ringOffset}
-                                    transform="rotate(-90 26 26)"
-                                    style={{ transition: "stroke-dashoffset 0.6s ease" }}
-                                />
-                                <text x="26" y="30" textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--color-text-strong)">
-                                    {completionPct}%
-                                </text>
-                            </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-[var(--color-text-strong)]">Maintenance progress</p>
-                            <p className="text-xs text-[var(--color-text-sub)] mt-0.5">
-                                {completedCount} of {totalAssigned} tasks completed
-                                {openTasks.length > 0 && ` · ${openTasks.length} remaining`}
-                            </p>
-                        </div>
-                        <TrendingUp className="w-5 h-5 text-[var(--color-accent)] shrink-0" />
-                    </div>
-                )}
-
-                {/* ── My tasks ────────────────────────────────────────────────── */}
-                <Section
-                    title="My Maintenance Tasks"
-                    subtitle={loading ? null : `${maintenance.length} task${maintenance.length !== 1 ? "s" : ""} assigned to you`}
-                    actions={
-                        <>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                                {tabs.map((tab) => (
-                                    <TabPill key={tab.key} active={active === tab.key} onClick={() => setActive(tab.key)} count={tab.count}>
-                                        {tab.label}
-                                    </TabPill>
-                                ))}
-                            </div>
-                            <Link to="/maintenance" className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline ml-1">
-                                View all <ChevronRight className="w-3.5 h-3.5" />
-                            </Link>
-                        </>
-                    }
-                >
-                    {loading ? (
-                        <RowSkeleton rows={3} />
-                    ) : displayedTasks.length === 0 ? (
-                        (() => {
-                            const states = {
-                                open: { icon: CheckCircle2, message: "No open tasks", subMessage: "You're all caught up 🎉" },
-                                completed: { icon: CheckCircle2, message: "No completed tasks yet" },
-                                cancelled: { icon: XCircle, message: "No cancelled tasks" },
-                                all: { icon: Wrench, message: "No tasks assigned yet" },
-                            };
-                            const s = states[active] ?? states.all;
-                            return <Empty icon={s.icon} message={s.message} subMessage={s.subMessage} />;
-                        })()
-                    ) : (
-                        <div className="space-y-2">
-                            {displayedTasks.map((task) => <TaskRow key={task._id} task={task} />)}
-                        </div>
-                    )}
-                </Section>
-
-                {/* ── Generator status ────────────────────────────────────────── */}
-                <Section
-                    title="Generator Status"
-                    subtitle={!loading && generatorsWithIssues.length > 0
-                        ? `${generatorsWithIssues.length} generator${generatorsWithIssues.length !== 1 ? "s" : ""} need attention`
-                        : !loading && generators.length > 0 ? "All generators nominal" : null}
-                    actions={
-                        <Link to="/maintenance/generator" className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline">
-                            View all <ChevronRight className="w-3.5 h-3.5" />
-                        </Link>
-                    }
-                >
-                    {loading ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {[1, 2].map((i) => (
-                                <div key={i} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 space-y-3">
-                                    <div className="h-4 w-32 rounded-lg animate-pulse bg-[var(--color-muted-fill)]" />
-                                    <div className="h-2 w-full rounded-full animate-pulse bg-[var(--color-border)]" />
-                                    <div className="h-3 w-24 rounded-lg animate-pulse bg-[var(--color-border)]" />
+                        >
+                            {loading ? (
+                                <RowSkeleton rows={3} />
+                            ) : displayedTasks.length === 0 ? (
+                                (() => {
+                                    const states = {
+                                        open: { icon: CheckCircle2, message: "No open tasks", subMessage: "You're all caught up 🎉" },
+                                        completed: { icon: CheckCircle2, message: "No completed tasks yet" },
+                                        cancelled: { icon: XCircle, message: "No cancelled tasks" },
+                                        all: { icon: Wrench, message: "No tasks assigned yet" },
+                                    };
+                                    const s = states[active] ?? states.all;
+                                    return <Empty icon={s.icon} message={s.message} subMessage={s.subMessage} />;
+                                })()
+                            ) : (
+                                <div className="space-y-2">
+                                    {displayedTasks.map((task) => <TaskRow key={task._id} task={task} />)}
                                 </div>
-                            ))}
-                        </div>
-                    ) : generators.length === 0 ? (
-                        <Empty icon={Zap} message="No generators registered" subMessage="Generators will appear here once added" />
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {generators.map((gen) => <GeneratorCard key={gen._id} gen={gen} />)}
-                        </div>
-                    )}
-                </Section>
+                            )}
+                        </Section>
+                    </div>
 
+                    {/* Maintenance progress ring — sidebar card */}
+                    <div className="
+                        col-span-1 sm:col-span-2
+                        lg:col-span-1
+                        xl:col-span-2
+                        2xl:col-span-2
+                    ">
+                        <div className="rounded-2xl border border-[var(--color-border)] bg-card overflow-hidden shadow-sm ring-1 ring-black/[0.02] h-full"
+                            style={{ boxShadow: "var(--shadow-card)" }}>
+                            <div className="px-5 py-4 border-b border-[var(--color-border)]">
+                                <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted-foreground mb-1">Progress</p>
+                                <h2 className="text-sm font-semibold text-[var(--color-text-strong)]">Maintenance</h2>
+                            </div>
+                            <div className="p-5 flex flex-col items-center gap-4">
+                                {loading || totalAssigned === 0 ? (
+                                    <Empty icon={TrendingUp} message="No tasks yet" subMessage="Tasks will appear here once assigned" />
+                                ) : (
+                                    <>
+                                        {/* Inline SVG ring — consistent with DailyChecksHero ring style */}
+                                        <div className="relative flex items-center justify-center" style={{ width: 100, height: 100 }}>
+                                            <svg width="100" height="100" style={{ transform: "rotate(-90deg)" }}>
+                                                <circle cx="50" cy="50" r="40" fill="none" stroke="var(--color-muted)" strokeWidth="7" />
+                                                <circle cx="50" cy="50" r="40" fill="none" stroke="var(--color-accent)" strokeWidth="7"
+                                                    strokeLinecap="round"
+                                                    strokeDasharray={ringCircumference * 2}
+                                                    strokeDashoffset={ringCircumference * 2 - (completionPct / 100) * ringCircumference * 2}
+                                                    style={{ transition: "stroke-dashoffset 0.6s ease" }}
+                                                />
+                                            </svg>
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                                <span className="text-2xl font-black tabular-nums text-[var(--color-text-strong)] leading-none">{completionPct}%</span>
+                                                <span className="text-[10px] font-semibold text-[var(--color-text-sub)] mt-0.5">done</span>
+                                            </div>
+                                        </div>
+                                        <div className="w-full space-y-2 text-center">
+                                            <p className="text-sm font-semibold text-[var(--color-text-strong)]">
+                                                {completedCount} of {totalAssigned}
+                                            </p>
+                                            <p className="text-xs text-[var(--color-text-sub)]">tasks completed</p>
+                                            {openTasks.length > 0 && (
+                                                <p className="text-xs font-medium text-[var(--color-warning)]">
+                                                    {openTasks.length} remaining
+                                                </p>
+                                            )}
+                                        </div>
+                                        <Link to="/maintenance"
+                                            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl
+                                                         border border-[var(--color-border)] text-xs font-semibold
+                                                         text-[var(--color-accent)] hover:bg-[var(--color-accent-light)]
+                                                         hover:border-[var(--color-accent-mid)] transition-colors">
+                                            View tasks <ChevronRight className="w-3.5 h-3.5" />
+                                        </Link>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ══ Row 4: Generator Status — full width ════════════════ */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-4 xl:col-span-6 2xl:col-span-6">
+                        <Section
+                            title="Generator Status"
+                            subtitle={
+                                !loading && generatorsWithIssues.length > 0
+                                    ? `${generatorsWithIssues.length} generator${generatorsWithIssues.length !== 1 ? "s" : ""} need attention`
+                                    : !loading && generators.length > 0 ? "All generators nominal" : null
+                            }
+                            actions={
+                                <Link to="/maintenance/generator"
+                                    className="flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline">
+                                    View all <ChevronRight className="w-3.5 h-3.5" />
+                                </Link>
+                            }
+                        >
+                            {loading ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {[1, 2, 3].map((i) => (
+                                        <div key={i} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 space-y-3">
+                                            <div className="h-4 w-32 rounded-lg animate-pulse bg-[var(--color-muted)]" />
+                                            <div className="h-2 w-full rounded-full animate-pulse bg-[var(--color-border)]" />
+                                            <div className="h-3 w-24 rounded-lg animate-pulse bg-[var(--color-border)]" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : generators.length === 0 ? (
+                                <Empty icon={Zap} message="No generators registered" subMessage="Generators will appear here once added" />
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {generators.map((gen) => <GeneratorCard key={gen._id} gen={gen} />)}
+                                </div>
+                            )}
+                        </Section>
+                    </div>
+
+                </div>
             </div>
         </div>
     );
