@@ -12,8 +12,13 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import NepaliDate from "nepali-datetime";
+import { toast } from "sonner";
 import TodayBoard from "./components/TodayBoard";
 import ChecklistCalendar from "./components/ChecklistCalendar";
+import { Button } from "@/components/ui/button";
+import { Settings2 } from "lucide-react";
+import TemplateEditor from "./components/TemplateEditor";
+import api from "../../plugins/axios";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +81,33 @@ function DailyChecksPage({ propertyId }) {
   const effectivePropertyId = propertyId ?? OWNERSHIP_ENTITY_ID;
 
   const [activeTab, setActiveTab] = useState("today");
+  // ── Template editor state ─────────────────────────────────────────────────
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState(null);
+  const [todayRefreshKey, setTodayRefreshKey] = useState(0);
+
+  /** Opens the editor using the first active template for this property (Settings button). */
+  const handleOpenTemplateSettings = useCallback(async () => {
+    try {
+      const res = await api.get("/api/checklists/templates", {
+        params: { propertyId: effectivePropertyId, isActive: true },
+      });
+      const list = res.data?.data ?? [];
+      if (!list.length) {
+        toast.error("No active checklist templates for this property.");
+        return;
+      }
+      setEditingTemplateId(list[0]._id);
+      setEditorOpen(true);
+    } catch (e) {
+      toast.error(e.message ?? "Failed to load templates");
+    }
+  }, [effectivePropertyId]);
+
+  const handleEditorOpenChange = useCallback((open) => {
+    setEditorOpen(open);
+    if (!open) setEditingTemplateId(null);
+  }, []);
 
   // Today's Nepali date — used to highlight calendar cell and as TodayBoard default
   const todayNepaliDate = toNepaliISO(new NepaliDate(new Date()));
@@ -102,6 +134,15 @@ function DailyChecksPage({ propertyId }) {
           </p>
         </div>
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          onClick={handleOpenTemplateSettings}
+          title="Manage templates"
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
       </div>
 
       <div className="h-px bg-border/50" />
@@ -111,6 +152,7 @@ function DailyChecksPage({ propertyId }) {
         <TodayBoard
           propertyId={effectivePropertyId}
           onCardClick={handleCardClick}
+          refreshKey={todayRefreshKey}
         />
       ) : (
         <ChecklistCalendar
@@ -119,6 +161,14 @@ function DailyChecksPage({ propertyId }) {
           initialMonth={currentMonth}
           todayNepaliDate={todayNepaliDate}
           onCardClick={handleCardClick}
+        />
+      )}
+      {editingTemplateId && (
+        <TemplateEditor
+          templateId={editingTemplateId}
+          open={editorOpen}
+          onOpenChange={handleEditorOpenChange}
+          onSaved={() => setTodayRefreshKey((k) => k + 1)}
         />
       )}
     </div>

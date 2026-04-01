@@ -37,6 +37,12 @@ const NEPALI_MONTHS = [
     "Poush", "Magh", "Falgun", "Chaitra",
 ];
 
+/** True when a result row matches the selected BS calendar day (canonical key; avoids UTC `checkDate` mismatch). */
+function isResultForNepaliDay(result, nepaliISO) {
+    if (!result || !nepaliISO) return false;
+    return result.nepaliDate === nepaliISO;
+}
+
 function getNepaliDay(daysBack = 0) {
     // getTodayNepali returns today; for past days we derive from Date arithmetic
     if (daysBack === 0) {
@@ -672,7 +678,7 @@ function ChecklistView({ category, checklist, nepaliInfo, onBack, onSubmitSucces
      * and see their 15 items still marked, with 5 remaining as null.
      */
     const [sections, setSections] = useState(() => {
-        const raw = checklist?.data?.sections;
+        const raw = checklist?.data?.sections
         if (!raw) return [];
 
         const status = checklist?.data?.status ?? "PENDING";
@@ -991,7 +997,7 @@ export default function DailyChecklistPage() {
     const [loadingDay, setLoadingDay] = useState(true);
     const [creating, setCreating] = useState(false);
 
-    const propertyId = OWNERSHIP_ENTITY_ID;
+    const propertyId = "6970f5a7464f3514eb16051c";
 
     // ── Load results for the selected BS date ────────────────────────────────
     // Uses /api/checklists/today which supports `nepaliDate` param — one call
@@ -1005,7 +1011,8 @@ export default function DailyChecklistPage() {
                 params: { propertyId, nepaliDate: targetNepaliISO },
                 signal: controller.signal,
             });
-            setDayResults(res.data?.data ?? []);
+            const rows = res.data?.data ?? [];
+            setDayResults(rows.filter((r) => isResultForNepaliDay(r, targetNepaliISO)));
         } catch (err) {
             if (err.name === "CanceledError" || err.name === "AbortError") return;
             console.error("[DailyChecklistPage] load failed:", err);
@@ -1039,18 +1046,23 @@ export default function DailyChecklistPage() {
     async function handleCategorySelect(cat, existing) {
         setSelectedCategory(cat);
 
+        const row =
+            existing && isResultForNepaliDay(existing, nepaliInfo?.nepaliISO)
+                ? existing
+                : null;
+
         // Already completed — show summary view, not a blocking toast
-        if (existing?.status === "COMPLETED") {
-            setViewingResult(existing);
+        if (row?.status === "COMPLETED") {
+            setViewingResult(row);
             setView("submitted");
             return;
         }
 
         // In-progress from today — resume
-        if (existing && existing.status !== "COMPLETED") {
+        if (row && row.status !== "COMPLETED") {
             setCreating(true);
             try {
-                const res = await api.get(`/api/checklists/results/${existing._id}`);
+                const res = await api.get(`/api/checklists/results/${row._id}`);
                 setActiveChecklist(res.data);
                 setView("checklist");
             } catch {

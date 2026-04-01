@@ -20,13 +20,16 @@ import { toast } from "sonner";
  * DaySummary shape:
  *   { nepaliDate, englishDate, total, completed, pending, withIssues, passRate }
  */
-function useChecklistCalendar(propertyId, initialYear, initialMonth) {
+export default function useChecklistCalendar(
+  propertyId,
+  initialYear,
+  initialMonth,
+) {
   const now = new Date();
-  // Fallback: use current year/month if not provided (caller should pass
-  // the current Nepali year+month from a NepaliDate utility)
   const [nepaliYear, setNepaliYear] = useState(
     initialYear ?? now.getFullYear(),
   );
+
   const [nepaliMonth, setNepaliMonth] = useState(
     initialMonth ?? now.getMonth() + 1,
   );
@@ -88,5 +91,3 @@ function useChecklistCalendar(propertyId, initialYear, initialMonth) {
     error,
   };
 }
-
-export default useChecklistCalendar;

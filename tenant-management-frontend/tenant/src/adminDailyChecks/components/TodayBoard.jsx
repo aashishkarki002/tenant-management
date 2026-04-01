@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { RefreshCw, Camera, Zap, Droplets, LayoutGrid, Car, Flame, Waves, ChevronRight, AlertTriangle, CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -218,12 +219,20 @@ function HealthBadge({ summary }) {
  *   propertyId    string   required
  *   nepaliDate    string   optional — override (used when opened from calendar)
  *   onCardClick   (result) → void   optional — opens detail sheet / navigates
+ *   refreshKey    number   optional — increment to trigger a silent refetch (e.g. after template edit)
  */
-function TodayBoard({ propertyId, nepaliDate: overrideDate, onCardClick }) {
+function TodayBoard({ propertyId, nepaliDate: overrideDate, onCardClick, refreshKey = 0 }) {
     const navigate = useNavigate();
 
     const { results, summary, nepaliDate, isLoading, error, refetch } =
         useTodayBoard(propertyId, overrideDate ?? null);
+
+    const prevRefreshKey = useRef(refreshKey);
+    useEffect(() => {
+        if (prevRefreshKey.current === refreshKey) return;
+        prevRefreshKey.current = refreshKey;
+        refetch();
+    }, [refreshKey, refetch]);
 
     function handleClick(result) {
         if (onCardClick) {
