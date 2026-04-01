@@ -37,19 +37,18 @@ export function useMonthlyChart(
 
   const isCompare = compareQuarter !== null;
 
-  const buildParams = (quarter) => {
-    const params = {};
-    if (fiscalYear) params.fiscalYear = fiscalYear;
-    if (quarter) {
-      params.quarter = quarter;
-    } else if (allYear || fiscalYear) {
-      params.allYear = true;
-    }
-    if (entityId) params.entityId = entityId; // NEW
-    return params;
-  };
-
   const load = useCallback(async () => {
+    const buildParams = (quarter) => {
+      const params = {};
+      if (fiscalYear) params.fiscalYear = fiscalYear;
+      if (quarter) {
+        params.quarter = quarter;
+      } else if (allYear || fiscalYear) {
+        params.allYear = true;
+      }
+      if (entityId) params.entityId = entityId; // NEW
+      return params;
+    };
     setLoadingChart(true);
     try {
       if (isCompare) {

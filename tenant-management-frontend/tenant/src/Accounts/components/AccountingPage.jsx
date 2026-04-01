@@ -17,7 +17,7 @@
  *   8. No business logic was changed — only structural decomposition.
  */
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
 // ── Date utilities — ONE import, no local duplicates ─────────────────────────
@@ -34,8 +34,8 @@ import {
 import { useHeaderSlot } from "../../context/HeaderSlotContext";
 import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
 import { useMonthlyChart } from "../hooks/useMonthlyChart";
+import useOwnership from "../../hooks/use-ownership";
 import { useIsMobile } from "@/hooks/use-mobile";
-import api from "../../../plugins/axios";
 
 // ── Sub-components (extracted from this file) ─────────────────────────────────
 import { Card, DarkCard, Lbl, Delta, Spark, Skeleton } from "./AccountingPrimitives";
@@ -141,25 +141,8 @@ export default function AccountingPage() {
 
     // ── Entity scope ─────────────────────────────────────────────────────────
     const [activeEntityId, setActiveEntityId] = useState(null);
-    const [entities, setEntities] = useState([]);
-    const [loadingEntities, setLoadingEntities] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        setLoadingEntities(true);
-        api.get("/api/ownership")
-            .then(res => { if (!cancelled) setEntities(res.data.data ?? []); })
-            .catch(() => { })
-            .finally(() => { if (!cancelled) setLoadingEntities(false); });
-        return () => { cancelled = true; };
-    }, []);
-
-    const resolvedEntityId = useMemo(() => {
-        if (!activeEntityId) return null;
-        const entity = entities.find(e => e._id === activeEntityId);
-        if (entity?.type === "private") return "private";
-        return activeEntityId;
-    }, [activeEntityId, entities]);
+    const { entities } = useOwnership();
+    const resolvedEntityId = activeEntityId ?? null;
 
     // ── Resolved filter params (fed into every hook) ─────────────────────────
     const resolvedFilter = useMemo(() => {

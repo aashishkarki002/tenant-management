@@ -205,6 +205,7 @@ export default function ExpenseBreakDown({
     customEndDate = "",
     openDialog = false,
     onDialogOpenHandled,
+    entityId = null,
 }) {
     const isMobile = useIsMobile();
     const [tab, setTab] = useState("overview");
@@ -219,10 +220,11 @@ export default function ExpenseBreakDown({
         customEndDate,
         selectedMonth,
         fiscalYear,
+        entityId,
     );
 
     const { data: DB, loading: loadingB } = useExpenseSummary(
-        compareMode ? compareQuarter : null, "", "", null, fiscalYear,
+        compareMode ? compareQuarter : null, "", "", null, fiscalYear, entityId,
     );
 
     useEffect(() => {

@@ -127,7 +127,7 @@ export default function MaintenancePage() {
         const response = await api.post('/api/maintenance/create', maintenanceData);
 
         if (response.data.success) {
-          toast.success('Maintenance task created successfully');
+
           formik.resetForm();
           setSelectedTenant(null);
           fetchMaintenance();

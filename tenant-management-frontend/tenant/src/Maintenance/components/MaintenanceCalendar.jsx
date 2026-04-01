@@ -64,7 +64,7 @@ function EventPopover({ event, position, onClose }) {
         /* Backdrop */
         <div className="fixed inset-0 z-50 flex items-start justify-center" onClick={onClose}>
             <div
-                className="absolute z-50 w-72 rounded-xl border border-muted-fill bg-surface-raised p-4 shadow-xl"
+                className="absolute z-50 w-72 rounded-xl border border-muted-fill bg-background p-4 shadow-xl"
                 style={{ top: Math.min(position.y, window.innerHeight - 280), left: Math.min(position.x, window.innerWidth - 300) }}
                 onClick={(e) => e.stopPropagation()}
             >
@@ -156,7 +156,7 @@ export default function MaintenanceCalendar({ maintenance = [] }) {
             </div>
 
             {/* FullCalendar */}
-            <div className="rounded-xl border border-muted-fill bg-surface-raised shadow-sm overflow-hidden fc-wrapper">
+            <div className="rounded-xl border border-muted-fill bg-background shadow-sm overflow-hidden fc-wrapper">
                 <FullCalendar
                     ref={calendarRef}
                     plugins={[dayGridPlugin, interactionPlugin, listPlugin]}
@@ -192,7 +192,7 @@ export default function MaintenanceCalendar({ maintenance = [] }) {
             color: var(--color-text-strong);
         }
         .fc-wrapper .fc-button {
-          background: var(--color-surface-raised) !important;
+          background: var(--color-background) !important;
           border: 1px solid var(--color-border) !important;
           color: var(--color-text-body) !important;
           border-radius: 0.5rem !important;
