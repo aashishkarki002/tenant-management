@@ -305,10 +305,7 @@ export default function AccountingPage() {
                     />
                 )}
 
-                {/* Context strip — non-overview tabs */}
-                {activeTab !== "overview" && (
-                    <TabContextStrip {...contextStripProps} />
-                )}
+
 
                 {activeTab === "revenue" && (
                     <RevenueTab

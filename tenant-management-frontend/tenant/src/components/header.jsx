@@ -29,6 +29,7 @@ import {
   showNotificationToast,
   timeAgo,
 } from "./header/header.helpers";
+import { Button } from "./ui/button";
 
 // ─── Global Search ────────────────────────────────────────────────────────────
 export function GlobalSearch() {
@@ -435,7 +436,7 @@ export default function Header() {
         <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
           <SheetTrigger asChild>
             <button
-              className={iconBtnBase}
+              className="relative flex items-center justify-center w-8 h-8 rounded-md border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30"
               style={{
                 borderColor: "var(--color-border)",
                 background: "var(--color-surface-raised)",
@@ -448,9 +449,15 @@ export default function Header() {
               />
               {hasUnread && (
                 <span
-                  className="absolute -top-1 -right-1 min-w-[16px] h-[16px] rounded-full
-                             flex items-center justify-center text-[9px] font-bold px-1"
-                  style={{ background: "var(--color-danger)", color: "#fff" }}
+                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-[9px] font-bold leading-none"
+                  style={{
+                    background: "var(--color-danger)",
+                    color: "#fff",
+                    minWidth: "16px",
+                    height: "16px",
+                    padding: "0 3px",
+                    boxShadow: "0 0 0 2px var(--color-surface-raised)",
+                  }}
                 >
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>

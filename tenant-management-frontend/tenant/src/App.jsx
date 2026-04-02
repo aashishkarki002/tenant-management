@@ -25,7 +25,7 @@ import BroadCast from "./BroadCast";
 import Submeter from "./submeter/Submeter";
 import Generator from "./Generators/Generator";
 import DailyChecks from "./DailyChecks/dailyChecks";
-import Loans from "./Loans/loan";
+import Loans from "./Loans/LoansPage";
 import { setupSwMessageListener } from "./hooks/usePushNotification";
 import AdminDailyChecks from "./adminDailyChecks/dailychecks";
 import Units from "./units/units";

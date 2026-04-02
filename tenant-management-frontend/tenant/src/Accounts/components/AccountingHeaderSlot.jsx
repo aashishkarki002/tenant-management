@@ -1,22 +1,20 @@
 /**
- * AccountingHeaderSlot.jsx
+ * AccountingHeaderSlot.jsx  —  REDESIGNED
  *
- * The right-hand actions injected into the app's sticky header via useHeaderSlot().
- * Contains:
- *   • "Add Revenue" primary CTA button
- *   • Overflow (⋮) menu — Add Expense, Refresh, Print, Export CSV
+ * Header actions injected via useHeaderSlot().
+ * Design changes:
+ *   • "Add Revenue" CTA has sharper radius and tighter padding
+ *   • Overflow button uses a more refined ghost style
+ *   • "Add Expense" menu item uses a danger-tinted icon (consistent with expense = warning)
+ *   • All text is 12px instead of 13px — denser, more professional
  *
- * Props:
- *   onAddRevenue  () => void
- *   onAddExpense  () => void
- *   onRefresh     () => void
- *   summary       object | null   — from useAccounting, used for CSV export
- *   filterLabel   string          — human-readable period label for the CSV filename/row
+ * Props (unchanged):
+ *   onAddRevenue · onAddExpense · onRefresh · summary · filterLabel
  */
 
 import {
     PlusIcon, MoreVerticalIcon, RefreshCwIcon,
-    PrinterIcon, DownloadIcon,
+    PrinterIcon, DownloadIcon, TrendingDownIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,7 +39,7 @@ export default function AccountingHeaderSlot({
             ["Period", filterLabel],
         ];
         const blob = new Blob(
-            [rows.map(r => r.join(",")).join("\n")],
+            [rows.map((r) => r.join(",")).join("\n")],
             { type: "text/csv" },
         );
         const url = URL.createObjectURL(blob);
@@ -53,14 +51,14 @@ export default function AccountingHeaderSlot({
     };
 
     return (
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
             {/* Primary CTA */}
             <Button
                 onClick={onAddRevenue}
                 size="sm"
-                className="gap-1.5 h-8 px-3 text-[13px] font-semibold bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white shadow-sm rounded-lg"
+                className="gap-1.5 h-8 px-3.5 text-[12px] font-bold bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white shadow-none rounded-xl border-0"
             >
-                <PlusIcon size={14} strokeWidth={2.5} />
+                <PlusIcon size={13} strokeWidth={2.5} />
                 Add Revenue
             </Button>
 
@@ -70,18 +68,24 @@ export default function AccountingHeaderSlot({
                     <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 w-8 p-0 rounded-lg border-[var(--color-border)] bg-transparent hover:bg-[var(--color-surface)]"
+                        className="h-8 w-8 p-0 rounded-xl border-[var(--color-border)] bg-transparent hover:bg-[var(--color-surface)] shadow-none"
                     >
-                        <MoreVerticalIcon size={15} className="text-[var(--color-text-sub)]" />
+                        <MoreVerticalIcon
+                            size={14}
+                            className="text-[var(--color-text-sub)]"
+                        />
                     </Button>
                 </DropdownMenuTrigger>
 
-                <DropdownMenuContent align="end" className="min-w-[180px] rounded-xl">
+                <DropdownMenuContent align="end" className="min-w-[176px] rounded-xl shadow-lg">
                     <DropdownMenuItem
                         onClick={onAddExpense}
-                        className="gap-2 cursor-pointer text-[13px]"
+                        className="gap-2 cursor-pointer text-[12px]"
                     >
-                        <PlusIcon size={14} className="text-[var(--color-warning)]" />
+                        <TrendingDownIcon
+                            size={13}
+                            className="text-[var(--color-warning)]"
+                        />
                         Add Expense
                     </DropdownMenuItem>
 
@@ -89,17 +93,17 @@ export default function AccountingHeaderSlot({
 
                     <DropdownMenuItem
                         onClick={onRefresh}
-                        className="gap-2 cursor-pointer text-[13px]"
+                        className="gap-2 cursor-pointer text-[12px]"
                     >
-                        <RefreshCwIcon size={14} />
+                        <RefreshCwIcon size={13} />
                         Refresh
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
                         onClick={() => window.print()}
-                        className="gap-2 cursor-pointer text-[13px]"
+                        className="gap-2 cursor-pointer text-[12px]"
                     >
-                        <PrinterIcon size={14} />
+                        <PrinterIcon size={13} />
                         Print Report
                     </DropdownMenuItem>
 
@@ -107,9 +111,9 @@ export default function AccountingHeaderSlot({
 
                     <DropdownMenuItem
                         onClick={handleExportCSV}
-                        className="gap-2 cursor-pointer text-[13px]"
+                        className="gap-2 cursor-pointer text-[12px]"
                     >
-                        <DownloadIcon size={14} />
+                        <DownloadIcon size={13} />
                         Export CSV
                     </DropdownMenuItem>
                 </DropdownMenuContent>

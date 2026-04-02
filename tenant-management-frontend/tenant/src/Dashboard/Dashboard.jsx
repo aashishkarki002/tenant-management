@@ -1,45 +1,3 @@
-// src/pages/dashboard/Dashboard.jsx
-//
-// ─── Bento Grid Responsive Layout Strategy ────────────────────────────────────
-//
-// DESKTOP (2xl+, 1536px+):
-//   6-column asymmetric bento grid with dynamic row heights
-//   • KPIs: 4 cards spanning full width (4 × 1-column)
-//   • Chart: 4 columns (tall) | Attention: 2 columns (tall, scrollable)
-//   • Building Health: 2 columns | Recent Activities: 4 columns
-//   • Building Performance: full width grid
-//
-// LAPTOP (xl+, 1280-1535px):
-//   4-column bento grid, more compact
-//   • KPIs: 4 cards across (4 × 1-column)
-//   • Chart: 3 columns | Attention: 1 column
-//   • Building Health: 1 column | Recent Activities: 3 columns
-//   • Building Performance: full width
-//
-// TABLET (md-lg, 768-1279px):
-//   2-column responsive grid with natural flow
-//   • KPIs: 2 × 2 grid
-//   • Attention + Health: side by side (60/40 split)
-//   • Chart: full width
-//   • Recent Activities: full width
-//   • Building Performance: full width
-//
-// MOBILE (< 768px):
-//   Single column stack, priority-based order
-//   • KPIs: stacked pairs
-//   • Attention Panel (capped height)
-//   • Building Health
-//   • Chart (optimized aspect ratio)
-//   • Recent Activities
-//   • Building Performance
-//
-// Key principles:
-//   • Pure CSS Grid with minmax() for fluid responsiveness
-//   • No fixed heights except on scrollable containers
-//   • Content-aware row sizing with auto-fit
-//   • Bento aesthetic: varied card sizes, visual hierarchy
-//   • Mobile-first approach with progressive enhancement
-
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Loader2, PlusIcon, ReceiptTextIcon, ChevronDown } from "lucide-react";
@@ -47,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import KpiStrip from "./component/KpiStrip";
 import BarDiagram from "./component/BarDiagram";
 import RecentActivities from "./component/RecentActivities";
-import BuildingPerformanceGrid from "./component/BuildingPerfomanceGrid";
 import NeedsAttentionPanel from "./component/NeedsAttentionPanel";
 import BuildingHealthPanel from "./component/BuildingHealthPanel";
 import { useTime } from "./hooks/UseTime";
@@ -281,15 +238,6 @@ export default function Dashboard() {
               <RecentActivities stats={stats} loading={loading} error={error} />
             </div>
 
-            {/* ─── Row 4: Building Performance Grid ────────────────────────── */}
-            <div className="
-              col-span-1 sm:col-span-2
-              lg:col-span-4 
-              xl:col-span-6
-              2xl:col-span-6
-            ">
-              <BuildingPerformanceGrid stats={stats} loading={loading} />
-            </div>
 
           </div>
         </div>

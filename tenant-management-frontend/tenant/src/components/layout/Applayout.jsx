@@ -50,7 +50,7 @@ export default function AppLayout({ children }) {
               </div>
 
               {/* Header content */}
-              <div className="flex-1 min-w-0 overflow-hidden px-4">
+              <div className="flex-1 min-w-0 overflow-visible px-4">
                 <Header />
               </div>
             </header>

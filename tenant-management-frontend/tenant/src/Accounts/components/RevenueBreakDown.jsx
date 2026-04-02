@@ -1,14 +1,10 @@
 /**
- * RevenueBreakDown.jsx
+ * RevenueBreakDown.jsx — Redesigned
  *
- * ARCHITECTURE: Dumb display component.
- * - Fetches pre-aggregated data via useRevenueSummary()
- * - Zero business logic, zero paisa conversion, zero filtering
- * - All numbers arrive from the backend ready to render
- *
- * STYLE: Inline styles replaced with Tailwind utility classes.
- * style={} retained only for: dynamic/computed values, chart config,
- * SVG props, and CSS custom property references.
+ * Design direction: Editorial data-dense financial dashboard.
+ * Monochrome base with precise green accent for revenue (positivity / growth).
+ * Typography-first hierarchy. No gradients, no glow, no generic AI cards.
+ * Matches ExpenseBreakDown system precisely — both components feel unified.
  */
 
 import { useState, useEffect } from "react";
@@ -16,41 +12,67 @@ import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { PlusIcon, Download, RefreshCw, ArrowUpRightIcon, ArrowDownRightIcon } from "lucide-react";
+import { Plus, Download, RefreshCw, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import { AddRevenueDialog } from "./AddRevenueDialog";
 import { usePagination } from "../hooks/usePagination";
 import { useRevenueSummary } from "../hooks/useAccounting";
 import { useIsMobile } from "@/hooks/use-mobile";
 import api from "../../../plugins/axios";
 
-// ─── Design tokens ─────────────────────────────────────────────────────────────
-const C = {
-    bg: "#FAFAF8", surface: "#FFFFFF", alt: "#F5F4F0",
-    forest: "#1A5276", forestLight: "#2E86C1",
-    amber: "#92400E", amberBg: "#FEF9C3",
-    red: "#991B1B", redBg: "#FEE2E2",
-    blue: "#1E40AF", blueBg: "#DBEAFE",
-    violet: "#6D28D9", violetBg: "#EDE9FE",
-    teal: "#0E7490", tealBg: "#ECFEFF",
-    border: "#E7E5E0", text: "#1C1917", mid: "#44403C", muted: "#78716C",
-    positive: "#166534", negative: "#991B1B",
+// ─── Tokens ──────────────────────────────────────────────────────────────────
+const T = {
+    bg: "var(--color-bg)",
+    surface: "var(--color-surface)",
+    raised: "var(--color-surface-raised)",
+    alt: "var(--color-muted)",
+    border: "var(--color-border)",
+    text: "var(--color-text-strong)",
+    body: "var(--color-text-body)",
+    sub: "var(--color-text-sub)",
+    weak: "var(--color-text-weak)",
+    accent: "var(--color-accent)",
+    green: "var(--color-success)",
+    greenBg: "var(--color-success-bg)",
+    greenBorder: "var(--color-success-border)",
+    amber: "var(--color-warning)",
+    amberBg: "var(--color-warning-bg)",
+    red: "var(--color-danger)",
+    redBg: "var(--color-danger-bg)",
+    blue: "var(--color-info)",
+    blueBg: "var(--color-info-bg)",
+    violet: "#5B21B6",
+    violetBg: "#EDE9FE",
+    teal: "#0E7490",
+    tealBg: "#ECFEFF",
 };
 
-const PALETTE = [C.forestLight, C.blue, C.violet, C.amber, C.teal, "#BE185D", "#D97706", "#0891B2"];
+const PALETTE = [
+    "var(--color-info)",
+    "#1D4ED8",
+    "#6D28D9",
+    "#B45309",
+    "#0E7490",
+    "#BE185D",
+    "#D97706",
+    "#0891B2",
+];
+
 const REF_CFG = {
-    RENT: { bg: C.forestLight + "22", color: C.forestLight },
-    PARKING: { bg: C.blue + "22", color: C.blue },
-    AD: { bg: C.violet + "22", color: C.violet },
-    CAM: { bg: C.amber + "22", color: C.amber },
+    RENT: { bg: T.blueBg, color: T.blue },
+    PARKING: { bg: "#DBEAFE", color: "#1D4ED8" },
+    AD: { bg: T.violetBg, color: T.violet },
+    CAM: { bg: T.amberBg, color: T.amber },
     ELECTRICITY: { bg: "#FEF9C3", color: "#A16207" },
-    MAINTENANCE: { bg: C.teal + "22", color: C.teal },
-    MANUAL: { bg: C.alt, color: C.muted },
+    MAINTENANCE: { bg: T.tealBg, color: T.teal },
+    MANUAL: { bg: T.alt, color: T.sub },
 };
 
 const fmt = (n) => `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
 const fmtK = (v) => {
     const a = Math.abs(v);
-    return a >= 100000 ? `${(a / 100000).toFixed(1)}L` : a >= 1000 ? `${(a / 1000).toFixed(0)}K` : String(a);
+    return a >= 100000 ? `${(a / 100000).toFixed(1)}L`
+        : a >= 1000 ? `${(a / 1000).toFixed(0)}K`
+            : String(a);
 };
 
 const Q_LABELS = {
@@ -58,125 +80,168 @@ const Q_LABELS = {
     3: "Q3 · Magh–Chaitra", 4: "Q4 · Baishakh–Ashadh",
 };
 
-// ─── Keyframes injected once ──────────────────────────────────────────────────
-const S = `
-  @keyframes rv-up   { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-  @keyframes rv-spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
-  @keyframes rv-pulse{ 0%,100%{opacity:.45} 50%{opacity:.85} }
-  .rv { font-family:'DM Sans',system-ui,sans-serif; }
-  .rv-serif { font-family:'Instrument Serif',Georgia,serif; }
-  .rv-card  { animation:rv-up .3s ease both; }
+const KEYFRAMES = `
+  @keyframes rb-up     { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
+  @keyframes rb-spin   { from { transform:rotate(0deg) } to { transform:rotate(360deg) } }
+  @keyframes rb-shimmer{ 0%,100%{ opacity:.4 } 50%{ opacity:.75 } }
+  .rb-root { font-family: 'DM Sans', system-ui, sans-serif; }
+  .rb-num  { font-family: 'Instrument Serif', Georgia, serif; letter-spacing: -0.025em; }
+  .rb-card { animation: rb-up .28s ease both; }
+  .rb-spin { animation: rb-spin .9s linear infinite; }
+  .rb-row:hover td { background: var(--color-muted) !important; }
 `;
 
-// ─── Atoms ────────────────────────────────────────────────────────────────────
-function Card({ children, style = {}, delay = 0 }) {
+// ─── Primitives ───────────────────────────────────────────────────────────────
+
+function Panel({ children, style = {}, delay = 0, noPad = false }) {
     return (
         <div
-            className="rv-card rounded-2xl border"
-            style={{ background: C.surface, borderColor: C.border, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}
+            className="rb-card rounded-xl border"
+            style={{
+                background: T.surface,
+                borderColor: T.border,
+                padding: noPad ? 0 : "18px 20px",
+                animationDelay: `${delay * 0.045}s`,
+                ...style,
+            }}
         >
             {children}
         </div>
     );
 }
 
-function Dark({ children, style = {}, delay = 0 }) {
+function InkPanel({ children, style = {}, delay = 0 }) {
     return (
         <div
-            className="rv-card rounded-2xl"
-            style={{ background: C.forest, padding: "18px 20px", animationDelay: `${delay * 0.05}s`, ...style }}
+            className="rb-card rounded-xl"
+            style={{
+                background: T.accent,
+                padding: "18px 20px",
+                animationDelay: `${delay * 0.045}s`,
+                ...style,
+            }}
         >
             {children}
         </div>
     );
 }
 
-function Lbl({ children, light, style = {} }) {
+function Label({ children, inverted, className = "", style = {} }) {
     return (
         <div
-            className="text-[10px] font-bold tracking-[0.1em] uppercase mb-2"
-            style={{ color: light ? "rgba(255,255,255,.45)" : C.muted, ...style }}
+            className={`text-[10px] font-bold tracking-[0.09em] uppercase mb-2 ${className}`}
+            style={{ color: inverted ? "rgba(255,255,255,.4)" : T.sub, ...style }}
         >
             {children}
         </div>
     );
 }
 
-function Num({ v, size = 32, color = C.text }) {
+function BigNum({ v, size = 36, inverted = false }) {
     return (
-        <div className="rv-serif leading-none" style={{ fontSize: size, color, letterSpacing: "-0.02em" }}>
+        <div
+            className="rb-num leading-none"
+            style={{ fontSize: size, color: inverted ? "#fff" : T.text }}
+        >
             ₹{Number(Math.abs(v)).toLocaleString("en-IN")}
         </div>
     );
 }
 
-function Delta({ up, label }) {
+function Chip({ up, label, size = "sm" }) {
+    const pad = size === "sm" ? "1px 7px" : "3px 10px";
+    const fs = size === "sm" ? 10 : 12;
     return (
         <span
-            className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
-            style={{ background: up ? "#DCFCE7" : "#FEE2E2", color: up ? C.positive : C.negative }}
+            className="inline-flex items-center gap-[3px] rounded-sm font-bold"
+            style={{
+                padding: pad,
+                fontSize: fs,
+                background: up ? T.greenBg : T.redBg,
+                color: up ? T.green : T.red,
+            }}
         >
-            {up ? <ArrowUpRightIcon size={11} /> : <ArrowDownRightIcon size={11} />}{label}
+            {up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
+            {label}
         </span>
     );
 }
 
-function Bar2({ value, max, color = C.forestLight, h = 5 }) {
+function MiniBar({ value, max, color = T.blue, h = 4 }) {
     const w = max > 0 ? Math.min((value / max) * 100, 100) : 0;
     return (
-        <div className="flex-1 overflow-hidden" style={{ height: h, borderRadius: h / 2, background: C.border }}>
-            <div style={{ height: "100%", width: `${w}%`, background: color, borderRadius: h / 2, transition: "width .5s" }} />
+        <div className="w-full overflow-hidden" style={{ height: h, borderRadius: 2, background: T.border }}>
+            <div style={{ height: "100%", width: `${w}%`, background: color, borderRadius: 2, transition: "width .5s ease" }} />
         </div>
     );
 }
 
-function Sk({ h = 14 }) {
-    return <div className="rounded-md mb-1.5" style={{ height: h, background: C.alt, animation: "rv-pulse 1.5s infinite" }} />;
+function Skeleton({ h = 14 }) {
+    return (
+        <div
+            className="rounded mb-1.5"
+            style={{ height: h, background: T.alt, animation: "rb-shimmer 1.6s ease-in-out infinite" }}
+        />
+    );
 }
 
-function None({ msg = "No data for this period" }) {
-    return <div className="py-8 text-center text-[13px]" style={{ color: C.muted }}>{msg}</div>;
+function Empty({ msg = "No data for this period" }) {
+    return (
+        <div className="py-10 text-center" style={{ color: T.sub }}>
+            <Minus size={20} className="mx-auto mb-2 opacity-30" />
+            <div className="text-xs">{msg}</div>
+        </div>
+    );
 }
 
-function Tip({ active, payload, label }) {
+function ChartTip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     return (
-        <div className="rounded-xl p-3.5" style={{ background: C.forest, boxShadow: "0 8px 24px rgba(0,0,0,.18)" }}>
-            <div className="text-[10px] font-bold tracking-[0.1em] uppercase mb-1.5" style={{ color: "rgba(255,255,255,.4)" }}>{label}</div>
+        <div
+            className="rounded-lg px-3.5 py-2.5"
+            style={{ background: T.text, boxShadow: "0 8px 24px rgba(0,0,0,.22)", minWidth: 140 }}
+        >
+            <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-2" style={{ color: "rgba(255,255,255,.38)" }}>{label}</div>
             {payload.map(p => (
-                <div key={p.dataKey} className="flex items-center gap-2 text-xs text-white mb-0.5">
-                    <span className="inline-block w-2 h-2 rounded-sm" style={{ background: p.fill ?? p.color ?? p.stroke }} />
+                <div key={p.dataKey} className="flex items-center justify-between gap-4 text-xs text-white">
                     <span style={{ opacity: 0.6 }}>{p.name}</span>
-                    <span className="font-bold ml-auto">₹{Math.abs(p.value || 0).toLocaleString()}</span>
+                    <span className="font-bold">₹{Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}</span>
                 </div>
             ))}
         </div>
     );
 }
 
-function SPill({ s }) {
-    const cfg = { RECORDED: [C.amberBg, C.amber], SYNCED: ["#D1FAE5", C.positive], REVERSED: [C.redBg, C.red] };
-    const [bg, color] = cfg[s] ?? [C.alt, C.muted];
-    return <span className="rounded text-[10px] font-bold px-2 py-0.5" style={{ background: bg, color }}>{s}</span>;
+function StatusBadge({ s }) {
+    const cfgs = {
+        RECORDED: { bg: T.amberBg, color: T.amber },
+        SYNCED: { bg: T.greenBg, color: T.green },
+        REVERSED: { bg: T.redBg, color: T.red },
+    };
+    const { bg, color } = cfgs[s] ?? { bg: T.alt, color: T.sub };
+    return <span className="rounded-sm text-[9px] font-bold px-1.5 py-0.5" style={{ background: bg, color }}>{s}</span>;
 }
 
-function RPill({ t }) {
-    const c = REF_CFG[t] ?? { bg: C.alt, color: C.muted };
-    return <span className="rounded text-[10px] font-bold px-2 py-0.5" style={{ background: c.bg, color: c.color }}>{t}</span>;
+function RefBadge({ t }) {
+    const c = REF_CFG[t] ?? { bg: T.alt, color: T.sub };
+    return <span className="rounded-sm text-[9px] font-bold px-1.5 py-0.5" style={{ background: c.bg, color: c.color }}>{t}</span>;
 }
 
-function TPill({ t }) {
+function TypeBadge({ t }) {
     return (
         <span
-            className="rounded text-[10px] font-bold px-2 py-0.5"
-            style={{ background: t === "TENANT" ? C.forestLight + "22" : C.blueBg, color: t === "TENANT" ? C.forestLight : C.blue }}
+            className="rounded-sm text-[9px] font-bold px-1.5 py-0.5"
+            style={{
+                background: t === "TENANT" ? T.blueBg : T.amberBg,
+                color: t === "TENANT" ? T.blue : T.amber,
+            }}
         >
             {t}
         </span>
     );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main ────────────────────────────────────────────────────────────────────
 export default function RevenueBreakDown({
     onRevenueAdded,
     selectedQuarter = null,
@@ -198,38 +263,29 @@ export default function RevenueBreakDown({
     const [banks, setBanks] = useState([]);
 
     const { data: D, loading, error, refetch } = useRevenueSummary(
-        selectedQuarter,
-        customStartDate,
-        customEndDate,
-        selectedMonth,
-        fiscalYear,
-        entityId,
+        selectedQuarter, customStartDate, customEndDate, selectedMonth, fiscalYear, entityId
     );
-
     const { data: DB, loading: loadingB } = useRevenueSummary(
-        compareMode ? compareQuarter : null, "", "", null, fiscalYear, entityId,
+        compareMode ? compareQuarter : null, "", "", null, fiscalYear, entityId
     );
 
     useEffect(() => {
         if (openDialog) { setDialogOpen(true); onDialogOpenHandled?.(); }
-    }, [openDialog]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [openDialog]); // eslint-disable-line
 
     useEffect(() => {
         api.get("/api/tenant/get-tenants").then(({ data }) => setTenants(data?.tenants ?? [])).catch(() => { });
-        api.get("/api/revenue/get-revenue-source").then(({ data }) => setSources(data?.revenueSource ?? [])).catch(() => { });
-        api.get("/api/bank/get-bank-accounts").then(({ data }) => setBanks(data?.bankAccounts ?? [])).catch(() => { });
+        api.get("/api/revenue/get-revenue-sources").then(({ data }) => setSources(data?.revenueSources ?? [])).catch(() => { });
+        api.get("/api/accounting/get-bank-accounts").then(({ data }) => setBanks(data?.bankAccounts ?? [])).catch(() => { });
     }, []);
 
     const onSuccess = () => { refetch(); onRevenueAdded?.(); };
 
-    const BS_MONTH_NAMES = [
-        "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
-        "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
-    ];
+    const BS_MONTHS = ["Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin", "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra"];
     const periodLabel =
         customStartDate && customEndDate ? `${customStartDate} → ${customEndDate}`
-            : selectedMonth ? `${BS_MONTH_NAMES[selectedMonth - 1]}${fiscalYear ? ` ${fiscalYear}` : ""}`
-                : selectedQuarter ? Q_LABELS[Number(selectedQuarter)] ?? "All"
+            : selectedMonth ? `${BS_MONTHS[selectedMonth - 1]}${fiscalYear ? ` ${fiscalYear}` : ""}`
+                : selectedQuarter ? (Q_LABELS[Number(selectedQuarter)] ?? "All")
                     : fiscalYear ? `FY ${fiscalYear}/${String(fiscalYear + 1).slice(2)}`
                         : "All Periods";
 
@@ -243,181 +299,178 @@ export default function RevenueBreakDown({
         Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `revenue_${Date.now()}.csv` }).click();
     };
 
-    const TABS = ["overview", "tenants", "transactions", "analysis"];
+    const TABS = ["overview", "transactions", "analysis"];
     const totals = D?.totals ?? { total: 0, count: 0, avg: 0, momPct: null };
     const streams = D?.streams ?? [];
     const trend = D?.trend ?? [];
-    const payerSplit = D?.payerSplit ?? [];
+    const tenantSplit = D?.tenantSplit ?? [];
     const refTypes = D?.refTypes ?? [];
-    const topTenants = D?.topTenants ?? [];
     const statusMap = D?.statusMap ?? {};
     const transactions = D?.transactions ?? [];
-
     const TXN_PAGE_SIZE = 20;
-    const {
-        paginatedItems: pageTxns,
-        currentPage,
-        totalPages,
-        nextPage,
-        prevPage,
-        startIndex,
-    } = usePagination(transactions, TXN_PAGE_SIZE);
+    const { paginatedItems: pageTxns, currentPage, totalPages, nextPage, prevPage, startIndex } = usePagination(transactions, TXN_PAGE_SIZE);
 
     return (
-        <div className="rv" style={{ color: C.text }}>
-            <style>{S}</style>
+        <div className="rb-root" style={{ color: T.text }}>
+            <style>{KEYFRAMES}</style>
 
-            {/* ── Header ──────────────────────────────────────────────────────────── */}
-            <div className="flex justify-between items-center mb-[18px] flex-wrap gap-3">
+            {/* ── Header ───────────────────────────────────────────────────────── */}
+            <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
                 <div>
-                    <div className="text-[10px] font-bold tracking-[0.1em] uppercase mb-0.5" style={{ color: C.muted }}>{periodLabel}</div>
-                    <div className="text-[13px]" style={{ color: C.mid }}>
+                    <div className="text-[10px] font-bold tracking-[0.1em] uppercase mb-0.5" style={{ color: T.sub }}>
+                        {periodLabel}
+                    </div>
+                    <div className="text-xs" style={{ color: T.body }}>
                         {loading ? "Loading…" : `${totals.count} transactions · ${fmt(totals.total)}`}
                     </div>
                 </div>
-                <div className={`flex gap-2 ${isMobile ? "flex-wrap w-full" : "flex-nowrap"}`}>
+
+                <div className={`flex gap-2 ${isMobile ? "flex-wrap w-full" : ""}`}>
                     <button
                         onClick={refetch}
-                        className="flex items-center rounded-[9px] border cursor-pointer"
-                        style={{ padding: isMobile ? "10px 12px" : "8px 10px", borderColor: C.border, background: C.surface, minHeight: isMobile ? 44 : undefined }}
+                        className="flex items-center justify-center rounded-lg border "
+
                     >
-                        <RefreshCw size={14} color={C.mid} style={{ animation: loading ? "rv-spin 1s linear infinite" : "none" }} />
+                        <RefreshCw size={13} color={T.body} className={loading ? "rb-spin" : ""} />
                     </button>
+
                     <button
                         onClick={exportCSV}
-                        className="flex items-center gap-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer"
-                        style={{ padding: isMobile ? "10px 16px" : "8px 14px", borderColor: C.border, background: C.surface, color: C.mid, minHeight: isMobile ? 44 : undefined }}
+                        className="flex items-center gap-1.5 rounded-lg border text-xs font-semibold"
+                        style={{ padding: "7px 14px", borderColor: T.border, background: T.surface, color: T.body, cursor: "pointer" }}
                     >
-                        <Download size={13} />{isMobile ? "" : "CSV"}
+                        <Download size={12} />
+                        {isMobile ? "" : "Export"}
                     </button>
+
                     <button
                         onClick={() => setDialogOpen(true)}
-                        className="flex items-center gap-1.5 rounded-[9px] border-none text-[13px] font-bold cursor-pointer text-white"
-                        style={{ padding: isMobile ? "10px 16px" : "8px 16px", background: C.forest, flex: isMobile ? 1 : undefined, justifyContent: isMobile ? "center" : undefined, minHeight: isMobile ? 44 : undefined }}
+                        className="flex items-center gap-1.5 p-2 rounded-lg text-[13px] font-bold text-white bg-primary hover:bg-primary/80"
+
                     >
-                        <PlusIcon size={14} />Add Revenue
+                        <Plus size={13} />
+                        Add Revenue
                     </button>
                 </div>
             </div>
 
-            {/* ── Error ──────────────────────────────────────────────────────────────── */}
+            {/* ── Error ────────────────────────────────────────────────────────── */}
             {error && (
-                <div className="rounded-xl px-4 py-3 text-[13px] mb-4" style={{ background: C.redBg, border: `1px solid ${C.red}30`, color: C.red }}>
-                    ⚠ {error} — <button onClick={refetch} className="bg-transparent border-none cursor-pointer font-bold underline" style={{ color: C.red }}>Retry</button>
+                <div className="rounded-lg px-4 py-3 text-xs mb-4 flex items-center gap-2"
+                    style={{ background: T.redBg, border: `1px solid var(--color-danger-border)`, color: T.red }}>
+                    <span>⚠ {error}</span>
+                    <button onClick={refetch} className="ml-auto font-bold underline bg-transparent border-none cursor-pointer" style={{ color: T.red }}>
+                        Retry
+                    </button>
                 </div>
             )}
 
-            {/* ── Compare banner ────────────────────────────────────────────────────── */}
+            {/* ── Compare banner ───────────────────────────────────────────────── */}
             {compareMode && !loading && !loadingB && DB && (
-                <div className="rounded-2xl px-[18px] py-[13px] flex items-center justify-between flex-wrap gap-3 mb-[18px]" style={{ background: C.forest + "10", border: `1px solid ${C.forest}28` }}>
-                    <span className="text-[11px] font-bold tracking-[0.08em] uppercase" style={{ color: C.forest }}>Compare Mode</span>
-                    <div className="flex items-center gap-4 flex-wrap">
-                        <div className="text-center">
-                            <div className="text-[10px] font-bold uppercase mb-0.5" style={{ color: C.muted }}>{periodLabel}</div>
-                            <div className="rv-serif text-xl" style={{ color: C.forestLight }}>{fmt(totals.total)}</div>
-                        </div>
-                        <div className="text-lg" style={{ color: C.muted }}>→</div>
-                        <div className="text-center">
-                            <div className="text-[10px] font-bold uppercase mb-0.5" style={{ color: C.muted }}>
-                                {compareQuarter ? Q_LABELS[compareQuarter] : "Compare"}
+                <div className="rounded-xl px-5 py-4 flex items-center justify-between flex-wrap gap-4 mb-5"
+                    style={{ background: T.greenBg, border: `1px solid ${T.greenBorder}` }}>
+                    <div>
+                        <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-1" style={{ color: T.green }}>Compare Mode</div>
+                        <div className="text-xs" style={{ color: T.body }}>Period vs period revenue analysis</div>
+                    </div>
+                    <div className="flex items-center gap-6 flex-wrap">
+                        {[
+                            { lbl: periodLabel, val: totals.total, color: T.green },
+                            { lbl: compareQuarter ? Q_LABELS[compareQuarter] : "Compare", val: DB.totals.total, color: T.blue },
+                        ].map(x => (
+                            <div key={x.lbl} className="text-right">
+                                <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-0.5" style={{ color: T.sub }}>{x.lbl}</div>
+                                <div className="rb-num text-xl" style={{ color: x.color }}>{fmt(x.val)}</div>
                             </div>
-                            <div className="rv-serif text-xl" style={{ color: C.blue }}>{fmt(DB.totals.total)}</div>
-                        </div>
+                        ))}
                         {totals.total > 0 && (
-                            <Delta
+                            <Chip
                                 up={(DB.totals.total - totals.total) >= 0}
                                 label={`${Math.abs(((DB.totals.total - totals.total) / totals.total) * 100).toFixed(1)}%`}
+                                size="md"
                             />
                         )}
                     </div>
                 </div>
             )}
 
-            {/* ── Hero KPI strip ────────────────────────────────────────────────────── */}
-            <div className={`grid gap-3.5 mb-[18px] ${isMobile ? "grid-cols-1" : "grid-cols-[220px_repeat(4,1fr)]"}`}>
-                <Dark delay={0}>
-                    <Lbl light>Total Revenue</Lbl>
-                    <Num v={totals.total} size={38} color="#fff" />
-                    <div className="mt-2 flex gap-2 flex-wrap">
+            {/* ── Hero KPI strip ───────────────────────────────────────────────── */}
+            <div className={`grid gap-3 mb-5 ${isMobile ? "grid-cols-1" : "grid-cols-[200px_repeat(4,1fr)]"}`}>
+                <InkPanel delay={0}>
+                    <Label inverted>Total Revenue</Label>
+                    <BigNum v={totals.total} size={34} inverted />
+                    <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                         {totals.momPct !== null && (
-                            <Delta up={(totals.momPct ?? 0) >= 0} label={`${Math.abs(totals.momPct ?? 0).toFixed(1)}% MoM`} />
+                            <Chip
+                                up={(totals.momPct ?? 0) >= 0}
+                                label={`${Math.abs(totals.momPct ?? 0).toFixed(1)}% MoM`}
+                            />
                         )}
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                        {[{ l: "Transactions", v: totals.count }, { l: "Streams", v: streams.length }].map(x => (
+                    <div className="mt-4 pt-3.5 border-t border-white/10 grid grid-cols-2 gap-y-3">
+                        {[
+                            { l: "Transactions", v: totals.count },
+                            { l: "Streams", v: streams.length },
+                        ].map(x => (
                             <div key={x.l}>
-                                <div className="text-[10px] mb-0.5" style={{ color: "rgba(255,255,255,.38)" }}>{x.l}</div>
-                                <div className="text-base font-bold text-white">{x.v}</div>
+                                <div className="text-[9px] mb-0.5" style={{ color: "rgba(255,255,255,.32)" }}>{x.l}</div>
+                                <div className="text-sm font-bold text-white">{x.v}</div>
                             </div>
                         ))}
                     </div>
-                </Dark>
+                </InkPanel>
 
                 {[
-                    { label: "Avg Ticket", val: fmt(totals.avg), sub: "per transaction", grad: `${C.forestLight},#6EE7B7` },
-                    { label: "Top Source", val: streams[0]?.name ?? "—", sub: streams[0] ? fmt(streams[0].amount) : "No sources", grad: `${C.amber},#FCD34D` },
-                    { label: "Tenant Revenue", val: fmt(payerSplit.find(p => p.name === "Tenant")?.amount ?? 0), sub: `${payerSplit.find(p => p.name === "Tenant")?.pct ?? 0}% of total`, grad: `${C.blue},#93C5FD` },
-                ].map((k, i) => (
-                    <Card key={k.label} delay={i + 1} style={{ padding: 0, overflow: "hidden" }}>
-                        <div style={{ height: 3, background: `linear-gradient(90deg,${k.grad})`, borderRadius: "16px 16px 0 0" }} />
-                        <div className="px-[18px] py-3.5">
-                            <Lbl>{k.label}</Lbl>
-                            <div className="rv-serif text-2xl leading-none mb-1" style={{ color: C.text }}>{k.val}</div>
-                            <div className="text-[11px]" style={{ color: C.muted }}>{k.sub}</div>
-                        </div>
-                    </Card>
-                ))}
+                    {
+                        label: "Avg per Transaction",
+                        value: fmt(totals.avg),
+                        sub: `across ${totals.count} txns`,
+                    },
+                    {
+                        label: "Top Revenue Stream",
+                        value: streams[0]?.name ?? "—",
+                        sub: streams[0] ? `${fmt(streams[0].amount)} · ${streams[0].pct}% share` : "No data",
 
-                {/* Revenue Concentration — replaces bland "Top Source %" with actionable risk signal */}
-                {(() => {
-                    const pct = streams[0]?.pct ?? 0;
-                    const isHighRisk = pct >= 80;
-                    const isMedRisk = pct >= 60 && pct < 80;
-                    const riskColor = isHighRisk ? C.red : isMedRisk ? C.amber : C.positive;
-                    const riskBg = isHighRisk ? C.redBg : isMedRisk ? C.amberBg : "#DCFCE7";
-                    const riskLabel = isHighRisk ? "⚠ High Risk" : isMedRisk ? "Moderate" : "Healthy";
-                    return (
-                        <Card delay={4} style={{ padding: 0, overflow: "hidden" }}>
-                            <div style={{ height: 3, background: `linear-gradient(90deg,${C.violet},#C4B5FD)`, borderRadius: "16px 16px 0 0" }} />
-                            <div className="px-[18px] py-3.5">
-                                <Lbl>Revenue Concentration</Lbl>
-                                <div className="flex items-end gap-2 mb-1">
-                                    <div className="rv-serif text-2xl leading-none" style={{ color: C.text }}>
-                                        {streams[0] ? `${pct}%` : "—"}
-                                    </div>
-                                    {streams[0] && (
-                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full mb-0.5" style={{ background: riskBg, color: riskColor }}>
-                                            {riskLabel}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="text-[11px]" style={{ color: C.muted }}>
-                                    {streams[0]
-                                        ? `${streams[0].name} dominates${isHighRisk ? " — consider diversifying" : ""}`
-                                        : "No stream data"}
-                                </div>
-                            </div>
-                        </Card>
-                    );
-                })()}
+                    },
+                    {
+                        label: "Rent Revenue",
+                        value: fmt(streams.find(s => s.code === "RENT")?.amount ?? 0),
+                        sub: "Primary collection stream",
+
+                    },
+                    {
+                        label: "Other Streams",
+                        value: fmt(streams.filter(s => s.code !== "RENT").reduce((a, s) => a + s.amount, 0)),
+                        sub: "Parking · CAM · Electricity · etc",
+                    },
+                ].map((k, i) => (
+                    <Panel key={k.label} delay={i + 1} noPad>
+                        <div />
+                        <div className="px-4 py-3.5">
+                            <Label>{k.label}</Label>
+                            <div className="rb-num text-[22px] leading-tight mb-1" style={{ color: T.text }}>{k.value}</div>
+                            <div className="text-[10px]" style={{ color: T.sub }}>{k.sub}</div>
+                        </div>
+                    </Panel>
+                ))}
             </div>
 
-            {/* ── Tab nav ───────────────────────────────────────────────────────────── */}
+            {/* ── Tab nav ──────────────────────────────────────────────────────── */}
             <div
-                className={`flex gap-1 rounded-xl p-1 mb-[18px] ${isMobile ? "w-full overflow-x-auto" : "w-fit"}`}
-                style={{ background: C.alt }}
+                className={`flex gap-0.5 rounded-lg p-0.5 mb-5 ${isMobile ? "w-full" : "w-fit"}`}
+                style={{ background: T.alt }}
             >
                 {TABS.map(t => (
                     <button
                         key={t}
                         onClick={() => setTab(t)}
-                        className="rounded-[9px] border-none cursor-pointer text-[13px] font-semibold transition-all whitespace-nowrap"
+                        className="rounded-md border-none cursor-pointer text-[12px] font-semibold transition-all whitespace-nowrap"
                         style={{
-                            padding: isMobile ? "9px 16px" : "7px 18px",
-                            background: tab === t ? C.forest : "transparent",
-                            color: tab === t ? "#fff" : C.mid,
+                            padding: isMobile ? "8px 16px" : "6px 16px",
+                            background: tab === t ? T.surface : "transparent",
+                            color: tab === t ? T.text : T.sub,
+                            boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,.06)" : "none",
                             flex: isMobile ? 1 : undefined,
-                            minHeight: isMobile ? 44 : undefined,
                         }}
                     >
                         {t[0].toUpperCase() + t.slice(1)}
@@ -425,386 +478,424 @@ export default function RevenueBreakDown({
                 ))}
             </div>
 
-            {/* ═══════════════════ OVERVIEW ══════════════════════════════════════════ */}
+            {/* ═══════════════════ OVERVIEW ════════════════════════════════════ */}
             {tab === "overview" && (
                 <div className="flex flex-col gap-4">
-                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[1fr_250px]"}`}>
-                        <Card delay={5}>
-                            <div className="flex justify-between items-start mb-3.5">
-                                <div>
-                                    <Lbl style={{ marginBottom: 2 }}>Revenue Trend</Lbl>
-                                    <div className="text-[11px]" style={{ color: C.muted }}>{periodLabel} · monthly</div>
-                                </div>
-                                {totals.momPct !== null && <Delta up={(totals.momPct ?? 0) >= 0} label={`${Math.abs(totals.momPct ?? 0).toFixed(1)}% last month`} />}
-                            </div>
-                            {loading ? <Sk h={200} /> : trend.length === 0 ? <None /> : (
-                                <ResponsiveContainer width="100%" height={200}>
-                                    <AreaChart data={trend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                                        <defs>
-                                            <linearGradient id="rv-grad" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor={C.forestLight} stopOpacity={0.22} />
-                                                <stop offset="100%" stopColor={C.forestLight} stopOpacity={0.01} />
-                                            </linearGradient>
-                                        </defs>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={C.border} />
-                                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.muted }} tickLine={false} axisLine={false} />
-                                        <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: C.muted }} tickLine={false} axisLine={false} width={36} />
-                                        <Tooltip content={<Tip />} />
-                                        <Area type="monotone" dataKey="revenue" name="Revenue" stroke={C.forestLight} strokeWidth={2.5} fill="url(#rv-grad)" dot={{ r: 3, fill: C.forestLight, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                            )}
-                        </Card>
 
-                        <Card delay={6}>
-                            <Lbl>Revenue by Source</Lbl>
-                            {loading ? (
-                                <div className="flex flex-col gap-2">
-                                    {/* Shimmer circle */}
-                                    <div className="mx-auto rounded-full" style={{ width: 110, height: 110, background: C.alt, animation: "rv-pulse 1.5s infinite" }} />
-                                    <Sk h={14} />
-                                    <Sk h={14} />
+                    {/* Area chart + Pie */}
+                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[1fr_260px]"}`}>
+                        <Panel delay={5}>
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <Label style={{ marginBottom: 2 }}>Revenue Trend</Label>
+                                    <div className="text-[10px]" style={{ color: T.weak }}>{periodLabel} · Nepali calendar</div>
                                 </div>
-                            ) : streams.length === 0 ? (
-                                <div
-                                    className="flex flex-col items-center justify-center gap-1.5 border border-dashed rounded-xl"
-                                    style={{ height: 130, borderColor: C.border }}
-                                >
-                                    <div className="text-[12px] font-semibold" style={{ color: C.mid }}>No streams yet</div>
-                                    <div className="text-[10px]" style={{ color: C.muted }}>Add revenue to see breakdown</div>
-                                </div>
-                            ) : (
+                                {totals.momPct !== null && (
+                                    <Chip
+                                        up={(totals.momPct ?? 0) >= 0}
+                                        label={`${Math.abs(totals.momPct ?? 0).toFixed(1)}% last mo`}
+                                    />
+                                )}
+                            </div>
+                            {loading ? <Skeleton h={200} /> : trend.length === 0
+                                ? <Empty msg="No monthly data — add revenue with Nepali dates" />
+                                : (
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <AreaChart data={trend} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                                            <defs>
+                                                <linearGradient id="rv-fill" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor={T.green} stopOpacity={0.13} />
+                                                    <stop offset="100%" stopColor={T.green} stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={T.border} />
+                                            <XAxis dataKey="label" tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} />
+                                            <YAxis tickFormatter={fmtK} tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} width={34} />
+                                            <Tooltip content={<ChartTip />} />
+                                            <Area
+                                                type="monotone"
+                                                dataKey="revenue"
+                                                name="Revenue"
+                                                stroke={T.green}
+                                                strokeWidth={2}
+                                                fill="url(#rv-fill)"
+                                                dot={{ r: 2.5, fill: T.green, strokeWidth: 0 }}
+                                                activeDot={{ r: 4, strokeWidth: 0 }}
+                                            />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                )}
+                        </Panel>
+
+                        <Panel delay={6}>
+                            <Label>By Stream</Label>
+                            {loading ? <Skeleton h={130} /> : streams.length === 0 ? <Empty /> : (
                                 <>
-                                    <ResponsiveContainer width="100%" height={130}>
+                                    <ResponsiveContainer width="100%" height={120}>
                                         <PieChart>
-                                            <Pie data={streams} dataKey="pct" cx="50%" cy="50%" innerRadius={36} outerRadius={55} paddingAngle={3}>
-                                                {streams.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                                            <Pie
+                                                data={streams}
+                                                dataKey="pct"
+                                                cx="50%" cy="50%"
+                                                innerRadius={34} outerRadius={52}
+                                                paddingAngle={2}
+                                                strokeWidth={0}
+                                            >
+                                                {streams.map((_, i) => (
+                                                    <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+                                                ))}
                                             </Pie>
-                                            <Tooltip formatter={(v) => `${v}%`} contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 12 }} />
+                                            <Tooltip
+                                                formatter={v => `${v}%`}
+                                                contentStyle={{
+                                                    borderRadius: 8,
+                                                    border: `1px solid ${T.border}`,
+                                                    fontSize: 11,
+                                                    background: T.surface,
+                                                }}
+                                            />
                                         </PieChart>
                                     </ResponsiveContainer>
-                                    <div className="flex flex-col gap-2.5 mt-1">
+
+                                    <div className="flex flex-col gap-1.5 mt-1">
                                         {streams.map((s, i) => (
                                             <div key={s.code ?? i} className="flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
-                                                <span className="text-xs flex-1" style={{ color: C.mid }}>{s.name}</span>
-                                                <span className="text-xs font-bold" style={{ color: C.text }}>{s.pct}%</span>
-                                                <span className="text-[11px]" style={{ color: C.muted }}>{fmt(s.amount)}</span>
+                                                <span
+                                                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                                    style={{ background: PALETTE[i % PALETTE.length] }}
+                                                />
+                                                <span className="text-[11px] flex-1 truncate" style={{ color: T.body }}>{s.name}</span>
+                                                <span className="text-[10px] font-bold" style={{ color: T.text }}>{s.pct}%</span>
                                             </div>
                                         ))}
                                     </div>
                                 </>
                             )}
-                        </Card>
+                        </Panel>
                     </div>
 
+                    {/* Tenant split + Ref types + Stats */}
                     <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[2fr_1fr_1fr]"}`}>
-                        <Card delay={7}>
-                            <Lbl>Payer Split</Lbl>
-                            {loading ? <><Sk /><Sk /></> : payerSplit.length === 0 ? <None /> : (
+
+                        <Panel delay={7}>
+                            <Label>Tenant Distribution</Label>
+                            {loading ? <><Skeleton /><Skeleton /></> : tenantSplit.length === 0 ? <Empty /> : (
                                 <>
-                                    <div className="grid gap-x-2.5 pb-2 border-b" style={{ gridTemplateColumns: "1fr 1fr 68px", borderColor: C.border }}>
+                                    <div
+                                        className="grid pb-2 mb-2 border-b"
+                                        style={{ gridTemplateColumns: "1fr 1fr 60px", gap: "0 10px", borderColor: T.border }}
+                                    >
                                         {["Payer", "Share", "Amount"].map(h => (
-                                            <span key={h} className="text-[10px] font-bold tracking-[0.06em] uppercase" style={{ color: C.muted }}>{h}</span>
+                                            <span key={h} className="text-[9px] font-bold tracking-[0.08em] uppercase" style={{ color: T.weak }}>{h}</span>
                                         ))}
                                     </div>
-                                    {payerSplit.map((p, i) => (
-                                        <div key={p.name} className="grid items-center py-2.5 border-b" style={{ gridTemplateColumns: "1fr 1fr 68px", gap: "0 10px", borderColor: C.border + "40" }}>
+                                    {tenantSplit.map((p, i) => (
+                                        <div
+                                            key={p.name}
+                                            className="grid items-center py-2.5 border-b"
+                                            style={{ gridTemplateColumns: "1fr 1fr 60px", gap: "0 10px", borderColor: `${T.border}55` }}
+                                        >
                                             <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PALETTE[i] }} />
-                                                <div className="text-[13px] font-semibold" style={{ color: C.text }}>{p.name}</div>
+                                                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                                    style={{ background: PALETTE[i % PALETTE.length] }} />
+                                                <span className="text-[12px] font-semibold truncate" style={{ color: T.text }}>{p.name}</span>
                                             </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <Bar2 value={p.amount} max={totals.total} color={PALETTE[i]} />
-                                                <span className="text-[10px] min-w-[24px]" style={{ color: C.muted }}>{p.pct}%</span>
+                                            <div className="flex items-center gap-2">
+                                                <MiniBar value={p.amount} max={totals.total} color={PALETTE[i % PALETTE.length]} />
+                                                <span className="text-[10px] flex-shrink-0" style={{ color: T.sub }}>{p.pct}%</span>
                                             </div>
-                                            <div className="text-[13px] font-bold text-right" style={{ color: C.text }}>₹{fmtK(p.amount)}</div>
+                                            <div className="text-[12px] font-bold text-right" style={{ color: T.text }}>
+                                                ₹{fmtK(p.amount)}
+                                            </div>
                                         </div>
                                     ))}
                                 </>
                             )}
-                        </Card>
+                        </Panel>
 
-                        <Card delay={8}>
-                            <Lbl>By Reference Type</Lbl>
-                            {loading ? <><Sk /><Sk /><Sk /></> : refTypes.length === 0 ? <None /> : (
-                                <div className="flex flex-col gap-3">
+                        <Panel delay={8}>
+                            <Label>By Reference</Label>
+                            {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : refTypes.length === 0 ? <Empty /> : (
+                                <div className="flex flex-col gap-3.5">
                                     {refTypes.map(r => (
                                         <div key={r.type}>
                                             <div className="flex justify-between items-center mb-1.5">
-                                                <RPill t={r.type} />
+                                                <RefBadge t={r.type} />
                                                 <div className="text-right">
-                                                    <div className="text-xs font-bold" style={{ color: C.text }}>{fmt(r.amount)}</div>
-                                                    <div className="text-[10px]" style={{ color: C.muted }}>{r.count} txns · {r.pct}%</div>
+                                                    <div className="text-[12px] font-bold" style={{ color: T.text }}>{fmt(r.amount)}</div>
+                                                    <div className="text-[9px]" style={{ color: T.weak }}>{r.count} txns · {r.pct}%</div>
                                                 </div>
                                             </div>
-                                            <Bar2 value={r.amount} max={totals.total} color={REF_CFG[r.type]?.color ?? C.forestLight} />
+                                            <MiniBar value={r.amount} max={totals.total} color={REF_CFG[r.type]?.color ?? T.blue} />
                                         </div>
                                     ))}
                                 </div>
                             )}
-                        </Card>
+                        </Panel>
 
-                        <Card delay={9}>
-                            <Lbl>Stats & Status</Lbl>
-                            {loading ? <><Sk /><Sk /><Sk /></> : (
+                        <Panel delay={9}>
+                            <Label>Quick Stats</Label>
+                            {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : (
                                 <>
                                     {[
                                         { l: "Transactions", v: totals.count },
                                         { l: "Avg / Txn", v: fmt(totals.avg) },
-                                        { l: "Revenue Sources", v: streams.length },
-                                        { l: "Top Source", v: streams[0] ? `${streams[0].pct}%` : "—" },
-                                        { l: "Tenant Txns", v: transactions.filter(t => t.payerType === "TENANT").length },
+                                        { l: "Streams", v: streams.length },
+                                        { l: "Top Stream %", v: streams[0] ? `${streams[0].pct}%` : "—" },
+                                        { l: "Tenant Payers", v: tenantSplit.length },
                                     ].map(s => (
-                                        <div key={s.l} className="flex justify-between items-center py-2 border-b" style={{ borderColor: C.border }}>
-                                            <span className="text-xs" style={{ color: C.muted }}>{s.l}</span>
-                                            <span className="text-[13px] font-bold" style={{ color: C.text }}>{s.v}</span>
+                                        <div key={s.l} className="flex justify-between items-center py-2 border-b"
+                                            style={{ borderColor: `${T.border}66` }}>
+                                            <span className="text-[11px]" style={{ color: T.sub }}>{s.l}</span>
+                                            <span className="text-[12px] font-bold" style={{ color: T.text }}>{s.v}</span>
                                         </div>
                                     ))}
-                                    <div className="mt-3.5">
-                                        <Lbl style={{ marginBottom: 8 }}>Status</Lbl>
+
+                                    <div className="mt-4">
+                                        <Label style={{ marginBottom: 8 }}>By Status</Label>
                                         <div className="flex flex-col gap-1.5">
                                             {Object.entries(statusMap).map(([s, n]) => (
                                                 <div key={s} className="flex justify-between items-center">
-                                                    <SPill s={s} />
-                                                    <span className="text-[13px] font-bold" style={{ color: C.text }}>{n}</span>
+                                                    <StatusBadge s={s} />
+                                                    <span className="text-[12px] font-bold" style={{ color: T.text }}>{n}</span>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
                                 </>
                             )}
-                        </Card>
+                        </Panel>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════════════════ TRANSACTIONS ════════════════════════════════ */}
+            {tab === "transactions" && (
+                <Panel delay={0} noPad>
+                    <div
+                        className="px-5 py-3.5 flex justify-between items-center border-b"
+                        style={{ borderColor: T.border }}
+                    >
+                        <div>
+                            <div className="text-[13px] font-bold" style={{ color: T.text }}>All Transactions</div>
+                            <div className="text-[10px] mt-0.5" style={{ color: T.sub }}>
+                                {transactions.length} total · {periodLabel}
+                            </div>
+                        </div>
+                        <button
+                            onClick={exportCSV}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer"
+                            style={{ borderColor: T.border, background: T.surface, color: T.body }}
+                        >
+                            <Download size={11} /> Export CSV
+                        </button>
                     </div>
 
-                    {/* Recent Transactions preview — surface 5 latest without tab-switching */}
-                    {transactions.length > 0 && (
-                        <Card delay={10}>
-                            <div className="flex justify-between items-center mb-3">
-                                <Lbl style={{ marginBottom: 0 }}>Recent Transactions</Lbl>
-                                <button
-                                    onClick={() => setTab("transactions")}
-                                    className="text-xs font-bold bg-transparent border-none cursor-pointer"
-                                    style={{ color: C.forestLight }}
-                                >
-                                    View all {transactions.length} →
-                                </button>
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                                {transactions.slice(0, 5).map((t, i) => (
+                    {loading
+                        ? <div className="p-5"><Skeleton /><Skeleton /><Skeleton /></div>
+                        : transactions.length === 0
+                            ? <Empty msg="No transactions for this period" />
+                            : (
+                                <>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr style={{ background: T.bg }}>
+                                                    {["#", "Payer", "Source", "Ref", "Type", "Amount", "Date", "Status"].map(h => (
+                                                        <th key={h} className="text-left px-3.5 py-2.5 text-[9px] font-bold tracking-[0.08em] uppercase border-b"
+                                                            style={{ color: T.weak, borderColor: T.border }}>
+                                                            {h}
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {pageTxns.map((t, i) => (
+                                                    <tr
+                                                        key={t.id}
+                                                        className="rb-row transition-colors"
+                                                        style={{ borderBottom: `1px solid ${T.border}44` }}
+                                                    >
+                                                        <td className="px-3.5 py-2.5 text-[10px]" style={{ color: T.weak }}>{startIndex + i + 1}</td>
+                                                        <td className="px-3.5 py-2.5 text-[12px] font-semibold" style={{ color: T.text }}>{t.payer}</td>
+                                                        <td className="px-3.5 py-2.5 text-[12px]" style={{ color: T.body }}>{t.source}</td>
+                                                        <td className="px-3.5 py-2.5"><RefBadge t={t.refType} /></td>
+                                                        <td className="px-3.5 py-2.5"><TypeBadge t={t.payerType} /></td>
+                                                        <td className="px-3.5 py-2.5 text-[12px] font-bold tabular-nums" style={{ color: T.green }}>
+                                                            {fmt(t.amount)}
+                                                        </td>
+                                                        <td className="px-3.5 py-2.5 text-[10px] tabular-nums" style={{ color: T.sub }}>{t.bsDate}</td>
+                                                        <td className="px-3.5 py-2.5"><StatusBadge s={t.status} /></td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {totalPages > 1 && (
+                                        <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: T.border }}>
+                                            <span className="text-[10px]" style={{ color: T.sub }}>
+                                                {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, transactions.length)} of {transactions.length}
+                                            </span>
+                                            <div className="flex gap-1">
+                                                {[["← Prev", prevPage, currentPage === 1], ["Next →", nextPage, currentPage === totalPages]].map(([label, fn, disabled]) => (
+                                                    <button
+                                                        key={label}
+                                                        onClick={fn}
+                                                        disabled={disabled}
+                                                        className="px-3 py-1 rounded-md border text-[11px] font-semibold"
+                                                        style={{
+                                                            borderColor: T.border,
+                                                            background: T.surface,
+                                                            color: disabled ? T.weak : T.text,
+                                                            cursor: disabled ? "default" : "pointer",
+                                                            opacity: disabled ? 0.45 : 1,
+                                                        }}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                </Panel>
+            )}
+
+            {/* ═══════════════════ ANALYSIS ════════════════════════════════════ */}
+            {tab === "analysis" && (
+                <div className="flex flex-col gap-4">
+                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+
+                        {/* Concentration Risk */}
+                        <Panel delay={0}>
+                            <Label>Revenue Concentration Risk</Label>
+                            {loading ? <><Skeleton /><Skeleton /></> : streams.length === 0 ? <Empty /> : (
+                                <>
+                                    <div className="flex h-5 rounded overflow-hidden gap-px mb-3">
+                                        {streams.map((s, i) => (
+                                            <div
+                                                key={s.code ?? i}
+                                                title={`${s.name}: ${s.pct}%`}
+                                                style={{
+                                                    width: `${s.pct}%`,
+                                                    background: PALETTE[i % PALETTE.length],
+                                                    display: s.pct < 1 ? "none" : "block",
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-4">
+                                        {streams.map((s, i) => (
+                                            <div key={s.code ?? i} className="flex items-center gap-1.5">
+                                                <span className="w-1.5 h-1.5 rounded-sm inline-block"
+                                                    style={{ background: PALETTE[i % PALETTE.length] }} />
+                                                <span className="text-[9px]" style={{ color: T.sub }}>
+                                                    {s.name} <b style={{ color: T.text }}>{s.pct}%</b>
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+
                                     <div
-                                        key={t._id ?? i}
-                                        className="flex items-center gap-3 px-2 py-2.5 rounded-[9px]"
-                                        style={{ background: i % 2 !== 0 ? C.alt + "80" : "transparent" }}
+                                        className="rounded-lg px-3.5 py-2.5"
+                                        style={{
+                                            background:
+                                                (streams[0]?.pct ?? 0) > 60 ? T.redBg
+                                                    : (streams[0]?.pct ?? 0) > 40 ? T.amberBg
+                                                        : T.greenBg,
+                                        }}
                                     >
-                                        <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center"
-                                            style={{ background: C.forestLight + "18" }}>
-                                            <ArrowUpRightIcon size={13} color={C.forestLight} />
+                                        <div
+                                            className="text-[10px] font-bold uppercase tracking-[0.07em]"
+                                            style={{
+                                                color:
+                                                    (streams[0]?.pct ?? 0) > 60 ? T.red
+                                                        : (streams[0]?.pct ?? 0) > 40 ? T.amber
+                                                            : T.green,
+                                            }}
+                                        >
+                                            {(streams[0]?.pct ?? 0) > 60 ? "High concentration risk"
+                                                : (streams[0]?.pct ?? 0) > 40 ? "Moderate concentration"
+                                                    : "Well diversified"}
+                                        </div>
+                                        <div className="text-[10px] mt-0.5" style={{ color: T.body }}>
+                                            Top source accounts for {streams[0]?.pct ?? 0}% of revenue
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </Panel>
+
+                        {/* MoM Bar */}
+                        <Panel delay={1}>
+                            <div className="flex justify-between items-start mb-3.5">
+                                <Label style={{ marginBottom: 0 }}>Month-over-Month Revenue</Label>
+                                {totals.momPct !== null && (
+                                    <Chip
+                                        up={(totals.momPct ?? 0) >= 0}
+                                        label={`${(totals.momPct ?? 0) >= 0 ? "+" : ""}${(totals.momPct ?? 0).toFixed(1)}%`}
+                                    />
+                                )}
+                            </div>
+                            {loading ? <Skeleton h={180} /> : trend.length === 0 ? <Empty /> : (
+                                <ResponsiveContainer width="100%" height={180}>
+                                    <BarChart data={trend} margin={{ top: 4, right: 0, left: -18, bottom: 0 }} barCategoryGap="32%">
+                                        <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={T.border} />
+                                        <XAxis dataKey="label" tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} />
+                                        <YAxis tickFormatter={fmtK} tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} width={34} />
+                                        <Tooltip content={<ChartTip />} />
+                                        <Bar dataKey="revenue" name="Revenue" radius={[3, 3, 0, 0]} maxBarSize={36}>
+                                            {trend.map((_, i) => (
+                                                <Cell
+                                                    key={i}
+                                                    fill={i === trend.length - 1 ? T.green : `${T.green}55`}
+                                                />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )}
+                        </Panel>
+                    </div>
+
+                    {/* Top Revenue Streams Ranked */}
+                    <Panel delay={2}>
+                        <Label>Top Revenue Streams — Ranked</Label>
+                        {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : streams.length === 0 ? <Empty /> : (
+                            <div className={`grid gap-2 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
+                                {streams.slice(0, 8).map((s, i) => (
+                                    <div
+                                        key={s.code ?? i}
+                                        className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                                        style={{ background: T.bg }}
+                                    >
+                                        <div
+                                            className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-extrabold flex-shrink-0"
+                                            style={{
+                                                background: `${PALETTE[i % PALETTE.length]}18`,
+                                                color: PALETTE[i % PALETTE.length],
+                                            }}
+                                        >
+                                            {i + 1}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-[13px] font-medium overflow-hidden text-ellipsis whitespace-nowrap" style={{ color: C.text }}>
-                                                {t.payer ?? "—"}
+                                            <div className="flex justify-between mb-1">
+                                                <span className="text-[12px] font-semibold truncate" style={{ color: T.text }}>{s.name}</span>
+                                                <span className="text-[12px] font-bold tabular-nums ml-2 flex-shrink-0" style={{ color: T.text }}>{fmt(s.amount)}</span>
                                             </div>
-                                            <div className="text-[10px]" style={{ color: C.muted }}>{t.bsDate ?? t.date ?? "—"}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-[13px] font-bold text-right" style={{ color: C.positive }}>
-                                                +{fmt(t.amount)}
-                                            </div>
-                                            <div className="text-[10px] text-right" style={{ color: C.muted }}>
-                                                {t.source ?? t.refType ?? ""}
+                                            <MiniBar value={s.amount} max={streams[0].amount} color={PALETTE[i % PALETTE.length]} h={3} />
+                                            <div className="text-[9px] mt-0.5" style={{ color: T.weak }}>
+                                                {s.count} txns · {s.pct}% of total
                                             </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
-                        </Card>
-                    )}
-                </div>
-            )}
-
-            {/* ═══════════════════ TENANTS ═════════════════════════════════════════════ */}
-            {tab === "tenants" && (
-                <div className="flex flex-col gap-4">
-                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[1.2fr_1fr]"}`}>
-                        <Card delay={0}>
-                            <Lbl>Top Tenant Contributors</Lbl>
-                            {loading ? <><Sk /><Sk /><Sk /></> : topTenants.length === 0 ? <None msg="No tenant revenue for this period" /> : (
-                                <div className="flex flex-col gap-2">
-                                    {topTenants.map((t, i) => {
-                                        const CLR = [C.forest, C.blue, C.violet, C.amber, C.forestLight, C.red, C.teal, "#BE185D"];
-                                        return (
-                                            <div key={t.id} className="flex items-center gap-3 px-3.5 py-3 rounded-xl" style={{ background: C.alt }}>
-                                                <div
-                                                    className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-extrabold flex-shrink-0"
-                                                    style={{ background: CLR[i % 8] + "1A", color: CLR[i % 8] }}
-                                                >
-                                                    {t.name[0]?.toUpperCase()}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="text-[13px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: C.text }}>{t.name}</div>
-                                                    <div className="text-[11px] mt-0.5" style={{ color: C.muted }}>{t.sources} · {t.count} txn{t.count !== 1 ? "s" : ""}</div>
-                                                    <div className="mt-1.5"><Bar2 value={t.amount} max={topTenants[0].amount} color={CLR[i % 8]} h={4} /></div>
-                                                </div>
-                                                <div className="text-right flex-shrink-0">
-                                                    <div className="text-sm font-bold" style={{ color: C.text }}>{fmt(t.amount)}</div>
-                                                    <div className="text-[10px] mt-0.5" style={{ color: C.muted }}>{t.pctOfTotal}% of total</div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </Card>
-
-                        <div className="flex flex-col gap-4">
-                            <Card delay={1}>
-                                <Lbl>Payer Classification</Lbl>
-                                {loading ? <Sk h={80} /> : (
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {payerSplit.map((p, i) => (
-                                            <div key={p.name} className="rounded-xl px-4 py-3.5" style={{ background: PALETTE[i] + "18" }}>
-                                                <div className="text-[10px] font-bold tracking-[0.08em] uppercase mb-1.5" style={{ color: PALETTE[i] }}>{p.name}</div>
-                                                <div className="rv-serif text-[28px] leading-none" style={{ color: C.text }}>{p.pct}%</div>
-                                                <div className="text-[11px] mt-1" style={{ color: C.muted }}>{fmt(p.amount)}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </Card>
-
-                            <Card delay={2}>
-                                <Lbl>Revenue by Month</Lbl>
-                                {loading ? <Sk h={110} /> : trend.length === 0 ? <None /> : (
-                                    <ResponsiveContainer width="100%" height={110}>
-                                        <BarChart data={trend} margin={{ top: 4, right: 0, left: -20, bottom: 0 }} barCategoryGap="35%">
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={C.border} />
-                                            <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.muted }} tickLine={false} axisLine={false} />
-                                            <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: C.muted }} tickLine={false} axisLine={false} width={34} />
-                                            <Tooltip content={<Tip />} />
-                                            <Bar dataKey="revenue" name="Revenue" fill={C.forestLight} radius={[3, 3, 0, 0]} maxBarSize={28} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                )}
-                            </Card>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ═══════════════════ TRANSACTIONS ════════════════════════════════════════ */}
-            {tab === "transactions" && (
-                <Card delay={0} style={{ padding: 0 }}>
-                    <div className="px-5 py-4 flex justify-between items-center border-b" style={{ borderColor: C.border }}>
-                        <div>
-                            <div className="text-sm font-bold" style={{ color: C.text }}>All Transactions</div>
-                            <div className="text-[11px] mt-0.5" style={{ color: C.muted }}>{transactions.length} total · {periodLabel}</div>
-                        </div>
-                        <button onClick={exportCSV} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border text-xs font-semibold cursor-pointer" style={{ borderColor: C.border, background: C.surface, color: C.mid }}>
-                            <Download size={13} />Export CSV
-                        </button>
-                    </div>
-                    {loading ? <div className="p-5"><Sk /><Sk /><Sk /></div> : transactions.length === 0 ? <None msg="No transactions" /> : (
-                        <>
-                            <div className="overflow-x-auto">
-                                <table className="w-full border-collapse">
-                                    <thead>
-                                        <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                                            {["#", "Payer", "Source", "Ref", "Type", "Amount", "Date", "Status"].map(h => (
-                                                <th key={h} className="text-left px-3.5 py-2.5 text-[10px] font-bold tracking-[0.06em] uppercase" style={{ color: C.muted }}>{h}</th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {pageTxns.map((t, i) => (
-                                            <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}50`, background: i % 2 === 0 ? C.surface : C.alt + "70" }}>
-                                                <td className="px-3.5 py-2.5 text-xs" style={{ color: C.muted }}>{startIndex + i + 1}</td>
-                                                <td className="px-3.5 py-2.5 font-semibold text-[13px]" style={{ color: C.text }}>{t.payer}</td>
-                                                <td className="px-3.5 py-2.5 text-[13px]" style={{ color: C.mid }}>{t.source}</td>
-                                                <td className="px-3.5 py-2.5"><RPill t={t.refType} /></td>
-                                                <td className="px-3.5 py-2.5"><TPill t={t.payerType} /></td>
-                                                <td className="px-3.5 py-2.5 font-bold text-[13px]" style={{ color: C.positive }}>{fmt(t.amount)}</td>
-                                                <td className="px-3.5 py-2.5 text-xs" style={{ color: C.muted }}>{t.bsDate}</td>
-                                                <td className="px-3.5 py-2.5"><SPill s={t.status} /></td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            {totalPages > 1 && (
-                                <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: C.border }}>
-                                    <span className="text-xs" style={{ color: C.muted }}>
-                                        Showing {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, transactions.length)} of {transactions.length}
-                                    </span>
-                                    <div className="flex gap-1.5">
-                                        <button onClick={prevPage} disabled={currentPage === 1} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === 1 ? C.muted : C.text, cursor: currentPage === 1 ? "default" : "pointer" }}>← Prev</button>
-                                        <span className="px-3 py-1 text-xs" style={{ color: C.muted }}>{currentPage} / {totalPages}</span>
-                                        <button onClick={nextPage} disabled={currentPage === totalPages} className="px-3 py-1 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, background: C.surface, color: currentPage === totalPages ? C.muted : C.text, cursor: currentPage === totalPages ? "default" : "pointer" }}>Next →</button>
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    )}
-                </Card>
-            )}
-
-            {/* ═══════════════════ ANALYSIS ════════════════════════════════════════════ */}
-            {tab === "analysis" && (
-                <div className="flex flex-col gap-4">
-                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
-                        <Card delay={0}>
-                            <Lbl>Revenue Concentration Risk</Lbl>
-                            {loading ? <><Sk /><Sk /></> : streams.length === 0 ? <None /> : (
-                                <>
-                                    <div className="mb-3.5">
-                                        <div className="flex h-6 rounded-lg overflow-hidden gap-px">
-                                            {streams.map((s, i) => (
-                                                <div key={s.code ?? i} title={`${s.name}: ${s.pct}%`}
-                                                    style={{ width: `${s.pct}%`, background: PALETTE[i % PALETTE.length], display: s.pct < 1 ? "none" : "block" }} />
-                                            ))}
-                                        </div>
-                                        <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 mt-2.5">
-                                            {streams.map((s, i) => (
-                                                <div key={s.code ?? i} className="flex items-center gap-1.5">
-                                                    <span className="inline-block w-2 h-2 rounded-sm" style={{ background: PALETTE[i % PALETTE.length] }} />
-                                                    <span className="text-[11px]" style={{ color: C.muted }}>{s.name} <b style={{ color: C.text }}>{s.pct}%</b></span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-xl px-3.5 py-3" style={{ background: (streams[0]?.pct ?? 0) > 60 ? C.redBg : (streams[0]?.pct ?? 0) > 40 ? C.amberBg : "#F0FDF4" }}>
-                                        <div className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: (streams[0]?.pct ?? 0) > 60 ? C.red : (streams[0]?.pct ?? 0) > 40 ? C.amber : C.positive }}>
-                                            {(streams[0]?.pct ?? 0) > 60 ? "High concentration risk" : (streams[0]?.pct ?? 0) > 40 ? "Moderate concentration" : "Well diversified"}
-                                        </div>
-                                        <div className="text-xs mt-1" style={{ color: C.mid }}>Top source accounts for {streams[0]?.pct ?? 0}% of revenue</div>
-                                    </div>
-                                </>
-                            )}
-                        </Card>
-
-                        <Card delay={1}>
-                            <Lbl>Month-over-Month Revenue</Lbl>
-                            {loading ? <Sk h={180} /> : trend.length === 0 ? <None /> : (
-                                <ResponsiveContainer width="100%" height={180}>
-                                    <BarChart data={trend} margin={{ top: 4, right: 0, left: -20, bottom: 0 }} barCategoryGap="30%">
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={C.border} />
-                                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.muted }} tickLine={false} axisLine={false} />
-                                        <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: C.muted }} tickLine={false} axisLine={false} width={36} />
-                                        <Tooltip content={<Tip />} />
-                                        <Bar dataKey="revenue" name="Revenue" radius={[4, 4, 0, 0]} maxBarSize={38}>
-                                            {trend.map((_, i) => <Cell key={i} fill={i === trend.length - 1 ? C.forestLight : C.forestLight + "80"} />)}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            )}
-                            {totals.momPct !== null && (
-                                <div className="flex items-center gap-2 mt-2.5">
-                                    <span className="text-xs" style={{ color: C.muted }}>Last month change</span>
-                                    <Delta up={(totals.momPct ?? 0) >= 0} label={`${(totals.momPct ?? 0) >= 0 ? "+" : ""}${(totals.momPct ?? 0).toFixed(1)}%`} />
-                                </div>
-                            )}
-                        </Card>
-                    </div>
+                        )}
+                    </Panel>
                 </div>
             )}
 
