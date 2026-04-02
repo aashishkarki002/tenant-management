@@ -102,7 +102,8 @@ export async function submitResultController(req, res) {
   }
 }
 
-// GET /api/checklists/results?propertyId=&blockId=&category=&status=&nepaliYear=&nepaliMonth=&page=&limit=
+// GET /api/checklists/results?propertyId=&blockId=&category=&status=&nepaliYear=&nepaliMonth=&nepaliDate=&startDate=&endDate=&page=&limit=
+// Date filters use stored BS `nepaliDate` (not `checkDate`). Pass `nepaliDate=2082-04-01` for a single day, or `startDate`/`endDate` as Gregorian YYYY-MM-DD to filter by converted BS range.
 export async function getResultsController(req, res) {
   try {
     const result = await getResults(req.query);

@@ -32,6 +32,28 @@ import { createAndEmitNotification } from "../notifications/notification.service
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Convert a Gregorian YYYY-MM-DD (or ISO datetime prefix) to a BS "YYYY-MM-DD"
+ * string using the same NepaliDate conversion as createResult. Used so
+ * startDate/endDate filters align with stored `nepaliDate`, not `checkDate`
+ * (which is Nepal civil midnight in UTC and can fall on the previous UTC day).
+ */
+function _englishIsoDateToNepaliISO(dateStr) {
+  if (!dateStr || typeof dateStr !== "string") return null;
+  const clean = dateStr.split("T")[0];
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(clean);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const instant = new Date(Date.UTC(y, mo - 1, d));
+  try {
+    return formatNepaliISO(new NepaliDate(instant));
+  } catch {
+    return null;
+  }
+}
+
 function _notifyIssues(result, propertyName) {
   if (!result.hasIssues) return;
   createAndEmitNotification({
@@ -483,8 +505,12 @@ export async function submitResult(resultId, updateData, adminId) {
 }
 
 /**
- * Fetch a list of results. Supports all the same filters as before.
+ * Fetch a list of results.
  * Results do NOT include sections — callers use getResultById for the full view.
+ *
+ * Date filtering: use `nepaliDate` (BS YYYY-MM-DD) and/or `startDate`/`endDate`
+ * (Gregorian YYYY-MM-DD, converted to BS for querying). Do not rely on `checkDate`
+ * for calendar-day semantics — it is stored as Nepal civil midnight in UTC.
  */
 export async function getResults(filters = {}) {
   const {
@@ -497,6 +523,7 @@ export async function getResults(filters = {}) {
     status,
     nepaliYear,
     nepaliMonth,
+    nepaliDate: nepaliDateFilter,
     startDate,
     endDate,
     page = 1,
@@ -515,10 +542,22 @@ export async function getResults(filters = {}) {
   if (nepaliYear) query.nepaliYear = Number(nepaliYear);
   if (nepaliMonth) query.nepaliMonth = Number(nepaliMonth);
 
-  if (startDate || endDate) {
-    query.checkDate = {};
-    if (startDate) query.checkDate.$gte = new Date(startDate);
-    if (endDate) query.checkDate.$lte = new Date(endDate);
+  // Date filters: use canonical BS `nepaliDate` — never `checkDate` vs UTC
+  // midnight (see createResult / Nepal timezone).
+  if (nepaliDateFilter) {
+    const nd = String(nepaliDateFilter).split("T")[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(nd)) {
+      query.nepaliDate = nd;
+    }
+  } else if (startDate || endDate) {
+    const nStart = startDate ? _englishIsoDateToNepaliISO(startDate) : null;
+    const nEnd = endDate ? _englishIsoDateToNepaliISO(endDate) : null;
+    const range = {};
+    if (nStart) range.$gte = nStart;
+    if (nEnd) range.$lte = nEnd;
+    if (Object.keys(range).length) {
+      query.nepaliDate = range;
+    }
   }
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -528,7 +567,7 @@ export async function getResults(filters = {}) {
       .populate("block", "name")
       .populate("submittedBy", "name")
       .populate("template", "name category totalItems")
-      .sort({ checkDate: -1 })
+      .sort({ nepaliDate: -1, checkDate: -1 })
       .skip(skip)
       .limit(Number(limit))
       .lean(),

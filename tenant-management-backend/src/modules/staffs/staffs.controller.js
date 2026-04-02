@@ -12,7 +12,8 @@ import {
 
 export const getStaffsController = async (req, res) => {
   try {
-    const staffs = await getStaffsService();
+    const { department } = req.query;
+    const staffs = await getStaffsService(department);
     res.status(200).json({
       success: staffs.success,
       message: staffs.message,

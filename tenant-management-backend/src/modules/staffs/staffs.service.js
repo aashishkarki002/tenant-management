@@ -3,7 +3,7 @@ import StaffProfile from "./staffProfile.model.js";
 
 // ─── EXISTING SERVICES (preserved exactly) ────────────────────────────────────
 
-export const getStaffsService = async () => {
+export const getStaffsService = async (department) => {
   try {
     const staffs = await adminModel
       .find({ role: "staff" })
@@ -11,19 +11,42 @@ export const getStaffsService = async () => {
 
     // Join StaffProfile for each staff member
     const adminIds = staffs.map((s) => s._id);
-    const profiles = await StaffProfile.find({ admin: { $in: adminIds } })
+
+    const departmentFilter =
+      typeof department === "string" && department.trim()
+        ? department.trim().toLowerCase()
+        : undefined;
+
+    const shouldFilterByDepartment =
+      departmentFilter && departmentFilter !== "all";
+
+    // Fetch only profiles in the requested department (when filtering),
+    // so we can return only matching staff rows.
+    const profilesQuery = StaffProfile.find({
+      admin: { $in: adminIds },
+      ...(shouldFilterByDepartment ? { department: departmentFilter } : {}),
+    })
       .populate("reportsTo", "name email")
       .lean();
+
+    const profiles = await profilesQuery;
 
     const profileMap = {};
     profiles.forEach((p) => {
       profileMap[p.admin.toString()] = p;
     });
 
-    const data = staffs.map((s) => ({
-      ...s.toObject(),
-      profile: profileMap[s._id.toString()] || null,
-    }));
+    const data = shouldFilterByDepartment
+      ? staffs
+          .filter((s) => profileMap[s._id.toString()])
+          .map((s) => ({
+            ...s.toObject(),
+            profile: profileMap[s._id.toString()] || null,
+          }))
+      : staffs.map((s) => ({
+          ...s.toObject(),
+          profile: profileMap[s._id.toString()] || null,
+        }));
 
     return { success: true, message: "Staffs fetched successfully", data };
   } catch (error) {
