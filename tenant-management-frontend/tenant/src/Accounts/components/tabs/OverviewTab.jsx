@@ -1,13 +1,13 @@
 import { Card, DarkCard, Lbl, Delta, Spark, Skeleton, ProgBar } from "../AccountingPrimitives";
 import {
     RevExpChart,
-    CashFlowArea,
     CompareChart,
     CompareStatStrip,
     RevenueStreamTable,
-    Scorecard,
     BreakdownPills,
 } from "../AccountingCharts";
+import ChartCard from "../ChartCard";
+import ProgressRow from "../ProgressRow";
 import LedgerFeed from "../LedgerFeed";
 import { fmtK, fmtN } from "../AccountingPage";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ const T = {
 };
 
 // ─── Tiny sub-atoms used only in this file ─────────────────────────────────────
-function HeroNumber({ value, loading, negative = false }) {
+function HeroNumber({ value, loading }) {
     if (loading) return <Skeleton h={52} />;
     return (
         <div>
@@ -117,14 +117,12 @@ export default function OverviewTab({
         <div className="flex flex-col gap-4">
 
             {/* ══════════════════════════════════════════════════════════════
-                TIER 1 — Hero Net Cash Card + 3 supporting KPIs
-                On xl: 1fr 1fr 1fr 1fr (hero spans none, just taller)
-                On mobile: stack vertically
+                TIER 1 — 2×2 KPI grid: hero (top-left) + 3 stat cards
             ══════════════════════════════════════════════════════════════ */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+            <div className="grid grid-cols-2 gap-4">
 
                 {/* ── Hero: Net Cash Position ─────────────────────────────── */}
-                <DarkCard className="flex flex-col justify-between min-h-[168px] sm:col-span-2 xl:col-span-1">
+                <DarkCard className="flex flex-col justify-between min-h-[168px]">
                     {/* Label row */}
                     <div className="flex items-center justify-between">
                         <Lbl light className="mb-0">Net Cash Position</Lbl>
@@ -241,69 +239,65 @@ export default function OverviewTab({
             )}
 
             {/* ══════════════════════════════════════════════════════════════
-                TIER 2 — Cash Flow chart + Scorecard
+                TIER 2 — Cash Flow Trend chart (full width)
             ══════════════════════════════════════════════════════════════ */}
-            <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_268px]">
-                <Card className="flex flex-col">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <Lbl className="mb-0.5">
-                                {compareMode
-                                    ? "Primary Period · Cash Flow"
-                                    : "Cash Flow Trend"}
-                            </Lbl>
-                            <div className="text-[11px] text-[var(--color-text-sub)]">
-                                {filterLabel}
+            <ChartCard
+                title={compareMode ? "Primary Period · Cash Flow" : "Cash Flow Trend"}
+                subtitle={filterLabel}
+                actions={
+                    <div className="flex gap-3.5">
+                        {[
+                            { c: T.revenue, l: "Revenue" },
+                            { c: T.expenses, l: "Expenses" },
+                        ].map((x) => (
+                            <div key={x.l} className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]">
+                                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: x.c }} />
+                                {x.l}
                             </div>
-                        </div>
-                        {/* Legend */}
-                        <div className="flex gap-3.5">
-                            {[
-                                { c: T.revenue, l: "Revenue" },
-                                { c: T.expenses, l: "Expenses" },
-                            ].map((x) => (
-                                <div
-                                    key={x.l}
-                                    className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]"
-                                >
-                                    <span
-                                        className="w-2.5 h-2.5 rounded-sm"
-                                        style={{ background: x.c }}
-                                    />
-                                    {x.l}
-                                </div>
-                            ))}
-                        </div>
+                        ))}
                     </div>
-                    <RevExpChart
-                        data={chartData}
-                        loading={loadingChart}
-                        currentMonth={currentBSMonth}
-                    />
-                </Card>
-
-                <Card>
-                    <Lbl>Financial Scorecard</Lbl>
-                    <Scorecard totals={totals} loading={loadingSummary} />
-                </Card>
-            </div>
+                }
+            >
+                <RevExpChart data={chartData} loading={loadingChart} currentMonth={currentBSMonth} />
+            </ChartCard>
 
             {/* ══════════════════════════════════════════════════════════════
-                TIER 2b — Cash Flow Position + Revenue Streams
+                TIER 2b — Revenue Streams (55%) + Expense Breakdown (45%)
             ══════════════════════════════════════════════════════════════ */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                    <CashFlowHeader />
-                    <CashFlowArea data={chartData} loading={loadingChart} />
-                </Card>
-
-                <Card>
-                    <Lbl>Revenue Streams</Lbl>
+            <div className="grid grid-cols-[55%_1fr] gap-4">
+                <ChartCard title="Revenue Streams" subtitle={filterLabel}>
                     <RevenueStreamTable
                         breakdown={summary?.incomeStreams?.breakdown ?? []}
                         loading={loadingSummary}
                     />
-                </Card>
+                </ChartCard>
+
+                <ChartCard title="Expense Breakdown">
+                    {loadingSummary && (
+                        <div className="flex flex-col gap-3">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="flex flex-col gap-1.5">
+                                    <div className="h-3 w-full rounded animate-pulse bg-[var(--color-muted)]" />
+                                    <div className="h-1.5 w-full rounded animate-pulse bg-[var(--color-muted)]" />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {!loadingSummary && (summary?.expensesBreakdown ?? []).length === 0 && (
+                        <div className="py-6 text-center text-[12px] text-[var(--color-text-sub)]">
+                            No expense data for this period
+                        </div>
+                    )}
+                    {!loadingSummary && (summary?.expensesBreakdown ?? []).map((item, i) => (
+                        <ProgressRow
+                            key={item.name ?? item._id ?? i}
+                            label={item.name ?? item.label ?? "—"}
+                            percent={Math.round(item.pct ?? 0)}
+                            amount={`₹${fmtK(item.amount ?? 0)}`}
+                            color="var(--color-warning)"
+                        />
+                    ))}
+                </ChartCard>
             </div>
 
             {/* ══════════════════════════════════════════════════════════════
@@ -429,32 +423,3 @@ function CompareBanner({ labelA, labelB }) {
     );
 }
 
-function CashFlowHeader() {
-    return (
-        <div className="flex justify-between mb-3">
-            <div>
-                <Lbl className="mb-0.5">Cash Flow Position</Lbl>
-                <div className="text-[11px] text-[var(--color-text-sub)]">
-                    Cumulative · monthly net overlay
-                </div>
-            </div>
-            <div className="flex gap-3">
-                {[
-                    { c: "var(--color-accent)", l: "Cumulative" },
-                    { c: "var(--color-warning)", l: "Net" },
-                ].map((x) => (
-                    <div
-                        key={x.l}
-                        className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]"
-                    >
-                        <span
-                            className="w-3.5 h-0.5 rounded-full"
-                            style={{ background: x.c }}
-                        />
-                        {x.l}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}

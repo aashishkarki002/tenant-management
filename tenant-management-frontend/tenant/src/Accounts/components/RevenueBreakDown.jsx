@@ -13,6 +13,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { Plus, Download, RefreshCw, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
+import SectionToggle from "./SectionToggle";
 import { AddRevenueDialog } from "./AddRevenueDialog";
 import { usePagination } from "../hooks/usePagination";
 import { useRevenueSummary } from "../hooks/useAccounting";
@@ -455,27 +456,13 @@ export default function RevenueBreakDown({
                 ))}
             </div>
 
-            {/* ── Tab nav ──────────────────────────────────────────────────────── */}
-            <div
-                className={`flex gap-0.5 rounded-lg p-0.5 mb-5 ${isMobile ? "w-full" : "w-fit"}`}
-                style={{ background: T.alt }}
-            >
-                {TABS.map(t => (
-                    <button
-                        key={t}
-                        onClick={() => setTab(t)}
-                        className="rounded-md border-none cursor-pointer text-[12px] font-semibold transition-all whitespace-nowrap"
-                        style={{
-                            padding: isMobile ? "8px 16px" : "6px 16px",
-                            background: tab === t ? T.surface : "transparent",
-                            color: tab === t ? T.text : T.sub,
-                            boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,.06)" : "none",
-                            flex: isMobile ? 1 : undefined,
-                        }}
-                    >
-                        {t[0].toUpperCase() + t.slice(1)}
-                    </button>
-                ))}
+            {/* ── Section toggle ────────────────────────────────────────────── */}
+            <div className="mb-5">
+                <SectionToggle
+                    options={["Overview", "Transactions", "Analysis"]}
+                    value={tab}
+                    onChange={setTab}
+                />
             </div>
 
             {/* ═══════════════════ OVERVIEW ════════════════════════════════════ */}

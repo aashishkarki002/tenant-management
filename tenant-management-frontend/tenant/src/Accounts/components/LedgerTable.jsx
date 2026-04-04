@@ -10,6 +10,7 @@
 
 import { usePagination } from "../hooks/usePagination";
 import { toBSDate } from "../utils/nepaliCalendar";   // ← replaces raw Date API
+import { cn } from "@/lib/utils";
 import {
     Table, TableBody, TableCell,
     TableHead, TableHeader, TableRow,
@@ -39,44 +40,45 @@ export default function LedgerTable({
             <div className="overflow-x-auto">
                 <Table>
                     <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-[160px]">Date (BS)</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Debit</TableHead>
-                            <TableHead>Credit</TableHead>
-                            <TableHead className="text-right">Running Balance</TableHead>
+                        <TableRow className="border-b border-[var(--color-border)]">
+                            <TableHead className="w-[160px] text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Date (BS)</TableHead>
+                            <TableHead className="text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Description</TableHead>
+                            <TableHead className="text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Debit</TableHead>
+                            <TableHead className="text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Credit</TableHead>
+                            <TableHead className="text-right text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Running Balance</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="text-center">Loading…</TableCell>
+                                <TableCell colSpan={5} className="text-center text-[var(--color-text-sub)]">Loading…</TableCell>
                             </TableRow>
                         ) : entries.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="text-center">No ledger entries</TableCell>
+                                <TableCell colSpan={5} className="text-center text-[var(--color-text-sub)]">No ledger entries</TableCell>
                             </TableRow>
                         ) : (
-                            paginatedItems.map((entry) => (
-                                <TableRow key={entry._id}>
-                                    {/* ✅ BS date via shared util — no raw toLocaleDateString() */}
-                                    <TableCell className="text-[13px]">
+                            paginatedItems.map((entry, index) => (
+                                <TableRow
+                                    key={entry._id}
+                                    className={cn(
+                                        "border-b border-[var(--color-border)] transition-colors duration-100 hover:bg-[var(--color-bg)]",
+                                        index % 2 === 0 ? "bg-[var(--color-surface)]" : "bg-transparent",
+                                    )}
+                                >
+                                    <TableCell className="text-[12px] tabular-nums text-[var(--color-text-body)]">
                                         {toBSDate(entry.date)}
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell className="text-[12px] text-[var(--color-text-body)]">
                                         {entry.description || entry.account?.name || "—"}
                                     </TableCell>
-                                    <TableCell
-                                        className="font-medium"
-                                        style={{ color: entry.debit ? "var(--color-danger)" : undefined }}>
+                                    <TableCell className="text-[12px] font-medium tabular-nums text-[var(--color-danger)]">
                                         {entry.debit ? `−₹${entry.debit.toLocaleString()}` : "—"}
                                     </TableCell>
-                                    <TableCell
-                                        className="font-medium"
-                                        style={{ color: entry.credit ? "var(--color-success)" : undefined }}>
+                                    <TableCell className="text-[12px] font-medium tabular-nums text-[var(--color-success)]">
                                         {entry.credit ? `+₹${entry.credit.toLocaleString()}` : "—"}
                                     </TableCell>
-                                    <TableCell className="text-right font-semibold">
+                                    <TableCell className="text-right text-[12px] font-semibold tabular-nums text-[var(--color-text-strong)]">
                                         {entry.runningBalance !== undefined
                                             ? `₹${entry.runningBalance.toLocaleString()}`
                                             : "—"}
