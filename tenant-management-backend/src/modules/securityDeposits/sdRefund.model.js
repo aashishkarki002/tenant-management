@@ -58,7 +58,7 @@ const lineItemSchema = new mongoose.Schema(
     // Only for CASH_REFUND
     paymentMethod: {
       type: String,
-      enum: ["cash", "bank_transfer", "cheque", null],
+      enum: ["cash", "bank_transfer", "cheque", "mobile_wallet", null],
       default: null,
     },
 

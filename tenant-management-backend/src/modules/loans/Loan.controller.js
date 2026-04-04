@@ -1,30 +1,25 @@
 /**
- * Loan.controller.js  (FIXED)
+ * Loan.controller.js  (FIXED — critical issues)
  * ─────────────────────────────────────────────────────────────────────────────
- * FIXES:
+ * FIXES IN THIS VERSION (on top of prior status-code fixes):
  *
- * 1. createLoanController — returned 500 for ALL errors including client
- *    validation failures ("Principal must be positive", "entityId is required").
- *    Validation errors must return 400, not 500. Added isValidationError() helper
- *    to distinguish client errors from unexpected server errors.
+ * FIX A — recordPaymentController was not forwarding entityId to the service.
+ *   entityId is required by recordLoanPayment (for Expense + Liability writes).
+ *   It is read from req.body and passed through explicitly.
  *
- * 2. recordPaymentController — returned 400 for ALL errors including unexpected
- *    DB errors that should be 500. Same fix applied: validation / business-rule
- *    errors → 400; unexpected errors → 500.
+ * FIX B — recordPaymentController response now surfaces wasAdjusted and
+ *   expenseCreated from the service summary, so callers know when the final
+ *   EMI was trimmed or when no Expense doc was created (zero-interest loan).
  *
- * 3. getLoansController — no ObjectId validation on entityId before passing to
- *    Mongoose. An invalid entityId string (e.g. "abc") causes a CastError that
- *    surfaces as a confusing 500. Now validated and returns 400 with a clear
- *    message.
+ * FIX C — "Concurrent payment detected" error is a transient 409 Conflict,
+ *   not a 400 validation error and not a 500 server error. Added a specific
+ *   check for it so clients know to retry rather than treat it as bad input.
  *
- * 4. getAmortizationController — no ObjectId validation on loanId param. Same
- *    CastError risk. Now validated before the service call.
- *
- * 5. recordPaymentController — no ObjectId validation on loanId param. Fixed.
- *
- * 6. Stale comment removed: controller file had a copy of loan.route.js and an
- *    incorrect mount path comment ("Mount at: /api/v1/finance/loans") — actual
- *    mount in app.js is "/api/loan". Removed.
+ * All prior fixes retained:
+ *   - isClientError() distinguishes validation errors (400) from server errors (500)
+ *   - isValidObjectId() guards loanId and entityId before Mongoose CastErrors
+ *   - getLoansController validates entityId and optional propertyId query params
+ *   - getAmortizationController validates loanId param
  */
 
 import mongoose from "mongoose";
@@ -39,15 +34,6 @@ import {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Determine whether an error is a client-caused validation / business-rule
- * error (→ 400) vs an unexpected server error (→ 500).
- *
- * Covers:
- *   - Our own thrown Error messages that start with known validation phrases
- *   - Mongoose ValidationError
- *   - Mongoose CastError (invalid ObjectId etc.)
- */
 const VALIDATION_PHRASES = [
   "is required",
   "must be",
@@ -61,13 +47,19 @@ const VALIDATION_PHRASES = [
   "no entity",
   "entityid",
   "loanid",
+  "exceeds outstanding", // FIX 2: overpayment error phrase
+  "positive integer", // FIX 2: paisa validation phrase
 ];
 
 function isClientError(err) {
-  if (err.name === "ValidationError") return true; // Mongoose schema validation
-  if (err.name === "CastError") return true; // invalid ObjectId, bad type cast
+  if (err.name === "ValidationError") return true;
+  if (err.name === "CastError") return true;
   const msg = (err.message ?? "").toLowerCase();
   return VALIDATION_PHRASES.some((phrase) => msg.includes(phrase));
+}
+
+function isConcurrentError(err) {
+  return (err.message ?? "").toLowerCase().includes("concurrent payment");
 }
 
 function isValidObjectId(id) {
@@ -94,7 +86,6 @@ export async function createLoanController(req, res) {
       transaction: result.transaction,
     });
   } catch (err) {
-    // FIX 1: validation errors → 400, unexpected errors → 500
     const status = isClientError(err) ? 400 : 500;
     return res.status(status).json({ success: false, message: err.message });
   }
@@ -105,12 +96,28 @@ export async function createLoanController(req, res) {
 // POST /api/loan/:loanId/payment
 // ─────────────────────────────────────────────────────────────────────────────
 export async function recordPaymentController(req, res) {
-  // FIX 5: validate loanId before hitting the service
   const { loanId } = req.params;
+
   if (!isValidObjectId(loanId)) {
     return res.status(400).json({
       success: false,
       message: `Invalid loanId: "${loanId}"`,
+    });
+  }
+
+  // FIX A: entityId must come from the request body — it was never forwarded
+  // before, causing the service to throw "entityId is required" on every call.
+  const { entityId } = req.body;
+  if (!entityId) {
+    return res.status(400).json({
+      success: false,
+      message: "entityId is required in the request body",
+    });
+  }
+  if (!isValidObjectId(entityId)) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid entityId: "${entityId}"`,
     });
   }
 
@@ -121,10 +128,21 @@ export async function recordPaymentController(req, res) {
       createdBy: req.admin.id,
     });
 
-    return res.status(200).json({ success: true, data: result });
+    // FIX B: surface wasAdjusted and expenseCreated to the caller
+    return res.status(200).json({
+      success: true,
+      data: {
+        payment: result.payment,
+        transaction: result.transaction,
+        expense: result.expense ?? null,
+        summary: result.summary,
+      },
+    });
   } catch (err) {
-    // FIX 2: business-rule errors (loan CLOSED, fully repaid) → 400
-    //         unexpected DB/journal errors → 500
+    // FIX C: concurrent payment is a 409 Conflict — client should retry
+    if (isConcurrentError(err)) {
+      return res.status(409).json({ success: false, message: err.message });
+    }
     const status = isClientError(err) ? 400 : 500;
     return res.status(status).json({ success: false, message: err.message });
   }
@@ -135,7 +153,6 @@ export async function recordPaymentController(req, res) {
 // GET /api/loan/:loanId/schedule
 // ─────────────────────────────────────────────────────────────────────────────
 export async function getAmortizationController(req, res) {
-  // FIX 4: validate loanId param before passing to service
   const { loanId } = req.params;
   if (!isValidObjectId(loanId)) {
     return res.status(400).json({
@@ -160,23 +177,18 @@ export async function getAmortizationController(req, res) {
 export async function getLoansController(req, res) {
   const { entityId, status, propertyId } = req.query;
 
-  // entityId is required
   if (!entityId) {
     return res.status(400).json({
       success: false,
       message: "entityId is required",
     });
   }
-
-  // FIX 3: validate entityId is a real ObjectId before Mongoose CastError
   if (!isValidObjectId(entityId)) {
     return res.status(400).json({
       success: false,
       message: `Invalid entityId: "${entityId}"`,
     });
   }
-
-  // Optional: validate propertyId if provided
   if (propertyId && !isValidObjectId(propertyId)) {
     return res.status(400).json({
       success: false,

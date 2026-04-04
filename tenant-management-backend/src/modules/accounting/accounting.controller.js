@@ -10,13 +10,14 @@ import {
  * Extracts all supported filter params from req.query.
  *
  * Supported params:
- *   quarter    (1-4)          — BS fiscal quarter
- *   month      (1-12)         — single BS month
- *   fiscalYear (BS year)      — e.g. 2081
- *   startDate  (ISO string)   — explicit range start
- *   endDate    (ISO string)   — explicit range end
- *   allYear    ("true"|"1")   — return all 12 months for fiscalYear (chart only)
- *   entityId   (string)       — OwnershipEntity _id, "private" sentinel, or omit for merged view
+ *   quarter       (1-4)          — BS fiscal quarter
+ *   month         (1-12)         — single BS month
+ *   fiscalYear    (BS year)      — e.g. 2081
+ *   startDate     (ISO string)   — explicit range start
+ *   endDate       (ISO string)   — explicit range end
+ *   allYear       ("true"|"1")   — return all 12 months for fiscalYear (chart only)
+ *   entityId      (string)       — OwnershipEntity _id, "private" sentinel, or omit for merged view
+ *   paymentMethod (string)       — "cash", "bank_transfer", "cheque", "mobile_wallet", or omit for all methods
  *
  * entityId behaviour:
  *   omitted / null  → merged view (all entities, including legacy null entries)
@@ -27,7 +28,7 @@ import {
  *   startDate+endDate > month > quarter > all-time
  */
 function extractFilters(query) {
-  const { quarter, month, startDate, endDate, fiscalYear, allYear, entityId } =
+  const { quarter, month, startDate, endDate, fiscalYear, allYear, entityId, paymentMethod } =
     query;
   return {
     quarter: quarter ? Number(quarter) : null,
@@ -38,6 +39,7 @@ function extractFilters(query) {
     allYear: allYear === "true" || allYear === "1",
     // Pass through as-is — service layer interprets "private" sentinel and ObjectId strings
     entityId: entityId || null,
+    paymentMethod: paymentMethod || null,
   };
 }
 
@@ -45,7 +47,7 @@ function extractFilters(query) {
 
 export async function getAccountingSummaryController(req, res) {
   try {
-    const { quarter, month, startDate, endDate, fiscalYear, entityId } =
+    const { quarter, month, startDate, endDate, fiscalYear, entityId, paymentMethod } =
       extractFilters(req.query);
     const data = await getAccountingSummary({
       quarter,
@@ -54,6 +56,7 @@ export async function getAccountingSummaryController(req, res) {
       endDate,
       fiscalYear,
       entityId,
+      paymentMethod,
     });
     res.json({ success: true, data });
   } catch (err) {
@@ -66,7 +69,7 @@ export async function getAccountingSummaryController(req, res) {
 
 export async function getMonthlyChartController(req, res) {
   try {
-    const { quarter, fiscalYear, allYear, entityId } = extractFilters(
+    const { quarter, fiscalYear, allYear, entityId, paymentMethod } = extractFilters(
       req.query,
     );
     const data = await getMonthlyChartData({
@@ -74,6 +77,7 @@ export async function getMonthlyChartController(req, res) {
       fiscalYear,
       allYear,
       entityId,
+      paymentMethod,
     });
     res.json({ success: true, data });
   } catch (err) {
@@ -86,7 +90,7 @@ export async function getMonthlyChartController(req, res) {
 
 export async function getRevenueBreakdownController(req, res) {
   try {
-    const { quarter, month, startDate, endDate, fiscalYear, entityId } =
+    const { quarter, month, startDate, endDate, fiscalYear, entityId, paymentMethod } =
       extractFilters(req.query);
     const data = await getRevenueBreakdownSummary({
       quarter,
@@ -95,6 +99,7 @@ export async function getRevenueBreakdownController(req, res) {
       endDate,
       fiscalYear,
       entityId,
+      paymentMethod,
     });
     res.json({ success: true, data });
   } catch (err) {
@@ -107,7 +112,7 @@ export async function getRevenueBreakdownController(req, res) {
 
 export async function getExpenseBreakdownController(req, res) {
   try {
-    const { quarter, month, startDate, endDate, fiscalYear, entityId } =
+    const { quarter, month, startDate, endDate, fiscalYear, entityId, paymentMethod } =
       extractFilters(req.query);
     const data = await getExpenseBreakdownSummary({
       quarter,
@@ -116,6 +121,7 @@ export async function getExpenseBreakdownController(req, res) {
       endDate,
       fiscalYear,
       entityId,
+      paymentMethod,
     });
     res.json({ success: true, data });
   } catch (err) {

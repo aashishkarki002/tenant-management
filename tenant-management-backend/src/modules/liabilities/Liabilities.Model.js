@@ -101,6 +101,18 @@ const liabilitySchema = new mongoose.Schema(
       default: null,
     }, // Mirrors Loan.status; null for non-loan liabilities
 
+    // ── Payment method (for settled liabilities) ───────────────────────────
+    // Only required for EXTERNAL payees (vendor/bank payments).
+    // TENANT liabilities (security deposit refunds) get payment method
+    // when they're actually settled via SdRefund.
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "bank_transfer", "cheque", "mobile_wallet"],
+      required: function () {
+        return this.payeeType === "EXTERNAL";
+      },
+    },
+
     status: {
       type: String,
       enum: ["RECORDED", "SYNCED"],

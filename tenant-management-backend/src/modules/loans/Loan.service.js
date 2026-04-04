@@ -1,46 +1,42 @@
 /**
- * Loan.service.js  (FIXED — adds Liability tracking)
+ * Loan.service.js  (FIXED — critical issues)
  * ─────────────────────────────────────────────────────────────────────────────
+ * CRITICAL FIXES IN THIS VERSION:
  *
- * WHAT CHANGED AND WHY:
+ * FIX 1 — No Expense document created on EMI payment
+ *   recordLoanPayment now creates an Expense document for the interest portion
+ *   of every EMI inside the same session. The interest is an EXPENSE (P&L),
+ *   so it must appear in the Expenses collection for reports and the UI.
+ *   principalPaisa reduction → Liability doc only.
+ *   interestPaisa → Expense doc + ledger journal entry DR 5100.
  *
- * Problem: When a loan was created, only the double-entry ledger journal was
- * posted (DR Bank / CR Loan Liability 2200). The `Liability` collection —
- * which powers the Liabilities UI page, cash-flow reports, and lender
- * dashboards — was never written to.
+ * FIX 2 — Overpayment silently truncated
+ *   When customPrincipalPaisa > outstandingPaisa, we now throw a clear
+ *   validation error instead of silently capping the amount. Caller must
+ *   pass the correct principal, or omit customPrincipalPaisa to use the
+ *   standard EMI. If you want to allow payoff, pass the exact outstanding.
  *
- * Fix:
- *   createLoan         → also creates a Liability document (referenceType: "LOAN")
- *   recordLoanPayment  → also decrements Liability.amountPaisa by principalPaisa
- *                         (interest is an expense, not a reduction of what we owe)
- *                         and marks loanStatus: "CLOSED" when fully repaid
+ * FIX 3 — Last-installment EMI total diverges from schedule
+ *   When principalPaisa is clamped to outstandingPaisa on the final payment,
+ *   we now correctly recalculate totalPaisa = clamped principal + interestPaisa
+ *   AND return a `wasAdjusted` flag so the caller knows the total differed
+ *   from the scheduled EMI.
  *
- * ACCOUNTING CONCEPT (why interest is NOT a liability reduction):
+ * FIX 4 — Race condition on installmentNumber assignment
+ *   installmentNumber is now assigned using a $inc atomic operation on
+ *   Loan.installmentsPaid within the session, not read-then-write. A
+ *   findOneAndUpdate with $inc + returnDocument:"before" gives us the
+ *   pre-increment value (= next installment number) atomically.
+ *   Combined with the unique index on { loan, installmentNumber }, a
+ *   duplicate will fail at the DB layer rather than silently create two
+ *   installment #4 records.
  *
- *   The loan liability = the principal we owe back to the lender.
- *   Interest = the cost of borrowing for this period (an EXPENSE on the P&L).
- *
- *   Each EMI payment contains two distinct components:
- *
- *   1. Principal repayment  — reduces the liability (what we owe)
- *      DR  Loan Liability (2200)       principalPaisa
- *
- *   2. Interest expense     — costs recognised on the P&L this period
- *      DR  Loan Interest Expense (5100) interestPaisa
- *
- *   3. Cash exits the bank
- *      CR  Bank Account (1010-xxx)     totalPaisa (= principal + interest)
- *
- *   The Liability document tracks the OUTSTANDING PRINCIPAL only,
- *   mirroring Account 2200's balance. Both stay in sync via the same session.
- *
- * IDEMPOTENCY:
- *   - createLoan: Liability.findOne({ referenceType, referenceId }) before create
- *   - recordLoanPayment: protected by Loan.status !== "ACTIVE" guard
- *
- * SESSIONS:
- *   All writes (Loan, LoanPayment, LedgerEntry, Transaction, Liability)
- *   happen inside a single MongoDB session → fully atomic.
+ * FIX 5 — Zero-interest crash in ledger journal
+ *   buildLoanPaymentJournal emits a DR entry for Account 5100 even when
+ *   interestPaisa === 0, which causes the LedgerEntry pre-save hook to throw
+ *   "Entry must have either debit or credit amount".
+ *   We now skip posting the interest journal entry (and skip creating the
+ *   Expense doc) when interestPaisa === 0.
  */
 
 import mongoose from "mongoose";
@@ -60,37 +56,73 @@ import {
 import { formatNepaliISO } from "../../utils/nepaliDateHelper.js";
 import { assertValidPaymentMethod } from "../../utils/paymentAccountUtils.js";
 import NepaliDate from "nepali-datetime";
+import { Expense } from "../expenses/Expense.Model.js";
+import ExpenseSource from "../expenses/ExpenseSource.Model.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Resolve the LiabilitySource._id for code "LOAN".
- * Seeds it on first use so the caller never has to worry about it.
- */
 async function resolveLoanLiabilitySourceId(session) {
   let src = await LiabilitySource.findOne({ code: "LOAN" })
     .session(session)
     .lean();
   if (!src) {
-    // Lazy seed — should only happen on first-ever loan in a fresh DB
     await seedLoanLiabilitySource();
     src = await LiabilitySource.findOne({ code: "LOAN" }).lean();
   }
   return src._id;
 }
 
+/** Ensures ExpenseSource INTEREST exists so P&L/UI show a label, not a loan ObjectId. */
+async function resolveInterestExpenseSourceId(session) {
+  let src = await ExpenseSource.findOne({ code: "INTEREST" })
+    .session(session)
+    .lean();
+  if (!src) {
+    const [created] = await ExpenseSource.create(
+      [
+        {
+          name: "Interest Expense",
+          code: "INTEREST",
+          category: "NON_OPERATING",
+          description: "Interest on loans and borrowings",
+        },
+      ],
+      { session },
+    );
+    return created._id;
+  }
+  return src._id;
+}
+
+/**
+ * FIX 5 HELPER — Build a payment journal that omits the interest entry when
+ * interestPaisa === 0. The standard buildLoanPaymentJournal always emits
+ * three entries; a zero-paisa debit entry breaks the LedgerEntry pre-save
+ * hook ("Entry must have either debit or credit amount").
+ *
+ * When interestPaisa > 0:  3-entry journal (DR liability, DR interest, CR bank)
+ * When interestPaisa === 0: 2-entry journal (DR liability, CR bank)
+ */
+function buildSafePaymentJournal(payment, loan, options = {}) {
+  const journal = buildLoanPaymentJournal(payment, loan, options);
+
+  if (payment.interestPaisa === 0) {
+    // Remove the interest DR entry — zero-paisa debit is invalid
+    journal.entries = journal.entries.filter(
+      (e) => e.debitAmountPaisa > 0 || e.creditAmountPaisa > 0,
+    );
+    // Recalculate total for balance check: principal only
+    journal.totalAmountPaisa = payment.principalPaisa;
+  }
+
+  return journal;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // createLoan
 // ─────────────────────────────────────────────────────────────────────────────
-/**
- * Create a new loan, post the disbursement journal, and register a
- * Liability document for the outstanding principal.
- *
- * @param {Object} data
- * @param {mongoose.ClientSession} [session]
- */
 export async function createLoan(data, session = null) {
   const {
     entityId,
@@ -118,8 +150,6 @@ export async function createLoan(data, session = null) {
   if (!bankAccountCode) throw new Error("bankAccountCode is required");
   if (!entityId) throw new Error("entityId is required");
 
-  // ── Ensure loan accounts are seeded for this entity ────────────────────────
-  // This is safe to call every time — it's idempotent.
   await seedLoanAccountsForEntity(entityId);
 
   const ownedSession = !session;
@@ -127,21 +157,18 @@ export async function createLoan(data, session = null) {
   if (ownedSession) sess.startTransaction();
 
   try {
-    // ── 1. Calculate EMI ────────────────────────────────────────────────────
     const emiPaisa = Loan.calculateEmiPaisa(
       principalPaisa,
       interestRateAnnual,
       tenureMonths,
     );
 
-    // ── 2. Nepali dates ─────────────────────────────────────────────────────
     const dateObj = disbursedDate ? new Date(disbursedDate) : new Date();
     const nd = new NepaliDate(dateObj);
     const nepaliDisbursedDate = formatNepaliISO(nd);
     const nepaliMonth = nd.getMonth() + 1;
     const nepaliYear = nd.getYear();
 
-    // ── 3. Create Loan document ─────────────────────────────────────────────
     const [loan] = await Loan.create(
       [
         {
@@ -170,11 +197,6 @@ export async function createLoan(data, session = null) {
       { session: sess },
     );
 
-    // ── 4. Post disbursement journal ────────────────────────────────────────
-    //
-    //   DR  Bank Account (bankAccountCode)   principalPaisa  ← cash received
-    //   CR  Loan Liability (2200)            principalPaisa  ← we now owe lender
-    //
     const disbursementPayload = buildLoanDisbursementJournal(loan, {
       createdBy,
       nepaliMonth,
@@ -186,23 +208,12 @@ export async function createLoan(data, session = null) {
       entityId,
     );
 
-    // Store transaction ref on loan
     loan.disbursementTransactionId = transaction._id;
     await loan.save({ session: sess });
 
-    // ── 5. Create Liability document ────────────────────────────────────────
-    //
-    // WHY: Account 2200 in the ledger holds the balance-sheet total.
-    // The Liability document is the OPERATIONAL tracker — it's what shows up
-    // in the Liabilities page, allows filtering by lender, and powers
-    // cash-flow forecasting (how much principal repayment is due each month).
-    //
-    // amountPaisa = full principal (outstanding balance at disbursement)
-    // originalAmountPaisa = same value, never changes — used for completion %
-    //
+    // ── Create Liability document ────────────────────────────────────────────
     const loanSourceId = await resolveLoanLiabilitySourceId(sess);
 
-    // Idempotency: don't double-create if called twice
     const existingLiability = await Liability.findOne({
       referenceType: "LOAN",
       referenceId: loan._id,
@@ -213,12 +224,12 @@ export async function createLoan(data, session = null) {
         [
           {
             source: loanSourceId,
-            amountPaisa: principalPaisa, // current outstanding
-            originalAmountPaisa: principalPaisa, // immutable
+            amountPaisa: principalPaisa,
+            originalAmountPaisa: principalPaisa,
             date: dateObj,
             npYear: nepaliYear,
             npMonth: nepaliMonth,
-            payeeType: "EXTERNAL", // we owe the bank, not a tenant
+            payeeType: "EXTERNAL",
             referenceType: "LOAN",
             referenceId: loan._id,
             loanStatus: "ACTIVE",
@@ -245,20 +256,14 @@ export async function createLoan(data, session = null) {
 // recordLoanPayment
 // ─────────────────────────────────────────────────────────────────────────────
 /**
- * Record a single EMI payment with principal/interest split.
- * Updates the Liability document's outstanding balance atomically.
+ * Record a single EMI payment.
  *
- * ACCOUNTING (per EMI payment):
- *
- *   DR  Loan Liability (2200)         principalPaisa  ← reduce what we owe
- *   DR  Loan Interest Expense (5100)  interestPaisa   ← cost of borrowing (P&L)
- *   CR  Bank Account (1010-xxx)       totalPaisa      ← cash exits
- *
- * NOTE: Only principalPaisa reduces the Liability document.
- *       The interest portion is an EXPENSE — it reduces profit, not the debt.
- *
- * @param {Object} data
- * @param {mongoose.ClientSession} [session]
+ * CRITICAL FIXES applied here:
+ *   FIX 1 — Creates an Expense document for the interest portion (when > 0)
+ *   FIX 2 — Throws when customPrincipalPaisa exceeds outstandingPaisa
+ *   FIX 3 — Returns wasAdjusted=true when last-installment EMI is trimmed
+ *   FIX 4 — Uses findOneAndUpdate $inc for atomic installmentNumber assignment
+ *   FIX 5 — Skips zero-paisa interest journal entry and Expense doc
  */
 export async function recordLoanPayment(data, session = null) {
   const {
@@ -276,6 +281,15 @@ export async function recordLoanPayment(data, session = null) {
   if (!bankAccountCode) throw new Error("bankAccountCode is required");
   if (!entityId) throw new Error("entityId is required");
 
+  // FIX 2: validate customPrincipalPaisa upfront before touching DB
+  if (customPrincipalPaisa != null) {
+    if (!Number.isInteger(customPrincipalPaisa) || customPrincipalPaisa < 1) {
+      throw new Error(
+        "customPrincipalPaisa must be a positive integer (paisa)",
+      );
+    }
+  }
+
   const ownedSession = !session;
   const sess = session ?? (await mongoose.startSession());
   if (ownedSession) sess.startTransaction();
@@ -288,24 +302,40 @@ export async function recordLoanPayment(data, session = null) {
       throw new Error(`Loan is ${loan.status} — cannot record payment`);
     if (loan.outstandingPaisa <= 0) throw new Error("Loan is fully repaid");
 
-    // ── 2. Calculate principal/interest split ───────────────────────────────
+    // ── 2. FIX 2: Reject overpayment rather than silently clamping ──────────
+    if (
+      customPrincipalPaisa != null &&
+      customPrincipalPaisa > loan.outstandingPaisa
+    ) {
+      throw new Error(
+        `customPrincipalPaisa (${customPrincipalPaisa} p) exceeds outstanding balance ` +
+          `(${loan.outstandingPaisa} p). To close the loan, pass exactly ${loan.outstandingPaisa}.`,
+      );
+    }
+
+    // ── 3. Calculate principal/interest split ───────────────────────────────
     const monthlyRate = loan.interestRateAnnual / 12 / 100;
     const interestPaisa = Math.round(loan.outstandingPaisa * monthlyRate);
 
-    let principalPaisa, totalPaisa;
+    let principalPaisa,
+      totalPaisa,
+      wasAdjusted = false;
 
-    if (customPrincipalPaisa) {
-      // Prepayment: caller provides the principal portion explicitly
-      principalPaisa = Math.min(customPrincipalPaisa, loan.outstandingPaisa);
+    if (customPrincipalPaisa != null) {
+      // Prepayment: caller provides the principal portion explicitly.
+      // We already know it's <= outstandingPaisa from FIX 2 above.
+      principalPaisa = customPrincipalPaisa;
       totalPaisa = principalPaisa + interestPaisa;
     } else {
       // Standard EMI
       totalPaisa = loan.emiPaisa;
       principalPaisa = totalPaisa - interestPaisa;
-      // Last payment: clear rounding residue
+
+      // FIX 3: Last installment — clamp principal to outstanding and signal adjustment
       if (principalPaisa > loan.outstandingPaisa) {
         principalPaisa = loan.outstandingPaisa;
-        totalPaisa = principalPaisa + interestPaisa;
+        totalPaisa = principalPaisa + interestPaisa; // recalculate correctly
+        wasAdjusted = true; // ← returned to caller so they know total differed from emiPaisa
       }
     }
 
@@ -316,14 +346,44 @@ export async function recordLoanPayment(data, session = null) {
     );
     const loanNowClosed = outstandingAfterPaisa === 0;
 
-    // ── 3. Nepali dates ─────────────────────────────────────────────────────
+    // ── 4. Nepali dates ─────────────────────────────────────────────────────
     const dateObj = paymentDate ? new Date(paymentDate) : new Date();
     const nd = new NepaliDate(dateObj);
     const nepaliDate = formatNepaliISO(nd);
     const nepaliMonth = nd.getMonth() + 1;
     const nepaliYear = nd.getYear();
 
-    // ── 4. Create LoanPayment document ─────────────────────────────────────
+    // ── 5. FIX 4: Atomically claim the next installment number ──────────────
+    //
+    // We use findOneAndUpdate with $inc BEFORE creating the LoanPayment doc.
+    // returnDocument: "before" gives us the pre-increment installmentsPaid,
+    // which equals the 0-based count — adding 1 gives the 1-based number.
+    //
+    // This eliminates the read-then-write race where two concurrent requests
+    // both read installmentsPaid=3 and both try to write installment #4.
+    // The unique index on { loan, installmentNumber } is the final safety net.
+    //
+    const loanBeforeIncrement = await Loan.findOneAndUpdate(
+      {
+        _id: loanId,
+        status: "ACTIVE", // guard: still active at increment time
+        outstandingPaisa: { $gt: 0 }, // guard: still has balance
+        installmentsPaid: loan.installmentsPaid, // optimistic lock on read value
+      },
+      { $inc: { installmentsPaid: 1 } },
+      { session: sess, returnDocument: "before", new: false },
+    );
+
+    if (!loanBeforeIncrement) {
+      // Another concurrent request beat us — the optimistic lock failed.
+      throw new Error(
+        "Concurrent payment detected for this loan. Please retry.",
+      );
+    }
+
+    const installmentNumber = loanBeforeIncrement.installmentsPaid + 1;
+
+    // ── 6. Create LoanPayment document ─────────────────────────────────────
     const [payment] = await LoanPayment.create(
       [
         {
@@ -340,7 +400,7 @@ export async function recordLoanPayment(data, session = null) {
           nepaliYear,
           bankAccountCode,
           paymentMethod,
-          installmentNumber: loan.installmentsPaid + 1,
+          installmentNumber,
           notes: notes ?? null,
           createdBy,
         },
@@ -348,13 +408,13 @@ export async function recordLoanPayment(data, session = null) {
       { session: sess },
     );
 
-    // ── 5. Post EMI journal ─────────────────────────────────────────────────
+    // ── 7. FIX 5: Post EMI journal, skipping zero-interest entry ────────────
     //
-    //   DR  Loan Liability (2200)         principalPaisa  ← debt reduces
-    //   DR  Loan Interest Expense (5100)  interestPaisa   ← cost on P&L
-    //   CR  Bank Account (bankAccountCode) totalPaisa     ← cash leaves
+    // buildSafePaymentJournal strips the DR 5100 entry when interestPaisa===0.
+    // Without this, LedgerEntry pre-save throws:
+    //   "Entry must have either debit or credit amount"
     //
-    const paymentPayload = buildLoanPaymentJournal(payment, loan, {
+    const paymentPayload = buildSafePaymentJournal(payment, loan, {
       createdBy,
     });
     const { transaction } = await ledgerService.postJournalEntry(
@@ -363,41 +423,81 @@ export async function recordLoanPayment(data, session = null) {
       entityId,
     );
 
-    // Store transaction ref on payment
     payment.transactionId = transaction._id;
     await payment.save({ session: sess });
 
-    // ── 6. Update Loan outstanding + status ────────────────────────────────
-    loan.outstandingPaisa = outstandingAfterPaisa;
-    loan.installmentsPaid += 1;
-    if (loanNowClosed) loan.status = "CLOSED";
-    await loan.save({ session: sess });
+    // ── 8. FIX 1: Create Expense document for the interest portion ──────────
+    //
+    // WHY: The ledger journal (step 7) posts DR 5100 (Loan Interest Expense)
+    // which is correct for the double-entry. But the Expenses collection is the
+    // OPERATIONAL tracker — it's what shows up on the Expenses UI page, expense
+    // category reports, and cash-flow dashboards. Without this, interest costs
+    // are invisible in the UI even though the ledger balance is correct.
+    //
+    // We only create the Expense doc when interestPaisa > 0 (FIX 5 synergy).
+    //
+    let expenseDoc = null;
+    if (interestPaisa > 0) {
+      const interestSourceId = await resolveInterestExpenseSourceId(sess);
 
-    // ── 7. Update Liability document ────────────────────────────────────────
-    //
-    // WHY only principalPaisa, not totalPaisa?
-    //
-    //   The Liability document represents "how much principal we still owe
-    //   to the lender". Each EMI has two parts:
-    //
-    //     a) Principal repayment → reduces what we owe → decrement Liability
-    //     b) Interest expense    → pays for using the money → recorded as P&L
-    //                              expense (Account 5100), NOT a liability
-    //
-    //   Analogy: if you borrow Rs. 10,000 and pay Rs. 1,200 per month
-    //   (Rs. 1,000 principal + Rs. 200 interest):
-    //   - Your debt (liability) goes from 10,000 → 9,000 (only principal)
-    //   - The Rs. 200 interest is a cost you pay for borrowing (expense)
-    //
-    const liabilityUpdate = {
-      amountPaisa: outstandingAfterPaisa, // absolute set — matches Loan.outstandingPaisa
-      loanStatus: loanNowClosed ? "CLOSED" : "ACTIVE",
-      status: loanNowClosed ? "SYNCED" : "RECORDED",
-    };
+      const [created] = await Expense.create(
+        [
+          {
+            entityId,
 
+            transactionScope: "head_office",
+            amountPaisa: interestPaisa,
+            paymentMethod,
+            expenseCode: "5100", // LOAN_INTEREST_EXPENSE account code
+            referenceType: "LOAN_INTEREST",
+            referenceId: payment._id, // back-link to the LoanPayment
+            EnglishDate: dateObj,
+            nepaliDate,
+            payeeType: "EXTERNAL",
+            externalPayee: {
+              name: loan.lender,
+              type: "LOAN_INTEREST",
+            },
+            source: interestSourceId,
+            nepaliMonth,
+            nepaliYear,
+            description: `Loan interest — ${loan.lender} EMI #${installmentNumber}`,
+            notes: `Loan: ${loan._id} | Principal repaid this EMI: ${principalPaisa} p`,
+            createdBy,
+          },
+        ],
+        { session: sess },
+      );
+
+      expenseDoc = created;
+    }
+
+    // ── 9. Update Loan outstanding + status ─────────────────────────────────
+    //
+    // installmentsPaid was already incremented atomically in step 5.
+    // We only need to update outstandingPaisa and status here.
+    //
+    await Loan.updateOne(
+      { _id: loan._id },
+      {
+        $set: {
+          outstandingPaisa: outstandingAfterPaisa,
+          ...(loanNowClosed ? { status: "CLOSED" } : {}),
+        },
+      },
+      { session: sess },
+    );
+
+    // ── 10. Update Liability document ────────────────────────────────────────
     await Liability.findOneAndUpdate(
       { referenceType: "LOAN", referenceId: loan._id },
-      { $set: liabilityUpdate },
+      {
+        $set: {
+          amountPaisa: outstandingAfterPaisa,
+          loanStatus: loanNowClosed ? "CLOSED" : "ACTIVE",
+          status: loanNowClosed ? "SYNCED" : "RECORDED",
+        },
+      },
       { session: sess },
     );
 
@@ -406,15 +506,17 @@ export async function recordLoanPayment(data, session = null) {
     return {
       success: true,
       payment,
-      loan,
       transaction,
+      expense: expenseDoc,
       summary: {
-        installmentNumber: payment.installmentNumber,
+        installmentNumber,
         principalPaisa,
         interestPaisa,
         totalPaisa,
         outstandingAfterPaisa,
         loanClosed: loanNowClosed,
+        wasAdjusted, // FIX 3: true when last EMI was trimmed to clear residue
+        expenseCreated: !!expenseDoc,
       },
     };
   } catch (err) {
@@ -428,9 +530,6 @@ export async function recordLoanPayment(data, session = null) {
 // ─────────────────────────────────────────────────────────────────────────────
 // getLoanAmortizationSchedule
 // ─────────────────────────────────────────────────────────────────────────────
-/**
- * Full amortization schedule, merged with actual payment history.
- */
 export async function getLoanAmortizationSchedule(loanId) {
   const loan = await Loan.findById(loanId).lean();
   if (!loan) throw new Error(`Loan ${loanId} not found`);
@@ -457,6 +556,8 @@ export async function getLoanAmortizationSchedule(loanId) {
       paymentDate: paymentByInstallment[row.installment]?.paymentDate ?? null,
       actualTotalPaisa:
         paymentByInstallment[row.installment]?.totalPaisa ?? null,
+      // Expose adjustment flag so UI can show "final EMI adjusted" badge
+      wasAdjusted: paymentByInstallment[row.installment]?.wasAdjusted ?? false,
     })),
     summary: {
       totalInstallments: loan.tenureMonths,

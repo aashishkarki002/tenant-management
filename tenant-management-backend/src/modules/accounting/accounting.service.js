@@ -45,6 +45,9 @@ const FISCAL_YEAR_MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
 
 const OPERATING_REF_TYPES = new Set(["MAINTENANCE", "UTILITY", "SALARY"]);
 
+/** Shown when `referenceType === LOAN_INTEREST` but `source` is not an ExpenseSource (legacy rows). */
+const INTEREST_EXPENSE_LABEL = "Interest expense";
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function buildDateFilter(startDate, endDate) {
@@ -138,7 +141,8 @@ export async function getAccountingSummary({
   quarter,
   month,
   fiscalYear,
-  entityId = null, // NEW
+  entityId = null,
+  paymentMethod = null, // Payment method filter (cash, bank_transfer, cheque, mobile_wallet)
 }) {
   // ── Resolve date range ────────────────────────────────────────────────────
   let resolvedStart = startDate;
@@ -175,6 +179,7 @@ export async function getAccountingSummary({
   // ── Revenue aggregation ───────────────────────────────────────────────────
   const revenueMatch = { ...entityFilter };
   if (dateFilter) revenueMatch.date = dateFilter;
+  if (paymentMethod) revenueMatch.paymentMethod = paymentMethod;
 
   const revenueAggregation = await Revenue.aggregate([
     { $match: revenueMatch },
@@ -200,6 +205,7 @@ export async function getAccountingSummary({
   // ── Liability aggregation ─────────────────────────────────────────────────
   const liabilityMatch = { ...entityFilter };
   if (dateFilter) liabilityMatch.date = dateFilter;
+  if (paymentMethod) liabilityMatch.paymentMethod = paymentMethod;
 
   const liabilityAggregation = await Liability.aggregate([
     { $match: liabilityMatch },
@@ -236,13 +242,26 @@ export async function getAccountingSummary({
   // Using the wrong field would silently return all expenses regardless of filter.
   if (dateFilter) expenseMatch.EnglishDate = dateFilter;
   expenseMatch.referenceType = { $ne: "ELECTRICITY_NEA_COST" };
+  if (paymentMethod) expenseMatch.paymentMethod = paymentMethod;
 
   const expenseAggregation = await Expense.aggregate([
     { $match: expenseMatch },
     {
+      $lookup: {
+        from: ExpenseSource.collection.name,
+        localField: "source",
+        foreignField: "_id",
+        as: "sourceDetails",
+      },
+    },
+    { $unwind: { path: "$sourceDetails", preserveNullAndEmptyArrays: true } },
+    {
       $group: {
         _id: "$source",
         totalAmountPaisa: { $sum: "$amountPaisa" },
+        name: { $first: "$sourceDetails.name" },
+        code: { $first: "$sourceDetails.code" },
+        referenceType: { $first: "$referenceType" },
       },
     },
   ]);
@@ -302,12 +321,21 @@ export async function getAccountingSummary({
   }));
 
   // expensesBreakdown now comes from Expense collection (not ledger accounts)
-  // so it is consistent with totalExpenses above.
-  const expensesBreakdown = expenseAggregation.map((item) => ({
-    code: String(item._id ?? "unknown"),
-    name: String(item._id ?? "expense"),
-    amount: paisaToRupees(item.totalAmountPaisa || 0),
-  }));
+  // so it is consistent with totalExpenses above. Names/codes come from
+  // ExpenseSource via $lookup — same pattern as revenue → RevenueSource.
+  const expensesBreakdown = expenseAggregation.map((item) => {
+    const isLoanInterest = item.referenceType === "LOAN_INTEREST";
+    return {
+      code:
+        item.code ??
+        (isLoanInterest ? "INTEREST" : String(item._id ?? "unknown")),
+      name:
+        item.name ||
+        item.code ||
+        (isLoanInterest ? INTEREST_EXPENSE_LABEL : String(item._id ?? "expense")),
+      amount: paisaToRupees(item.totalAmountPaisa || 0),
+    };
+  });
 
   return {
     totals: { totalRevenue, totalLiabilities, totalExpenses, netCashFlow },
@@ -334,7 +362,8 @@ export async function getMonthlyChartData({
   quarter,
   fiscalYear,
   allYear = false,
-  entityId = null, // NEW
+  entityId = null,
+  paymentMethod = null, // Payment method filter
 } = {}) {
   let months;
 
@@ -369,13 +398,16 @@ export async function getMonthlyChartData({
 
   const revMatch = { ...entityFilter };
   if (dateFilter) revMatch.date = dateFilter;
+  if (paymentMethod) revMatch.paymentMethod = paymentMethod;
 
   const expMatch = { ...entityFilter };
   if (dateFilter) expMatch.EnglishDate = dateFilter;
   expMatch.referenceType = { $ne: "ELECTRICITY_NEA_COST" }; // exclude unsettled NEA liability
+  if (paymentMethod) expMatch.paymentMethod = paymentMethod;
 
   const liabMatch = { ...entityFilter };
   if (dateFilter) liabMatch.date = dateFilter;
+  if (paymentMethod) liabMatch.paymentMethod = paymentMethod;
 
   const [revDocs, expDocs, liabDocs] = await Promise.all([
     Revenue.aggregate([
@@ -457,7 +489,8 @@ export async function getRevenueBreakdownSummary({
   quarter,
   fiscalYear,
   month,
-  entityId = null, // NEW
+  entityId = null,
+  paymentMethod = null, // Payment method filter
 } = {}) {
   let resolvedStart = startDate;
   let resolvedEnd = endDate;
@@ -490,9 +523,10 @@ export async function getRevenueBreakdownSummary({
   const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
   const entityFilter = buildEntityFilter(entityId);
 
-  // Merge date + entity filters
+  // Merge date + entity + payment method filters
   const match = { ...entityFilter };
   if (dateFilter) match.date = dateFilter;
+  if (paymentMethod) match.paymentMethod = paymentMethod;
 
   const revenues = await Revenue.aggregate([
     { $match: match },
@@ -523,6 +557,7 @@ export async function getRevenueBreakdownSummary({
       streams: [],
       trend: [],
       payerSplit: [],
+      paymentMethodSplit: [],
       refTypes: [],
       topTenants: [],
       statusMap: {},
@@ -628,6 +663,29 @@ export async function getRevenueBreakdownSummary({
     },
   ].filter((p) => p.amount > 0);
 
+  // ── Payment method split ──────────────────────────────────────────────────
+  const methodMap = new Map();
+  revenues.forEach((r) => {
+    const method = r.paymentMethod ?? "unknown";
+    if (!methodMap.has(method)) {
+      methodMap.set(method, { method, amountPaisa: 0, count: 0 });
+    }
+    const entry = methodMap.get(method);
+    entry.amountPaisa += r.amountPaisa || 0;
+    entry.count += 1;
+  });
+  const paymentMethodSplit = [...methodMap.values()]
+    .map((m) => ({
+      method: m.method,
+      amount: paisaToRupees(m.amountPaisa),
+      count: m.count,
+      pct:
+        total > 0
+          ? +((paisaToRupees(m.amountPaisa) / total) * 100).toFixed(1)
+          : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
   // ── Reference types ───────────────────────────────────────────────────────
   const refMap = new Map();
   revenues.forEach((r) => {
@@ -719,6 +777,7 @@ export async function getRevenueBreakdownSummary({
     streams,
     trend,
     payerSplit,
+    paymentMethodSplit,
     refTypes,
     topTenants,
     statusMap,
@@ -741,7 +800,8 @@ export async function getExpenseBreakdownSummary({
   quarter,
   fiscalYear,
   month,
-  entityId = null, // NEW
+  entityId = null,
+  paymentMethod = null, // Payment method filter
 } = {}) {
   let resolvedStart = startDate;
   let resolvedEnd = endDate;
@@ -796,6 +856,9 @@ export async function getExpenseBreakdownSummary({
     if (dateFilter) match.EnglishDate = dateFilter;
   }
 
+  // Add payment method filter
+  if (paymentMethod) match.paymentMethod = paymentMethod;
+
   const expenses = await Expense.aggregate([
     { $match: match },
     {
@@ -842,11 +905,17 @@ export async function getExpenseBreakdownSummary({
   // ── Categories by source ──────────────────────────────────────────────────
   const catMap = new Map();
   expenses.forEach((e) => {
-    const id = String(e.source?._id ?? "unknown");
+    const isLoanInterest = e.referenceType === "LOAN_INTEREST";
+    const src = e.source && e.source._id ? e.source : null;
+    const id = src
+      ? String(src._id)
+      : isLoanInterest
+        ? "__LOAN_INTEREST__"
+        : `orphan_${e._id}`;
     if (!catMap.has(id)) {
       catMap.set(id, {
-        code: e.source?.code ?? "?",
-        name: e.source?.name ?? "Unknown",
+        code: src?.code ?? (isLoanInterest ? "INTEREST" : "?"),
+        name: src?.name ?? (isLoanInterest ? INTEREST_EXPENSE_LABEL : "Unknown"),
         amountPaisa: 0,
         count: 0,
       });
@@ -928,6 +997,29 @@ export async function getExpenseBreakdownSummary({
     },
   ].filter((p) => p.amount > 0);
 
+  // ── Payment method split ──────────────────────────────────────────────────
+  const methodMap = new Map();
+  expenses.forEach((e) => {
+    const method = e.paymentMethod ?? "unknown";
+    if (!methodMap.has(method)) {
+      methodMap.set(method, { method, amountPaisa: 0, count: 0 });
+    }
+    const entry = methodMap.get(method);
+    entry.amountPaisa += e.amountPaisa || 0;
+    entry.count += 1;
+  });
+  const paymentMethodSplit = [...methodMap.values()]
+    .map((m) => ({
+      method: m.method,
+      amount: paisaToRupees(m.amountPaisa),
+      count: m.count,
+      pct:
+        total > 0
+          ? +((paisaToRupees(m.amountPaisa) / total) * 100).toFixed(1)
+          : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
   // ── Reference types ───────────────────────────────────────────────────────
   const refMap = new Map();
   expenses.forEach((e) => {
@@ -968,7 +1060,9 @@ export async function getExpenseBreakdownSummary({
   // ── Transactions ──────────────────────────────────────────────────────────
   const transactions = expenses.map((e) => ({
     id: String(e._id),
-    source: e.source?.name ?? "—",
+    source:
+      e.source?.name ??
+      (e.referenceType === "LOAN_INTEREST" ? INTEREST_EXPENSE_LABEL : "—"),
     refType: e.referenceType ?? "MANUAL",
     payeeType: e.payeeType,
     amount: paisaToRupees(e.amountPaisa || 0),
@@ -988,6 +1082,7 @@ export async function getExpenseBreakdownSummary({
     categories,
     trend,
     payeeSplit,
+    paymentMethodSplit,
     refTypes,
     operatingAmt: paisaToRupees(operatingPaisa),
     nonOpAmt: paisaToRupees(nonOpPaisa),

@@ -104,6 +104,16 @@ const revenueSchema = new mongoose.Schema(
       },
     },
 
+    // ============================================
+    // PAYMENT METHOD — required for cash flow tracking
+    // ============================================
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "bank_transfer", "cheque", "mobile_wallet"],
+      required: true,
+      default: "bank_transfer", // temporary default for migration
+    },
+
     status: {
       type: String,
       enum: ["RECORDED", "SYNCED", "REVERSED"],

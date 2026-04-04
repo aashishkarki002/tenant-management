@@ -76,7 +76,14 @@ const expenseSchema = new mongoose.Schema(
       // What kind of external party
       type: {
         type: String,
-        enum: ["VENDOR", "CONTRACTOR", "UTILITY", "GOVERNMENT", "OTHER"],
+        enum: [
+          "VENDOR",
+          "CONTRACTOR",
+          "UTILITY",
+          "GOVERNMENT",
+          "OTHER",
+          "LOAN_INTEREST",
+        ],
       },
       contactInfo: { type: String, trim: true },
     },
@@ -109,15 +116,26 @@ const expenseSchema = new mongoose.Schema(
     // ─────────────────────────────────────────────────
     referenceType: {
       type: String,
-      enum: ["MAINTENANCE", "UTILITY", "SALARY", "ADVANCE", "MANUAL"],
+      enum: [
+        "MAINTENANCE",
+        "UTILITY",
+        "SALARY",
+        "ADVANCE",
+        "MANUAL",
+        "LOAN_INTEREST",
+      ],
       default: "MANUAL",
     },
     referenceId: {
       type: mongoose.Schema.Types.ObjectId,
       required: function () {
-        return ["MAINTENANCE", "UTILITY", "SALARY"].includes(
-          this.referenceType,
-        );
+        return [
+          "MAINTENANCE",
+          "UTILITY",
+          "SALARY",
+          "ADVANCE",
+          "LOAN_INTEREST",
+        ].includes(this.referenceType);
       },
     },
     paymentMethod: {
@@ -248,4 +266,6 @@ expenseSchema.pre("validate", function () {
   }
 });
 
-export const Expense = mongoose.model("Expense", expenseSchema);
+/** Reuse compiled model when the module is evaluated twice (e.g. mixed import path casing). */
+export const Expense =
+  mongoose.models.Expense || mongoose.model("Expense", expenseSchema);

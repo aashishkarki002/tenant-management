@@ -113,7 +113,10 @@ const loanPaymentSchema = new mongoose.Schema(
 );
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
-loanPaymentSchema.index({ loan: 1, installmentNumber: 1 });
+// CRITICAL: unique constraint ensures no two payments can share the same
+// installment number for the same loan, even if a race condition slips past
+// the optimistic lock in recordLoanPayment. This is the final safety net.
+loanPaymentSchema.index({ loan: 1, installmentNumber: 1 }, { unique: true });
 loanPaymentSchema.index({ paymentDate: -1 });
 loanPaymentSchema.index({ entityId: 1, nepaliYear: 1, nepaliMonth: 1 });
 
