@@ -11,21 +11,12 @@ import { toast } from "sonner";
 import api from "../../../../plugins/axios";
 import DualCalendarTailwind from "../../../components/dualDate";
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from "../../constants/constant";
-import { PAYMENT_METHODS } from "../../../Tenant/addTenant/constants/tenant.constant.js";
-
-/** Payment options for generator: cash, bank_transfer, cheque (same as expense recording) */
-const PAYMENT_OPTIONS = [
-    { value: PAYMENT_METHODS.CASH, label: "Cash" },
-    { value: PAYMENT_METHODS.BANK_TRANSFER, label: "Bank Transfer" },
-    { value: PAYMENT_METHODS.CHEQUE, label: "Cheque" },
-];
-
-function parseNepaliDateStr(nepaliStr) {
-    if (!nepaliStr || typeof nepaliStr !== "string") return null;
-    const parts = nepaliStr.trim().split("-").map(Number);
-    if (parts.length < 3) return null;
-    return { year: parts[0], month: parts[1], day: parts[2] };
-}
+import {
+    PAYMENT_METHODS,
+    getLedgerPaymentMethodSelectOptions,
+    paymentMethodRequiresBankAccount,
+} from "@/constants/paymentMethods.js";
+import { tryParseNepaliISO } from "@/utils/nepaliDate";
 
 const EMPTY = {
     type: "FullService",
@@ -63,9 +54,7 @@ export function ServiceLogDialog({ gen, open, onClose, onDone, bankAccounts = []
     const handleClose = () => { reset(); onClose(); };
 
     const hasCost = !!form.cost && Number(form.cost) > 0;
-    const needsBank =
-        form.paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
-        form.paymentMethod === PAYMENT_METHODS.CHEQUE;
+    const needsBank = paymentMethodRequiresBankAccount(form.paymentMethod);
 
     const validate = () => {
         if (!form.type) { toast.error("Service type is required"); return false; }
@@ -212,7 +201,7 @@ export function ServiceLogDialog({ gen, open, onClose, onDone, bankAccounts = []
                                     <DualCalendarTailwind
                                         value={form.englishDate}
                                         onChange={(englishDate, nepaliDateStr) => {
-                                            const parsed = parseNepaliDateStr(nepaliDateStr);
+                                            const parsed = tryParseNepaliISO(nepaliDateStr);
                                             patch({
                                                 englishDate: englishDate || "",
                                                 nepaliDate: nepaliDateStr || "",
@@ -231,7 +220,7 @@ export function ServiceLogDialog({ gen, open, onClose, onDone, bankAccounts = []
                                     >
                                         <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            {PAYMENT_OPTIONS.map(m => (
+                                            {getLedgerPaymentMethodSelectOptions().map(m => (
                                                 <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                                             ))}
                                         </SelectContent>

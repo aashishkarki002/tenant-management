@@ -14,7 +14,7 @@ import { RentSummaryCard } from "./components/RentSummaryCard";
 import { getPaymentAmounts } from "./utils/paymentUtil";
 import { RentFilter } from "./components/RentFilter";
 import { AdminRentAction } from "./components/AdminRentAction";
-import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDate";
+import { NEPALI_MONTH_NAMES } from "@/utils/nepaliDate";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { cn } from "@/lib/utils";
 import { Search, SlidersHorizontal, MoreVertical, Receipt } from "lucide-react";

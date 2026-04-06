@@ -49,7 +49,10 @@ import api from '../../../plugins/axios';
 import { toast } from 'sonner';
 import DualCalendarTailwind from '@/components/dualDate';
 import { parseNepaliFields } from '@/hooks/useNepaliDate';
-import { PAYMENT_METHODS } from '../../Tenant/addTenant/constants/tenant.constant';
+import {
+    PAYMENT_METHODS,
+    paymentMethodRequiresBankAccount,
+} from '@/constants/paymentMethods.js';
 import { CONTRACTOR_TYPE_OPTIONS, getStatusStyle } from '../constants/maintenance.constants';
 import { formatStatus } from '../utils/maintenance.utils';
 
@@ -171,9 +174,7 @@ export default function SettlementDialog({
         setFormData((prev) => ({ ...prev, [field]: value }));
     };
 
-    const showBankSelection =
-        selectedMethod === PAYMENT_METHODS.BANK_TRANSFER ||
-        selectedMethod === PAYMENT_METHODS.CHEQUE;
+    const showBankSelection = paymentMethodRequiresBankAccount(selectedMethod);
 
     const buildPayload = (allowOverpayment = false) => {
         const payload = {

@@ -1,3 +1,5 @@
+import { getPaymentMethodLabel } from "@/constants/paymentMethods.js";
+
 /**
  * Finds matching CAM for a given rent based on tenant and month/year
  * @param {Array} cams - Array of CAM objects
@@ -94,7 +96,7 @@ export const formatPaymentDate = (date) => {
       month: "short",
       day: "numeric",
     });
-  } catch (error) {
+  } catch {
     return "N/A";
   }
 };
@@ -104,14 +106,7 @@ export const formatPaymentDate = (date) => {
  * @param {string} method - Payment method string
  * @returns {string} Formatted payment method string
  */
-export const formatPaymentMethod = (method) => {
-  if (!method) return "N/A";
-  return method === "bank_transfer"
-    ? "Bank Transfer"
-    : method === "cash"
-      ? "Cash"
-      : method.charAt(0).toUpperCase() + method.slice(1);
-};
+export const formatPaymentMethod = (method) => getPaymentMethodLabel(method);
 
 /**
  * Formats payment status for display

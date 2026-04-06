@@ -12,7 +12,7 @@ import {
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { useLoans } from "./hooks/useLoans";
 import { fmtK, fmtRupees, paisaToRupees } from "./loan.constants";
-import { getTodayNepali } from "../../utils/nepaliDate";
+import { getTodayNepali } from "@/utils/nepaliDate";
 import { KpiCard, LoanCard } from "./components/loan.ui";
 import { LoanDetailSheet } from "./components/LoanDetailSheet";
 import { AddLoanDialog } from "./components/AddLoanDialog";

@@ -2,12 +2,6 @@ import { useState, useEffect } from "react";
 import api from "../../plugins/axios";
 import { useParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,65 +13,58 @@ import {
   CreditCard,
   AlertTriangle,
   ShieldCheck,
+  CalendarDays,
+  MapPin,
 } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
-import { OverviewLeaseTab } from "./OverviewLeaseTab";
-import { DocumentsTab } from "./DocumentsTab";
-import { MaintenanceTab } from "./MaintenanceTab";
-import { PaymentHistoryTab } from "./PaymentHistoryTab";
-import { ElectricityTab } from "./ElectricityTab";
-import { EscalationTab } from "./EscalationTab";
-import { SecurityDepositTab } from "./SecurityDepositTab";
-import Breadcrumb from "./Breadcrumb";
+import { OverviewLeaseTab } from "./components/OverviewLeaseTab";
+import { DocumentsTab } from "./components/DocumentsTab";
+import { MaintenanceTab } from "./components/MaintenanceTab";
+import { PaymentHistoryTab } from "./components/PaymentHistoryTab";
+import { ElectricityTab } from "./components/ElectricityTab";
+import { EscalationTab } from "./components/EscalationTab";
+import { SecurityDepositTab } from "./components/SecurityDepositTab";
+import Breadcrumb from "./components/Breadcrumb";
 
 const DEFAULT_TABS = [
   {
     value: "personalInfo",
-    label: "Overview & Lease",
-    shortLabel: "Overview",
+    label: "Overview",
     component: OverviewLeaseTab,
     icon: UserCircle2,
   },
   {
     value: "documents",
     label: "Documents",
-    shortLabel: "Documents",
     component: DocumentsTab,
     icon: FileText,
   },
   {
     value: "propertyDetails",
     label: "Maintenance",
-    shortLabel: "Maintenance",
     component: MaintenanceTab,
     icon: Wrench,
   },
   {
     value: "electricity",
     label: "Electricity",
-    shortLabel: "Electricity",
     component: ElectricityTab,
     icon: Zap,
   },
   {
     value: "paymentHistory",
-    label: "Payment History",
-    shortLabel: "Payments",
+    label: "Payments",
     component: PaymentHistoryTab,
     icon: CreditCard,
   },
   {
     value: "escalation",
     label: "Escalation",
-    shortLabel: "Escalation",
     component: EscalationTab,
     icon: AlertTriangle,
   },
-  // ── NEW TAB ──────────────────────────────────────────────────────────────
   {
     value: "securityDeposit",
-    label: "Security Deposit",
-    shortLabel: "SD",
+    label: "Security",
     component: SecurityDepositTab,
     icon: ShieldCheck,
   },
@@ -144,7 +131,7 @@ function ViewDetail({ tabs: tabsProp }) {
       const response = await api.get(`/api/maintenance/get-maintenance/${id}`);
       const list = response.data?.maintenance;
       setMaintenanceHistory(Array.isArray(list) ? list : []);
-    } catch (err) {
+    } catch {
       setMaintenanceHistory([]);
     }
   };
@@ -165,77 +152,131 @@ function ViewDetail({ tabs: tabsProp }) {
     return tenant.units.join(", ");
   };
 
+  const initials = tenant?.name
+    ? tenant.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+    : "T";
+
   return (
-    <div className="px-2 sm:px-4 md:px-6">
+    <div className="px-2 sm:px-4 md:px-6 pb-8">
       <Breadcrumb tenantName={tenant?.name} />
-      <Card className="border border-border shadow-sm rounded-xl bg-background">
-        <CardHeader className="space-y-4 p-4 sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-              <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
-                <AvatarImage src="https://github.com/shadcn.png" />
-                <AvatarFallback className="text-base sm:text-lg font-semibold">
-                  {tenant?.name?.charAt(0)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <CardTitle className="text-lg sm:text-xl md:text-2xl font-semibold leading-tight">
-                    {tenant?.name}
-                  </CardTitle>
-                  <Badge variant="outline" className="border-green-600 text-green-700 bg-success-bg text-xs">
-                    {tenant?.status}
-                  </Badge>
-                  <Badge variant="outline" className="border-yellow-600 text-yellow-700 bg-warning-bg text-xs">
-                    {tenant?.rentPaymentFrequency === "monthly" ? "Monthly Rent" : "Quarterly Rent"}
-                  </Badge>
+
+      {/* ── Tenant Profile Card ─────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-border bg-background shadow-sm overflow-hidden mb-4">
+        {/* Accent top strip */}
+        <div className="h-1 w-full " />
+
+        <div className="p-4 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+
+            {/* Left: avatar + identity */}
+            <div className="flex items-start gap-3 sm:gap-4">
+              <div className="relative shrink-0">
+                <Avatar className="w-12 h-12 sm:w-14 sm:h-14 ring-2 ring-blue-100 ring-offset-2">
+                  <AvatarImage src="https://github.com/shadcn.png" alt={tenant?.name} />
+                  <AvatarFallback className="text-sm font-bold bg-blue-50 text-blue-700">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                {tenant?.status === "active" && (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 ring-2 ring-background" />
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <h1 className="text-lg sm:text-xl font-semibold leading-tight text-foreground">
+                    {tenant?.name ?? "—"}
+                  </h1>
+                  <StatusBadge status={tenant?.status} />
+                  {tenant?.rentPaymentFrequency && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-normal border-amber-300 text-amber-700 bg-amber-50"
+                    >
+                      {tenant.rentPaymentFrequency === "monthly" ? "Monthly" : "Quarterly"}
+                    </Badge>
+                  )}
                 </div>
-                <span className="text-xs sm:text-sm text-muted-foreground">
-                  Tenant ID: #{tenant?._id?.slice(-8)}
-                </span>
+
+                <p className="text-xs text-muted-foreground mb-2">
+                  ID #{tenant?._id?.slice(-8) ?? "—"}
+                </p>
+
+                <div className="flex flex-col gap-1">
+                  {(tenant?.block?.name || tenant?.innerBlock?.name) && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Building2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        {[tenant?.block?.name, tenant?.innerBlock?.name]
+                          .filter(Boolean)
+                          .join(", ")}
+                        {getUnitLabel() !== "—" ? ` — ${getUnitLabel()}` : ""}
+                      </span>
+                    </div>
+                  )}
+                  {tenant?.leaseStartDateNepali && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+                      <span>Since {tenant.leaseStartDateNepali} BS</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
+            {/* Right: lease progress */}
             {tenant?.leaseStartDate && tenant?.leaseEndDate && (
-              <div className="w-full sm:w-auto sm:min-w-[200px]">
-                <Progress value={progress} className="h-2.5 mb-2 [&>div]:bg-accent" />
-                <p className="text-xs text-muted-foreground">
-                  {remainingMonths === 0 ? "Lease completed" : remainingMonths === 1 ? "1 month remaining" : `${remainingMonths} months remaining`}
+              <div className="sm:min-w-[200px] sm:max-w-[240px] w-full">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-muted-foreground">Lease Progress</span>
+                  <span className="text-xs font-semibold tabular-nums text-foreground">
+                    {Math.round(progress)}%
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {remainingMonths === 0
+                    ? "Lease completed"
+                    : remainingMonths === 1
+                      ? "1 month remaining"
+                      : `${remainingMonths} months remaining`}
                 </p>
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          <CardDescription className="flex flex-col gap-2 text-xs sm:text-sm">
-            <div className="flex items-start gap-2 text-muted-foreground">
-              <Building2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span className="break-words">
-                {tenant?.block?.name}, {tenant?.innerBlock?.name} — {getUnitLabel()}
-              </span>
-            </div>
-            <div className="text-muted-foreground">
-              <span className="font-medium text-foreground">Since:</span>{" "}
-              {tenant?.leaseStartDateNepali ?? "—"}
-            </div>
-          </CardDescription>
-        </CardHeader>
-      </Card>
-
-      <Tabs defaultValue={tabs[0]?.value ?? "personalInfo"} className="mt-4 gap-2">
-        <TabsList className="flex w-full h-auto overflow-x-auto gap-1 rounded-lg bg-muted/40 p-1">
-          {tabs.map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className="flex-1 min-w-[56px] text-xs sm:text-sm px-2 py-2"
-            >
-              <div className="flex flex-col items-center justify-center gap-1 w-full">
-                {tab.icon && <tab.icon className="h-4 w-4 sm:hidden" />}
-                <span className="hidden sm:inline">{tab.label}</span>
-              </div>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+      {/* ── Tab Navigation ──────────────────────────────────────────────────── */}
+      <Tabs defaultValue={tabs[0]?.value ?? "personalInfo"} className="gap-0">
+        <div className="mb-4">
+          <TabsList className="w-full h-auto bg-background border border-border rounded-xl p-1 overflow-x-auto flex gap-0.5">
+            {tabs.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="
+                  flex-1 min-w-[64px] flex items-center justify-center gap-1.5
+                  px-2 py-2 text-xs sm:text-sm rounded-lg
+                  text-muted-foreground font-medium
+                  transition-all duration-150 cursor-pointer
+                  data-[state=active]:bg-primary data-[state=active]:text-primary-foreground
+                  data-[state=active]:shadow-sm hover:bg-muted/60
+                "
+              >
+                {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
+                <span className="hidden xs:inline sm:inline whitespace-nowrap">
+                  {tab.label}
+                </span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
         {tabs.map((tab) => {
           const Component = tab.component;
@@ -262,7 +303,6 @@ function ViewDetail({ tabs: tabsProp }) {
           } else if (tab.value === "escalation") {
             tabProps = { tenantId: id };
           } else if (tab.value === "securityDeposit") {
-            // Pass tenantId, blockId for resolveEntity, and tenant.sd if pre-loaded
             tabProps = {
               tenantId: id,
               blockId: tenant?.block?._id ?? tenant?.block,
@@ -271,13 +311,37 @@ function ViewDetail({ tabs: tabsProp }) {
           }
 
           return (
-            <TabsContent key={tab.value} value={tab.value} className="mt-4">
+            <TabsContent key={tab.value} value={tab.value}>
               <Component {...tabProps} />
             </TabsContent>
           );
         })}
       </Tabs>
     </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  if (!status) return null;
+  const s = status.toLowerCase();
+  if (s === "active") {
+    return (
+      <Badge variant="outline" className="text-xs font-medium border-green-300 text-success bg-success-light">
+        Active
+      </Badge>
+    );
+  }
+  if (s === "inactive" || s === "vacated") {
+    return (
+      <Badge variant="outline" className="text-xs font-medium border-border text-muted-foreground bg-muted">
+        {status}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-xs capitalize">
+      {status}
+    </Badge>
   );
 }
 

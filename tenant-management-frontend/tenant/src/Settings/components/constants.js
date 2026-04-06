@@ -1,4 +1,5 @@
 import { BuildingIcon, CarIcon, ServerIcon, HomeIcon } from "lucide-react";
+import { NEPALI_MONTH_NAMES } from "@/utils/nepaliDate";
 
 export const METER_TYPE_META = {
   unit: {
@@ -39,17 +40,5 @@ export const METER_TYPE_META = {
   },
 };
 
-export const NEPALI_MONTHS = [
-  "Baisakh",
-  "Jestha",
-  "Ashadh",
-  "Shrawan",
-  "Bhadra",
-  "Ashwin",
-  "Kartik",
-  "Mangsir",
-  "Poush",
-  "Magh",
-  "Falgun",
-  "Chaitra",
-];
+/** English month names in BS order (same reference as `@/utils/nepaliDate`). */
+export const NEPALI_MONTHS = NEPALI_MONTH_NAMES;

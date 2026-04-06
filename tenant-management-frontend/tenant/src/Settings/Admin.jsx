@@ -134,7 +134,7 @@ function LateFeePreview({ lateFee }) {
 // TAB 1: General
 // Props: user, bankAccounts, getBankAccounts
 // ═══════════════════════════════════════════════════════════════════════════════
-function GeneralTab({ user, bankAccounts, getBankAccounts }) {
+function GeneralTab({ user, bankAccounts, getBankAccounts, isAdmin }) {
   const fileInputRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const [pendingFile, setPendingFile] = useState(null);
@@ -189,13 +189,25 @@ function GeneralTab({ user, bankAccounts, getBankAccounts }) {
   };
 
   const addBankFormik = useFormik({
-    initialValues: { accountNumber: "", accountName: "", bankName: "", accountCode: "", openingBalance: "" },
+    initialValues: {
+      entityId: "",
+      accountNumber: "",
+      accountName: "",
+      bankName: "",
+      accountCode: "",
+      openingBalance: "",
+    },
     onSubmit: async (vals, { setSubmitting, resetForm }) => {
+      if (!vals.entityId?.trim()) { toast.error("Select an ownership entity"); setSubmitting(false); return; }
       if (!vals.accountCode.trim()) { toast.error("Account code required"); setSubmitting(false); return; }
       try {
         const res = await api.post("/api/bank/create-bank-account", {
-          ...vals, accountCode: vals.accountCode.toUpperCase().trim(),
+          accountNumber: vals.accountNumber,
+          accountName: vals.accountName,
+          bankName: vals.bankName,
+          accountCode: vals.accountCode.toUpperCase().trim(),
           openingBalance: parseFloat(vals.openingBalance) || 0,
+          entityId: vals.entityId.trim(),
         });
         if (res.data.success) { toast.success("Created"); resetForm(); getBankAccounts(); setAddOpen(false); }
       } catch (err) { toast.error(err.response?.data?.message || "Failed"); }
@@ -296,55 +308,57 @@ function GeneralTab({ user, bankAccounts, getBankAccounts }) {
       </Card>
 
       {/* Bank Accounts */}
-      <Card className="border-border">
-        <CardHeader className="pb-4 border-b border-border">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-slate-900 flex items-center justify-center"><CreditCard className="w-3.5 h-3.5 text-white" /></div>
-              Bank Accounts
-            </CardTitle>
-            <Dialog open={addOpen} onOpenChange={setAddOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="gap-2 h-8 text-xs px-3"><Plus className="w-3.5 h-3.5" />Add Account</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add Bank Account</DialogTitle>
-                  <DialogDescription>Link a bank account for rent collection.</DialogDescription>
-                </DialogHeader>
-                <AddBankAccount formik={addBankFormik} />
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-4 space-y-2">
-          {!bankAccounts?.length ? (
-            <div className="text-center py-10 border-2 border-dashed border-border rounded-xl">
-              <CreditCard className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-sm font-medium text-muted-foreground">No bank accounts yet</p>
+      {isAdmin && (
+        <Card className="border-border">
+          <CardHeader className="pb-4 border-b border-border">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-slate-900 flex items-center justify-center"><CreditCard className="w-3.5 h-3.5 text-white" /></div>
+                Bank Accounts
+              </CardTitle>
+              <Dialog open={addOpen} onOpenChange={setAddOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="gap-2 h-8 text-xs px-3"><Plus className="w-3.5 h-3.5" />Add Account</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add Bank Account</DialogTitle>
+                    <DialogDescription>Link a bank account for rent collection.</DialogDescription>
+                  </DialogHeader>
+                  <AddBankAccount formik={addBankFormik} />
+                </DialogContent>
+              </Dialog>
             </div>
-          ) : bankAccounts.map((acc) => (
-            <div key={acc._id} className="flex items-center justify-between rounded-xl border border-border bg-secondary/30 px-4 py-3 hover:bg-secondary/60 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white text-[10px] font-bold">
-                  {(acc.bankName || "BK").slice(0, 2).toUpperCase()}
+          </CardHeader>
+          <CardContent className="pt-4 space-y-2">
+            {!bankAccounts?.length ? (
+              <div className="text-center py-10 border-2 border-dashed border-border rounded-xl">
+                <CreditCard className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm font-medium text-muted-foreground">No bank accounts yet</p>
+              </div>
+            ) : bankAccounts.map((acc) => (
+              <div key={acc._id} className="flex items-center justify-between rounded-xl border border-border bg-secondary/30 px-4 py-3 hover:bg-secondary/60 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white text-[10px] font-bold">
+                    {(acc.bankName || "BK").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{acc.accountName || acc.bankName}</p>
+                    <p className="text-[11px] text-muted-foreground font-mono">{acc.accountCode} · {acc.accountNumber}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{acc.accountName || acc.bankName}</p>
-                  <p className="text-[11px] text-muted-foreground font-mono">{acc.accountCode} · {acc.accountNumber}</p>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(acc)}><Pencil className="w-3.5 h-3.5" /></Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                    onClick={() => { setToDelete(acc._id); setDelOpen(true); }}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(acc)}><Pencil className="w-3.5 h-3.5" /></Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
-                  onClick={() => { setToDelete(acc._id); setDelOpen(true); }}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Security */}
       <Card className="border-border">
@@ -404,16 +418,7 @@ function GeneralTab({ user, bankAccounts, getBankAccounts }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TAB 2: Staff
-// Props: staff[], onRefresh()
-// ═══════════════════════════════════════════════════════════════════════════════
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// TAB 3: Rates & Fees
-// Props: propertyId
-// ═══════════════════════════════════════════════════════════════════════════════
 const ESC_DEF = { enabled: false, percentageIncrease: 5, intervalMonths: 12, appliesTo: "rent_only" };
 const LF_DEF = { enabled: false, gracePeriodDays: 5, type: "simple_daily", amount: 2, appliesTo: "rent", compounding: false, maxLateFeeAmount: 5000 };
 const FEE_TYPES = [
@@ -662,13 +667,17 @@ export default function AdminRoot() {
   };
 
   useEffect(() => { getBankAccounts(); getStaff(); }, []);
+  const ADMIN_ROLES = ["super_admin", "admin"];
+  const isAdmin = ADMIN_ROLES.includes(user?.role);
+
 
   const NAV = [
     { value: "general", Icon: Settings, label: "General" },
 
-    { value: "rates", Icon: TrendingUp, label: "Rates & Fees" },
+    { value: "rates", Icon: TrendingUp, label: "Rates & Fees", adminOnly: true },
     { value: "notification", Icon: Bell, label: "Notification" },
   ];
+  const visibleNav = NAV.filter((tab) => !tab.adminOnly || isAdmin);
 
   return (
     <div className="min-h-screen bg-background">
@@ -688,7 +697,7 @@ export default function AdminRoot() {
 
         <Tabs defaultValue={initialTab} className="w-full">
           <TabsList className="flex w-full justify-start h-auto p-1 bg-secondary rounded-xl mb-6 gap-0.5 overflow-x-auto">
-            {NAV.map(({ value, Icon, label }) => (
+            {visibleNav.map(({ value, Icon, label }) => (
               <TabsTrigger key={value} value={value}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap shrink-0
                   text-muted-foreground
@@ -705,6 +714,7 @@ export default function AdminRoot() {
               user={user}
               bankAccounts={bankAccounts}
               getBankAccounts={getBankAccounts}
+              isAdmin={isAdmin}
             />
           </TabsContent>
 

@@ -3,15 +3,19 @@ import {
   LayoutDashboard,
   Users,
   Building2,
-  DollarSign,
-  FileText,
   Wrench,
   Banknote,
   Zap,
   ChevronDown,
   Landmark,
   ClipboardCheck,
+  Store,
+  DoorOpen,
   UserCog,
+  ReceiptText,
+  ClipboardList,
+  FileText,
+  Megaphone,
 } from "lucide-react";
 
 import {
@@ -55,7 +59,7 @@ const NAV_GROUPS = [
     label: "Core",
     items: [
       { title: "Buildings", url: "/buildings", icon: Building2 },
-      { title: "Units", url: "/units", icon: Building2 },
+      { title: "Units", url: "/units", icon: DoorOpen },
       { title: "Tenants", url: "/tenants", icon: Users },
       { title: "Staff", url: "/staff", icon: UserCog },
     ],
@@ -63,15 +67,16 @@ const NAV_GROUPS = [
   {
     label: "Finance",
     items: [
-      { title: "Rent & Payments", url: "/rent-payment", icon: DollarSign },
-      { title: "Accounting", url: "/accounting", icon: FileText },
+      { title: "Rent & Payments", url: "/rent-payment", icon: Banknote },
+      { title: "Accounting", url: "/accounting", icon: ReceiptText },
     ],
   },
   {
     label: "Operations",
     items: [
-      { title: "Daily Checks", url: "/admin-daily-checks", icon: ClipboardCheck, badge: "Today" },
+      { title: "Daily Checks", url: "/admin-daily-checks", icon: ClipboardList, badge: "Today" },
       { title: "Maintenance", url: "/maintenance", icon: Wrench },
+      { title: "Broadcasts", url: "/broadcasts", icon: Megaphone },
     ],
   },
   {
@@ -85,7 +90,8 @@ const NAV_GROUPS = [
     collapsible: true, // Only this group collapses
     items: [
       { title: "Loans", url: "/loans", icon: Landmark },
-      { title: "Cheque Drafts", url: "/cheque-drafts", icon: Banknote },
+      { title: "Cheque Drafts", url: "/cheque-drafts", icon: FileText },
+      { title: "Vendors", url: "/vendors", icon: Store },
     ],
   },
 ];

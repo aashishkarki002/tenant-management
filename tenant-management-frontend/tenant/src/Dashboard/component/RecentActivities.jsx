@@ -10,6 +10,10 @@ import {
   CalendarClock, Wrench, Zap, AlertTriangle, Fuel, ArrowDownLeft, ArrowUpRight,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import {
+  tryParseNepaliISO,
+  formatNepaliDisplayNoComma,
+} from "@/utils/nepaliDate";
 
 // ─── Color maps ───────────────────────────────────────────────────────────────
 // Semantic-only: green (paid), red (overdue/expense), yellow (pending),
@@ -76,15 +80,16 @@ function formatRelativeTime(date) {
   return new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function formatDate(d) {
-  if (!d) return "";
-  return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function formatNepaliDate(nepaliDate) {
+function formatNepaliDueLabel(nepaliDate) {
   if (!nepaliDate) return "";
-  if (typeof nepaliDate === "string") return nepaliDate;
-  if (nepaliDate instanceof Date) return nepaliDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (typeof nepaliDate === "string") {
+    const raw = nepaliDate.split("T")[0];
+    const p = tryParseNepaliISO(raw);
+    return p ? formatNepaliDisplayNoComma(p) : nepaliDate;
+  }
+  if (nepaliDate instanceof Date) {
+    return nepaliDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
   return String(nepaliDate);
 }
 
@@ -129,7 +134,7 @@ function normalizeUpcomingRents(stats) {
     id: r._id ?? i,
     tenantName: r.tenant?.name ?? r.tenantName ?? "—",
     propertyName: r.property?.name ?? r.propertyName ?? "",
-    dueDate: r.nepaliDueDate ? formatNepaliDate(r.nepaliDueDate) : "",
+    dueDate: r.nepaliDueDate ? formatNepaliDueLabel(r.nepaliDueDate) : "",
     amount: r.remainingPaisa != null ? r.remainingPaisa / 100 : (r.remaining ?? r.rentAmount ?? null),
   }));
 }

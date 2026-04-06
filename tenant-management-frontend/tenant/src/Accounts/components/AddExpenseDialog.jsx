@@ -20,35 +20,20 @@ import { useFormik } from "formik";
 import api from "../../../plugins/axios";
 import { Loader2, Building2, User, Users, CheckCircle2 } from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
-import dateConverter from "nepali-datetime/dateConverter";
-import { PAYMENT_METHODS } from "../../Tenant/addTenant/constants/tenant.constant.js";
 import {
+  PAYMENT_METHODS,
+  VALID_PAYMENT_METHOD_VALUES,
+  getLedgerPaymentMethodSelectOptions,
+  normalizeLedgerPaymentMethod,
+  paymentMethodRequiresBankAccount,
+} from "@/constants/paymentMethods.js";
+import {
+  adIsoToBsIso,
   getCurrentNepaliMonth,
   getCurrentNepaliYear,
   getNepaliMonthOptions,
-} from "../../../utils/nepaliDate";
+} from "@/utils/nepaliDate";
 import useOwnership from "../../hooks/use-ownership";
-
-const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
-
-const formatBsFromParts = (y, m, d) =>
-  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-
-/** BS "YYYY-MM-DD" for an AD day (same as DualCalendarTailwind). */
-function englishIsoToNepaliString(iso) {
-  if (!iso || typeof iso !== "string") return "";
-  try {
-    const [enYear, enMonthHuman, enDay] = iso.split("-").map(Number);
-    const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
-      enYear,
-      enMonthHuman - 1,
-      enDay,
-    );
-    return formatBsFromParts(npYear, npMonth0 + 1, npDay);
-  } catch {
-    return "";
-  }
-}
 
 // ─── Payee type config ────────────────────────────────────────────────────────
 const PAYEE_TYPES = [
@@ -152,7 +137,7 @@ function getInitialValues() {
     referenceId: "",
     amount: "",
     date,
-    nepaliDate: englishIsoToNepaliString(date),
+    nepaliDate: adIsoToBsIso(date),
     notes: "",
     paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
     bankAccountId: "",
@@ -224,13 +209,9 @@ export function AddExpenseDialog({
         const { payeeType } = values;
         const englishDate = values.date || new Date().toISOString().split("T")[0];
         const bsDate =
-          values.nepaliDate?.trim() || englishIsoToNepaliString(englishDate);
+          values.nepaliDate?.trim() || adIsoToBsIso(englishDate);
 
-        const rawMethod = values.paymentMethod;
-        const paymentMethod =
-          typeof rawMethod === "string" && VALID_PAYMENT_METHODS.includes(rawMethod)
-            ? rawMethod
-            : PAYMENT_METHODS.BANK_TRANSFER;
+        const paymentMethod = normalizeLedgerPaymentMethod(values.paymentMethod);
 
         // Determine transactionScope from selected entity type
         const entity = allEntities.find((e) => e._id === values.entityId);
@@ -260,12 +241,11 @@ export function AddExpenseDialog({
             : {}),
         };
 
-        // Payment method → bank account
         if (
-          paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
-          paymentMethod === PAYMENT_METHODS.CHEQUE
+          paymentMethodRequiresBankAccount(paymentMethod) &&
+          values.bankAccountId
         ) {
-          if (values.bankAccountId) payload.bankAccountId = values.bankAccountId;
+          payload.bankAccountId = values.bankAccountId;
         }
 
         // Payee-specific fields
@@ -409,9 +389,9 @@ export function AddExpenseDialog({
   const selectedStaff = resolvedStaffList.find(
     (s) => s._id === formik.values.staffId,
   );
-  const showBankPicker =
-    formik.values.paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
-    formik.values.paymentMethod === PAYMENT_METHODS.CHEQUE;
+  const showBankPicker = paymentMethodRequiresBankAccount(
+    formik.values.paymentMethod,
+  );
   const payMonthOptions = getNepaliMonthOptions({ lang: "np" });
 
   const selectedEntity = allEntities.find(
@@ -813,7 +793,7 @@ export function AddExpenseDialog({
                   formik.setFieldValue("date", englishDate);
                   formik.setFieldValue(
                     "nepaliDate",
-                    nepaliDateStr ?? englishIsoToNepaliString(englishDate),
+                    nepaliDateStr ?? adIsoToBsIso(englishDate),
                   );
                 }}
               />
@@ -826,16 +806,13 @@ export function AddExpenseDialog({
             <Select
               value={
                 formik.values.paymentMethod &&
-                  VALID_PAYMENT_METHODS.includes(formik.values.paymentMethod)
+                  VALID_PAYMENT_METHOD_VALUES.includes(formik.values.paymentMethod)
                   ? formik.values.paymentMethod
                   : PAYMENT_METHODS.BANK_TRANSFER
               }
               onValueChange={(v) => {
                 formik.setFieldValue("paymentMethod", v);
-                if (
-                  v !== PAYMENT_METHODS.BANK_TRANSFER &&
-                  v !== PAYMENT_METHODS.CHEQUE
-                ) {
+                if (!paymentMethodRequiresBankAccount(v)) {
                   formik.setFieldValue("bankAccountId", "");
                 }
               }}
@@ -844,14 +821,11 @@ export function AddExpenseDialog({
                 <SelectValue placeholder="Select method" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={PAYMENT_METHODS.CASH}>Cash</SelectItem>
-                <SelectItem value={PAYMENT_METHODS.BANK_TRANSFER}>
-                  Bank Transfer
-                </SelectItem>
-                <SelectItem value={PAYMENT_METHODS.CHEQUE}>Cheque</SelectItem>
-                <SelectItem value={PAYMENT_METHODS.MOBILE_WALLET}>
-                  Mobile Wallet
-                </SelectItem>
+                {getLedgerPaymentMethodSelectOptions().map(({ value, label }) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

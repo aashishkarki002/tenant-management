@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useCallback } from "react";
 import {
     Dialog,
     DialogContent,
@@ -18,20 +18,35 @@ import {
 } from "@/components/ui/select";
 import { useFormik } from "formik";
 import { toast } from "sonner";
-import { CheckCircle2, CreditCard, Building2, Banknote } from "lucide-react";
+import {
+    CheckCircle2,
+    CreditCard,
+    Building2,
+    Banknote,
+    Wallet,
+} from "lucide-react";
 import DragDropFileUpload from "@/components/DragDropFileUpload";
 import { useBankAccounts } from "../../Accounts/hooks/useAccounting";
 import { recordPayment } from "../utils/electricityApi";
+import {
+    PAYMENT_METHODS,
+    PAYMENT_METHOD_ORDER,
+    PAYMENT_METHOD_LABELS,
+    paymentMethodRequiresBankAccount,
+} from "@/constants/paymentMethods.js";
 
-// ─── Payment method options ───────────────────────────────────────────────────
+const PAYMENT_METHOD_ICONS = {
+    [PAYMENT_METHODS.CASH]: Banknote,
+    [PAYMENT_METHODS.BANK_TRANSFER]: Building2,
+    [PAYMENT_METHODS.CHEQUE]: CreditCard,
+    [PAYMENT_METHODS.MOBILE_WALLET]: Wallet,
+};
 
-const PAYMENT_METHODS = [
-    { value: "cash", label: "Cash", Icon: Banknote },
-    { value: "bank_transfer", label: "Bank Transfer", Icon: Building2 },
-    { value: "cheque", label: "Cheque", Icon: CreditCard },
-];
-
-const BANK_REQUIRED = new Set(["bank_transfer", "cheque"]);
+const ELECTRICITY_PAYMENT_METHOD_OPTIONS = PAYMENT_METHOD_ORDER.map((value) => ({
+    value,
+    label: PAYMENT_METHOD_LABELS[value],
+    Icon: PAYMENT_METHOD_ICONS[value],
+}));
 const fmtRs = (n) =>
     `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
 
@@ -47,7 +62,10 @@ function validate(values, remainingAmount, remainingAmountFormatted) {
         errors.paymentAmount = `Cannot exceed the remaining balance of ${remainingAmountFormatted}.`;
     }
 
-    if (BANK_REQUIRED.has(values.paymentMethod) && !values.bankAccountId) {
+    if (
+        paymentMethodRequiresBankAccount(values.paymentMethod) &&
+        !values.bankAccountId
+    ) {
         errors.bankAccountId = "Select a bank account to continue.";
     }
 
@@ -152,7 +170,7 @@ export default function ElectricityPaymentDialog({
     const formik = useFormik({
         initialValues: {
             paymentAmount: "",
-            paymentMethod: "bank_transfer",
+            paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
             bankAccountId: "",
             receiptFile: null,
         },
@@ -166,7 +184,7 @@ export default function ElectricityPaymentDialog({
                         nepaliDate: record.nepaliDate,
                         paymentDate: new Date().toISOString(),
                         paymentMethod: values.paymentMethod,
-                        ...(BANK_REQUIRED.has(values.paymentMethod) && {
+                        ...(paymentMethodRequiresBankAccount(values.paymentMethod) && {
                             bankAccountId: values.bankAccountId,
                         }),
                     },
@@ -197,14 +215,16 @@ export default function ElectricityPaymentDialog({
     const handleMethodChange = useCallback(
         (value) => {
             formik.setFieldValue("paymentMethod", value);
-            if (!BANK_REQUIRED.has(value)) {
+            if (!paymentMethodRequiresBankAccount(value)) {
                 formik.setFieldValue("bankAccountId", "");
             }
         },
         [formik]
     );
 
-    const showBankPicker = BANK_REQUIRED.has(formik.values.paymentMethod);
+    const showBankPicker = paymentMethodRequiresBankAccount(
+        formik.values.paymentMethod,
+    );
 
     return (
         <Dialog open={paymentDialogOpen} onOpenChange={handleOpenChange}>
@@ -349,14 +369,17 @@ export default function ElectricityPaymentDialog({
                                     <SelectValue placeholder="Select method" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {PAYMENT_METHODS.map(({ value, label, Icon }) => (
-                                        <SelectItem key={value} value={value}>
-                                            <div className="flex items-center gap-2">
-                                                <Icon className="w-4 h-4" />
-                                                {label}
-                                            </div>
-                                        </SelectItem>
-                                    ))}
+                                    {ELECTRICITY_PAYMENT_METHOD_OPTIONS.map((m) => {
+                                        const OptionIcon = m.Icon;
+                                        return (
+                                            <SelectItem key={m.value} value={m.value}>
+                                                <div className="flex items-center gap-2">
+                                                    <OptionIcon className="w-4 h-4" />
+                                                    {m.label}
+                                                </div>
+                                            </SelectItem>
+                                        );
+                                    })}
                                 </SelectContent>
                             </Select>
                         </div>

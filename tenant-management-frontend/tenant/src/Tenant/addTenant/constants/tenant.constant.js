@@ -23,13 +23,17 @@ export const DOCUMENT_TYPES = {
   TDS: "tds",
 };
 
-// ── Ledger payment methods (must match backend paymentAccountUtil.js exactly) ──
-export const PAYMENT_METHODS = {
-  CASH: "cash",
-  BANK_TRANSFER: "bank_transfer",
-  CHEQUE: "cheque",
-  MOBILE_WALLET: "mobile_wallet",
-};
+// ── Ledger payment methods (re-export — canonical: src/constants/paymentMethods.js) ──
+export {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_ORDER,
+  PAYMENT_METHOD_LABELS,
+  VALID_PAYMENT_METHOD_VALUES,
+  getPaymentMethodLabel,
+  paymentMethodRequiresBankAccount,
+  getLedgerPaymentMethodSelectOptions,
+  normalizeLedgerPaymentMethod,
+} from "../../../constants/paymentMethods.js";
 
 // ── Security deposit modes (separate concept — how the deposit is secured) ──
 // BANK_GUARANTEE → no cash entry; bank guarantees payment if tenant defaults

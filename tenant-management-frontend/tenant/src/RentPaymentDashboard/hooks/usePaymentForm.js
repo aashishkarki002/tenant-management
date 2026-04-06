@@ -17,6 +17,10 @@ import { useFormik } from "formik";
 import { toast } from "sonner";
 import api from "../../../plugins/axios";
 import { getPaymentAmounts } from "../utils/paymentUtil";
+import {
+  normalizeLedgerPaymentMethod,
+  paymentMethodRequiresBankAccount,
+} from "@/constants/paymentMethods.js";
 
 export const usePaymentForm = ({ rents, cams, onSuccess }) => {
   const [allocationMode, setAllocationMode] = useState("auto");
@@ -48,7 +52,10 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
           amount: values.amount,
           paymentDate: values.paymentDate,
           nepaliDate: values.nepaliDate,
-          paymentMethod: String(values.paymentMethod || "").toLowerCase(),
+          paymentMethod: normalizeLedgerPaymentMethod(
+            values.paymentMethod,
+            "",
+          ),
           paymentStatus: values.paymentStatus || "paid",
           note: values.note || "",
           bankAccountId: values.bankAccountId || null,
@@ -67,8 +74,7 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
         }
 
         if (
-          (payload.paymentMethod === "bank_transfer" ||
-            payload.paymentMethod === "cheque") &&
+          paymentMethodRequiresBankAccount(payload.paymentMethod) &&
           !payload.bankAccountCode
         ) {
           toast.error("Please select a bank account to continue.");

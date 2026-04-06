@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { NepaliDatePicker } from "nepali-datepicker-reactjs";
 import "nepali-datepicker-reactjs/dist/index.css";
 import dateConverter from "nepali-datetime/dateConverter";
+import { adIsoToBsIso, formatNepaliISO } from "@/utils/nepaliDate";
 
 /**
  * DualCalendarTailwind
@@ -32,9 +33,6 @@ import dateConverter from "nepali-datetime/dateConverter";
  *    and added a high z-index so the picker floats above everything.
  */
 
-const formatDate = (y, m, d) =>
-  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-
 const DualCalendarTailwind = ({ onChange, value }) => {
   const [nepaliDate, setNepaliDate] = useState("");
   const [englishDate, setEnglishDate] = useState(value || "");
@@ -52,17 +50,8 @@ const DualCalendarTailwind = ({ onChange, value }) => {
     if (value !== undefined && value !== englishDate) {
       setEnglishDate(value || "");
       if (value) {
-        try {
-          const [enYear, enMonthHuman, enDay] = value.split("-").map(Number);
-          const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
-            enYear,
-            enMonthHuman - 1,
-            enDay,
-          );
-          setNepaliDate(formatDate(npYear, npMonth0 + 1, npDay));
-        } catch {
-          setNepaliDate("");
-        }
+        const bs = adIsoToBsIso(value);
+        setNepaliDate(bs || "");
       } else {
         setNepaliDate("");
       }
@@ -134,7 +123,7 @@ const DualCalendarTailwind = ({ onChange, value }) => {
           bsMonthHuman - 1,
           bsDay,
         );
-        const formattedEnglish = formatDate(enYear, enMonth0 + 1, enDay);
+        const formattedEnglish = formatNepaliISO(enYear, enMonth0 + 1, enDay);
 
         setNepaliDate(cleaned);
         setEnglishDate(formattedEnglish);
@@ -159,20 +148,14 @@ const DualCalendarTailwind = ({ onChange, value }) => {
         return;
       }
 
-      try {
-        const [enYear, enMonthHuman, enDay] = adDate.split("-").map(Number);
-        const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
-          enYear,
-          enMonthHuman - 1,
-          enDay,
-        );
-        const formattedNepali = formatDate(npYear, npMonth0 + 1, npDay);
-        setNepaliDate(formattedNepali);
-        onChange?.(adDate, formattedNepali);
-        setShowCalendar(false);
-      } catch (err) {
-        console.warn("[DualCalendar] Failed to convert English date:", adDate, err);
+      const formattedNepali = adIsoToBsIso(adDate);
+      if (!formattedNepali) {
+        console.warn("[DualCalendar] Failed to convert English date:", adDate);
+        return;
       }
+      setNepaliDate(formattedNepali);
+      onChange?.(adDate, formattedNepali);
+      setShowCalendar(false);
     },
     [onChange],
   );

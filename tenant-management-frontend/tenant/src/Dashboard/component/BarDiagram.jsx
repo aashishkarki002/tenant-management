@@ -14,7 +14,7 @@ import {
     NEPALI_MONTH_NAMES,
     getCurrentFYMonths,
     getFYLabel,
-} from '../../../utils/nepaliDate';
+} from "@/utils/nepaliDate";
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {

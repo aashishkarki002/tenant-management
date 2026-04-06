@@ -99,21 +99,43 @@ export default function BuildingHealthPanel({ stats, loading }) {
                         <span className="font-semibold text-foreground">{issues}</span>
                     </div>
                 </div>
-                <div className="flex items-center justify-between px-1 mt-2">
-                    {Array.from({ length: 7 }, (_, i) => {
-                        const day = trend[i];
-                        const color = !day ? 'var(--color-border-secondary)'
-                            : day.hasIssues ? 'var(--warning)'
-                                : day.rate === 100 ? 'var(--success)'
-                                    : day.rate > 0 ? 'var(--warning)'
-                                        : 'var(--destructive)';
-                        return (
-                            <div key={i} title={day ? `${day.date}: ${day.rate}%` : 'No data'}
-                                className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                        );
-                    })}
+                <div className="w-full mt-2 space-y-1">
+                    <div className="flex items-end justify-between gap-1 px-1">
+                        {trend.map((day, i) => {
+                            const noData = !day || day.rate === null;
+                            const isToday = i === 6;
+                            const color = noData
+                                ? 'var(--color-border)'
+                                : day.hasIssues
+                                    ? 'var(--warning)'
+                                    : day.rate === 100
+                                        ? 'var(--success)'
+                                        : day.rate > 0
+                                            ? 'var(--warning)'
+                                            : 'var(--destructive)';
+                            // Bar height proportional to completion rate, min 4px for visibility
+                            const height = noData ? 4 : Math.max(4, Math.round((day.rate / 100) * 28));
+                            return (
+                                <div
+                                    key={day?.date ?? i}
+                                    title={noData ? `${day?.date ?? `D-${6 - i}`}: No data` : `${day.date}: ${day.rate}%`}
+                                    className="flex-1 rounded-sm transition-all duration-300 cursor-default"
+                                    style={{
+                                        height: `${height}px`,
+                                        backgroundColor: color,
+                                        opacity: noData ? 0.25 : 1,
+                                        outline: isToday ? `2px solid ${color}` : 'none',
+                                        outlineOffset: '1px',
+                                    }}
+                                />
+                            );
+                        })}
+                    </div>
+                    <div className="flex justify-between px-1">
+                        <span className="text-[8px] text-muted-foreground">6d ago</span>
+                        <span className="text-[8px] text-muted-foreground font-medium">Today</span>
+                    </div>
                 </div>
-                <p className="text-[9px] text-muted-foreground text-center mt-1">Past 7 days</p>
             </div>
         </div>
     );

@@ -1,61 +1,24 @@
 /**
  * checklistDateUtils.js
  *
- * All date formatting helpers for the checklist history UI.
- * Keeps date logic out of components.
+ * Date formatting helpers for the checklist history UI.
  */
 
-const NEPALI_MONTHS = [
-  "Baisakh",
-  "Jestha",
-  "Ashadh",
-  "Shrawan",
-  "Bhadra",
-  "Ashwin",
-  "Kartik",
-  "Mangsir",
-  "Poush",
-  "Magh",
-  "Falgun",
-  "Chaitra",
-];
-
-const NEPALI_MONTHS_SHORT = [
-  "Bai",
-  "Jes",
-  "Ash",
-  "Shr",
-  "Bha",
-  "Ash",
-  "Kar",
-  "Man",
-  "Pou",
-  "Mag",
-  "Fal",
-  "Cha",
-];
-
-/**
- * "2082-09-14" → { year: 2082, month: 9, day: 14 }
- */
-function parseNepaliISO(nepaliDate) {
-  if (!nepaliDate || typeof nepaliDate !== "string") return null;
-  const parts = nepaliDate.split("-").map(Number);
-  if (parts.length !== 3 || parts.some(isNaN)) return null;
-  const [year, month, day] = parts;
-  return { year, month, day };
-}
+import {
+  tryParseNepaliISO,
+  formatNepaliDisplayNoComma,
+  NEPALI_MONTH_NAMES,
+  NEPALI_MONTH_SHORT,
+} from "@/utils/nepaliDate";
 
 /**
  * "2082-09-14" → "14 Poush 2082"
  * Used as the main date heading in history cards.
  */
 export function formatNepaliDateLong(nepaliDate) {
-  const parsed = parseNepaliISO(nepaliDate);
+  const parsed = tryParseNepaliISO(nepaliDate);
   if (!parsed) return "Unknown date";
-  const { year, month, day } = parsed;
-  const monthName = NEPALI_MONTHS[month - 1] ?? "Unknown";
-  return `${day} ${monthName} ${year}`;
+  return formatNepaliDisplayNoComma(parsed);
 }
 
 /**
@@ -63,10 +26,10 @@ export function formatNepaliDateLong(nepaliDate) {
  * Compact version for tight spaces.
  */
 export function formatNepaliDateShort(nepaliDate) {
-  const parsed = parseNepaliISO(nepaliDate);
+  const parsed = tryParseNepaliISO(nepaliDate);
   if (!parsed) return "—";
   const { year, month, day } = parsed;
-  const monthName = NEPALI_MONTHS_SHORT[month - 1] ?? "???";
+  const monthName = NEPALI_MONTH_SHORT[month - 1] ?? "???";
   return `${day} ${monthName} ${year}`;
 }
 
@@ -75,10 +38,10 @@ export function formatNepaliDateShort(nepaliDate) {
  * Month + year only, for section headers.
  */
 export function formatNepaliMonthYear(nepaliDate) {
-  const parsed = parseNepaliISO(nepaliDate);
+  const parsed = tryParseNepaliISO(nepaliDate);
   if (!parsed) return "—";
   const { year, month } = parsed;
-  return `${NEPALI_MONTHS[month - 1]} ${year}`;
+  return `${NEPALI_MONTH_NAMES[month - 1]} ${year}`;
 }
 
 /**
@@ -119,11 +82,10 @@ export function formatTime(dateInput) {
 
 /**
  * Returns true if two nepaliDate strings share the same month+year.
- * Used to show/hide month separators in the list.
  */
 export function isSameNepaliMonth(dateA, dateB) {
-  const a = parseNepaliISO(dateA);
-  const b = parseNepaliISO(dateB);
+  const a = tryParseNepaliISO(dateA);
+  const b = tryParseNepaliISO(dateB);
   if (!a || !b) return false;
   return a.year === b.year && a.month === b.month;
 }

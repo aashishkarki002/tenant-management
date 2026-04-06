@@ -9,7 +9,6 @@ import Dashboard from "./Dashboard/Dashboard";
 import StaffDashboard from "./Dashboard/StaffDashboard";
 import Account from "./Accounts/Account";
 import ElectricityPage from "./electricity/ElectricityPage";
-import Revenue from "./Revenue";
 import Maintenance from "./Maintenance/Maintenance";
 import Cheque_drafts from "./Cheque_drafts";
 import Payments from "./payments";
@@ -18,10 +17,9 @@ import VerifyEmail from "./verify_email";
 import EditTenant from "./Tenant/editTenant/editTenant";
 import Admin from "./Settings/Admin";
 import ProtectedRoutes, { GuestRoute, RoleRoute } from "./protectedRoutes";
-import Test from "./test";
 import RentPayment from "./RentPaymentDashboard/RentPayment";
 import ViewDetail from "./ViewDetail/ViewDetail";
-import BroadCast from "./BroadCast";
+import BroadCast from "./Broadcasts/BroadCast";
 import Submeter from "./submeter/Submeter";
 import Generator from "./Generators/Generator";
 import DailyChecks from "./DailyChecks/dailyChecks";
@@ -34,6 +32,8 @@ import { useAuth } from "./context/AuthContext";
 import Buildings from "./Buildings/Buildings";
 import Staff from "./staff/staff";
 import CheckListResultDetails from "./adminDailyChecks/checkListResultDetails/checkListResultDetails";
+import VendorsPage from "./Vendors/VendorsPage";
+import VendorDetailPage from "./Vendors/VendorDetailPage";
 
 // Roles that can access admin-level features
 const ADMIN_ROLES = ["admin", "super_admin"];
@@ -123,9 +123,7 @@ export default function App() {
       <Route path="/accounting"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Account /></RoleRoute></ProtectedRoutes>}
       />
-      <Route path="/revenue"
-        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Revenue /></RoleRoute></ProtectedRoutes>}
-      />
+
       <Route path="/rent-payment"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><RentPayment /></RoleRoute></ProtectedRoutes>}
       />
@@ -141,7 +139,7 @@ export default function App() {
       <Route path="/tenant/editTenant/:id"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><EditTenant /></RoleRoute></ProtectedRoutes>}
       />
-      <Route path="/tenant/send-message"
+      <Route path="/broadcasts"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><BroadCast /></RoleRoute></ProtectedRoutes>}
       />
       <Route path="/submeter"
@@ -153,9 +151,7 @@ export default function App() {
       <Route path="/dashboard/units"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Units /></RoleRoute></ProtectedRoutes>}
       />
-      <Route path="/test"
-        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Test /></RoleRoute></ProtectedRoutes>}
-      />
+
       <Route path="/checklists"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ALL_ROLES}><DailyChecks /></RoleRoute></ProtectedRoutes>}
       />
@@ -170,6 +166,12 @@ export default function App() {
       />
       <Route path="/admin-daily-checks/check-result-details/:id"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><CheckListResultDetails /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/vendors"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><VendorsPage /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/vendors/:id"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><VendorDetailPage /></RoleRoute></ProtectedRoutes>}
       />
     </Routes>
   );

@@ -67,12 +67,29 @@ function fmtDate(dateStr) {
     return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function daysOpen(dateStr) {
+    if (!dateStr) return 0;
+    return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
+}
+
 function daysOldLabel(dateStr) {
-    if (!dateStr) return null;
-    const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
+    const d = daysOpen(dateStr);
     if (d === 0) return "opened today";
     if (d === 1) return "1 day open";
     return `${d}d open`;
+}
+
+/** Escalate maintenance severity based on how long a task has been open */
+function maintSeverity(priority, createdAt) {
+    const p = (priority ?? "").toLowerCase();
+    const days = daysOpen(createdAt);
+
+    if (days > 14) return "critical";                            // 2 weeks untouched → critical
+    if ((p === "urgent" || p === "high") && days >= 3) return "critical"; // urgent/high + 3d → critical
+    if (p === "medium" && days >= 7) return "high";             // medium + 1 week → high
+    if (p === "urgent") return "critical";
+    if (p === "high") return "high";
+    return "medium";
 }
 
 // ─── Alert builder ────────────────────────────────────────────────────────────
@@ -178,40 +195,55 @@ function buildAlerts(stats) {
         : [];
 
     openMaint.slice(0, 3).forEach((m, i) => {
-        const isUrgent = (m.priority ?? "").toLowerCase() === "urgent";
-        const isHigh = (m.priority ?? "").toLowerCase() === "high";
+        const days = daysOpen(m.createdAt);
+        const severity = maintSeverity(m.priority, m.createdAt);
+        const overdue = days >= 3;   // 3+ days open with no resolution = overdue
+        const stale = days >= 1;
+
         const rawStatus = (m.status ?? "OPEN").replace(/_/g, " ");
         const statusLabel = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
-        const age = daysOldLabel(m.createdAt);
         const location = m.unit?.name || null;
+
+        // Sub-line: lead with how long it's been overdue — that's the key signal
+        const sub = overdue
+            ? `${days} day${days !== 1 ? "s" : ""} overdue · ${statusLabel}`
+            : stale
+            ? `${statusLabel} · ${daysOldLabel(m.createdAt)}`
+            : statusLabel;
 
         alerts.push({
             id: `maint-${i}`,
             type: "maintenance",
-            severity: isUrgent ? "critical" : isHigh ? "high" : "medium",
+            severity,
             icon: Wrench,
             title: m.title ?? "Maintenance request",
-            sub: [statusLabel, age].filter(Boolean).join(" · "),
+            sub,
             meta: location,
-            badge: m.priority ?? null,
+            badge: overdue ? "OVERDUE" : (m.priority ?? null),
+            overdue,
+            stale,
             to: "/maintenance",
-            sortKey: isUrgent ? 1.5 : 3,
+            sortKey: severity === "critical" ? 1.5 : severity === "high" ? 2.5 : 3,
         });
     });
 
     if (openMaint.length > 3) {
         const extra = openMaint.length - 3;
+        const overdueExtra = openMaint.slice(3).filter((m) => daysOpen(m.createdAt) >= 3).length;
         alerts.push({
             id: "maint-more",
             type: "maintenance",
-            severity: "medium",
+            severity: overdueExtra > 0 ? "high" : "medium",
             icon: Wrench,
             title: `+${extra} more open request${extra !== 1 ? "s" : ""}`,
-            sub: `${openMaint.length} total in queue`,
+            sub: overdueExtra > 0
+                ? `${overdueExtra} overdue · ${openMaint.length} total in queue`
+                : `${openMaint.length} total in queue`,
             meta: null,
-            badge: `${openMaint.length}`,
+            badge: overdueExtra > 0 ? `${overdueExtra} overdue` : `${openMaint.length}`,
+            overdue: overdueExtra > 0,
             to: "/maintenance",
-            sortKey: 3,
+            sortKey: overdueExtra > 0 ? 2.5 : 3,
         });
     }
 
@@ -266,9 +298,30 @@ const FILTERS = [
 
 // ─── Alert row ────────────────────────────────────────────────────────────────
 
+// Overdue badge always uses hard red/amber regardless of base severity,
+// so even a "medium" overdue item clearly signals a problem.
+const OVERDUE_BADGE = {
+    bg: "color-mix(in oklch, var(--destructive) 12%, transparent)",
+    color: "var(--destructive)",
+    border: "color-mix(in oklch, var(--destructive) 35%, transparent)",
+};
+const STALE_BADGE = {
+    bg: "color-mix(in oklch, var(--warning) 14%, transparent)",
+    color: "var(--warning)",
+    border: "color-mix(in oklch, var(--warning) 35%, transparent)",
+};
+
 function AlertRow({ item }) {
     const sev = SEV[item.severity] ?? SEV.medium;
     const Icon = item.icon;
+
+    // Override badge colors: OVERDUE always looks alarming, even for medium severity
+    const badgeStyle = item.overdue ? OVERDUE_BADGE : item.stale ? STALE_BADGE : sev.badge;
+
+    // Overdue rows get a very subtle background tint to separate them visually
+    const rowTint = item.overdue
+        ? "color-mix(in oklch, var(--destructive) 4%, transparent)"
+        : "transparent";
 
     return (
         <Link
@@ -276,11 +329,12 @@ function AlertRow({ item }) {
             className="group relative flex items-start gap-3.5 px-4 py-3.5
                  transition-colors hover:bg-secondary/50
                  border-b border-border/40 last:border-0 overflow-hidden"
+            style={{ background: rowTint }}
         >
-            {/* Left severity strip */}
+            {/* Left severity strip — pulses for overdue items */}
             <div
-                className="absolute left-0 top-0 bottom-0 w-[3px]"
-                style={{ background: sev.strip }}
+                className={`absolute left-0 top-0 bottom-0 w-[3px] ${item.overdue ? "opacity-90" : ""}`}
+                style={{ background: item.overdue ? "var(--destructive)" : sev.strip }}
             />
 
             {/* Icon bubble */}
@@ -292,6 +346,7 @@ function AlertRow({ item }) {
                 }}
             >
                 <Icon className="w-3.5 h-3.5" style={{ color: sev.iconColor }} />
+                {/* Pulsing dot for critical severity */}
                 {item.severity === "critical" && (
                     <span
                         className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full animate-ping opacity-75"
@@ -302,19 +357,28 @@ function AlertRow({ item }) {
 
             {/* Text block */}
             <div className="flex-1 min-w-0">
-                {/* Line 1: title — WHO or WHAT */}
+                {/* Line 1: title */}
                 <p className="text-xs font-semibold text-foreground truncate leading-relaxed">
                     {item.title}
                 </p>
 
-                {/* Line 2: sub — status + timing */}
+                {/* Line 2: sub — overdue items lead with days count in a strong color */}
                 {item.sub && (
-                    <p className="text-[10px] text-muted-foreground truncate mt-1 leading-relaxed">
+                    <p
+                        className="text-[10px] truncate mt-1 leading-relaxed font-medium"
+                        style={{
+                            color: item.overdue
+                                ? "var(--destructive)"
+                                : item.stale
+                                ? "var(--warning)"
+                                : "var(--color-muted-foreground)",
+                        }}
+                    >
                         {item.sub}
                     </p>
                 )}
 
-                {/* Line 3: meta — WHERE (only if data exists) */}
+                {/* Line 3: location */}
                 {item.meta && (
                     <p
                         className="text-[10px] truncate mt-1 leading-relaxed flex items-center gap-1"
@@ -330,11 +394,11 @@ function AlertRow({ item }) {
             <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
                 {item.badge && (
                     <span
-                        className="text-[9px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap"
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap tracking-wide"
                         style={{
-                            background: sev.badge.bg,
-                            color: sev.badge.color,
-                            borderColor: sev.badge.border,
+                            background: badgeStyle.bg,
+                            color: badgeStyle.color,
+                            borderColor: badgeStyle.border,
                         }}
                     >
                         {item.badge}

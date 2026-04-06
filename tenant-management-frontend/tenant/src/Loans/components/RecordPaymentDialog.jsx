@@ -7,13 +7,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { C, fmtRupees } from "../loan.constants";
 import { resolveEntityId } from "../loan.service";
 import { useBankAccounts } from "../hooks/useBankAccounts";
+import {
+  PAYMENT_METHODS,
+  getLedgerPaymentMethodSelectOptions,
+} from "@/constants/paymentMethods.js";
 
 export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
   const { banks } = useBankAccounts(open);
 
   const [form, setForm] = useState({
     bankAccountCode: "",
-    paymentMethod: "bank_transfer",
+    paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
     paymentDate: new Date().toISOString().split("T")[0],
     notes: "",
     customAmount: false,
@@ -109,12 +113,7 @@ export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
               key: "paymentMethod",
               label: "Payment method",
               type: "select",
-              options: [
-                { value: "bank_transfer", label: "Bank Transfer" },
-                { value: "cheque", label: "Cheque" },
-                { value: "cash", label: "Cash" },
-                { value: "mobile_wallet", label: "Mobile Wallet" },
-              ],
+              options: getLedgerPaymentMethodSelectOptions(),
             },
             { key: "paymentDate", label: "Payment date", type: "date" },
           ].map((f) => (

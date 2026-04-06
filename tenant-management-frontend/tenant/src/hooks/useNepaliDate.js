@@ -1,13 +1,9 @@
 // hooks/useNepaliDate.js
 // ─────────────────────────────────────────────────────────────────────────────
-// Provides the current Nepali date broken into the three fields the backend
-// expects: nepaliDate (ISO string), nepaliMonth (1-12), nepaliYear (YYYY).
-//
-// Industry pattern: derive and centralise this conversion in one place so
-// every form/dialog that hits a date-sensitive endpoint uses consistent values.
+// React wrappers around shared Nepali date helpers in `@/utils/nepaliDate`.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useMemo } from "react";
-import dateConverter from "nepali-datetime/dateConverter";
+import { adIsoToNepaliApiFields } from "@/utils/nepaliDate";
 
 /**
  * Convert an AD date string (YYYY-MM-DD) into the three Nepali fields
@@ -18,21 +14,7 @@ import dateConverter from "nepali-datetime/dateConverter";
  * @returns {{ nepaliDate: string, nepaliMonth: number, nepaliYear: number }}
  */
 export function parseNepaliFields(adDateString) {
-  const source = adDateString || new Date().toISOString().slice(0, 10);
-  const [enYear, enMonthHuman, enDay] = source.split("-").map(Number);
-  // dateConverter uses 0-based month
-  const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
-    enYear,
-    enMonthHuman - 1,
-    enDay,
-  );
-  const npMonth = npMonth0 + 1; // store 1-based to match DB convention
-  const nepaliDate = `${npYear}-${String(npMonth).padStart(2, "0")}-${String(npDay).padStart(2, "0")}`;
-  return {
-    nepaliDate, // "2081-10-15"  — ISO-like BS string
-    nepaliMonth: npMonth, // 1-12
-    nepaliYear: npYear, // e.g. 2081
-  };
+  return adIsoToNepaliApiFields(adDateString);
 }
 
 /**

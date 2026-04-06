@@ -44,6 +44,7 @@ import RevenueTab from "./tabs/RevenueTab"
 import LiabilitiesTab from "./tabs/LiabiltiesTab";
 import ExpensesTab from "./tabs/ExpenseTab";
 import LedgerTab from "./tabs/LedgerTab";
+import BankingTab from "./tabs/BankingTab";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const QUARTERS = [
@@ -66,6 +67,7 @@ const TABS = [
     { id: "revenue", label: "Revenue" },
     { id: "expenses", label: "Expenses" },
     { id: "liabilities", label: "Liabilities" },
+    { id: "banking", label: "Banking" },
     { id: "ledger", label: "Ledger" },
 ];
 
@@ -311,6 +313,10 @@ export default function AccountingPage() {
 
                     {activeTab === "liabilities" && (
                         <LiabilitiesTab />
+                    )}
+
+                    {activeTab === "banking" && (
+                        <BankingTab entityId={resolvedEntityId} />
                     )}
 
                     {activeTab === "ledger" && (

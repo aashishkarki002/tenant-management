@@ -76,14 +76,7 @@ export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
                     Pay EMI
                   </Button>
                 )}
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={onClose}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
+
               </div>
             </div>
           </SheetHeader>
@@ -230,8 +223,8 @@ function SummaryRow({ label, value, highlight, bold }) {
       <span className="text-muted-foreground">{label}</span>
       <span
         className={`tabular-nums ${bold ? "font-bold text-foreground" :
-            highlight ? "font-semibold text-emerald-600 dark:text-emerald-400" :
-              "font-medium text-foreground"
+          highlight ? "font-semibold text-emerald-600 dark:text-emerald-400" :
+            "font-medium text-foreground"
           }`}
       >
         {value}

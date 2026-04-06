@@ -15,7 +15,7 @@ import {
 import {
     NEPALI_MONTH_NAMES,
     getNepaliYearOptions,
-} from "../../../utils/nepaliDate";
+} from "@/utils/nepaliDate";
 
 // ── Status chip definitions (unchanged) ──────────────────────────────────────
 const STATUS_CHIPS = [

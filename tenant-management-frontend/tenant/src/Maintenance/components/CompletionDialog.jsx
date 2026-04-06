@@ -14,7 +14,10 @@ import { AlertTriangle, Landmark, Wallet, Banknote, CreditCard } from "lucide-re
 
 import api from "../../../plugins/axios";
 import { toast } from "sonner";
-import { PAYMENT_METHODS } from "../../Tenant/addTenant/constants/tenant.constant";
+import {
+  PAYMENT_METHODS,
+  paymentMethodRequiresBankAccount,
+} from "@/constants/paymentMethods.js";
 
 const PAYMENT_METHOD_CONFIG = {
   [PAYMENT_METHODS.CASH]: {
@@ -88,11 +91,7 @@ export default function CompletionDialog({
       ...(allowOverpayment && { allowOverpayment: true }),
     };
 
-    if (
-      (selectedMethod === PAYMENT_METHODS.BANK_TRANSFER ||
-        selectedMethod === PAYMENT_METHODS.CHEQUE) &&
-      selectedBank
-    ) {
+    if (paymentMethodRequiresBankAccount(selectedMethod) && selectedBank) {
       payload.bankAccountId = selectedBank;
     }
 
@@ -122,9 +121,7 @@ export default function CompletionDialog({
     }
   };
 
-  const showBankSelection =
-    selectedMethod === PAYMENT_METHODS.BANK_TRANSFER ||
-    selectedMethod === PAYMENT_METHODS.CHEQUE;
+  const showBankSelection = paymentMethodRequiresBankAccount(selectedMethod);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -39,6 +39,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DualCalendarTailwind from "../../components/dualDate";
 import { getPaymentAmounts, normalizeStatus } from "../utils/paymentUtil";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  getLedgerPaymentMethodSelectOptions,
+  normalizeLedgerPaymentMethod,
+  paymentMethodRequiresBankAccount,
+} from "@/constants/paymentMethods.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -264,7 +269,7 @@ export const PaymentDialog = ({
         ? new Date(formik.values.paymentDate).toISOString().split("T")[0]
         : null,
       nepaliDate: formik.values?.nepaliDate || null,
-      paymentMethod: (formik.values?.paymentMethod || "").toLowerCase().trim(),
+      paymentMethod: normalizeLedgerPaymentMethod(formik.values?.paymentMethod, ""),
       paymentStatus: "paid",
       note: formik.values?.note || "",
       bankAccountId: formik.values?.bankAccountId || null,
@@ -299,9 +304,9 @@ export const PaymentDialog = ({
   }
 
   // ── Validation ────────────────────────────────────────────────────────────
-  const needsBankAccount =
-    formik.values?.paymentMethod === "bank_transfer" ||
-    formik.values?.paymentMethod === "cheque";
+  const needsBankAccount = paymentMethodRequiresBankAccount(
+    formik.values?.paymentMethod,
+  );
 
   const isSubmitDisabled =
     !selectedUnits.length ||
@@ -1006,15 +1011,24 @@ export const PaymentDialog = ({
               </label>
               <Select
                 value={formik.values?.paymentMethod || ""}
-                onValueChange={(v) => formik.setFieldValue("paymentMethod", v)}
+                onValueChange={(v) => {
+                  formik.setFieldValue("paymentMethod", v);
+                  if (!paymentMethodRequiresBankAccount(v)) {
+                    setSelectedBankAccountId("");
+                    formik.setFieldValue("bankAccountId", "");
+                    formik.setFieldValue("bankAccountCode", "");
+                  }
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select method…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="cheque">Cheque</SelectItem>
+                  {getLedgerPaymentMethodSelectOptions().map(({ value, label }) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

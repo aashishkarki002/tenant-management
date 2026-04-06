@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Zap } from "lucide-react";
 import api from "../../../../plugins/axios";
 import DualCalendarTailwind from "../../../components/dualDate";
+import { tryParseNepaliISO } from "@/utils/nepaliDate";
 
 const EMPTY = {
     fuelPercent: "",
@@ -19,12 +20,6 @@ const EMPTY = {
     nepaliMonth: "",
     nepaliYear: "",
 };
-
-function parseNepaliDateStr(str) {
-    if (!str) return null;
-    const [year, month] = str.split("-").map(Number);
-    return isNaN(year) || isNaN(month) ? null : { year, month };
-}
 
 /**
  * DailyCheckDialog
@@ -179,7 +174,7 @@ export function DailyCheckDialog({ gen, open, onClose, onDone }) {
                                     <DualCalendarTailwind
                                         value={form.englishDate}
                                         onChange={(englishDate, nepaliDateStr) => {
-                                            const parsed = parseNepaliDateStr(nepaliDateStr);
+                                            const parsed = tryParseNepaliISO(nepaliDateStr);
                                             patch({
                                                 englishDate: englishDate || "",
                                                 nepaliDate: nepaliDateStr || "",

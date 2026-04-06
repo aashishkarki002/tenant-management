@@ -13,13 +13,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import DualCalendarTailwind from "../../components/dualDate";
+import { getLedgerPaymentMethodSelectOptions } from "@/constants/paymentMethods.js";
 
-// ── Payment method options (unchanged) ───────────────────────────────────────
+// ── Payment method options ────────────────────────────────────────────────────
 const METHOD_CHIPS = [
   { value: "all", label: "All Methods" },
-  { value: "cash", label: "Cash" },
-  { value: "bank_transfer", label: "Bank Transfer" },
-  { value: "cheque", label: "Cheque" },
+  ...getLedgerPaymentMethodSelectOptions(),
 ];
 
 // ── Shared FilterPill ─────────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ import {
 import {
   getCurrentBillingPeriod,
   labelForPeriod,
-} from "../../utils/nepaliMonthBridge";
+} from "@/utils/nepaliDate";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

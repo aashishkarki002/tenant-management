@@ -11,7 +11,7 @@ import {
   getMonthSelectOptions,
   getYearSelectOptions,
   getCurrentBillingPeriod,
-} from "../../../utils/nepaliMonthBridge";
+} from "@/utils/nepaliDate";
 
 export function ElectricityFilters({
   filterValues,

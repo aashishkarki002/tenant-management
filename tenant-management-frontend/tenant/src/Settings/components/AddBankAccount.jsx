@@ -1,26 +1,100 @@
 /**
- * BankAccountForm.jsx
+ * Bank account creation form (Settings).
  *
- * Drop-in replacement for the bank account creation form section inside SettingTab.
- * Replaces the old "Balance" input with two new fields:
- *
+ * Fields:
+ *   entityId       — required, OwnershipEntity _id (scopes ledger + bank account)
  *   accountCode    — required, chart-of-accounts code (e.g. "1010-NABIL")
  *   openingBalance — optional, in rupees (backend converts to paisa)
  *
- * Usage inside SettingTab:
- *   <BankAccountForm formik={bankAccountFormik} />
+ * Usage:
+ *   <AddBankAccount formik={bankAccountFormik} />
  *
- * Or paste the JSX directly into SettingTab's bank section.
+ * Formik initialValues must include entityId (string, empty until selected).
  */
 
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { useOwnership } from "../hooks/useOwnership";
 
-export default function BankAccountForm({ formik }) {
+function entityOptionLabel(entity) {
+    if (!entity || typeof entity !== "object") return "Entity";
+    if (entity.name) return entity.name;
+    if (entity.type === "head_office") return "Head office";
+    if (entity.type === "company") return "Company";
+    if (entity.type === "private") return "Private";
+    return "Entity";
+}
+
+export default function AddBankAccount({ formik }) {
+    const { entities, loading, error } = useOwnership();
+    const activeEntities = useMemo(
+        () => entities.filter((e) => e.isActive !== false),
+        [entities],
+    );
+
+    useEffect(() => {
+        if (loading || activeEntities.length !== 1) return;
+        const onlyId = activeEntities[0]._id;
+        if (!onlyId) return;
+        const idStr = String(onlyId);
+        if (!formik.values.entityId) {
+            formik.setFieldValue("entityId", idStr);
+        }
+        // Formik's `formik` bag is a new object each render; omitting it avoids a loop.
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only entityId + setFieldValue matter here
+    }, [loading, activeEntities, formik.values.entityId, formik.setFieldValue]);
+
     return (
         <form onSubmit={formik.handleSubmit} className="space-y-4">
+
+            {/* Ownership entity */}
+            <div className="space-y-1.5">
+                <Label htmlFor="entityId">Ownership entity *</Label>
+                {error && (
+                    <p className="text-xs text-destructive">{error}</p>
+                )}
+                <Select
+                    value={formik.values.entityId || undefined}
+                    onValueChange={(v) => formik.setFieldValue("entityId", v)}
+                    disabled={loading || activeEntities.length === 0}
+                >
+                    <SelectTrigger id="entityId" className="w-full">
+                        <SelectValue
+                            placeholder={
+                                loading
+                                    ? "Loading entities…"
+                                    : activeEntities.length === 0
+                                      ? "No entities available"
+                                      : "Select entity"
+                            }
+                        />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {activeEntities.map((ent) => (
+                            <SelectItem key={String(ent._id)} value={String(ent._id)}>
+                                {entityOptionLabel(ent)}
+                                {ent.type ? (
+                                    <span className="text-muted-foreground text-xs ml-1">
+                                        ({ent.type.replace(/_/g, " ")})
+                                    </span>
+                                ) : null}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                    Bank and chart-of-accounts rows are created for this entity. Account codes must be unique per entity.
+                </p>
+            </div>
 
             {/* Bank Name */}
             <div className="space-y-1.5">

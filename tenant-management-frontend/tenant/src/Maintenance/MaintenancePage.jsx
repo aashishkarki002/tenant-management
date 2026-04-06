@@ -64,7 +64,7 @@ export default function MaintenancePage() {
   const [expandedCards, setExpandedCards] = useState(new Set());
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [activeTab, setActiveTab] = useState('list');
-  const [viewMode, setViewMode] = useState('cards');
+  const [viewMode, setViewMode] = useState('table');
 
   const stats = useMemo(() => calculateMaintenanceStats(maintenance), [maintenance]);
 

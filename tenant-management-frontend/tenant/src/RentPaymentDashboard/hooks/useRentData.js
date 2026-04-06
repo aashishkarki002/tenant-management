@@ -4,7 +4,7 @@ import { toast } from "sonner";
 // ── Canonical Nepali date source ───────────────────────────────────────────
 // nepaliDate.js (client mirror of the server helper). getTodayNepali() gives
 // a plain object: { year, month (1-based), day, monthName, … }
-import { getTodayNepali } from "../../../utils/nepaliDate";
+import { getTodayNepali } from "@/utils/nepaliDate";
 
 /**
  * useRentData

@@ -38,7 +38,11 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import useChecklistCalendar from "../hooks/useCheckListCalendar";
 import TodayBoard from "./TodayBoard";
-import { jsDateToNepali, parseNepaliISO } from "../../../utils/nepaliDate";
+import {
+  jsDateToNepali,
+  NEPALI_MONTH_NAMES,
+  parseNepaliISO,
+} from "@/utils/nepaliDate";
 
 /** FullCalendar must receive a stable plugins reference (see resetOptions on each render). */
 const CHECKLIST_FC_PLUGINS = [dayGridPlugin, interactionPlugin];
@@ -67,13 +71,6 @@ function bsMonthStartToAd(bsYear, bsMonth) {
     const bsMonthStart = `${bsYear}-${String(bsMonth).padStart(2, "0")}-01`;
     return parseNepaliISO(bsMonthStart).nd.getDateObject();
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const NEPALI_MONTHS = [
-    "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
-    "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
-];
 
 // ─── Legend ───────────────────────────────────────────────────────────────────
 
@@ -174,7 +171,7 @@ function ChecklistCalendar({
         api.gotoDate(bsMonthStartToAd(nepaliYear, nepaliMonth));
     }, [nepaliYear, nepaliMonth]);
 
-    const monthLabel = `${NEPALI_MONTHS[nepaliMonth - 1]} ${nepaliYear}`;
+    const monthLabel = `${NEPALI_MONTH_NAMES[nepaliMonth - 1]} ${nepaliYear}`;
 
     // ── Date click handler ─────────────────────────────────────────────────────
 

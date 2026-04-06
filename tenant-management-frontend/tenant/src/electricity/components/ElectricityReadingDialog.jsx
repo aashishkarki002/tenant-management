@@ -33,7 +33,7 @@ import {
     parsePeriodKey,
     labelForPeriod,
     isBillingPeriodValid,
-} from "../../../utils/nepaliMonthBridge";
+} from "@/utils/nepaliDate";
 
 const METER_TYPES = [
     { value: "unit", label: "Units", icon: Home },
@@ -62,16 +62,6 @@ const EMPTY_FORM = {
  *   all others   → POST with { subMeterId, propertyId, meterType, ... }
  *   The controller validates each path independently (see electricity_controller.js).
  */
-/** Parse "YYYY-MM-DD" (BS) into { year, month, day } for backend. */
-function parseNepaliDateString(nepaliStr) {
-    if (!nepaliStr || typeof nepaliStr !== "string") return null;
-    const parts = nepaliStr.trim().split("-").map(Number);
-    if (parts.length !== 3) return null;
-    const [year, month, day] = parts;
-    if (!year || !month || !day) return null;
-    return { year, month, day };
-}
-
 /** Parse "YYYY-MM-DD" (AD) into { month, year } for backend. */
 function parseEnglishDateString(englishStr) {
     if (!englishStr || typeof englishStr !== "string") return null;

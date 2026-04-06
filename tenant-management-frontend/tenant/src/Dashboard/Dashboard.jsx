@@ -12,7 +12,7 @@ import { useStats } from "./hooks/UseStats";
 import { Link } from "react-router-dom";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { GlobalSearch } from "../components/header";
-import { getFYLabel, getFYStartYear, getTodayNepali } from "../../utils/nepaliDate";
+import { getFYLabel, getFYStartYear, getTodayNepali } from "@/utils/nepaliDate";
 
 const todayBs = getTodayNepali();
 const currentFY = getFYStartYear(todayBs);

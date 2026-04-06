@@ -96,7 +96,7 @@ export default function SubMetersTab({ propertyId }) {
         <BreadcrumbItem>
           <BreadcrumbLink href="/Electricity" >Electricity</BreadcrumbLink>
         </BreadcrumbItem>
-        <BreadcrumbSeparator />
+
         <BreadcrumbItem>
           <BreadcrumbLink href="/submeter" className="text-sm text-slate-500">Sub-Meters</BreadcrumbLink>
         </BreadcrumbItem>

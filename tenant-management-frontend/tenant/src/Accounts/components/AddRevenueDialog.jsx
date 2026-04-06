@@ -29,30 +29,17 @@ import {
 } from "lucide-react";
 import DualCalendarTailwind from "@/components/dualDate";
 import useOwnership from "../../hooks/use-ownership";
-import dateConverter from "nepali-datetime/dateConverter";
+import {
+  PAYMENT_METHODS,
+  getLedgerPaymentMethodSelectOptions,
+  normalizeLedgerPaymentMethod,
+  paymentMethodRequiresBankAccount,
+} from "@/constants/paymentMethods.js";
+import { adIsoToBsIso } from "@/utils/nepaliDate";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-const formatBsFromParts = (y, m, d) =>
-  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-
-/** BS "YYYY-MM-DD" for an AD calendar day (same logic as DualCalendarTailwind). */
-function englishIsoToNepaliString(iso) {
-  if (!iso || typeof iso !== "string") return "";
-  try {
-    const [enYear, enMonthHuman, enDay] = iso.split("-").map(Number);
-    const [npYear, npMonth0, npDay] = dateConverter.englishToNepali(
-      enYear,
-      enMonthHuman - 1,
-      enDay,
-    );
-    return formatBsFromParts(npYear, npMonth0 + 1, npDay);
-  } catch {
-    return "";
-  }
-}
 
 function getEntityBadgeColor(type) {
   switch (type) {
@@ -108,9 +95,9 @@ const getInitialValues = () => {
   sourceId: "",
   amount: "",
   date,
-  nepaliDate: englishIsoToNepaliString(date),
+  nepaliDate: adIsoToBsIso(date),
   notes: "",
-  paymentMethod: "bank_transfer",
+  paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
   bankAccountId: "",
   // Ownership fields
   entityId: "",
@@ -374,11 +361,11 @@ export function AddRevenueDialog({
       setSubmitting(true);
       try {
         const payerType = values.payerType === "tenant" ? "TENANT" : "EXTERNAL";
-        const paymentMethod = String(values.paymentMethod || "bank_transfer").toLowerCase();
+        const paymentMethod = normalizeLedgerPaymentMethod(values.paymentMethod);
 
         const adDate = values.date || new Date().toISOString().split("T")[0];
         const bsDate =
-          values.nepaliDate?.trim() || englishIsoToNepaliString(adDate);
+          values.nepaliDate?.trim() || adIsoToBsIso(adDate);
         const payload = {
           source: values.sourceId,
           amount: Number(values.amount),
@@ -397,8 +384,8 @@ export function AddRevenueDialog({
           transactionScope,
         };
 
-        if (paymentMethod === "bank_transfer" || paymentMethod === "cheque") {
-          if (values.bankAccountId) payload.bankAccountId = values.bankAccountId;
+        if (paymentMethodRequiresBankAccount(paymentMethod) && values.bankAccountId) {
+          payload.bankAccountId = values.bankAccountId;
         }
 
         if (payerType === "TENANT") {
@@ -925,7 +912,7 @@ export function AddRevenueDialog({
                 value={formik.values.paymentMethod || ""}
                 onValueChange={(v) => {
                   formik.setFieldValue("paymentMethod", v);
-                  if (v !== "bank_transfer" && v !== "cheque") {
+                  if (!paymentMethodRequiresBankAccount(v)) {
                     setSelectedBankAccountId("");
                     formik.setFieldValue("bankAccountId", "");
                   }
@@ -935,16 +922,17 @@ export function AddRevenueDialog({
                   <SelectValue placeholder="Select payment method" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="cheque">Cheque</SelectItem>
+                  {getLedgerPaymentMethodSelectOptions().map(({ value, label }) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
             {/* ── Bank account picker ────────────────────────────────── */}
-            {(formik.values.paymentMethod === "bank_transfer" ||
-              formik.values.paymentMethod === "cheque") && (
+            {paymentMethodRequiresBankAccount(formik.values.paymentMethod) && (
                 <div className="space-y-3">
                   <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                     Deposit to
@@ -1035,7 +1023,7 @@ export function AddRevenueDialog({
                     formik.setFieldValue("date", englishDate);
                     formik.setFieldValue(
                       "nepaliDate",
-                      nepaliDateStr ?? englishIsoToNepaliString(englishDate),
+                      nepaliDateStr ?? adIsoToBsIso(englishDate),
                     );
                   }}
                 />
