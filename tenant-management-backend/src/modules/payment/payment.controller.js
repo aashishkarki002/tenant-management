@@ -47,7 +47,22 @@ export async function payRentAndCam(req, res) {
       transactionRef,
       allocations,
       allocationStrategy,
+      tdsPaidToGovt,
+      tdsPaidDate,
+      tdsNepaliDate,
+      tdsNotes,
     } = req.body;
+    
+    // Parse allocations if it's a string (from FormData)
+    let parsedAllocations = allocations;
+    if (typeof allocations === 'string') {
+      try {
+        parsedAllocations = JSON.parse(allocations);
+      } catch (e) {
+        console.error("Failed to parse allocations:", e);
+      }
+    }
+    
     const normalizedMethod = (paymentMethod ?? "").toLowerCase().trim();
     const VALID_METHODS = ["cash", "bank_transfer", "cheque", "mobile_wallet"];
     if (!normalizedMethod || !VALID_METHODS.includes(normalizedMethod)) {
@@ -60,7 +75,7 @@ export async function payRentAndCam(req, res) {
     const bankAccountId = bodyBankAccountId || bodyBankAccount;
 
     // Build allocations — backward-compat with old flat format
-    let paymentAllocations = allocations;
+    let paymentAllocations = parsedAllocations;
     if (!paymentAllocations) {
       paymentAllocations = {};
       if (rentId && amount) paymentAllocations.rent = { rentId, amount };
@@ -83,6 +98,7 @@ export async function payRentAndCam(req, res) {
       transactionRef: transactionRef || undefined,
       allocations: paymentAllocations,
       allocationStrategy,
+      tdsDocument: req.file, // Add file from multer
     };
     console.log("paymentData", paymentData);
 
@@ -93,6 +109,32 @@ export async function payRentAndCam(req, res) {
         success: false,
         message: result.error || "Failed to record payment",
       });
+    }
+
+    // Handle TDS verification if requested
+    if (tdsPaidToGovt === 'true' && result.rent) {
+      try {
+        const { markTdsPaidToGovernment } = await import("../rents/rent.service.js");
+        const { buildEntityMapForBlocks } = await import("../../helper/resolveEntity.js");
+        
+        const entityMap = await buildEntityMapForBlocks([result.rent.id]);
+        const entityId = entityMap.get(result.rent.id?.toString()) ?? null;
+        
+        await markTdsPaidToGovernment(
+          result.rent.id,
+          req.admin.id,
+          {
+            tdsPaidDate: tdsPaidDate ? new Date(tdsPaidDate) : undefined,
+            nepaliTdsPaidDate: tdsNepaliDate,
+            tdsPaidNotes: tdsNotes,
+          },
+          null,
+          entityId
+        );
+      } catch (tdsError) {
+        console.error("[payRentAndCam] TDS verification failed:", tdsError.message);
+        // Don't fail the payment if TDS verification fails
+      }
     }
 
     return res.status(201).json({

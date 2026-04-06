@@ -131,9 +131,53 @@ const rentSchema = new mongoose.Schema(
      * recordTdsLedgerEntry() checks this flag before posting.
      */
     tdsRecordedInLedger: { type: Boolean, default: false },
+
+    /**
+     * Tracks whether TDS payment to government has been verified.
+     * When true, indicates tenant has confirmed payment to government authority.
+     */
+    tdsPaidToGovernment: { type: Boolean, default: false },
+
+    /**
+     * Date when TDS was paid to government (English/AD date).
+     */
+    tdsPaidDate: { type: Date, default: null },
+
+    /**
+     * Nepali BS date when TDS was paid to government (ISO format YYYY-MM-DD).
+     */
+    nepaliTdsPaidDate: { type: String, default: null },
+
+    /**
+     * Admin who verified the TDS payment to government.
+     */
+    tdsPaidVerifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+    },
+
+    /**
+     * Optional notes, receipt number, or reference for TDS government payment.
+     */
+    tdsPaidNotes: { type: String, default: null },
+
+    /**
+     * FTP path to the uploaded TDS receipt document.
+     * Stores the remote path on FTP server (e.g., "/bills/{tenantId}/tds-{rentId}-{timestamp}.pdf").
+     * Only populated when TDS payment to government is verified with document upload.
+     */
+    tdsReceiptUrl: { type: String, default: null },
+
     lastPaidBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
+      default: null,
+    },
+    carryForwardBalancePaisa: { type: Number, default: 0 },
+    carryForwardFromRentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Rent",
       default: null,
     },
 
@@ -246,11 +290,15 @@ rentSchema.pre("validate", function () {
       this[field] = Math.round(this[field]);
     }
   }
-  
+
   // Also round unit breakdown paisa values
   if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
     this.unitBreakdown.forEach((ub) => {
-      for (const field of ["rentAmountPaisa", "tdsAmountPaisa", "paidAmountPaisa"]) {
+      for (const field of [
+        "rentAmountPaisa",
+        "tdsAmountPaisa",
+        "paidAmountPaisa",
+      ]) {
         if (ub[field] != null && !Number.isInteger(ub[field])) {
           ub[field] = Math.round(ub[field]);
         }
@@ -288,22 +336,27 @@ rentSchema.pre("save", function () {
   // BUG-04 FIX: Calculate rent status but handle 'overdue' carefully
   const effectiveRentPaisa = this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
   const remainingRentPaisa = effectiveRentPaisa - this.paidAmountPaisa;
-  const remainingLateFee = (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
+  const remainingLateFee =
+    (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
   const totalDue = remainingRentPaisa + remainingLateFee;
-  
+
   // Calculate the new status based on payment state
   if (totalDue <= 0) {
     // Everything paid (rent + late fees)
     this.status = "paid";
-  } else if (this.paidAmountPaisa === 0 && this.status !== 'overdue') {
+  } else if (this.paidAmountPaisa === 0 && this.status !== "overdue") {
     // Nothing paid yet and not already marked overdue
     this.status = "pending";
-  } else if (this.status === 'overdue' && remainingRentPaisa > 0 && this.paidAmountPaisa === 0) {
+  } else if (
+    this.status === "overdue" &&
+    remainingRentPaisa > 0 &&
+    this.paidAmountPaisa === 0
+  ) {
     // BUG-04: Preserve 'overdue' when no payment has been made on an overdue rent
     // (keep status as 'overdue')
   } else if (remainingRentPaisa > 0) {
     // Some rent still unpaid but some payment made
-    this.status = this.status === 'overdue' ? 'overdue' : "partially_paid";
+    this.status = this.status === "overdue" ? "overdue" : "partially_paid";
   } else if (remainingLateFee > 0) {
     // Rent fully paid but late fees remain
     this.status = "partially_paid";

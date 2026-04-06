@@ -50,6 +50,7 @@ import {
   getUnitPaymentDetails,
 } from "./helpers/rent-payment.helper.js";
 import { resolveEntityFromBlock } from "../../helper/resolveEntity.js";
+import { handleTdsDocumentUpload } from "../rents/rent.tds.service.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE PAYMENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -454,6 +455,20 @@ export async function createPayment(paymentData) {
       },
       paymentData.adminId,
     ).catch(console.error);
+
+    // ── Step 10.5: Handle TDS document upload if provided ─────────────────────
+    if (paymentData.tdsDocument && rent?.tdsPaidToGovernment) {
+      handleTdsDocumentUpload({
+        tdsDocument: paymentData.tdsDocument,
+        rentId: rent._id,
+        tenantId: rent.tenant,
+      }).catch((error) => {
+        console.error(
+          "[createPayment] TDS document upload failed:",
+          error.message,
+        );
+      });
+    }
 
     handleReceiptSideEffects({
       payment,

@@ -434,15 +434,21 @@ export async function getBalanceSummary(options = {}) {
     .lean();
 
   const rows = accounts
-    .filter((a) => !nonZeroOnly || a.currentBalancePaisa !== 0)
-    .map((a) => ({
-      code: a.code,
-      name: a.name,
-      type: a.type,
-      entity: a.entityId,
-      balance: formatBalance(a.currentBalancePaisa),
-      balanceSide: getBalanceSide(a.type, a.currentBalancePaisa),
-    }));
+    .filter((a) => !nonZeroOnly || (a.currentBalancePaisa ?? 0) !== 0)
+    .map((a) => {
+      // Guard: old documents may not have currentBalancePaisa set in MongoDB
+      const balancePaisa = Number.isInteger(a.currentBalancePaisa)
+        ? a.currentBalancePaisa
+        : 0;
+      return {
+        code: a.code,
+        name: a.name,
+        type: a.type,
+        entity: a.entityId,
+        balance: formatBalance(balancePaisa),
+        balanceSide: getBalanceSide(a.type, balancePaisa),
+      };
+    });
 
   // Group by type
   const grouped = {};
@@ -452,7 +458,10 @@ export async function getBalanceSummary(options = {}) {
 
   const subtotals = {};
   for (const [type, group] of Object.entries(grouped)) {
-    const total = group.reduce((s, r) => s + r.balance.paisa, 0);
+    const total = group.reduce(
+      (s, r) => s + (Number.isInteger(r.balance.paisa) ? r.balance.paisa : 0),
+      0,
+    );
     subtotals[type] = formatBalance(total);
   }
 

@@ -126,6 +126,20 @@ function getChartOfAccounts() {
         "DR when TDS is recognised at rent creation; CR when credit is applied/refunded. " +
         "Non-cash — no bank account is ever debited for this amount.",
     },
+    {
+      // TDS_VERIFIED_PAID = "1350"
+      // TDS amounts confirmed as paid to government by tenants.
+      // DR here when tenant's TDS payment is verified (paired with CR to TDS_RECOVERABLE).
+      // This tracks the subset of TDS that is available for tax credit claim.
+      code: ACCOUNT_CODES.TDS_VERIFIED_PAID,
+      name: "TDS Verified Paid to Government",
+      type: "ASSET",
+      description:
+        "TDS amounts confirmed paid to government by tenants. When a tenant verifies " +
+        "they have paid TDS to the government, the amount moves from TDS Recoverable (1300) " +
+        "to this account. Represents verified TDS that is ready for tax credit claim. " +
+        "Non-cash — no bank account is ever debited for this amount.",
+    },
 
     // ── LIABILITIES ──────────────────────────────────────────────────────────
     {
@@ -457,6 +471,15 @@ export function assertNoDuplicateCodes() {
         });
       }
       if (key === "TDS_RECOVERABLE" && !nameWords.includes("tds")) {
+        collisions.push({
+          code,
+          semanticMismatch: true,
+          accountCodesKey: key,
+          seededName: seeded,
+          error: `Code ${code} is ACCOUNT_CODES.${key} but seeded as "${seeded}"`,
+        });
+      }
+      if (key === "TDS_VERIFIED_PAID" && !nameWords.includes("tds")) {
         collisions.push({
           code,
           semanticMismatch: true,

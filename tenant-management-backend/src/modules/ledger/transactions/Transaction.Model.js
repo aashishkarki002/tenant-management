@@ -34,6 +34,8 @@ const transactionSchema = new mongoose.Schema(
         "LOAN_PAYMENT",
         "SECURITY_DEPOSIT_REFUND",
         "ELECTRICITY_NEA_COST",
+        "TDS_WITHHELD",
+        "TDS_PAID_TO_GOVT",
       ],
       required: true,
     },

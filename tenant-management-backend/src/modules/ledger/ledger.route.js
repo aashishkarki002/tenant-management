@@ -4,6 +4,7 @@ import {
   getLedgerSummary,
   getTenantLedger,
   getAccountLedger,
+  getBalanceSheet,
 } from "./ledger.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -34,4 +35,11 @@ router.get(
   authorize("admin", "super_admin"),
   getAccountLedger,
 );
+router.get(
+  "/balance-sheet",
+  protect,
+  authorize("admin", "super_admin"),
+  getBalanceSheet,
+);
+
 export default router;

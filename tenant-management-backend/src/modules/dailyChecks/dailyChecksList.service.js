@@ -85,6 +85,20 @@ function _inferPriority(sectionKey, category) {
   return "Medium";
 }
 
+function _normalizeIssueImages(itemResult) {
+  const raw =
+    itemResult?.issueImages ??
+    itemResult?.imageUrls ??
+    itemResult?.images ??
+    (itemResult?.imageUrl ? [itemResult.imageUrl] : []);
+
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter(Boolean);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  TEMPLATE OPERATIONS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -421,6 +435,7 @@ export async function submitResult(resultId, updateData, adminId) {
       sectionKey: r.sectionKey,
       isOk: r.isOk ?? false,
       notes: r.notes ?? "",
+      issueImages: _normalizeIssueImages(r),
       linkedMaintenanceId: r.linkedMaintenanceId ?? null,
     }));
   }
@@ -645,6 +660,7 @@ export async function getResultById(id) {
         quantity: it.quantity,
         isOk: outcome ? outcome.isOk : true, // default: passed
         notes: outcome ? outcome.notes : "",
+        issueImages: outcome?.issueImages ?? [],
         linkedMaintenanceId: outcome?.linkedMaintenanceId ?? null,
       };
     }),

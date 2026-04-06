@@ -21,6 +21,7 @@ import { ledgerService } from "../ledger/ledger.service.js";
 import {
   buildRentChargeJournal,
   buildTdsWithheldJournal,
+  buildTdsPaidToGovernmentJournal,
 } from "../ledger/journal-builders/index.js";
 import Notification from "../notifications/notification.model.js";
 import NepaliDate from "nepali-datetime";
@@ -109,6 +110,8 @@ export async function getRentsService(filters = {}) {
             remainingAmountPaisa: t.remainingAmountPaisa,
             lateFeePaisa: t.lateFeePaisa,
             totalDuePaisa: t.totalDuePaisa,
+            carryForwardBalancePaisa: t.carryForwardBalancePaisa,
+            carryForwardFromRentId: t.carryForwardFromRentId,
           },
           formatted: {
             rentAmount: formatMoney(t.rentAmountPaisa),
@@ -118,6 +121,8 @@ export async function getRentsService(filters = {}) {
             remainingAmount: formatMoney(t.remainingAmountPaisa),
             lateFee: formatMoney(t.lateFeePaisa),
             totalDue: formatMoney(t.totalDuePaisa),
+            carryForwardBalance: formatMoney(t.carryForwardBalancePaisa),
+            carryForwardFromRentId: t.carryForwardFromRentId,
           },
         };
       });
@@ -357,6 +362,78 @@ export async function recordTdsLedgerEntry(rent, session, entityId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TDS PAYMENT TO GOVERNMENT VERIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Mark TDS as paid to government and post verification journal entry.
+ *
+ * Posts a non-cash journal entry that moves TDS from "Recoverable (unverified)"
+ * to "Verified Paid" account for proper balance sheet tracking.
+ *
+ * Safe to call — returns early if:
+ *   • tdsAmountPaisa === 0
+ *   • tdsRecordedInLedger === false (withheld entry must exist first)
+ *   • tdsPaidToGovernment === true (already verified)
+ *
+ * @param {import('mongoose').Types.ObjectId|string} rentId
+ * @param {import('mongoose').Types.ObjectId|string} adminId - who verified the payment
+ * @param {Object} data - { tdsPaidDate?: Date, nepaliTdsPaidDate?: string, tdsPaidNotes?: string }
+ * @param {import('mongoose').ClientSession|null} session
+ * @param {import('mongoose').Types.ObjectId|null} entityId
+ * @returns {Promise<{ success: boolean, skipped?: boolean, reason?: string, rent?: Object }>}
+ */
+export async function markTdsPaidToGovernment(
+  rentId,
+  adminId,
+  data = {},
+  session = null,
+  entityId = null,
+) {
+  const rent = await Rent.findById(rentId).populate("tenant", "name");
+
+  if (!rent) {
+    throw new Error("Rent not found");
+  }
+
+  if (!rent.tdsAmountPaisa || rent.tdsAmountPaisa === 0) {
+    return { success: true, skipped: true, reason: "no_tds" };
+  }
+
+  if (!rent.tdsRecordedInLedger) {
+    throw new Error(
+      "TDS not yet recorded in ledger. Cannot mark as paid before withheld entry exists.",
+    );
+  }
+
+  if (rent.tdsPaidToGovernment) {
+    return {
+      success: true,
+      skipped: true,
+      reason: "already_marked_paid",
+      rent,
+    };
+  }
+
+  // Update rent document
+  rent.tdsPaidToGovernment = true;
+  rent.tdsPaidDate = data.tdsPaidDate || new Date();
+  rent.nepaliTdsPaidDate = data.nepaliTdsPaidDate || null;
+  rent.tdsPaidVerifiedBy = adminId;
+  rent.tdsPaidNotes = data.tdsPaidNotes || null;
+
+  await rent.save({ session });
+
+  // Post journal entry (moves from TDS_RECOVERABLE to TDS_VERIFIED_PAID)
+  if (entityId) {
+    const payload = buildTdsPaidToGovernmentJournal(rent);
+    await ledgerService.postJournalEntry(payload, session, entityId);
+  }
+
+  return { success: true, rent };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CRON: handleMonthlyRents — entity-aware via buildEntityMapForBlocks
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -430,6 +507,29 @@ export async function handleMonthlyRents(adminId) {
     const entityByBlock = await buildEntityMapForBlocks(
       tenantsToProcess.map((t) => t.block),
     );
+    const tenantIdSet = new Set(tenantsToProcess.map((t) => t._id.toString()));
+    const overdueRents = await Rent.find(
+      {
+        tenant: { $in: tenantsToProcess.map((t) => t._id()) },
+        status: "overdue",
+      }
+        .select(
+          "tenant rentAmountPaisa tdsAmountPaisa lateFeePaisa latePaidAmountPaisa ",
+        )
+        .lean(),
+    );
+    const overdueRentsMap = new Map();
+    for (const r of overdueRents) {
+      const tId = r.tenant.toString();
+      const effectivePaisa = r.rentAmountPaisa;
+      const remainingPaisa = effectivePaisa - r.latePaidAmountPaisa;
+      const lateFeeRemainingPaisa = r.lateFeePaisa - r.latePaidAmountPaisa;
+      const prev = carryForwardMap.get(tId) || 0;
+      carryForwardMap.set(
+        tId,
+        prev + Math.max(0, remainingPaisa) + Math.max(0, lateFeeRemainingPaisa),
+      );
+    }
 
     // Step 5: Build rent documents (unchanged shape)
     const rentsToInsert = tenantsToProcess.map((tenant) => ({
@@ -453,6 +553,9 @@ export async function handleMonthlyRents(adminId) {
       englishYear,
       status: "pending",
       rentFrequency: tenant.rentPaymentFrequency || "monthly",
+      carryForwardBalancePaisa: carryForwardMap.get(tenant._id.toString()) || 0,
+      carryForwardFromRentId:
+        overdueRentsMap.get(tenant._id.toString()) || null,
     }));
 
     // Step 6: Bulk insert (unchanged)

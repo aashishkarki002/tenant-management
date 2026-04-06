@@ -1,17 +1,3 @@
-/**
- * tenant.service.js  (FIXED)
- *
- * FIX — updatePendingRentRecords used wrong enum value:
- *   OLD: status: { $in: ["pending", "partial"] }
- *        ↑ "partial" is not in the Rent status enum — matched NOTHING silently.
- *          All partially-paid rents were skipped on financial recalculation.
- *   FIX: status: { $in: ["pending", "partially_paid"] }
- *
- * Everything else in tenant.service.js is unchanged.
- * Only the internal updatePendingRentRecords function is patched here.
- * The full file is included so you can drop it in place.
- */
-
 import mongoose from "mongoose";
 import { Tenant } from "./Tenant.Model.js";
 import tenantValidation from "../../validations/tenantValidation.js";

@@ -15,6 +15,7 @@
  */
 
 import { Router } from "express";
+import multer from "multer";
 import {
   payRentAndCam,
   getRentSummary,
@@ -30,14 +31,18 @@ import {
 } from "./payment.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
+import { validateTdsDocumentMiddleware } from "../../utils/fileValidation.js";
 
 const router = Router();
+const upload = multer({ dest: "temp/" });
 
 // ── Write — admin / super_admin only ─────────────────────────────────────────
 router.post(
   "/pay-rent-and-cam",
   protect,
   authorize("admin", "super_admin"),
+  upload.single("tdsDocument"),
+  validateTdsDocumentMiddleware,
   payRentAndCam,
 );
 

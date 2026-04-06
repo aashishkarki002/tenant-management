@@ -1,4 +1,6 @@
 import { ledgerService } from "./ledger.service.js";
+import { getBalanceSummary } from "./domains/accountBalanceManger.js";
+import { formatMoney } from "../../utils/moneyUtil.js";
 
 /**
  * Get ledger entries with various filtering options
@@ -172,5 +174,74 @@ export const getAccountLedger = async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+};
+
+/**
+ * Get a formatted balance sheet: Assets = Liabilities + Equity
+ * Equity includes permanent equity accounts + Retained Earnings (Revenue − Expenses)
+ */
+export const getBalanceSheet = async (req, res) => {
+  try {
+    const { entityId } = req.query;
+
+    const summary = await getBalanceSummary({ entityId, nonZeroOnly: false });
+    const { accounts, subtotals, trialBalance } = summary;
+
+    const assetAccounts     = accounts.ASSET     ?? [];
+    const liabilityAccounts = accounts.LIABILITY  ?? [];
+    const equityAccounts    = accounts.EQUITY     ?? [];
+
+    const totalAssetPaisa           = subtotals.ASSET?.paisa     ?? 0;
+    const totalLiabilityPaisa       = subtotals.LIABILITY?.paisa  ?? 0;
+    const totalPermanentEquityPaisa = subtotals.EQUITY?.paisa    ?? 0;
+    const totalRevenuePaisa         = subtotals.REVENUE?.paisa   ?? 0;
+    const totalExpensePaisa         = subtotals.EXPENSE?.paisa   ?? 0;
+
+    const retainedEarningsPaisa         = totalRevenuePaisa - totalExpensePaisa;
+    const totalEquityPaisa              = totalPermanentEquityPaisa + retainedEarningsPaisa;
+    const totalLiabilitiesAndEquityPaisa = totalLiabilityPaisa + totalEquityPaisa;
+
+    const isBalanced      = totalAssetPaisa === totalLiabilitiesAndEquityPaisa;
+    const discrepancyPaisa = Math.abs(totalAssetPaisa - totalLiabilitiesAndEquityPaisa);
+
+    // Use the same formatter as the rest of the system.
+    // Coerce to integer — guards against NaN if any account has no balance yet.
+    const fmt = (paisa) => {
+      const safe = Number.isInteger(paisa) ? paisa : 0;
+      return {
+        paisa: safe,
+        rupees: safe / 100,
+        formatted: formatMoney(safe),
+      };
+    };
+
+    res.status(200).json({
+      success: true,
+      data: {
+        asOfDate: new Date().toISOString(),
+        assetAccounts,
+        liabilityAccounts,
+        equityAccounts,
+        retainedEarnings: {
+          code: "RE",
+          name: "Retained Earnings (Net Income)",
+          type: "EQUITY",
+          balance: fmt(retainedEarningsPaisa),
+          balanceSide: retainedEarningsPaisa >= 0 ? "CR" : "DR (deficit)",
+          isSynthetic: true,
+        },
+        totalAssets:               fmt(totalAssetPaisa),
+        totalLiabilities:          fmt(totalLiabilityPaisa),
+        totalEquity:               fmt(totalEquityPaisa),
+        totalLiabilitiesAndEquity: fmt(totalLiabilitiesAndEquityPaisa),
+        isBalanced,
+        discrepancy: fmt(discrepancyPaisa),
+        trialBalance,
+      },
+    });
+  } catch (error) {
+    console.error("Error in getBalanceSheet controller:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };

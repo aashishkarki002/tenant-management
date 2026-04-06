@@ -40,6 +40,9 @@ const itemResultSchema = new mongoose.Schema(
     // Checker's note: "2 bulbs fused", "CCTV lens dirty", etc.
     notes: { type: String, trim: true, default: "" },
 
+    // Optional issue evidence uploaded via FTP (camera/gallery image paths).
+    issueImages: [{ type: String, trim: true }],
+
     // Auto-created Maintenance task if isOk = false
     linkedMaintenanceId: {
       type: mongoose.Schema.Types.ObjectId,

@@ -80,6 +80,19 @@ export const ACCOUNT_CODES = {
    */
   TDS_RECOVERABLE: "1300",
 
+  /**
+   * TDS amounts verified as paid to government by tenants.
+   * Represents the subset of TDS that has been confirmed paid and is
+   * available for claiming as a tax credit on income tax returns.
+   *
+   * Increases when tenant payment is verified:
+   *   DR  1350  TDS Verified Paid
+   *   CR  1300  TDS Recoverable (clears unverified amount)
+   *
+   * Must be seeded: run seedAccount.js after adding this code.
+   */
+  TDS_VERIFIED_PAID: "1350",
+
   // ── Liabilities ────────────────────────────────────────────────────────────
 
   /** Trade payables to vendors and contractors. */

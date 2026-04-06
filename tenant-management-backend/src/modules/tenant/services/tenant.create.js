@@ -8,7 +8,6 @@ import {
 import { createNewRent } from "../../rents/rent.service.js";
 import { ledgerService } from "../../ledger/ledger.service.js";
 import { buildRentChargeJournal } from "../../ledger/journal-builders/index.js";
-import { buildSecurityDepositJournal } from "../../ledger/journal-builders/securityDeposit.js";
 import { applyPaymentToBank } from "../../banks/bank.domain.js";
 import { createSd } from "../../securityDeposits/sd.service.js";
 import { calculateQuarterlyRentCycle } from "../../../utils/quarterlyRentHelper.js";
@@ -462,35 +461,8 @@ export async function createTenantTransaction(body, files, adminId, session) {
     const sdDoc = sd.data;
 
     if (mode !== "bank_guarantee") {
-      const { ACCOUNT_CODES } = await import("../../ledger/config/accounts.js");
-      const drAccountCode =
-        mode === "cash" ? ACCOUNT_CODES.CASH : ACCOUNT_CODES.CASH_BANK;
-
-      // ── Journal 3: Security deposit ────────────────────────────────────────
-      console.log("[SD Journal] context:", {
-        mode,
-        paymentMethod: mode,
-        drAccountCode,
-        bankAccountId: body.securityDepositBankAccountId ?? null,
-        bankAccountCode: body.securityDepositBankAccountCode ?? null,
-      });
-      await ledgerService.postJournalEntry(
-        buildSecurityDepositJournal(
-          sdDoc,
-          {
-            createdBy: adminId,
-            nepaliMonth: npMonth,
-            nepaliYear: npYear,
-            tenantName: tenant[0].name,
-            paymentMethod: mode,
-            bankAccountCode: body.securityDepositBankAccountCode ?? null,
-          },
-          drAccountCode,
-        ),
-        session,
-        entityId,
-      );
-
+      // Journal 3 (Security deposit) is already posted inside createSd().
+      // Only update the operational BankAccount.balancePaisa here.
       await applyPaymentToBank({
         paymentMethod: mode,
         bankAccountId: body.securityDepositBankAccountId ?? null,

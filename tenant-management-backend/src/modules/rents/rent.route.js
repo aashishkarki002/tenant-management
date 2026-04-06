@@ -5,9 +5,11 @@
  *   - Added POST /record-payment/:rentId → recordRentPaymentController.
  *     This route existed in the controller but was never registered here,
  *     so the frontend's pay-rent-and-cam flow had no backend endpoint.
+ *   - Added multer middleware for TDS document upload support.
  */
 
 import { Router } from "express";
+import multer from "multer";
 import {
   processMonthlyRents,
   getRentsController,
@@ -16,10 +18,13 @@ import {
   updateRentController,
   sendEmailToTenantsController,
   recordRentPaymentController,
+  markTdsPaidController,
 } from "./rent.controller.js";
 import { protect } from "../../middleware/protect.js";
+import { validateTdsDocumentMiddleware } from "../../utils/fileValidation.js";
 
 const router = Router();
+const upload = multer({ dest: "temp/" });
 
 // ── Cron / admin triggers ─────────────────────────────────────────────────────
 router.post("/process-monthly-rents", protect, processMonthlyRents);
@@ -37,6 +42,23 @@ router.get(
 
 // ── Payment recording ─────────────────────────────────────────────────────────
 // FIX: this controller was implemented but the route was never registered.
-router.post("/record-payment/:rentId", protect, recordRentPaymentController);
+// Support optional TDS document upload via multipart/form-data
+router.post(
+  "/record-payment/:rentId",
+  protect,
+  upload.single("tdsDocument"),
+  validateTdsDocumentMiddleware,
+  recordRentPaymentController,
+);
+
+// ── TDS Management ────────────────────────────────────────────────────────────
+// Support TDS document upload for marking TDS as paid separately
+router.patch(
+  "/:rentId/tds/mark-paid",
+  protect,
+  upload.single("tdsDocument"),
+  validateTdsDocumentMiddleware,
+  markTdsPaidController,
+);
 
 export default router;
