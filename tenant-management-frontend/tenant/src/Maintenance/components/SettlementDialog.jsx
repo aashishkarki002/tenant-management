@@ -47,6 +47,7 @@ import {
 import { cn } from '@/lib/utils';
 import api from '../../../plugins/axios';
 import { toast } from 'sonner';
+import BankAccountSelect from '@/components/BankAccountSelect.jsx';
 import DualCalendarTailwind from '@/components/dualDate';
 import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import {
@@ -407,27 +408,15 @@ export default function SettlementDialog({
                             </div>
 
                             {/* Bank Account */}
-                            {showBankSelection && bankAccounts.length > 0 && (
+                            {showBankSelection && (
                                 <div className="space-y-2">
                                     <Label className="text-sm">Deposit To</Label>
-                                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                                        {bankAccounts.map((bank) => (
-                                            <button
-                                                key={bank._id}
-                                                type="button"
-                                                onClick={() => setSelectedBank(bank._id)}
-                                                className={cn(
-                                                    'w-full text-left rounded-lg border p-3 transition-colors',
-                                                    selectedBank === bank._id
-                                                        ? 'border-slate-900 bg-slate-50'
-                                                        : 'border-muted-fill hover:border-slate-300',
-                                                )}
-                                            >
-                                                <p className="text-sm font-medium text-text-strong">{bank.bankName}</p>
-                                                <p className="text-xs text-text-sub">**** {bank.accountNumber?.slice(-4)}</p>
-                                            </button>
-                                        ))}
-                                    </div>
+                                    <BankAccountSelect
+                                        bankAccounts={bankAccounts}
+                                        value={selectedBank || ''}
+                                        onValueChange={setSelectedBank}
+                                        triggerClassName="w-full"
+                                    />
                                 </div>
                             )}
 

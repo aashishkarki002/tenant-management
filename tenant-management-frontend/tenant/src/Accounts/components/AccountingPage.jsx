@@ -45,6 +45,7 @@ import LiabilitiesTab from "./tabs/LiabiltiesTab";
 import ExpensesTab from "./tabs/ExpenseTab";
 import LedgerTab from "./tabs/LedgerTab";
 import BankingTab from "./tabs/BankingTab";
+import BalanceSheetTab from "./tabs/BalanceSheetTab";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const QUARTERS = [
@@ -69,6 +70,7 @@ const TABS = [
     { id: "liabilities", label: "Liabilities" },
     { id: "banking", label: "Banking" },
     { id: "ledger", label: "Ledger" },
+    { id: "balance-sheet", label: "Balance Sheet" },
 ];
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -326,6 +328,10 @@ export default function AccountingPage() {
                             ledgerEntries={ledgerEntries}
                             loadingLedger={loadingLedger}
                         />
+                    )}
+
+                    {activeTab === "balance-sheet" && (
+                        <BalanceSheetTab entityId={resolvedEntityId} />
                     )}
                 </motion.div>
             </AnimatePresence>

@@ -8,15 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import DualCalendarTailwind from "@/components/dualDate";
-
-function getOwnershipLabel(entity) {
-  if (!entity || typeof entity !== "object") return null;
-  if (entity.name) return entity.name;
-  if (entity.type === "head_office") return "HQ";
-  if (entity.type === "company") return "Company";
-  if (entity.type === "private") return "Private";
-  return null;
-}
+import { getOwnershipLabel } from "@/utils/ownershipEntityDisplay.js";
 
 export function PaymentStep({ formik, bankAccounts }) {
   return (

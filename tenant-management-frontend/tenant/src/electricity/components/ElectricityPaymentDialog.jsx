@@ -19,13 +19,13 @@ import {
 import { useFormik } from "formik";
 import { toast } from "sonner";
 import {
-    CheckCircle2,
     CreditCard,
     Building2,
     Banknote,
     Wallet,
 } from "lucide-react";
 import DragDropFileUpload from "@/components/DragDropFileUpload";
+import BankAccountSelect from "@/components/BankAccountSelect.jsx";
 import { useBankAccounts } from "../../Accounts/hooks/useAccounting";
 import { recordPayment } from "../utils/electricityApi";
 import {
@@ -93,60 +93,6 @@ function SummaryRow({ label, value, strong = false, className = "" }) {
                 {value}
             </span>
         </div>
-    );
-}
-
-// ─── Bank account card ────────────────────────────────────────────────────────
-
-function BankAccountCard({ bank, selected, onSelect }) {
-    const isSelected = selected === bank._id;
-    return (
-        <button
-            type="button"
-            onClick={() => onSelect(bank._id)}
-            className="w-full text-left rounded-xl border-2 p-3.5 transition-all duration-150"
-            style={{
-                borderColor: isSelected ? "var(--color-accent)" : "var(--color-border)",
-                backgroundColor: isSelected ? "var(--color-accent-light)" : "var(--color-surface)",
-            }}
-        >
-            <div className="flex items-center justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                    <p
-                        className="text-sm font-semibold truncate"
-                        style={{ color: "var(--color-text-strong)" }}
-                    >
-                        {bank.bankName}
-                    </p>
-                    <p
-                        className="text-xs mt-0.5"
-                        style={{ color: "var(--color-text-sub)" }}
-                    >
-                        {bank.accountName} · ****{bank.accountNumber?.slice(-4) ?? "xxxx"}
-                    </p>
-                </div>
-                <div className="text-right shrink-0">
-                    <p
-                        className="text-xs font-medium"
-                        style={{ color: "var(--color-text-weak)" }}
-                    >
-                        Balance
-                    </p>
-                    <p
-                        className="text-sm font-semibold tabular-nums"
-                        style={{ color: "var(--color-text-strong)" }}
-                    >
-                        Rs {(bank.balance ?? 0).toLocaleString("en-NP")}
-                    </p>
-                </div>
-                {isSelected && (
-                    <CheckCircle2
-                        className="w-5 h-5 shrink-0"
-                        style={{ color: "var(--color-accent)" }}
-                    />
-                )}
-            </div>
-        </button>
     );
 }
 
@@ -391,25 +337,14 @@ export default function ElectricityPaymentDialog({
                                     Deposit To
                                     <span style={{ color: "var(--color-danger)" }}> *</span>
                                 </Label>
-                                {bankAccounts.length === 0 ? (
-                                    <p
-                                        className="text-sm"
-                                        style={{ color: "var(--color-text-sub)" }}
-                                    >
-                                        No bank accounts configured.
-                                    </p>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {bankAccounts.map((bank) => (
-                                            <BankAccountCard
-                                                key={bank._id}
-                                                bank={bank}
-                                                selected={formik.values.bankAccountId}
-                                                onSelect={(id) => formik.setFieldValue("bankAccountId", id)}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
+                                <BankAccountSelect
+                                    bankAccounts={bankAccounts}
+                                    value={formik.values.bankAccountId || ""}
+                                    onValueChange={(id) => formik.setFieldValue("bankAccountId", id)}
+                                    showBalance
+                                    triggerClassName="w-full"
+                                    emptyMessage="No bank accounts configured."
+                                />
                                 {formik.touched.bankAccountId && formik.errors.bankAccountId && (
                                     <p className="text-xs" style={{ color: "var(--color-danger)" }}>
                                         {formik.errors.bankAccountId}

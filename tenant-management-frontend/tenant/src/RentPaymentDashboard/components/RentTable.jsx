@@ -123,6 +123,10 @@ export const RentTable = ({
             setSelectedBankAccountId={setSelectedBankAccountId}
             handleAmountChange={handleAmountChange}
             onClose={() => setDialogOpen(false)}
+            onTdsVerified={() => {
+              // Refresh rent data after TDS verification
+              setDialogOpen(false);
+            }}
           />
         </Dialog>
       )}

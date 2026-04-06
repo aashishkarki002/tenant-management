@@ -16,7 +16,7 @@ import { Plus, Download, RefreshCw, ArrowUpRight, ArrowDownRight, Minus } from "
 import SectionToggle from "./SectionToggle";
 import { AddRevenueDialog } from "./AddRevenueDialog";
 import { usePagination } from "../hooks/usePagination";
-import { useRevenueSummary } from "../hooks/useAccounting";
+import { useRevenueSummary, useBankAccounts } from "../hooks/useAccounting";
 import { useIsMobile } from "@/hooks/use-mobile";
 import api from "../../../plugins/axios";
 
@@ -261,7 +261,7 @@ export default function RevenueBreakDown({
     const [dialogOpen, setDialogOpen] = useState(false);
     const [tenants, setTenants] = useState([]);
     const [sources, setSources] = useState([]);
-    const [banks, setBanks] = useState([]);
+    const { bankAccounts } = useBankAccounts();
 
     const { data: D, loading, error, refetch } = useRevenueSummary(
         selectedQuarter, customStartDate, customEndDate, selectedMonth, fiscalYear, entityId
@@ -276,8 +276,10 @@ export default function RevenueBreakDown({
 
     useEffect(() => {
         api.get("/api/tenant/get-tenants").then(({ data }) => setTenants(data?.tenants ?? [])).catch(() => { });
-        api.get("/api/revenue/get-revenue-sources").then(({ data }) => setSources(data?.revenueSources ?? [])).catch(() => { });
-        api.get("/api/accounting/get-bank-accounts").then(({ data }) => setBanks(data?.bankAccounts ?? [])).catch(() => { });
+        api
+            .get("/api/revenue/get-revenue-source")
+            .then(({ data }) => setSources(data?.revenueSource ?? []))
+            .catch(() => { });
     }, []);
 
     const onSuccess = () => { refetch(); onRevenueAdded?.(); };
@@ -891,7 +893,7 @@ export default function RevenueBreakDown({
                 onOpenChange={setDialogOpen}
                 tenants={tenants}
                 revenueSource={sources}
-                bankAccounts={banks}
+                bankAccounts={bankAccounts}
                 onSuccess={onSuccess}
             />
         </div>

@@ -14,6 +14,7 @@ import { AlertTriangle, Landmark, Wallet, Banknote, CreditCard } from "lucide-re
 
 import api from "../../../plugins/axios";
 import { toast } from "sonner";
+import BankAccountSelect from "@/components/BankAccountSelect.jsx";
 import {
   PAYMENT_METHODS,
   paymentMethodRequiresBankAccount,
@@ -203,7 +204,12 @@ export default function CompletionDialog({
                   return (
                     <button
                       key={value}
-                      onClick={() => setSelectedMethod(value)}
+                      onClick={() => {
+                        setSelectedMethod(value);
+                        if (!paymentMethodRequiresBankAccount(value)) {
+                          setSelectedBank("");
+                        }
+                      }}
                       className={`border rounded-lg p-3 flex flex-col items-center justify-center gap-1 text-sm transition
                       ${selectedMethod === value
                           ? "border-slate-900 bg-slate-50"
@@ -223,27 +229,12 @@ export default function CompletionDialog({
           {showBankSelection && (
             <div className="space-y-2">
               <Label>Deposit To</Label>
-
-              <div className="space-y-2">
-                {bankAccounts.map((bank) => (
-                  <button
-                    key={bank._id}
-                    onClick={() => setSelectedBank(bank._id)}
-                    className={`w-full text-left p-3 border rounded-lg transition
-                    ${selectedBank === bank._id
-                        ? "border-slate-900 bg-slate-50"
-                        : "border-slate-200 hover:border-slate-300"
-                      }`}
-                  >
-                    <p className="text-sm font-medium">
-                      {bank.bankName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      **** {bank.accountNumber?.slice(-4)}
-                    </p>
-                  </button>
-                ))}
-              </div>
+              <BankAccountSelect
+                bankAccounts={bankAccounts}
+                value={selectedBank || ""}
+                onValueChange={setSelectedBank}
+                triggerClassName="w-full"
+              />
             </div>
           )}
 

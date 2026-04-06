@@ -1,26 +1,3 @@
-/**
- * PaymentDialog.jsx
- *
- * REDESIGN: Two-column split layout (desktop) / single-column stacked layout (mobile).
- *   Desktop (≥768px):
- *     Left  (scrollable) — What you're paying: Due summary, unit picker, allocation.
- *     Right (fixed)      — How you're paying:  Method, bank, date, ref/note.
- *     Right footer       — Always-visible totals + Submit. No scrolling required.
- *   Mobile (<768px):
- *     Single scrollable column — left content stacks above right content.
- *     Sticky footer            — totals + Submit pinned to viewport bottom.
- *     Full-screen sheet        — 100dvh, no border-radius on dialog edges.
- *
- * Late fee changes (unchanged from original):
- *   - Due summary shows Rent / CAM / Late Fee as three distinct line items
- *   - Auto mode: amount fills rent → CAM → late fee (full-or-nothing on late fee)
- *   - Manual mode: third input for late fee allocation; full-or-nothing enforced in UI
- *   - buildPayload() emits allocations.lateFee = { rentId, amount } when > 0
- *   - Backend routes lateFee allocation to LATE_FEE_PAYMENT_RECEIVED journal
- *     and writes to latePaidAmountPaisa, NOT paidAmountPaisa
- *   - Validation: partial late fee payment blocked (must be 0 or full remaining)
- */
-
 import React from "react";
 import {
   Dialog,
@@ -44,6 +21,7 @@ import {
   normalizeLedgerPaymentMethod,
   paymentMethodRequiresBankAccount,
 } from "@/constants/paymentMethods.js";
+import BankAccountSelect from "@/components/BankAccountSelect.jsx";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,22 +31,10 @@ function resolveId(val) {
   return val.toString();
 }
 
-function getOwnershipLabel(entity) {
-  if (!entity || typeof entity !== "object") return null;
-  if (entity.name) return entity.name;
-  if (entity.type === "head_office") return "HQ";
-  if (entity.type === "company") return "Company";
-  if (entity.type === "private") return "Private";
-  return null;
-}
 
-/**
- * Proportional allocation — mirrors allocatePaymentProportionally on the backend.
- * Allocates against rent principal only (not CAM or late fee).
- */
 function proportionalAllocate(unitBreakdown, totalRupees) {
   const totalEffectiveRemainingPaisa = unitBreakdown.reduce((sum, u) => {
-    const effective = (u.rentAmountPaisa || 0);
+    const effective = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
     return sum + Math.max(0, effective - (u.paidAmountPaisa || 0));
   }, 0);
 
@@ -77,13 +43,13 @@ function proportionalAllocate(unitBreakdown, totalRupees) {
   const totalPaymentPaisa = Math.round(totalRupees * 100);
   let remaining = totalPaymentPaisa;
   const unpaidUnits = unitBreakdown.filter((u) => {
-    const eff = (u.rentAmountPaisa || 0);
+    const eff = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
     return eff - (u.paidAmountPaisa || 0) > 0;
   });
   const result = [];
 
   unpaidUnits.forEach((u, idx) => {
-    const unitEffectivePaisa = (u.rentAmountPaisa || 0);
+    const unitEffectivePaisa = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
     const unitRemainingPaisa = unitEffectivePaisa - (u.paidAmountPaisa || 0);
 
     let alloc;
@@ -141,6 +107,7 @@ export const PaymentDialog = ({
   setSelectedBankAccountId,
   handleAmountChange,
   onClose,
+  onTdsVerified, // New prop for TDS verification callback
 }) => {
   const isMobile = useIsMobile();
 
@@ -163,13 +130,19 @@ export const PaymentDialog = ({
   }, [cams, rent]);
 
   const units = React.useMemo(() => {
+    const unitNameById = new Map(
+      (rent?.units || [])
+        .map((u) => [resolveId(u), u?.name])
+        .filter(([id, name]) => Boolean(id) && Boolean(name)),
+    );
+
     const hasBreakdown =
       rent?.useUnitBreakdown &&
       Array.isArray(rent.unitBreakdown) &&
       rent.unitBreakdown.length > 0;
 
     if (hasBreakdown) {
-      return rent.unitBreakdown.map((ub) => {
+      return rent.unitBreakdown.map((ub, index) => {
         const unit = ub.unit;
         const id = resolveId(unit);
         const effectivePaisa = ub.rentAmountPaisa || 0;
@@ -179,7 +152,10 @@ export const PaymentDialog = ({
 
         return {
           id,
-          name: unit?.name || id || "Unit",
+          name:
+            unit?.name ||
+            unitNameById.get(id) ||
+            (id ? `Unit ${index + 1}` : "Unit"),
           label: unit?.block?.name
             ? `${unit.block.name} – ${unit.innerBlock?.name || ""}`.trim()
             : "",
@@ -211,6 +187,14 @@ export const PaymentDialog = ({
   const [selectedUnitIds, setSelectedUnitIds] = React.useState(
     units.filter((u) => u.hasOutstanding).map((u) => u.id),
   );
+
+  // ── TDS verification state ─────────────────────────────────────────────────
+  const [tdsPaidToGovt, setTdsPaidToGovt] = React.useState(false);
+  const [tdsPaidDate, setTdsPaidDate] = React.useState("");
+  const [tdsNepaliDate, setTdsNepaliDate] = React.useState("");
+  const [tdsNotes, setTdsNotes] = React.useState("");
+  const [tdsDocument, setTdsDocument] = React.useState(null);
+  const [tdsDocumentError, setTdsDocumentError] = React.useState("");
 
   React.useEffect(() => {
     setSelectedUnitIds(units.filter((u) => u.hasOutstanding).map((u) => u.id));
@@ -483,6 +467,127 @@ export const PaymentDialog = ({
               <p style={{ ...S.textSub, fontSize: "12px" }}>Total Due</p>
               <p style={{ ...S.textStrong, fontSize: "17px", fontWeight: 700 }}>₹{totalDue.toLocaleString()}</p>
             </div>
+
+            {/* ── TDS Verification ──────────────────────────────────────────── */}
+            {tdsAmountPaisa > 0 && (
+              <div style={{
+                marginTop: "16px",
+                padding: "12px",
+                backgroundColor: rent?.tdsPaidToGovernment ? "var(--color-success-bg)" : "rgb(254, 252, 232)",
+                border: `1px solid ${rent?.tdsPaidToGovernment ? "var(--color-success-border)" : "rgb(254, 240, 138)"}`,
+                borderRadius: "var(--radius-md)",
+              }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                      <p style={{ fontSize: "13px", fontWeight: 600, color: rent?.tdsPaidToGovernment ? "var(--color-success)" : "rgb(161, 98, 7)" }}>
+                        TDS Payment to Government
+                      </p>
+                      {rent?.tdsPaidToGovernment && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      )}
+                    </div>
+                    <p style={{ fontSize: "11px", color: rent?.tdsPaidToGovernment ? "var(--color-success)" : "rgb(161, 98, 7)", opacity: 0.9 }}>
+                      {rent?.tdsPaidToGovernment 
+                        ? `Verified on ${rent.tdsPaidDate ? new Date(rent.tdsPaidDate).toLocaleDateString() : "N/A"}`
+                        : "Tenant must pay ₹" + (tdsAmountPaisa / 100).toLocaleString() + " to government"}
+                    </p>
+                  </div>
+                  
+                  {!rent?.tdsPaidToGovernment && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }}>
+                        <input
+                          type="checkbox"
+                          checked={tdsPaidToGovt}
+                          onChange={(e) => setTdsPaidToGovt(e.target.checked)}
+                          style={{
+                            width: "16px",
+                            height: "16px",
+                            cursor: "pointer",
+                            accentColor: "var(--color-accent)",
+                          }}
+                        />
+                        <span style={{ fontSize: "12px", fontWeight: 500 }}>
+                          Verified Paid
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                {tdsPaidToGovt && !rent?.tdsPaidToGovernment && (
+                  <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgb(254, 240, 138)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--color-text-weak)", marginBottom: "6px" }}>
+                          Payment Date
+                        </label>
+                        <DualCalendarTailwind
+                          value={tdsPaidDate}
+                          nepaliValue={tdsNepaliDate}
+                          onChange={(ad, bs) => {
+                            setTdsPaidDate(ad);
+                            setTdsNepaliDate(bs);
+                          }}
+                          placeholder="Select date"
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--color-text-weak)", marginBottom: "6px" }}>
+                          Receipt / Reference (optional)
+                        </label>
+                        <Input
+                          placeholder="Receipt number or reference"
+                          value={tdsNotes}
+                          onChange={(e) => setTdsNotes(e.target.value)}
+                          style={{ fontSize: "13px" }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "12px" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--color-text-weak)", marginBottom: "6px" }}>
+                        Upload TDS Receipt (optional)
+                      </label>
+                      <Input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const maxSize = 10 * 1024 * 1024; // 10MB
+                            if (file.size > maxSize) {
+                              setTdsDocumentError("File size must be less than 10MB");
+                              setTdsDocument(null);
+                              e.target.value = "";
+                            } else {
+                              setTdsDocumentError("");
+                              setTdsDocument(file);
+                            }
+                          } else {
+                            setTdsDocument(null);
+                            setTdsDocumentError("");
+                          }
+                        }}
+                        style={{ fontSize: "12px" }}
+                      />
+                      {tdsDocumentError && (
+                        <p style={{ ...S.danger, fontSize: "10px", marginTop: "4px" }}>
+                          {tdsDocumentError}
+                        </p>
+                      )}
+                      {tdsDocument && !tdsDocumentError && (
+                        <p style={{ ...S.textSub, fontSize: "10px", marginTop: "4px" }}>
+                          Selected: {tdsDocument.name} ({(tdsDocument.size / 1024).toFixed(1)} KB)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ── Unit Selector ──────────────────────────────────────────── */}
@@ -1039,80 +1144,20 @@ export const PaymentDialog = ({
                 <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
                   Deposit To *
                 </label>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {bankAccounts.map((bank) => {
-                    const isSelected = selectedBankAccountId === bank._id;
-                    return (
-                      <button
-                        key={bank._id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedBankAccountId(bank._id);
-                          formik.setFieldValue("bankAccountId", bank._id);
-                          formik.setFieldValue("bankAccountCode", bank.accountCode || "");
-                        }}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          padding: isMobile ? "14px 14px" : "10px 12px",
-                          borderRadius: "var(--radius-md)",
-                          border: isSelected
-                            ? "1.5px solid var(--color-accent)"
-                            : "1.5px solid var(--color-border)",
-                          backgroundColor: isSelected
-                            ? "var(--color-accent-light)"
-                            : "var(--color-surface)",
-                          cursor: "pointer",
-                          transition: "all 0.1s",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                          <div style={{ flex: 1 }}>
-                            {getOwnershipLabel(bank.entityId) && (
-                              <span style={{
-                                ...S.textWeak,
-                                fontSize: "9px",
-                                fontWeight: 600,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.06em",
-                                border: "1px solid var(--color-border)",
-                                borderRadius: "var(--radius-sm)",
-                                padding: "1px 5px",
-                                display: "inline-block",
-                                marginBottom: "3px",
-                              }}>
-                                {getOwnershipLabel(bank.entityId)}
-                              </span>
-                            )}
-                            <p style={{ ...S.textStrong, fontSize: "12px", fontWeight: 600 }}>{bank.bankName}</p>
-                            <p style={{ ...S.textWeak, fontSize: "10px" }}>
-                              **** {bank.accountNumber?.slice(-4) || "****"}
-                            </p>
-                            {bank.accountCode && (
-                              <p style={{ ...S.textWeak, fontSize: "10px", fontFamily: "monospace" }}>
-                                {bank.accountCode}
-                              </p>
-                            )}
-                          </div>
-                          <div style={{ textAlign: "right", marginLeft: "8px" }}>
-                            <p style={{ ...S.textWeak, fontSize: "9px", fontWeight: 600, textTransform: "uppercase" }}>Bal</p>
-                            <p style={{ ...S.textStrong, fontSize: "12px", fontWeight: 600 }}>
-                              ₹{bank.balance?.toLocaleString() || "0"}
-                            </p>
-                          </div>
-                        </div>
-                        {isSelected && (
-                          <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
-                            <svg width="12" height="12" viewBox="0 0 20 20" fill="var(--color-accent)">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                            </svg>
-                            <span style={{ ...S.accentText, fontSize: "10px", fontWeight: 600 }}>Selected</span>
-                          </div>
-                        )}
-                      </button>
+                <BankAccountSelect
+                  bankAccounts={bankAccounts}
+                  value={selectedBankAccountId ? String(selectedBankAccountId) : ""}
+                  onValueChange={(id) => {
+                    const bank = bankAccounts.find(
+                      (b) => String(b._id) === String(id),
                     );
-                  })}
-                </div>
+                    setSelectedBankAccountId(id);
+                    formik.setFieldValue("bankAccountId", id);
+                    formik.setFieldValue("bankAccountCode", bank?.accountCode || "");
+                  }}
+                  showBalance
+                  triggerClassName="w-full"
+                />
                 {needsBankAccount && !formik.values?.bankAccountCode && (
                   <p style={{ ...S.danger, fontSize: "11px", marginTop: "6px" }}>
                     Select a bank account to continue.
@@ -1289,8 +1334,87 @@ export const PaymentDialog = ({
                   e.preventDefault();
                   const payload = buildPayload();
                   await formik.setValues({ ...formik.values, ...payload });
-                  await formik.handleSubmit();
-                  if (formik.isValid) onClose();
+                  
+                  // If TDS is being marked as paid with document upload, use multipart/form-data
+                  if (tdsPaidToGovt && !rent?.tdsPaidToGovernment && tdsDocument) {
+                    try {
+                      const formData = new FormData();
+                      
+                      // Add all payment data
+                      formData.append('tenantId', payload.tenantId);
+                      formData.append('amount', payload.amount);
+                      formData.append('paymentDate', payload.paymentDate);
+                      formData.append('nepaliDate', payload.nepaliDate || '');
+                      formData.append('paymentMethod', payload.paymentMethod);
+                      formData.append('paymentStatus', 'paid');
+                      formData.append('note', payload.note || '');
+                      formData.append('bankAccountId', payload.bankAccountId || '');
+                      formData.append('bankAccountCode', payload.bankAccountCode || '');
+                      formData.append('transactionRef', payload.transactionRef || '');
+                      formData.append('allocations', JSON.stringify(payload.allocations));
+                      
+                      // Add TDS verification data
+                      formData.append('tdsPaidToGovt', 'true');
+                      formData.append('tdsPaidDate', tdsPaidDate || new Date().toISOString());
+                      formData.append('tdsNepaliDate', tdsNepaliDate || '');
+                      formData.append('tdsNotes', tdsNotes || '');
+                      
+                      // Add TDS document file
+                      formData.append('tdsDocument', tdsDocument);
+                      
+                      const api = (await import("../../../plugins/axios")).default;
+                      const response = await api.post(
+                        '/api/payment/pay-rent-and-cam',
+                        formData,
+                        {
+                          headers: { 'Content-Type': 'multipart/form-data' }
+                        }
+                      );
+                      
+                      if (response.data.success) {
+                        const toast = (await import("sonner")).toast;
+                        toast.success("Payment and TDS document uploaded successfully");
+                        if (onTdsVerified) onTdsVerified();
+                        onClose();
+                      }
+                    } catch (error) {
+                      console.error("Payment with TDS document error:", error);
+                      const toast = (await import("sonner")).toast;
+                      toast.error(error?.response?.data?.message || "Payment failed. Please try again.");
+                    }
+                  } else {
+                    // Normal payment flow without TDS document
+                    await formik.handleSubmit();
+                    
+                    // Handle TDS verification after successful payment (without document)
+                    if (formik.isValid && tdsPaidToGovt && !rent?.tdsPaidToGovernment) {
+                      try {
+                        const tdsPayload = {
+                          tdsPaidDate: tdsPaidDate || new Date().toISOString(),
+                          nepaliTdsPaidDate: tdsNepaliDate || "",
+                          tdsPaidNotes: tdsNotes || "",
+                        };
+                        
+                        const api = (await import("../../../plugins/axios")).default;
+                        const response = await api.patch(
+                          `/api/rent/${rent._id}/tds/mark-paid`,
+                          tdsPayload
+                        );
+                        
+                        if (response.data.success) {
+                          const toast = (await import("sonner")).toast;
+                          toast.success("TDS payment verified successfully");
+                          if (onTdsVerified) onTdsVerified();
+                        }
+                      } catch (error) {
+                        console.error("TDS verification error:", error);
+                        const toast = (await import("sonner")).toast;
+                        toast.error("Payment successful, but TDS verification failed. Please verify manually.");
+                      }
+                    }
+                    
+                    if (formik.isValid) onClose();
+                  }
                 }}
                 style={{
                   flex: 2,

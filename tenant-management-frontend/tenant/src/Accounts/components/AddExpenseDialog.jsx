@@ -27,6 +27,7 @@ import {
   normalizeLedgerPaymentMethod,
   paymentMethodRequiresBankAccount,
 } from "@/constants/paymentMethods.js";
+import BankAccountSelect from "@/components/BankAccountSelect.jsx";
 import {
   adIsoToBsIso,
   getCurrentNepaliMonth,
@@ -834,53 +835,13 @@ export function AddExpenseDialog({
           {showBankPicker && (
             <div className="space-y-2">
               <FieldLabel>Paid From Account</FieldLabel>
-              <div className="grid gap-2">
-                {bankAccounts.map((bank) => {
-                  const selected = formik.values.bankAccountId === bank._id;
-                  return (
-                    <button
-                      key={bank._id}
-                      type="button"
-                      onClick={() =>
-                        formik.setFieldValue("bankAccountId", bank._id)
-                      }
-                      className={[
-                        "w-full text-left rounded-xl border-2 px-4 py-3 transition-all duration-150",
-                        selected
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-border/80 bg-background",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">
-                            {bank.bankName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            ···· {bank.accountNumber?.slice(-4) || "????"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="text-right">
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
-                              Balance
-                            </p>
-                            <p className="text-sm font-semibold text-foreground">
-                              रू{" "}
-                              {(
-                                (bank.balancePaisa || bank.balance || 0) / 100
-                              ).toLocaleString("en-IN")}
-                            </p>
-                          </div>
-                          {selected && (
-                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+              <BankAccountSelect
+                bankAccounts={bankAccounts}
+                value={formik.values.bankAccountId || ""}
+                onValueChange={(id) => formik.setFieldValue("bankAccountId", id)}
+                showBalance
+                triggerClassName="w-full"
+              />
             </div>
           )}
 

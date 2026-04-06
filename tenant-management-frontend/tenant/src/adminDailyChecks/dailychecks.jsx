@@ -1,13 +1,3 @@
-/**
- * dailychecks.jsx  — redesigned page
- *
- * Two-tab layout:
- *   Tab 1 "Today"   → TodayBoard  (primary, daily-use view)
- *   Tab 2 "History" → ChecklistCalendar  (month grid → click day → see results)
- *
- * The old card-grid history is gone.
- * No infinite scroll. No pagination of individual result cards.
- */
 
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -20,12 +10,7 @@ import { Settings2 } from "lucide-react";
 import TemplateEditor from "./components/TemplateEditor";
 import api from "../../plugins/axios";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Zero-padded Nepali ISO date string from a NepaliDate instance.
- * "2082-03-14"
- */
 function toNepaliISO(nd) {
   const y = nd.getYear();
   const m = String(nd.getMonth() + 1).padStart(2, "0");

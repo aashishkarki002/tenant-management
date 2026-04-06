@@ -31,10 +31,13 @@ import DualCalendarTailwind from "@/components/dualDate";
 import useOwnership from "../../hooks/use-ownership";
 import {
   PAYMENT_METHODS,
+  VALID_PAYMENT_METHOD_VALUES,
   getLedgerPaymentMethodSelectOptions,
   normalizeLedgerPaymentMethod,
   paymentMethodRequiresBankAccount,
 } from "@/constants/paymentMethods.js";
+import BankAccountSelect from "@/components/BankAccountSelect.jsx";
+import { getOwnershipTypeLabel } from "@/utils/ownershipEntityDisplay.js";
 import { adIsoToBsIso } from "@/utils/nepaliDate";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,24 +55,6 @@ function getEntityBadgeColor(type) {
     default:
       return "bg-muted text-muted-foreground border-border";
   }
-}
-
-function getEntityTypeLabel(type) {
-  switch (type) {
-    case "private":
-      return "Private";
-    case "company":
-      return "Company";
-    case "head_office":
-      return "Head Office";
-    default:
-      return type ?? "Unknown";
-  }
-}
-
-function getOwnershipLabel(entity) {
-  if (!entity || typeof entity !== "object") return null;
-  return entity.name || getEntityTypeLabel(entity.type);
 }
 
 function ownershipEntityIdFromBlock(block) {
@@ -148,7 +133,7 @@ function EntityResolutionBanner({
                   <span
                     className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
                   >
-                    {getEntityTypeLabel(e.type)}
+                    {getOwnershipTypeLabel(e.type)}
                   </span>
                   {e.name}
                 </div>
@@ -204,7 +189,7 @@ function EntityResolutionBanner({
                       <span
                         className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
                       >
-                        {getEntityTypeLabel(e.type)}
+                        {getOwnershipTypeLabel(e.type)}
                       </span>
                       {e.name}
                     </div>
@@ -257,9 +242,9 @@ function EntityResolutionBanner({
               className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border font-semibold text-xs ${getEntityBadgeColor(resolvedEntity.type)}`}
             >
               <CheckCircle2 className="w-3 h-3" />
-              <span>{resolvedEntity.name || getEntityTypeLabel(resolvedEntity.type)}</span>
+              <span>{resolvedEntity.name || getOwnershipTypeLabel(resolvedEntity.type)}</span>
               <span className="opacity-60 font-normal">
-                ({getEntityTypeLabel(resolvedEntity.type)})
+                ({getOwnershipTypeLabel(resolvedEntity.type)})
               </span>
             </div>
           </div>
@@ -301,7 +286,6 @@ export function AddRevenueDialog({
   onSuccess,
 }) {
   const [submitting, setSubmitting] = useState(false);
-  const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
 
   // Fetch all ownership entities and blocks via hook
   const { 
@@ -417,7 +401,6 @@ export function AddRevenueDialog({
 
   const handleClose = () => {
     formik.resetForm({ values: getInitialValues() });
-    setSelectedBankAccountId("");
     resetEntityResolution();
     onOpenChange(false);
   };
@@ -436,7 +419,6 @@ export function AddRevenueDialog({
   useEffect(() => {
     if (!open) return;
     formik.resetForm({ values: getInitialValues() });
-    setSelectedBankAccountId("");
     resetEntityResolution();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -785,7 +767,7 @@ export function AddRevenueDialog({
                             <span
                               className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
                             >
-                              {getEntityTypeLabel(e.type)}
+                              {getOwnershipTypeLabel(e.type)}
                             </span>
                             {e.name}
                           </div>
@@ -909,11 +891,15 @@ export function AddRevenueDialog({
                 Payment method
               </Label>
               <Select
-                value={formik.values.paymentMethod || ""}
+                value={
+                  formik.values.paymentMethod &&
+                  VALID_PAYMENT_METHOD_VALUES.includes(formik.values.paymentMethod)
+                    ? formik.values.paymentMethod
+                    : PAYMENT_METHODS.BANK_TRANSFER
+                }
                 onValueChange={(v) => {
                   formik.setFieldValue("paymentMethod", v);
                   if (!paymentMethodRequiresBankAccount(v)) {
-                    setSelectedBankAccountId("");
                     formik.setFieldValue("bankAccountId", "");
                   }
                 }}
@@ -933,67 +919,19 @@ export function AddRevenueDialog({
 
             {/* ── Bank account picker ────────────────────────────────── */}
             {paymentMethodRequiresBankAccount(formik.values.paymentMethod) && (
-                <div className="space-y-3">
-                  <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                    Deposit to
-                  </Label>
-                  <div className="flex flex-col gap-2.5">
-                    {Array.isArray(bankAccounts) &&
-                      bankAccounts.map((bank) => {
-                        const selected = selectedBankAccountId === bank._id;
-                        return (
-                          <button
-                            key={bank._id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedBankAccountId(bank._id);
-                              formik.setFieldValue("bankAccountId", bank._id);
-                            }}
-                            className={[
-                              "w-full text-left p-3.5 border-2 rounded-xl transition-colors",
-                              selected
-                                ? "border-primary bg-primary/5"
-                                : "border-border hover:border-muted-foreground bg-background",
-                            ].join(" ")}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {getOwnershipLabel(bank.entityId) && (
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-border bg-muted/40 text-muted-foreground flex-shrink-0">
-                                      {getOwnershipLabel(bank.entityId)}
-                                    </span>
-                                  )}
-                                  <p className="font-semibold text-foreground text-sm truncate">
-                                    {bank.bankName}
-                                  </p>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  **** **** {bank.accountNumber?.slice(-4) || "****"}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2.5 flex-shrink-0">
-                                <div className="text-right">
-                                  <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
-                                    Balance
-                                  </p>
-                                  <p className="font-semibold text-foreground text-sm">
-                                    रू{((bank.balancePaisa ?? bank.balance ?? 0) / 100).toLocaleString("en-IN")}
-                                  </p>
-                                </div>
-                                {selected && (
-                                  <div className="text-primary flex-shrink-0">
-                                    <CheckCircle2 className="w-5 h-5" />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                  </div>
-                </div>
-              )}
+              <div className="space-y-3">
+                <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Deposit to
+                </Label>
+                <BankAccountSelect
+                  bankAccounts={Array.isArray(bankAccounts) ? bankAccounts : []}
+                  value={formik.values.bankAccountId || ""}
+                  onValueChange={(id) => formik.setFieldValue("bankAccountId", id)}
+                  showBalance
+                  triggerClassName="w-full h-11 rounded-xl text-sm"
+                />
+              </div>
+            )}
 
             {/* ── Amount + Date ──────────────────────────────────────── */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

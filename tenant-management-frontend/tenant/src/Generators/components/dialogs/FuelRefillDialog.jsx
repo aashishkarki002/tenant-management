@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import api from "../../../../plugins/axios";
 import DualCalendarTailwind from "../../../components/dualDate";
 import { fmt } from "../../constants/constant";
+import BankAccountSelect from "@/components/BankAccountSelect.jsx";
 import {
     PAYMENT_METHODS,
     getLedgerPaymentMethodSelectOptions,
@@ -42,7 +43,7 @@ const EMPTY = {
  *   open          {boolean}
  *   onClose       {()=>void}
  *   onDone        {()=>void}
- *   bankAccounts  {Array}    — [{ _id, name, accountCode }] passed from parent
+ *   bankAccounts  {Array}    — from GET /api/bank/get-bank-accounts
  */
 export function FuelRefillDialog({ gen, open, onClose, onDone, bankAccounts = [] }) {
     const [form, setForm] = useState(EMPTY);
@@ -222,27 +223,13 @@ export function FuelRefillDialog({ gen, open, onClose, onDone, bankAccounts = []
                                 {needsBank && (
                                     <div className="space-y-2">
                                         <Label>Bank Account</Label>
-                                        {bankAccounts.length === 0 ? (
-                                            <p className="text-xs text-amber-600 mt-1 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                                                No bank accounts. Add one in Settings or use Cash.
-                                            </p>
-                                        ) : (
-                                            <Select
-                                                value={form.bankAccountId || ""}
-                                                onValueChange={v => patch({ bankAccountId: v })}
-                                            >
-                                                <SelectTrigger className="mt-1">
-                                                    <SelectValue placeholder="Select bank account" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {bankAccounts.map(b => (
-                                                        <SelectItem key={b._id} value={b._id}>
-                                                            {b.bankName ?? b.name} {b.accountNumber ? `****${String(b.accountNumber).slice(-4)}` : ""}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        )}
+                                        <BankAccountSelect
+                                            bankAccounts={bankAccounts}
+                                            value={form.bankAccountId || ""}
+                                            onValueChange={(v) => patch({ bankAccountId: v })}
+                                            triggerClassName="mt-1 w-full"
+                                            emptyMessage="No bank accounts. Add one in Settings or use Cash."
+                                        />
                                     </div>
                                 )}
                             </div>

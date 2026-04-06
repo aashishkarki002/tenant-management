@@ -1,15 +1,8 @@
-/**
- * FinancialTab.jsx
- *
- * CHANGE — Added EscalationSection at the bottom of the form (above nav buttons).
- *   Escalation is an optional collapsible section toggled off by default.
- *   All other existing functionality is unchanged.
- */
-
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { AlertCircle } from "lucide-react";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -17,17 +10,10 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { PAYMENT_METHODS, SECURITY_DEPOSIT_MODES } from "../constants/tenant.constant";
+import { getLedgerPaymentMethodSelectOptions } from "../../../constants/paymentMethods";
 import { FinancialTotalsDisplay } from "./FinancialTotalsDisplay";
 import { EscalationSection } from "./EscalationSection";
-
-function getOwnershipLabel(entity) {
-    if (!entity || typeof entity !== "object") return null;
-    if (entity.name) return entity.name;
-    if (entity.type === "head_office") return "HQ";
-    if (entity.type === "company") return "Company";
-    if (entity.type === "private") return "Private";
-    return null;
-}
+import { getOwnershipLabel } from "@/utils/ownershipEntityDisplay.js";
 
 export const FinancialTab = ({
     formik,
@@ -36,6 +22,7 @@ export const FinancialTab = ({
     onNext,
     onPrevious,
     isNextDisabled = false,
+    stepErrors = [],  // Array<string> — persistent validation messages from parent
 }) => {
     const selectedUnits = formik.values.unitNumber
         ?.map((unitId) => units.find((u) => u._id === unitId))
@@ -60,120 +47,197 @@ export const FinancialTab = ({
         <Card className="shadow-sm">
             <CardContent className="p-6 space-y-6">
 
-                {/* ── Rent Payment Method ──────────────────────────────────────── */}
-                <div className="space-y-2">
-                    <Label>Rent Payment Method *</Label>
-                    <Select
-                        value={formik.values.paymentMethod}
-                        onValueChange={(v) => formik.setFieldValue("paymentMethod", v)}
-                    >
-                        <SelectTrigger><SelectValue placeholder="Select method" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value={PAYMENT_METHODS.CASH}>Cash</SelectItem>
-                            <SelectItem value={PAYMENT_METHODS.BANK_TRANSFER}>Bank Transfer</SelectItem>
-                            <SelectItem value={PAYMENT_METHODS.CHEQUE}>Cheque</SelectItem>
-                            <SelectItem value={PAYMENT_METHODS.MOBILE_WALLET}>Mobile Wallet</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                {formik.values.paymentMethod === PAYMENT_METHODS.CHEQUE && (
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Cheque Amount *</Label>
-                            <Input
-                                name="chequeAmount" type="number" placeholder="Enter amount"
-                                value={formik.values.chequeAmount} onChange={formik.handleChange}
-                            />
+                {/* ── Persistent error banner ───────────────────────────────── */}
+                {stepErrors.length > 0 && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-1">
+                        <div className="flex items-center gap-2 text-red-700 text-sm font-semibold">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            Please fix the following before continuing
                         </div>
-                        <div className="space-y-2">
-                            <Label>Cheque Number *</Label>
-                            <Input
-                                name="chequeNumber" placeholder="Enter cheque number"
-                                value={formik.values.chequeNumber} onChange={formik.handleChange}
-                            />
-                        </div>
+                        <ul className="pl-6 space-y-0.5">
+                            {stepErrors.map((msg, i) => (
+                                <li key={i} className="text-xs text-red-600 list-disc">{msg}</li>
+                            ))}
+                        </ul>
                     </div>
                 )}
 
-                {/* ── TDS ──────────────────────────────────────────────────────── */}
-                <div className="space-y-2">
-                    <Label>TDS Percentage</Label>
-                    <Input
-                        name="tdsPercentage" type="number" step="0.01" min="0" max="100"
-                        placeholder="10" value={formik.values.tdsPercentage}
-                        onChange={formik.handleChange}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        Applied using the reverse method — the price/sqft you enter is treated as the gross
-                        amount inclusive of TDS.
-                    </p>
+                {/* ── Section 1: Rent Details ───────────────────────────────── */}
+                <div className="space-y-4">
+                    <h3 className="font-semibold text-sm text-gray-700 uppercase tracking-wide">
+                        Rent Details
+                    </h3>
+
+                    {/* Rent payment method — was missing entirely, caused silent validation wall */}
+                    <div className="space-y-2">
+                        <Label>Rent Payment Method *</Label>
+                        <Select
+                            value={formik.values.paymentMethod}
+                            onValueChange={(v) => {
+                                formik.setFieldValue("paymentMethod", v);
+                                if (v !== PAYMENT_METHODS.CHEQUE) {
+                                    formik.setFieldValue("chequeAmount", "");
+                                    formik.setFieldValue("chequeNumber", "");
+                                }
+                            }}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select payment method" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {getLedgerPaymentMethodSelectOptions().map(({ value, label }) => (
+                                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {formik.values.paymentMethod === PAYMENT_METHODS.CHEQUE && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Cheque Amount *</Label>
+                                <Input
+                                    name="chequeAmount" type="number" placeholder="Enter amount"
+                                    value={formik.values.chequeAmount} onChange={formik.handleChange}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Cheque Number *</Label>
+                                <Input
+                                    name="chequeNumber" placeholder="Enter cheque number"
+                                    value={formik.values.chequeNumber} onChange={formik.handleChange}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* TDS */}
+                    <div className="space-y-2">
+                        <Label>TDS Percentage</Label>
+                        <Input
+                            name="tdsPercentage" type="number" step="0.01" min="0" max="100"
+                            placeholder="10" value={formik.values.tdsPercentage}
+                            onChange={formik.handleChange}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Applied using the reverse method — the price/sqft you enter is treated as
+                            the gross amount inclusive of TDS.
+                        </p>
+                    </div>
                 </div>
 
-                {/* ── Per-unit financials ───────────────────────────────────────── */}
+                {/* ── Section 2: Per-unit financials ────────────────────────── */}
                 {selectedUnits && selectedUnits.length > 0 && (
-                    <>
-                        <div className="space-y-3">
-                            <h3 className="font-semibold">Unit Financial Details</h3>
-                            <div className="overflow-x-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Unit</TableHead>
-                                            <TableHead>Sqft *</TableHead>
-                                            <TableHead>Price/Sqft (gross) *</TableHead>
-                                            <TableHead>CAM/Sqft *</TableHead>
-                                            <TableHead>Security Deposit</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {selectedUnits.map((unit) => {
-                                            const uf = formik.values.unitFinancials?.[unit._id] || {};
-                                            return (
-                                                <TableRow key={unit._id}>
-                                                    <TableCell className="font-medium">{unit.unitNumber}</TableCell>
-                                                    <TableCell>
-                                                        <Input type="number" step="0.01" placeholder="Sqft"
-                                                            value={uf.sqft || ""}
-                                                            onChange={(e) => handleFinancialChange(unit._id, "sqft", e.target.value)}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Input type="number" step="0.01" placeholder="Price"
-                                                            value={uf.pricePerSqft || ""}
-                                                            onChange={(e) => handleFinancialChange(unit._id, "pricePerSqft", e.target.value)}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Input type="number" step="0.01" placeholder="CAM"
-                                                            value={uf.camPerSqft || ""}
-                                                            onChange={(e) => handleFinancialChange(unit._id, "camPerSqft", e.target.value)}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Input type="number" step="0.01" placeholder="Deposit"
-                                                            value={uf.securityDeposit || ""}
-                                                            onChange={(e) => handleFinancialChange(unit._id, "securityDeposit", e.target.value)}
-                                                        />
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </div>
+                    <div className="space-y-3">
+                        <h3 className="font-semibold text-sm text-gray-700 uppercase tracking-wide">
+                            Unit Financial Details
+                        </h3>
+
+                        {/* Desktop table */}
+                        <div className="hidden md:block overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Unit</TableHead>
+                                        <TableHead>Sqft *</TableHead>
+                                        <TableHead>Price/Sqft (gross) *</TableHead>
+                                        <TableHead>CAM/Sqft *</TableHead>
+                                        <TableHead>Security Deposit</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {selectedUnits.map((unit) => {
+                                        const uf = formik.values.unitFinancials?.[unit._id] || {};
+                                        return (
+                                            <TableRow key={unit._id}>
+                                                <TableCell className="font-medium">{unit.unitNumber}</TableCell>
+                                                <TableCell>
+                                                    <Input type="number" step="0.01" placeholder="Sqft"
+                                                        value={uf.sqft || ""}
+                                                        onChange={(e) => handleFinancialChange(unit._id, "sqft", e.target.value)}
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input type="number" step="0.01" placeholder="Price"
+                                                        value={uf.pricePerSqft || ""}
+                                                        onChange={(e) => handleFinancialChange(unit._id, "pricePerSqft", e.target.value)}
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input type="number" step="0.01" placeholder="CAM"
+                                                        value={uf.camPerSqft || ""}
+                                                        onChange={(e) => handleFinancialChange(unit._id, "camPerSqft", e.target.value)}
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input type="number" step="0.01" placeholder="Deposit"
+                                                        value={uf.securityDeposit || ""}
+                                                        onChange={(e) => handleFinancialChange(unit._id, "securityDeposit", e.target.value)}
+                                                    />
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+
+                        {/* Mobile stacked cards — prevents horizontal scroll trap */}
+                        <div className="md:hidden space-y-3">
+                            {selectedUnits.map((unit) => {
+                                const uf = formik.values.unitFinancials?.[unit._id] || {};
+                                return (
+                                    <div key={unit._id} className="border rounded-lg p-4 bg-gray-50 space-y-3">
+                                        <p className="text-sm font-semibold text-gray-800">
+                                            Unit {unit.unitNumber}
+                                        </p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs">Sqft *</Label>
+                                                <Input type="number" step="0.01" placeholder="Sqft"
+                                                    value={uf.sqft || ""}
+                                                    onChange={(e) => handleFinancialChange(unit._id, "sqft", e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs">Price/Sqft (gross) *</Label>
+                                                <Input type="number" step="0.01" placeholder="Price"
+                                                    value={uf.pricePerSqft || ""}
+                                                    onChange={(e) => handleFinancialChange(unit._id, "pricePerSqft", e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs">CAM/Sqft *</Label>
+                                                <Input type="number" step="0.01" placeholder="CAM"
+                                                    value={uf.camPerSqft || ""}
+                                                    onChange={(e) => handleFinancialChange(unit._id, "camPerSqft", e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs">Security Deposit</Label>
+                                                <Input type="number" step="0.01" placeholder="Deposit"
+                                                    value={uf.securityDeposit || ""}
+                                                    onChange={(e) => handleFinancialChange(unit._id, "securityDeposit", e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         <FinancialTotalsDisplay
                             unitFinancials={formik.values.unitFinancials}
                             tdsPercentage={parseFloat(formik.values.tdsPercentage) || 10}
                         />
-                    </>
+                    </div>
                 )}
 
-                {/* ── Security Deposit Payment ──────────────────────────────────── */}
+                {/* ── Section 3: Security Deposit ───────────────────────────── */}
                 <div className="space-y-4 border rounded-lg p-4 bg-gray-50">
-                    <h3 className="font-semibold">Security Deposit Payment</h3>
+                    <h3 className="font-semibold text-sm text-gray-700 uppercase tracking-wide">
+                        Security Deposit Payment
+                    </h3>
 
                     <div className="space-y-2">
                         <Label>How is the deposit secured? *</Label>
@@ -255,10 +319,10 @@ export const FinancialTab = ({
                     )}
                 </div>
 
-                {/* ── Rent Escalation (optional) ────────────────────────────────── */}
+                {/* ── Section 4: Rent Escalation ───────────────────────────── */}
                 <EscalationSection formik={formik} />
 
-                {/* ── Navigation ───────────────────────────────────────────────── */}
+                {/* ── Navigation ───────────────────────────────────────────── */}
                 <div className="flex justify-between mt-6">
                     <Button type="button" variant="outline" onClick={onPrevious}>Previous</Button>
                     <Button type="button" onClick={onNext} disabled={isNextDisabled}>Next</Button>

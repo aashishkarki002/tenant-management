@@ -26,15 +26,7 @@ import {
 } from "lucide-react";
 import AddBankAccount from './AddBankAccount'
 import EditBankAccount from './EditBankAccount'
-
-function getOwnershipLabel(entity) {
-    if (!entity || typeof entity !== "object") return null
-    if (entity.name) return entity.name
-    if (entity.type === "head_office") return "HQ"
-    if (entity.type === "company") return "Company"
-    if (entity.type === "private") return "Private"
-    return null
-}
+import { getOwnershipLabel } from '@/utils/ownershipEntityDisplay.js'
 
 // ─── Avatar with dropdown ─────────────────────────────────────────────────────
 function ProfileAvatar({ user, onUpdated }) {

@@ -1,34 +1,8 @@
-/**
- * DocumentUploadSection.jsx  (UX REDESIGN)
- *
- * PROBLEM SOLVED:
- *   Previously the user had to:
- *     1. Open a dropdown → select a document type
- *     2. Click file input → upload files
- *     3. Repeat the entire cycle for every document type
- *
- *   This created friction and confusion — especially when uploading multiple
- *   document types in one session.
- *
- * SOLUTION:
- *   Render all document types as persistent "drop zones" simultaneously.
- *   Each zone has its own independent file input, drag-and-drop area, and
- *   uploaded-file list. No selection step needed — the user just drops or
- *   clicks the zone they want.
- *
- *   The formik shape is unchanged: documents[type] = File[]
- *   formik.values.documentType is still updated for backward compatibility
- *   but no longer drives the UI.
- */
-
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { XIcon, UploadCloudIcon, FileTextIcon, ImageIcon, BuildingIcon, ReceiptIcon, ShieldIcon } from "lucide-react";
-import { toast } from "sonner";
 import { DOCUMENT_TYPES } from "../constants/tenant.constant";
 
-// ── Zone configuration ───────────────────────────────────────────────────────
 const DOCUMENT_ZONES = [
     {
         type: DOCUMENT_TYPES.CITIZENSHIP,
@@ -72,7 +46,6 @@ const DOCUMENT_ZONES = [
     },
 ];
 
-// Color variants for each zone
 const COLOR_MAP = {
     blue: { border: "border-blue-200", bg: "bg-blue-50", icon: "text-blue-500", badge: "bg-blue-100 text-blue-700", hover: "hover:border-blue-400 hover:bg-blue-100", drag: "border-blue-400 bg-blue-100" },
     purple: { border: "border-purple-200", bg: "bg-purple-50", icon: "text-purple-500", badge: "bg-purple-100 text-purple-700", hover: "hover:border-purple-400 hover:bg-purple-100", drag: "border-purple-400 bg-purple-100" },
@@ -81,8 +54,7 @@ const COLOR_MAP = {
     red: { border: "border-red-200", bg: "bg-red-50", icon: "text-red-500", badge: "bg-red-100 text-red-700", hover: "hover:border-red-400 hover:bg-red-100", drag: "border-red-400 bg-red-100" },
 };
 
-// ── Single upload zone ───────────────────────────────────────────────────────
-function UploadZone({ zone, files = [], onAdd, onRemove }) {
+function UploadZone({ zone, files = [], onAdd, onRemove, isRequired }) {
     const inputRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
     const colors = COLOR_MAP[zone.color];
@@ -103,7 +75,6 @@ function UploadZone({ zone, files = [], onAdd, onRemove }) {
 
     return (
         <div className="space-y-2">
-            {/* Drop zone */}
             <div
                 className={[
                     "relative border-2 border-dashed rounded-xl transition-all duration-200 cursor-pointer",
@@ -128,15 +99,24 @@ function UploadZone({ zone, files = [], onAdd, onRemove }) {
                 />
 
                 <div className="flex items-center gap-3 px-4 py-3">
-                    {/* Icon */}
                     <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${colors.bg} border ${colors.border}`}>
                         <Icon className={`w-4 h-4 ${colors.icon}`} />
                     </div>
 
-                    {/* Text */}
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-semibold text-gray-800">{zone.label}</span>
+
+                            {/* Required / Optional badge */}
+                            <span className={[
+                                "text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide",
+                                isRequired
+                                    ? "bg-red-100 text-red-600"
+                                    : "bg-gray-100 text-gray-500",
+                            ].join(" ")}>
+                                {isRequired ? "Required" : "Optional"}
+                            </span>
+
                             {hasFiles && (
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors.badge}`}>
                                     {files.length} file{files.length > 1 ? "s" : ""}
@@ -146,7 +126,6 @@ function UploadZone({ zone, files = [], onAdd, onRemove }) {
                         <p className="text-xs text-gray-500 truncate">{zone.description}</p>
                     </div>
 
-                    {/* Upload button */}
                     <div className={`shrink-0 flex items-center gap-1.5 text-xs font-medium ${colors.icon} opacity-70`}>
                         <UploadCloudIcon className="w-4 h-4" />
                         <span className="hidden sm:inline">{hasFiles ? "Add more" : "Upload"}</span>
@@ -154,7 +133,6 @@ function UploadZone({ zone, files = [], onAdd, onRemove }) {
                 </div>
             </div>
 
-            {/* Uploaded files list */}
             {hasFiles && (
                 <ul className="space-y-1 pl-1">
                     {files.map((file, i) => (
@@ -182,15 +160,13 @@ function UploadZone({ zone, files = [], onAdd, onRemove }) {
     );
 }
 
-// ── Main export ──────────────────────────────────────────────────────────────
-export const DocumentUploadSection = ({ formik }) => {
+export const DocumentUploadSection = ({ formik, requiredTypes = new Set() }) => {
     const handleAdd = (type, newFiles) => {
         const current = formik.values.documents?.[type] || [];
         formik.setFieldValue("documents", {
             ...formik.values.documents,
             [type]: [...current, ...newFiles],
         });
-        // Keep documentType in sync for backward compat
         formik.setFieldValue("documentType", type);
     };
 
@@ -210,22 +186,22 @@ export const DocumentUploadSection = ({ formik }) => {
         }
     };
 
+    const total = Object.values(formik.values.documents || {}).reduce((s, f) => s + f.length, 0);
+
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between mb-1">
                 <div>
                     <p className="text-sm font-semibold text-gray-800">Upload Documents</p>
-                    <p className="text-xs text-gray-500">Click or drag files into any section below</p>
+                    <p className="text-xs text-gray-500">
+                        Click or drag files into any section · Max 10 MB per file · PDF or image
+                    </p>
                 </div>
-                {/* Total uploaded count badge */}
-                {(() => {
-                    const total = Object.values(formik.values.documents || {}).reduce((s, f) => s + f.length, 0);
-                    return total > 0 ? (
-                        <span className="text-xs bg-gray-900 text-white px-2.5 py-1 rounded-full font-medium">
-                            {total} total
-                        </span>
-                    ) : null;
-                })()}
+                {total > 0 && (
+                    <span className="text-xs bg-gray-900 text-white px-2.5 py-1 rounded-full font-medium">
+                        {total} total
+                    </span>
+                )}
             </div>
 
             {DOCUMENT_ZONES.map((zone) => (
@@ -235,6 +211,7 @@ export const DocumentUploadSection = ({ formik }) => {
                     files={formik.values.documents?.[zone.type] || []}
                     onAdd={handleAdd}
                     onRemove={handleRemove}
+                    isRequired={requiredTypes.has(zone.type)}
                 />
             ))}
         </div>
