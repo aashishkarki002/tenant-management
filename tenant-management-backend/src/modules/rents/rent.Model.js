@@ -124,6 +124,13 @@ const rentSchema = new mongoose.Schema(
     nepaliDueDate: { type: String, required: true },
 
     emailReminderSent: { type: Boolean, default: false },
+
+    /**
+     * Guards against duplicate TDS withheld ledger entries.
+     * Set to true after the non-cash TDS journal entry is successfully posted.
+     * recordTdsLedgerEntry() checks this flag before posting.
+     */
+    tdsRecordedInLedger: { type: Boolean, default: false },
     lastPaidBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",

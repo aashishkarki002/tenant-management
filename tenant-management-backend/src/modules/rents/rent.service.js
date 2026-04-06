@@ -18,7 +18,10 @@ import { getNepaliMonthDates } from "../../utils/nepaliDateHelper.js";
 import dotenv from "dotenv";
 import { sendEmail } from "../../config/nodemailer.js";
 import { ledgerService } from "../ledger/ledger.service.js";
-import { buildRentChargeJournal } from "../ledger/journal-builders/index.js";
+import {
+  buildRentChargeJournal,
+  buildTdsWithheldJournal,
+} from "../ledger/journal-builders/index.js";
 import Notification from "../notifications/notification.model.js";
 import NepaliDate from "nepali-datetime";
 import { getIO } from "../../config/socket.js";
@@ -310,6 +313,50 @@ export async function createNewRent(rentData, session = null, entityId = null) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TDS LEDGER HELPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Post a non-cash TDS withheld ledger entry for a rent document.
+ *
+ * The entry debits TDS_RECOVERABLE (1300) and credits ACCOUNTS_RECEIVABLE (1200)
+ * so the tenant's net AR obligation reflects only the cash they will pay to
+ * the landlord. No cash or bank account is touched.
+ *
+ * Safe to call multiple times — returns early if:
+ *   • tdsAmountPaisa === 0  (no TDS on this rent)
+ *   • tdsRecordedInLedger is already true  (duplicate guard)
+ *
+ * After posting, the flag is set atomically via findByIdAndUpdate so the
+ * update is session-aware and survives an abort on the caller's side.
+ *
+ * @param {import('./rent.Model.js').Rent} rent       - Mongoose document with _id
+ * @param {import('mongoose').ClientSession|null} session
+ * @param {import('mongoose').Types.ObjectId|null} entityId
+ * @returns {Promise<{ success: boolean, skipped?: boolean, reason?: string }>}
+ */
+export async function recordTdsLedgerEntry(rent, session, entityId) {
+  if (!rent.tdsAmountPaisa || rent.tdsAmountPaisa === 0) {
+    return { success: true, skipped: true, reason: "no_tds" };
+  }
+
+  if (rent.tdsRecordedInLedger) {
+    return { success: true, skipped: true, reason: "already_recorded" };
+  }
+
+  const payload = buildTdsWithheldJournal(rent);
+  await ledgerService.postJournalEntry(payload, session, entityId);
+
+  await Rent.findByIdAndUpdate(
+    rent._id,
+    { $set: { tdsRecordedInLedger: true } },
+    session ? { session } : {},
+  );
+
+  return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CRON: handleMonthlyRents — entity-aware via buildEntityMapForBlocks
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -420,8 +467,16 @@ export async function handleMonthlyRents(adminId) {
       const session = await mongoose.startSession();
       try {
         session.startTransaction();
+
+        // 1. Rent charge: DR Accounts Receivable / CR Rent Revenue (gross)
         const payload = buildRentChargeJournal(rent);
         await ledgerService.postJournalEntry(payload, session, entityId);
+
+        // 2. TDS withheld (non-cash): DR TDS Recoverable / CR Accounts Receivable
+        //    Reduces AR to the net amount the tenant pays in cash.
+        //    Skipped automatically when tdsAmountPaisa === 0.
+        await recordTdsLedgerEntry(rent, session, entityId);
+
         await session.commitTransaction();
         journalLog.success++;
       } catch (err) {

@@ -67,6 +67,19 @@ export const ACCOUNT_CODES = {
   /** Amounts owed by tenants: rent, CAM, electricity, late fees. */
   ACCOUNTS_RECEIVABLE: "1200",
 
+  /**
+   * TDS withheld by tenants and paid directly to the government.
+   * The landlord never receives this cash — it is a tax credit claimable
+   * against the landlord's income tax liability.
+   *
+   * Non-cash entry posted at rent creation time:
+   *   DR  1300  tdsAmountPaisa   (ASSET ↑ — recoverable from government)
+   *   CR  1200  tdsAmountPaisa   (ASSET ↓ — reduces tenant's net AR balance)
+   *
+   * Must be seeded: run seedAccount.js after adding this code.
+   */
+  TDS_RECOVERABLE: "1300",
+
   // ── Liabilities ────────────────────────────────────────────────────────────
 
   /** Trade payables to vendors and contractors. */
