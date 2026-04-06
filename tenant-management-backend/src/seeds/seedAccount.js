@@ -112,6 +112,20 @@ function getChartOfAccounts() {
         "Amounts owed by tenants: rent, CAM, electricity, late fees. " +
         "DR on charge, CR on payment received.",
     },
+    {
+      // TDS_RECOVERABLE = "1300"
+      // Non-cash asset: TDS withheld by tenants and paid to the government.
+      // DR here when TDS is recognised at rent creation (paired with CR to AR).
+      // Balance represents the tax credit claimable from the government.
+      code: ACCOUNT_CODES.TDS_RECOVERABLE,
+      name: "TDS Recoverable",
+      type: "ASSET",
+      description:
+        "Tax Deducted at Source withheld by tenants and remitted to the government. " +
+        "Represents the landlord's tax credit claimable against income tax liability. " +
+        "DR when TDS is recognised at rent creation; CR when credit is applied/refunded. " +
+        "Non-cash — no bank account is ever debited for this amount.",
+    },
 
     // ── LIABILITIES ──────────────────────────────────────────────────────────
     {
@@ -434,6 +448,15 @@ export function assertNoDuplicateCodes() {
         });
       }
       if (key === "LOAN_LIABILITY" && !nameWords.includes("loan")) {
+        collisions.push({
+          code,
+          semanticMismatch: true,
+          accountCodesKey: key,
+          seededName: seeded,
+          error: `Code ${code} is ACCOUNT_CODES.${key} but seeded as "${seeded}"`,
+        });
+      }
+      if (key === "TDS_RECOVERABLE" && !nameWords.includes("tds")) {
         collisions.push({
           code,
           semanticMismatch: true,

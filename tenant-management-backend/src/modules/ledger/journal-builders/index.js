@@ -14,6 +14,7 @@
 // Rent
 export { buildRentChargeJournal } from "./rentCharge.js";
 export { buildPaymentReceivedJournal } from "./paymentReceived.js";
+export { buildTdsWithheldJournal } from "./tdsWithheld.js";
 
 // CAM
 export { buildCamChargeJournal } from "./camCharge.js";
