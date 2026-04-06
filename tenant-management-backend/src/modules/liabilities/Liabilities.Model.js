@@ -41,16 +41,21 @@ const liabilitySchema = new mongoose.Schema(
       default: null,
     }, // Immutable principal at disbursement — used to compute completion %
 
-    date: {
+    englishDate: {
       type: Date,
       required: true,
       default: Date.now,
     },
-    npYear: {
+    // "YYYY-MM-DD" BS string — NOT a Date object (avoids UTC+5:45 timezone shift)
+    nepaliDate: {
+      type: String,
+      match: /^\d{4}-\d{2}-\d{2}$/,
+    },
+    nepaliYear: {
       type: Number,
       index: true,
     },
-    npMonth: {
+    nepaliMonth: {
       type: Number, // 1-based (1 = Baisakh … 12 = Chaitra)
       min: 1,
       max: 12,
@@ -69,6 +74,16 @@ const liabilitySchema = new mongoose.Schema(
       required: function () {
         return this.payeeType === "TENANT";
       },
+    },
+
+    // EXTERNAL payee (bank/lender/vendor) — mirrors Expense.externalPayee
+    externalPayee: {
+      name: { type: String, trim: true },
+      type: {
+        type: String,
+        enum: ["VENDOR", "CONTRACTOR", "BANK", "GOVERNMENT", "OTHER"],
+      },
+      contactInfo: { type: String, trim: true },
     },
 
     referenceType: {
@@ -115,16 +130,40 @@ const liabilitySchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["RECORDED", "SYNCED"],
+      enum: ["RECORDED", "SYNCED", "REVERSED"],
       default: "RECORDED",
     },
 
     notes: String,
 
+    // Reversal fields — mirrors Revenue's reversal pattern
+    reversalReason: { type: String },
+    reversedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+    reversedAt: { type: Date },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
       required: true,
+    },
+
+    // ── Multi-entity scope (mirrors Revenue and Expense) ─────────────────────
+    transactionScope: {
+      type: String,
+      enum: ["building", "split", "head_office"],
+      default: "building",
+    },
+
+    // Always set — identifies the owning entity
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OwnershipEntity",
+    },
+
+    blockId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Block",
+      default: null,
     },
   },
   { timestamps: true },
@@ -133,6 +172,7 @@ const liabilitySchema = new mongoose.Schema(
 // ── Indexes ──────────────────────────────────────────────────────────────────
 liabilitySchema.index({ referenceType: 1, referenceId: 1 }, { unique: true });
 liabilitySchema.index({ loanStatus: 1 });
-liabilitySchema.index({ npYear: 1, npMonth: 1 });
+liabilitySchema.index({ nepaliYear: 1, nepaliMonth: 1 });
+liabilitySchema.index({ entityId: 1, nepaliYear: 1, nepaliMonth: 1 });
 
 export const Liability = mongoose.model("Liability", liabilitySchema);

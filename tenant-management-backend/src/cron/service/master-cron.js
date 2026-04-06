@@ -31,6 +31,7 @@ import NepaliDate from "nepali-datetime";
 import { CronLog } from "../model/CronLog.js";
 import Admin from "../../modules/auth/admin.Model.js";
 import { Rent } from "../../modules/rents/rent.Model.js";
+import { Cam } from "../../modules/cam/cam.model.js";
 import Notification from "../../modules/notifications/notification.model.js";
 import { getIO } from "../../config/socket.js";
 import handleMonthlyRents, {
@@ -142,7 +143,19 @@ async function markOverdueRents(today) {
   );
 
   console.log(`       → ${result.modifiedCount} rent(s) marked overdue`);
-  return { marked: result.modifiedCount };
+
+  // Also mark previous month's unpaid CAMs as overdue — mirrors rent behaviour
+  const camResult = await Cam.updateMany(
+    {
+      nepaliYear: prevYear,
+      nepaliMonth: prevMonth,
+      status: { $in: ["pending", "partially_paid"] },
+    },
+    { $set: { status: "overdue" } },
+  );
+  console.log(`       → ${camResult.modifiedCount} CAM(s) marked overdue`);
+
+  return { marked: result.modifiedCount, camsMarked: camResult.modifiedCount };
 }
 
 // ─── Step 5: Admin reminders ──────────────────────────────────────────────────

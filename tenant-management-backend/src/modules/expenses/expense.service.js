@@ -58,9 +58,9 @@ const SALARY_EXPENSE_ACCOUNT_CODE = "5100";
  *
  * The controller renames `nepaliDate` → `nepaliDateStr` before calling the
  * service, so this function only needs to handle nepaliDateStr. If absent,
- * the BS date is derived from EnglishDate (or today as a last resort).
+ * the BS date is derived from englishDate (or today as a last resort).
  */
-function resolveNepaliDateFields({ nepaliDateStr, EnglishDate }) {
+function resolveNepaliDateFields({ nepaliDateStr, englishDate }) {
   let nd;
   if (nepaliDateStr != null) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(nepaliDateStr))) {
@@ -70,8 +70,8 @@ function resolveNepaliDateFields({ nepaliDateStr, EnglishDate }) {
     }
     nd = parseNepaliISO(nepaliDateStr);
   } else {
-    // No BS date provided — derive from EnglishDate or today
-    nd = new NepaliDate(EnglishDate ? new Date(EnglishDate) : new Date());
+    // No BS date provided — derive from englishDate or today
+    nd = new NepaliDate(englishDate ? new Date(englishDate) : new Date());
   }
 
   const nepaliDate = formatNepaliISO(nd);
@@ -239,7 +239,8 @@ export async function createExpense(expenseData, externalSession = null) {
       source,
       amountPaisa,
       amount,
-      EnglishDate,
+      englishDate,
+      EnglishDate: _legacyEnglishDate, // Accept legacy PascalCase from old callers
       nepaliDateStr,
       payeeType,
       // Payee sub-docs
@@ -297,10 +298,13 @@ export async function createExpense(expenseData, externalSession = null) {
       );
     }
 
+    // Normalize: accept legacy PascalCase "EnglishDate" from older callers
+    const resolvedEnglishDate = englishDate ?? _legacyEnglishDate;
+
     // ── Nepali date resolution ──────────────────────────────────────────────
     const { nepaliDate, nepaliMonth, nepaliYear } = resolveNepaliDateFields({
       nepaliDateStr,
-      EnglishDate,
+      englishDate: resolvedEnglishDate,
     });
 
     // ── Amount ──────────────────────────────────────────────────────────────
@@ -355,7 +359,7 @@ export async function createExpense(expenseData, externalSession = null) {
     const expenseDoc = {
       source: expenseSource._id,
       amountPaisa: finalAmountPaisa,
-      EnglishDate: EnglishDate ? new Date(EnglishDate) : new Date(),
+      englishDate: resolvedEnglishDate ? new Date(resolvedEnglishDate) : new Date(),
       nepaliDate,
       nepaliMonth,
       nepaliYear,
@@ -540,7 +544,7 @@ export async function getAllExpenses(filters = {}) {
       .populate("staffPayee.staffId", "name email role")
       .populate("entityId", "name type")
       .populate("createdBy", "name email")
-      .sort({ EnglishDate: -1 });
+      .sort({ englishDate: -1 });
 
     return {
       success: true,
@@ -637,7 +641,7 @@ export async function getStaffExpenses(staffId, filters = {}) {
     const expenses = await Expense.find(query)
       .populate("source", "name code")
       .populate("staffPayee.staffId", "name email role")
-      .sort({ EnglishDate: -1 });
+      .sort({ englishDate: -1 });
 
     const totalPaisa = expenses.reduce((sum, e) => sum + e.amountPaisa, 0);
 

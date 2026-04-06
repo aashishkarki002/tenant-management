@@ -24,11 +24,14 @@ export async function createLiabilityController(req, res) {
 
 export async function getAllLiabilitiesController(req, res) {
   try {
-    const { referenceType, status, payeeType, npYear, npMonth } = req.query;
+    const { referenceType, status, payeeType, nepaliYear, nepaliMonth, npYear, npMonth } = req.query;
     const data = await getAllLiabilities({
       referenceType: referenceType || null,
       status: status || null,
       payeeType: payeeType || null,
+      nepaliYear: nepaliYear ? Number(nepaliYear) : null,
+      nepaliMonth: nepaliMonth ? Number(nepaliMonth) : null,
+      // Accept legacy query params during transition
       npYear: npYear ? Number(npYear) : null,
       npMonth: npMonth ? Number(npMonth) : null,
     });

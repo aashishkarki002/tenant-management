@@ -75,10 +75,10 @@ export function buildExpenseJournal(expense, bankAccountCode) {
   );
 
   // ── 3. Metadata ───────────────────────────────────────────────────────────
+  // Accept both new camelCase (englishDate) and legacy PascalCase (EnglishDate)
+  const rawDate = expense.englishDate ?? expense.EnglishDate;
   const transactionDate =
-    expense.EnglishDate instanceof Date
-      ? expense.EnglishDate
-      : new Date(expense.EnglishDate ?? Date.now());
+    rawDate instanceof Date ? rawDate : new Date(rawDate ?? Date.now());
 
   // FIX: always a BS "YYYY-MM-DD" string
   const nepaliDate = resolveNepaliDateString(

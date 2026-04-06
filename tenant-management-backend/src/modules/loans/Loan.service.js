@@ -226,9 +226,9 @@ export async function createLoan(data, session = null) {
             source: loanSourceId,
             amountPaisa: principalPaisa,
             originalAmountPaisa: principalPaisa,
-            date: dateObj,
-            npYear: nepaliYear,
-            npMonth: nepaliMonth,
+            englishDate: dateObj,
+            nepaliYear,
+            nepaliMonth,
             payeeType: "EXTERNAL",
             referenceType: "LOAN",
             referenceId: loan._id,
@@ -451,7 +451,7 @@ export async function recordLoanPayment(data, session = null) {
             expenseCode: "5100", // LOAN_INTEREST_EXPENSE account code
             referenceType: "LOAN_INTEREST",
             referenceId: payment._id, // back-link to the LoanPayment
-            EnglishDate: dateObj,
+            englishDate: dateObj,
             nepaliDate,
             payeeType: "EXTERNAL",
             externalPayee: {

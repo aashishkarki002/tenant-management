@@ -30,7 +30,7 @@
 import mongoose from "mongoose";
 import BankAccount from "./BankAccountModel.js";
 import { Account } from "../ledger/accounts/Account.Model.js";
-import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { rupeesToPaisa, formatMoney } from "../../utils/moneyUtil.js";
 import { Payment } from "../payment/payment.model.js";
 import { LoanPayment } from "../loans/LoanPayment.model.js";
 
@@ -283,6 +283,95 @@ export const updateBankAccount = async (req, res) => {
     });
   } finally {
     session.endSession();
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUND POSITIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getFundPositions = async (req, res) => {
+  try {
+    const { entityId } = req.query;
+    const entityObjId = entityId
+      ? new mongoose.Types.ObjectId(entityId)
+      : null;
+
+    // ── Cash on hand (Account code "1000") ───────────────────────────────────
+    const cashAccountFilter = { code: "1000", isActive: true };
+    if (entityObjId) cashAccountFilter.entityId = entityObjId;
+    const cashAccount = await Account.findOne(cashAccountFilter).lean();
+
+    const cashInHand = cashAccount
+      ? {
+          accountCode: "1000",
+          accountName: "Cash on Hand",
+          balancePaisa: cashAccount.currentBalancePaisa ?? 0,
+          balanceFormatted: formatMoney(cashAccount.currentBalancePaisa ?? 0),
+          hasLedgerAccount: true,
+        }
+      : {
+          accountCode: "1000",
+          accountName: "Cash on Hand",
+          balancePaisa: 0,
+          balanceFormatted: formatMoney(0),
+          hasLedgerAccount: false,
+        };
+
+    // ── Bank accounts + their Account balances ───────────────────────────────
+    const bankFilter = { isDeleted: false };
+    if (entityObjId) bankFilter.entityId = entityObjId;
+
+    const bankDocs = await BankAccount.find(bankFilter)
+      .populate("entityId", "name type")
+      .lean();
+
+    const bankCodes = bankDocs.map((b) => b.accountCode).filter(Boolean);
+    const ledgerAccounts =
+      bankCodes.length > 0
+        ? await Account.find({
+            code: { $in: bankCodes },
+            isActive: true,
+            ...(entityObjId ? { entityId: entityObjId } : {}),
+          }).lean()
+        : [];
+
+    const accountByCode = new Map(ledgerAccounts.map((a) => [a.code, a]));
+
+    const bankAccounts = bankDocs.map((b) => {
+      const acct = accountByCode.get(b.accountCode);
+      const balancePaisa = acct?.currentBalancePaisa ?? 0;
+      return {
+        _id: b._id,
+        accountName: b.accountName,
+        bankName: b.bankName,
+        accountCode: b.accountCode,
+        accountNumber: b.accountNumber,
+        entityId: b.entityId,
+        balancePaisa,
+        balanceFormatted: formatMoney(balancePaisa),
+        hasLedgerAccount: !!acct,
+      };
+    });
+
+    const totalFundsPaisa =
+      (cashInHand.balancePaisa ?? 0) +
+      bankAccounts.reduce((s, b) => s + b.balancePaisa, 0);
+
+    return res.status(200).json({
+      success: true,
+      cashInHand,
+      bankAccounts,
+      totalFundsPaisa,
+      totalFundsFormatted: formatMoney(totalFundsPaisa),
+    });
+  } catch (error) {
+    console.error("getFundPositions error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch fund positions",
+      error: error.message,
+    });
   }
 };
 

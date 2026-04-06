@@ -581,7 +581,7 @@ export async function settlePayment(
       source: maintenanceSource._id,
       amountPaisa: finalPaidAmountPaisa,
       amount: paidAmountRupees,
-      EnglishDate: now,
+      englishDate: now,
       nepaliDate: rawNepaliDate ?? null,
       nepaliMonth: resolvedNepaliMonth,
       nepaliYear: resolvedNepaliYear,

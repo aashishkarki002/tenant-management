@@ -18,7 +18,7 @@ const revenueSchema = new mongoose.Schema(
       min: 0,
     },
 
-    date: {
+    englishDate: {
       type: Date,
       required: true,
       default: Date.now,
@@ -29,11 +29,16 @@ const revenueSchema = new mongoose.Schema(
     // Never derive at read time; aggregating across thousands of
     // records with JS-side date conversion kills performance.
     // ============================================
-    npYear: {
+    // "YYYY-MM-DD" BS string — NOT a Date object (avoids UTC+5:45 timezone shift)
+    nepaliDate: {
+      type: String,
+      match: /^\d{4}-\d{2}-\d{2}$/,
+    },
+    nepaliYear: {
       type: Number,
       index: true,
     },
-    npMonth: {
+    nepaliMonth: {
       type: Number, // 1-based (1 = Baisakh … 12 = Chaitra)
       min: 1,
       max: 12,
@@ -213,7 +218,8 @@ const revenueSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+revenueSchema.index({ nepaliYear: 1, nepaliMonth: 1 });
+revenueSchema.index({ entityId: 1, nepaliYear: 1, nepaliMonth: 1 });
+revenueSchema.index({ blockId: 1, nepaliYear: 1, nepaliMonth: 1 });
+
 export const Revenue = mongoose.model("Revenue", revenueSchema);
-revenueSchema.index({ npYear: 1, npMonth: 1 });
-revenueSchema.index({ entityId: 1, npYear: 1, npMonth: 1 });
-revenueSchema.index({ blockId: 1, npYear: 1, npMonth: 1 });

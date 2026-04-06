@@ -31,7 +31,7 @@ const expenseSchema = new mongoose.Schema(
     // ─────────────────────────────────────────────────
     // DATES
     // ─────────────────────────────────────────────────
-    EnglishDate: {
+    englishDate: {
       type: Date,
       default: Date.now,
     },
@@ -146,13 +146,18 @@ const expenseSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["RECORDED", "SYNCED"],
+      enum: ["RECORDED", "SYNCED", "REVERSED"],
       default: "RECORDED",
     },
     notes: { type: String, trim: true },
 
     // Ledger account code override (e.g. "5000" for maintenance)
     expenseCode: { type: String, trim: true },
+
+    // Reversal fields — mirrors Revenue's reversal pattern
+    reversalReason: { type: String },
+    reversedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+    reversedAt: { type: Date },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -214,10 +219,10 @@ const expenseSchema = new mongoose.Schema(
 // ─────────────────────────────────────────────────────────────────────────────
 // INDEXES
 // ─────────────────────────────────────────────────────────────────────────────
-expenseSchema.index({ EnglishDate: -1 });
+expenseSchema.index({ englishDate: -1 });
 expenseSchema.index({ source: 1 });
 expenseSchema.index({ tenant: 1 });
-expenseSchema.index({ entityId: 1, EnglishDate: -1 });
+expenseSchema.index({ entityId: 1, englishDate: -1 });
 expenseSchema.index({ nepaliYear: 1, nepaliMonth: 1 });
 expenseSchema.index({ "staffPayee.staffId": 1, nepaliYear: 1, nepaliMonth: 1 });
 

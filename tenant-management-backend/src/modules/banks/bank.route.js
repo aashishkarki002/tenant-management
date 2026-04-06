@@ -4,6 +4,7 @@ import {
   getBankAccounts,
   updateBankAccount,
   deleteBankAccount,
+  getFundPositions,
 } from "./bank.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -19,6 +20,12 @@ router.get(
   protect,
   authorize("admin", "super_admin", "staff"),
   getBankAccounts,
+);
+router.get(
+  "/fund-positions",
+  protect,
+  authorize("admin", "super_admin", "staff"),
+  getFundPositions,
 );
 router.patch(
   "/update-bank-account/:id",

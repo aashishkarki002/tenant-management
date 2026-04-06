@@ -340,7 +340,7 @@ export async function recordFuelRefill(generatorId, refillData, adminId) {
         {
           source: sourceId,
           amountPaisa: costPaisa,
-          EnglishDate: new Date(),
+          englishDate: new Date(),
           nepaliDate: nepaliDate,
           nepaliMonth: Number(nepaliMonth),
           nepaliYear: Number(nepaliYear),

@@ -5,6 +5,7 @@ import { Unit } from "../units/unit.model.js";
 import {
   getNepaliMonthDates,
   addNepaliDays,
+  formatNepaliISO,
   NEPALI_MONTH_NAMES,
 } from "../../utils/nepaliDateHelper.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
@@ -204,21 +205,25 @@ async function buildBuildingPerformance({ npYear, npMonth, nepaliTodayDate }) {
   });
 }
 
-async function buildSafetySummary({ npYear, npMonth, nepaliTodayDate }) {
-  const baseDate =
-    nepaliTodayDate instanceof Date ? nepaliTodayDate : new Date();
-  const sevenDaysAgo = new Date(baseDate);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+async function buildSafetySummary({ npYear, npMonth, nepaliToday }) {
+  // ── Use nepaliDate string field for all queries ───────────────────────────
+  // checkDate is stored as Date.UTC(nepal_y, nepal_m, nepal_d) — "Nepal civil
+  // midnight expressed as UTC". Querying checkDate with JS Date arithmetic is
+  // fragile: nepaliTodayDate.getDateObject() returns the current instant which
+  // can fall BEFORE checkDate midnight (00:00Z), silently excluding today.
+  //
+  // nepaliDate (stored as "YYYY-MM-DD" BS string) is the authoritative key for
+  // date-range filtering — the service's own `getResults` already enforces this.
+  const todayStr = formatNepaliISO(nepaliToday);
+  const sixDaysAgoDate = addNepaliDays(nepaliToday, -6);
+  const sixDaysAgoStr = formatNepaliISO(sixDaysAgoDate);
 
   const [todayResults, trendResults] = await Promise.all([
-    // Today only — operational signal
+    // Today only — exact Nepali date match, no UTC range arithmetic
     ChecklistResult.aggregate([
       {
         $match: {
-          checkDate: {
-            $gte: new Date(baseDate.toDateString()), // midnight today
-            $lt: new Date(baseDate.getTime() + 86400000),
-          },
+          nepaliDate: todayStr,
           category: { $in: SAFETY_CATEGORIES },
         },
       },
@@ -233,17 +238,17 @@ async function buildSafetySummary({ npYear, npMonth, nepaliTodayDate }) {
       },
     ]),
 
-    // Past 7 days — one doc per day per category
+    // Past 7 days — group by nepaliDate string (no $dateToString UTC conversion)
     ChecklistResult.aggregate([
       {
         $match: {
-          checkDate: { $gte: sevenDaysAgo, $lte: baseDate },
+          nepaliDate: { $gte: sixDaysAgoStr, $lte: todayStr },
           category: { $in: SAFETY_CATEGORIES },
         },
       },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$checkDate" } },
+          _id: "$nepaliDate",
           completedCategories: {
             $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
           },
@@ -259,20 +264,31 @@ async function buildSafetySummary({ npYear, npMonth, nepaliTodayDate }) {
     (completedToday / SAFETY_CATEGORIES.length) * 100,
   );
 
+  // ── Build a full 7-slot padded trend array (D-6 … D-0) ────────────────────
+  // The raw trendResults only contain days that have check data. If we returned
+  // that sparse array directly, the frontend's trend[i] indexing would misalign
+  // dots to the wrong days (e.g. D-3 data showing in the D-6 position).
+  // A fixed-length 7-slot array keyed to exact Nepali dates fixes this.
+  const trendMap = new Map(trendResults.map((d) => [d._id, d]));
+  const trend = Array.from({ length: 7 }, (_, i) => {
+    const dayNp = addNepaliDays(nepaliToday, i - 6); // D-6, D-5, …, D-0
+    const dateStr = formatNepaliISO(dayNp);
+    const d = trendMap.get(dateStr);
+    if (!d) return { date: dateStr, rate: null, hasIssues: false };
+    return {
+      date: dateStr,
+      rate: Math.round((d.completedCategories / SAFETY_CATEGORIES.length) * 100),
+      hasIssues: d.hasIssues === 1,
+    };
+  });
+
   return {
     completionRate,
     completed: completedToday,
     total: SAFETY_CATEGORIES.length,
     pending: SAFETY_CATEGORIES.length - completedToday,
     issues: todayResults.filter((r) => r.hasIssues).length,
-    // New: 7-day trend
-    trend: trendResults.map((d) => ({
-      date: d._id,
-      rate: Math.round(
-        (d.completedCategories / SAFETY_CATEGORIES.length) * 100,
-      ),
-      hasIssues: d.hasIssues === 1,
-    })),
+    trend,
   };
 }
 async function buildMaintenanceSummary() {
@@ -442,12 +458,12 @@ export async function getDashboardStatsData({ adminId } = {}) {
       { $group: { _id: null, totalRevenue: { $sum: "$amount" } } },
     ]),
 
-    // npYear comes from getNepaliMonthDates() — 1-based, matches Revenue.npYear index
+    // nepaliYear comes from getNepaliMonthDates() — 1-based, matches Revenue.nepaliYear index
     Revenue.aggregate([
-      { $match: { npYear: { $in: [npYear, npYear - 1] } } },
+      { $match: { nepaliYear: { $in: [npYear, npYear - 1] } } },
       {
         $group: {
-          _id: { year: "$npYear", month: "$npMonth" },
+          _id: { year: "$nepaliYear", month: "$nepaliMonth" },
           total: { $sum: { $divide: ["$amountPaisa", 100] } },
         },
       },
@@ -479,9 +495,9 @@ export async function getDashboardStatsData({ adminId } = {}) {
       { $sort: { totalAmountPaisa: -1 } },
     ]),
 
-    // npYear + npMonth from getNepaliMonthDates() — scoped to this billing period
+    // nepaliYear + nepaliMonth from getNepaliMonthDates() — scoped to this billing period
     Revenue.aggregate([
-      { $match: { npYear, npMonth } },
+      { $match: { nepaliYear: npYear, nepaliMonth: npMonth } },
       {
         $group: { _id: "$source", totalAmountPaisa: { $sum: "$amountPaisa" } },
       },
@@ -512,7 +528,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
     // Fields: totalLateFeePaisa (accrued), totalLatePaidPaisa (collected),
     //         tenantsCharged (distinct count), tenantsPaid (fully cleared fees).
     Rent.aggregate([
-      { $match: { lateFeeApplied: true, npYear } },
+      { $match: { lateFeeApplied: true, nepaliYear: npYear } },
       {
         $group: {
           _id: null,
@@ -948,7 +964,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
     ]);
 
   const [safety, maintenanceSummary, notifications] = await Promise.all([
-    buildSafetySummary({ npYear, npMonth, nepaliTodayDate }),
+    buildSafetySummary({ npYear, npMonth, nepaliToday }),
     buildMaintenanceSummary(),
     buildNotificationSummary(adminId),
   ]);
@@ -1332,10 +1348,10 @@ export async function getQuarterlyStats(req, res) {
 
     // Single aggregation, both years — one index scan
     const revenueByMonthAgg = await Revenue.aggregate([
-      { $match: { npYear: { $in: [npYear, npYear - 1] } } },
+      { $match: { nepaliYear: { $in: [npYear, npYear - 1] } } },
       {
         $group: {
-          _id: { year: "$npYear", month: "$npMonth" },
+          _id: { year: "$nepaliYear", month: "$nepaliMonth" },
           total: { $sum: { $divide: ["$amountPaisa", 100] } },
         },
       },

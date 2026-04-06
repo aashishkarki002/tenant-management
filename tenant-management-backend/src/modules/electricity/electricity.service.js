@@ -532,9 +532,9 @@ class ElectricityService {
             {
               source: utilitySource._id,
               amountPaisa: electricity.totalAmountPaisa,
-              date: electricity.readingDate ?? new Date(),
-              npYear: electricity.nepaliYear,
-              npMonth: electricity.nepaliMonth,
+              englishDate: electricity.readingDate ?? new Date(),
+              nepaliYear: electricity.nepaliYear,
+              nepaliMonth: electricity.nepaliMonth,
               description: `Electricity charge — ${electricity.consumption} units`,
               payerType: "TENANT",
               tenant: tenantObjectId,

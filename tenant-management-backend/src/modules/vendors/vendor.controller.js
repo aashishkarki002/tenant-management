@@ -113,6 +113,24 @@ export const updateVendor = async (req, res) => {
   }
 };
 
+export const deleteVendor = async (req, res) => {
+  try {
+    const vendor = await Vendor.findByIdAndDelete(req.params.id);
+    if (!vendor)
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Vendor deleted successfully" });
+  } catch (error) {
+    console.error("deleteVendor error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to delete vendor" });
+  }
+};
+
 // ─── CONTRACT CRUD ─────────────────────────────────────────────────────────────
 
 export const createContract = async (req, res) => {

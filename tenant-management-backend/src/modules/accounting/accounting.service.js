@@ -178,7 +178,7 @@ export async function getAccountingSummary({
 
   // ── Revenue aggregation ───────────────────────────────────────────────────
   const revenueMatch = { ...entityFilter };
-  if (dateFilter) revenueMatch.date = dateFilter;
+  if (dateFilter) revenueMatch.englishDate = dateFilter;
   if (paymentMethod) revenueMatch.paymentMethod = paymentMethod;
 
   const revenueAggregation = await Revenue.aggregate([
@@ -204,7 +204,7 @@ export async function getAccountingSummary({
 
   // ── Liability aggregation ─────────────────────────────────────────────────
   const liabilityMatch = { ...entityFilter };
-  if (dateFilter) liabilityMatch.date = dateFilter;
+  if (dateFilter) liabilityMatch.englishDate = dateFilter;
   if (paymentMethod) liabilityMatch.paymentMethod = paymentMethod;
 
   const liabilityAggregation = await Liability.aggregate([
@@ -238,9 +238,7 @@ export async function getAccountingSummary({
   // that represents an unsettled NEA Payable (liability) — it is not a cash
   // expense until the NEA bill is actually paid and the payable is cleared.
   const expenseMatch = { ...entityFilter };
-  // Expense model uses EnglishDate (capital E and D) — not 'date' like Revenue.
-  // Using the wrong field would silently return all expenses regardless of filter.
-  if (dateFilter) expenseMatch.EnglishDate = dateFilter;
+  if (dateFilter) expenseMatch.englishDate = dateFilter;
   expenseMatch.referenceType = { $ne: "ELECTRICITY_NEA_COST" };
   if (paymentMethod) expenseMatch.paymentMethod = paymentMethod;
 
@@ -397,16 +395,16 @@ export async function getMonthlyChartData({
   const entityFilter = buildEntityFilter(entityId);
 
   const revMatch = { ...entityFilter };
-  if (dateFilter) revMatch.date = dateFilter;
+  if (dateFilter) revMatch.englishDate = dateFilter;
   if (paymentMethod) revMatch.paymentMethod = paymentMethod;
 
   const expMatch = { ...entityFilter };
-  if (dateFilter) expMatch.EnglishDate = dateFilter;
+  if (dateFilter) expMatch.englishDate = dateFilter;
   expMatch.referenceType = { $ne: "ELECTRICITY_NEA_COST" }; // exclude unsettled NEA liability
   if (paymentMethod) expMatch.paymentMethod = paymentMethod;
 
   const liabMatch = { ...entityFilter };
-  if (dateFilter) liabMatch.date = dateFilter;
+  if (dateFilter) liabMatch.englishDate = dateFilter;
   if (paymentMethod) liabMatch.paymentMethod = paymentMethod;
 
   const [revDocs, expDocs, liabDocs] = await Promise.all([
@@ -414,7 +412,7 @@ export async function getMonthlyChartData({
       { $match: revMatch },
       {
         $group: {
-          _id: { year: "$npYear", month: "$npMonth" },
+          _id: { year: "$nepaliYear", month: "$nepaliMonth" },
           total: { $sum: "$amountPaisa" },
         },
       },
@@ -432,7 +430,7 @@ export async function getMonthlyChartData({
       { $match: liabMatch },
       {
         $group: {
-          _id: { year: "$npYear", month: "$npMonth" },
+          _id: { year: "$nepaliYear", month: "$nepaliMonth" },
           total: { $sum: "$amountPaisa" },
         },
       },
@@ -525,7 +523,7 @@ export async function getRevenueBreakdownSummary({
 
   // Merge date + entity + payment method filters
   const match = { ...entityFilter };
-  if (dateFilter) match.date = dateFilter;
+  if (dateFilter) match.englishDate = dateFilter;
   if (paymentMethod) match.paymentMethod = paymentMethod;
 
   const revenues = await Revenue.aggregate([
@@ -849,11 +847,11 @@ export async function getExpenseBreakdownSummary({
       if (fiscalYear) match.nepaliYear = Number(fiscalYear);
     } else if (fiscalYear) {
       const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
-      if (dateFilter) match.EnglishDate = dateFilter;
+      if (dateFilter) match.englishDate = dateFilter;
     }
   } else {
     const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
-    if (dateFilter) match.EnglishDate = dateFilter;
+    if (dateFilter) match.englishDate = dateFilter;
   }
 
   // Add payment method filter
@@ -879,7 +877,7 @@ export async function getExpenseBreakdownSummary({
       },
     },
     { $unwind: { path: "$tenant", preserveNullAndEmptyArrays: true } },
-    { $sort: { EnglishDate: -1 } },
+    { $sort: { englishDate: -1 } },
   ]);
 
   if (!expenses.length) {
@@ -1070,7 +1068,7 @@ export async function getExpenseBreakdownSummary({
       e.nepaliYear && e.nepaliMonth
         ? `${NEPALI_MONTH_NAMES[(e.nepaliMonth - 1) % 12]} ${e.nepaliYear}`
         : (() => {
-            const bs = toBS(new Date(e.EnglishDate ?? e.createdAt));
+            const bs = toBS(new Date(e.englishDate ?? e.createdAt));
             return bs ? `${NEPALI_MONTH_NAMES[bs.month0]} ${bs.year}` : "—";
           })(),
     status: e.status ?? "RECORDED",

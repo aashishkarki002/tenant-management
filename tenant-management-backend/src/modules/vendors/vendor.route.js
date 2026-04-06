@@ -7,6 +7,7 @@ import {
   getAllVendors,
   getVendorById,
   updateVendor,
+  deleteVendor,
   createContract,
   getContractsByVendor,
   assignPersonnel,
@@ -25,6 +26,7 @@ vendorRouter.post("/", createVendor);
 vendorRouter.get("/", getAllVendors);
 vendorRouter.get("/:id", getVendorById);
 vendorRouter.patch("/:id", updateVendor);
+vendorRouter.delete("/:id", deleteVendor);
 
 // Contracts
 vendorRouter.post("/contracts", createContract);

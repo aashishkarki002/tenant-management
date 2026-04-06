@@ -122,6 +122,7 @@ app.post("/send-notification", sendTestNotification);
 app.use("/api/sd-refund", sdRefundRoute);
 app.use("/api/sd", sdRoute);
 app.use("/api/liabilities", liabilitiesRoute);
+
 app.get("/api/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 // -------------------- ERROR HANDLERS --------------------

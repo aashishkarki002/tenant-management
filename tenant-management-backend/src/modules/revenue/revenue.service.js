@@ -152,11 +152,11 @@ function rebuildJournalFromRevenue(revenue) {
     revenue,
     {
       amountPaisa: revenue.amountPaisa,
-      paymentDate: revenue.date,
+      paymentDate: revenue.englishDate,
       description,
       createdBy: revenue.createdBy,
-      nepaliMonth: revenue.npMonth,
-      nepaliYear: revenue.npYear,
+      nepaliMonth: revenue.nepaliMonth,
+      nepaliYear: revenue.nepaliYear,
     },
     // No bankAccountCode available on reversal — fall back to generic
     ACCOUNT_CODES.CASH_BANK,
@@ -401,13 +401,15 @@ async function createRevenue(revenueData) {
     }
 
     // ── Build Revenue document ──────────────────────────────────────────────
-    const nepaliFields = getNepaliYearMonthFromDate(date);
+    const { npYear: nepaliYear, npMonth: nepaliMonth } =
+      getNepaliYearMonthFromDate(date);
 
     const revenueDoc = {
       source,
       amountPaisa: finalAmountPaisa,
-      date,
-      ...nepaliFields,
+      englishDate: date,
+      nepaliYear,
+      nepaliMonth,
       payerType,
       tenant: payerType === "TENANT" ? tenant : undefined,
       externalPayer: payerType === "EXTERNAL" ? externalPayer : undefined,
@@ -460,8 +462,8 @@ async function createRevenue(revenueData) {
       description: ledgerDescription,
       createdBy: createdBy || adminId,
       nepaliDate: nepaliDate || null,
-      nepaliMonth: nepaliFields.npMonth,
-      nepaliYear: nepaliFields.npYear,
+      nepaliMonth,
+      nepaliYear,
       session,
     };
 
@@ -607,8 +609,8 @@ async function getRevenue(revenueId) {
       .populate("source")
       .populate("tenant")
       .populate("createdBy")
-      .populate("originalRevenue", "amountPaisa date status")
-      .populate("amendedBy", "amountPaisa date status");
+      .populate("originalRevenue", "amountPaisa englishDate status")
+      .populate("amendedBy", "amountPaisa englishDate status");
     if (!revenue) throw new Error("Revenue not found");
     return revenue;
   } catch (error) {
@@ -626,8 +628,8 @@ async function getAllRevenue(filters = {}) {
       query.entityId = new mongoose.Types.ObjectId(filters.entityId);
     if (filters.payerType) query.payerType = filters.payerType;
     if (filters.referenceType) query.referenceType = filters.referenceType;
-    if (filters.nepaliYear) query.npYear = Number(filters.nepaliYear);
-    if (filters.nepaliMonth) query.npMonth = Number(filters.nepaliMonth);
+    if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
+    if (filters.nepaliMonth) query.nepaliMonth = Number(filters.nepaliMonth);
     if (filters.transactionScope)
       query.transactionScope = filters.transactionScope;
     if (filters.propertyId)
@@ -637,7 +639,7 @@ async function getAllRevenue(filters = {}) {
       .populate("source", "name code")
       .populate("tenant", "name")
       .populate("entityId", "name type")
-      .sort({ date: -1 });
+      .sort({ englishDate: -1 });
 
     return {
       success: true,
@@ -714,14 +716,18 @@ export async function recordRentRevenue({
 
     const resolvedBlockId = resolveBlockObjectId(blockId);
 
+    const { npYear: rr_npYear, npMonth: rr_npMonth } =
+      getNepaliYearMonthFromDate(paymentDate);
+
     const revenue = await Revenue.create(
       [
         {
           source: rentRevenueSource._id,
           amountPaisa: finalAmountPaisa,
           amount: finalAmountPaisa / 100,
-          date: paymentDate,
-          ...getNepaliYearMonthFromDate(paymentDate),
+          englishDate: paymentDate,
+          nepaliYear: rr_npYear,
+          nepaliMonth: rr_npMonth,
           payerType: "TENANT",
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "RENT",
@@ -770,14 +776,18 @@ export async function recordCamRevenue({
 
     const resolvedBlockId = resolveBlockObjectId(blockId);
 
+    const { npYear: cr_npYear, npMonth: cr_npMonth } =
+      getNepaliYearMonthFromDate(paymentDate);
+
     const revenue = await Revenue.create(
       [
         {
           source: camRevenueSource._id,
           amountPaisa: finalAmountPaisa,
           amount: finalAmountPaisa / 100,
-          date: paymentDate,
-          ...getNepaliYearMonthFromDate(paymentDate),
+          englishDate: paymentDate,
+          nepaliYear: cr_npYear,
+          nepaliMonth: cr_npMonth,
           payerType: "TENANT",
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "CAM",
@@ -816,13 +826,17 @@ export async function recordElectricityRevenue({
     { upsert: true, returnDocument: "after", session },
   );
 
+  const { npYear: er_npYear, npMonth: er_npMonth } =
+    getNepaliYearMonthFromDate(paymentDate);
+
   const [revenue] = await Revenue.create(
     [
       {
         source: utilitySource._id,
         amountPaisa,
-        date: paymentDate,
-        ...getNepaliYearMonthFromDate(paymentDate),
+        englishDate: paymentDate,
+        nepaliYear: er_npYear,
+        nepaliMonth: er_npMonth,
         payerType: "TENANT",
         tenant: new mongoose.Types.ObjectId(tenantId),
         referenceType: "ELECTRICITY",
@@ -859,13 +873,17 @@ export async function recordLateFeeRevenue({
 
     const resolvedBlockId = resolveBlockObjectId(blockId);
 
+    const { npYear: lf_npYear, npMonth: lf_npMonth } =
+      getNepaliYearMonthFromDate(paymentDate);
+
     const revenue = await Revenue.create(
       [
         {
           source: lateFeeRevenueSource._id,
           amountPaisa,
-          date: paymentDate,
-          ...getNepaliYearMonthFromDate(paymentDate),
+          englishDate: paymentDate,
+          nepaliYear: lf_npYear,
+          nepaliMonth: lf_npMonth,
           payerType: "TENANT",
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "LATE_FEE",

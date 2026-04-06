@@ -23,14 +23,22 @@ async function createLiability(liabilityData) {
       amountPaisa,
       originalAmountPaisa,
       date,
+      englishDate,
+      nepaliDate,
+      nepaliYear,
+      nepaliMonth,
       payeeType,
       tenant,
+      externalPayee,
       referenceType,
       referenceId,
       loanStatus,
       status,
       notes,
       createdBy,
+      entityId,
+      blockId,
+      transactionScope,
       session,
     } = liabilityData;
 
@@ -54,15 +62,22 @@ async function createLiability(liabilityData) {
       source: liabilitySource._id,
       amountPaisa,
       originalAmountPaisa: originalAmountPaisa ?? null,
-      date,
+      englishDate: englishDate ?? date ?? new Date(), // accept new or legacy field name
+      nepaliDate: nepaliDate ?? null,
+      nepaliYear: nepaliYear ?? null,
+      nepaliMonth: nepaliMonth ?? null,
       payeeType: payeeType === "tenant" ? "TENANT" : payeeType,
       tenant,
+      externalPayee: externalPayee ?? undefined,
       referenceType,
       referenceId,
       loanStatus: loanStatus ?? null,
       status,
       notes,
       createdBy,
+      entityId: entityId ?? null,
+      blockId: blockId ?? null,
+      transactionScope: transactionScope ?? "building",
     };
 
     const created = await Liability.create(session ? [doc] : doc, createOpts);
@@ -122,13 +137,16 @@ async function getAllLiabilities(filters = {}) {
   if (filters.referenceType) query.referenceType = filters.referenceType;
   if (filters.status) query.status = filters.status;
   if (filters.payeeType) query.payeeType = filters.payeeType.toUpperCase();
-  if (filters.npYear) query.npYear = Number(filters.npYear);
-  if (filters.npMonth) query.npMonth = Number(filters.npMonth);
+  if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
+  if (filters.nepaliMonth) query.nepaliMonth = Number(filters.nepaliMonth);
+  // Accept legacy npYear/npMonth query params (backwards compat during migration)
+  if (filters.npYear) query.nepaliYear = Number(filters.npYear);
+  if (filters.npMonth) query.nepaliMonth = Number(filters.npMonth);
 
   return Liability.find(query)
     .populate("source", "name code category")
     .populate("tenant", "name phone")
-    .sort({ date: -1 })
+    .sort({ englishDate: -1 })
     .lean();
 }
 
