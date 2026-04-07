@@ -25,6 +25,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { Separator } from "../../components/ui/separator";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
+import BankAccountSelect from "@/components/BankAccountSelect.jsx";
 import {
     PAYMENT_METHODS,
     getLedgerPaymentMethodSelectOptions,
@@ -107,6 +108,18 @@ function formatPct(part, total) {
 
 function lineItemTypeLabel(type) {
     return ADJUSTMENT_TYPES.find((t) => t.type === type)?.label ?? type;
+}
+
+function extractBankAccounts(responseData) {
+    if (Array.isArray(responseData?.bankAccounts)) return responseData.bankAccounts;
+    if (Array.isArray(responseData?.data)) return responseData.data;
+    return [];
+}
+
+function ownershipEntityIdFromBlock(block) {
+    if (!block) return null;
+    const ref = block.ownershipEntityId ?? block.ownershipEntity;
+    return ref?._id ?? ref ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -208,6 +221,10 @@ function AdjustmentTypeCard({ item, isSelected, onClick }) {
 }
 
 function LineItemRow({ item, index, onUpdate, onRemove, bankAccounts }) {
+    const selectedBank = bankAccounts.find(
+        (b) => b.accountCode === item.bankAccountCode,
+    );
+
     return (
         <Card className="overflow-hidden border-border">
             <CardContent className="space-y-4 p-4">
@@ -272,32 +289,25 @@ function LineItemRow({ item, index, onUpdate, onRemove, bankAccounts }) {
                         </div>
 
                         {paymentMethodRequiresBankAccount(item.paymentMethod) && (
-                                <div className="space-y-2">
-                                    <Label>Bank</Label>
-
-                                    <Select
-                                        value={item.bankAccountCode || ""}
-                                        onValueChange={(v) =>
-                                            onUpdate(index, { bankAccountCode: v })
-                                        }
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select bank" />
-                                        </SelectTrigger>
-
-                                        <SelectContent>
-                                            {bankAccounts.map((b) => (
-                                                <SelectItem
-                                                    key={b.accountCode}
-                                                    value={b.accountCode}
-                                                >
-                                                    {b.bankName}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            )}
+                            <div className="space-y-2">
+                                <Label>Bank</Label>
+                                <BankAccountSelect
+                                    bankAccounts={bankAccounts}
+                                    value={selectedBank?._id ? String(selectedBank._id) : ""}
+                                    onValueChange={(id) => {
+                                        const bank = bankAccounts.find(
+                                            (b) => String(b._id) === String(id),
+                                        );
+                                        onUpdate(index, {
+                                            bankAccountCode:
+                                                bank?.accountCode || null,
+                                        });
+                                    }}
+                                    triggerClassName="w-full"
+                                    placeholder="Select bank account"
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -343,6 +353,7 @@ export default function SdRefundWizard({ sdId, blockId, onSuccess, onClose }) {
     const [internalNotes, setInternalNotes] = useState("");
     const [bankAccounts, setBankAccounts] = useState([]);
     const [draftId, setDraftId] = useState(null);
+    const [entityId, setEntityId] = useState(null);
 
     // ── Load preflight data ─────────────────────────────────────────────────
     useEffect(() => {
@@ -351,14 +362,20 @@ export default function SdRefundWizard({ sdId, blockId, onSuccess, onClose }) {
         Promise.all([
             api.get(`/api/sd-refund/preflight/${sdId}`),
             api.get("/api/bank/get-bank-accounts"),
+            api.get("/api/blocks/get-allblocks"),
         ])
-            .then(([preflightRes, banksRes]) => {
+            .then(([preflightRes, banksRes, blocksRes]) => {
                 setPreflight(preflightRes.data.data);
-                setBankAccounts(banksRes.data.data ?? []);
+                setBankAccounts(extractBankAccounts(banksRes.data));
+                const blocks = blocksRes.data?.data ?? [];
+                const matchedBlock = blocks.find(
+                    (b) => String(b._id) === String(blockId),
+                );
+                setEntityId(ownershipEntityIdFromBlock(matchedBlock));
             })
             .catch((e) => setError(e.response?.data?.message ?? e.message))
             .finally(() => setLoading(false));
-    }, [sdId]);
+    }, [sdId, blockId]);
 
     // ── Line item helpers ───────────────────────────────────────────────────
     const addLineItem = useCallback((type) => {
@@ -420,12 +437,17 @@ export default function SdRefundWizard({ sdId, blockId, onSuccess, onClose }) {
 
     // ── Submit: create draft ────────────────────────────────────────────────
     async function handleCreateDraft() {
+        if (!entityId) {
+            setError("Could not resolve entity from selected block.");
+            return;
+        }
         setPosting(true);
         setError(null);
         try {
             const res = await api.post("/api/sd-refund/draft", {
                 sdId,
                 blockId,
+                entityId,
                 refundDate,
                 lineItems,
                 internalNotes,
@@ -442,10 +464,17 @@ export default function SdRefundWizard({ sdId, blockId, onSuccess, onClose }) {
     // ── Submit: confirm + post ──────────────────────────────────────────────
     async function handleConfirm() {
         if (!draftId) return;
+        if (!entityId) {
+            setError("Could not resolve entity from selected block.");
+            return;
+        }
         setPosting(true);
         setError(null);
         try {
-            await api.post(`/api/sd-refund/${draftId}/confirm`, { blockId });
+            await api.post(`/api/sd-refund/${draftId}/confirm`, {
+                blockId,
+                entityId,
+            });
             setSuccess(true);
             onSuccess?.();
         } catch (e) {

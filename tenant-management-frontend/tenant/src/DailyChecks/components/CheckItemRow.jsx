@@ -31,7 +31,7 @@ export function CheckItemRow({ item, sectionKey, onChange }) {
                             <div className="flex gap-1 mt-1.5 flex-wrap">
                                 {item.images.slice(0, 4).map((img, i) => (
                                     <div key={i} className="relative w-10 h-10 rounded-lg overflow-hidden border border-amber-300 shrink-0">
-                                        <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+                                        <img src={img.dataUrl ?? img.remotePath} alt={img.name} className="w-full h-full object-cover" />
                                         {i === 3 && item.images.length > 4 && (
                                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                                                 <span className="text-white text-xs font-bold">+{item.images.length - 4}</span>
@@ -67,7 +67,7 @@ export function CheckItemRow({ item, sectionKey, onChange }) {
                         {isIssue && (
                             <div className="flex gap-1.5">
                                 <button
-                                    onClick={() => onChange(sectionKey, item._id, { isOk: true, notes: "" })}
+                                    onClick={() => onChange(sectionKey, item._id, { isOk: true, notes: "", images: [] })}
                                     className="flex items-center gap-1 px-2.5 py-2.5 rounded-xl text-xs font-bold bg-white border-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 active:scale-95 min-h-[44px]"
                                     title="Mark as OK"
                                 >

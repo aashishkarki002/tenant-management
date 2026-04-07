@@ -32,8 +32,18 @@ export function ChecklistView({ category, checklist, nepaliInfo, onBack, onSubmi
             ...s,
             items: s.items.map((it) => {
                 const saved = deltaMap[it._id];
-                if (saved) return { ...it, isOk: saved.isOk, notes: saved.notes ?? "" };
-                return { ...it, isOk: status === "PENDING" ? null : true, notes: "" };
+                if (saved) {
+                    return {
+                        ...it,
+                        isOk: saved.isOk,
+                        notes: saved.notes ?? "",
+                        images: (saved.issueImages ?? []).map((remotePath) => ({
+                            remotePath,
+                            name: remotePath.split("/").pop() ?? "image",
+                        })),
+                    };
+                }
+                return { ...it, isOk: status === "PENDING" ? null : true, notes: "", images: [] };
             }),
         }));
     });
@@ -78,11 +88,29 @@ export function ChecklistView({ category, checklist, nepaliInfo, onBack, onSubmi
                 for (const item of sec.items) {
                     const effectiveIsOk = item.isOk === null ? true : item.isOk;
                     if (!effectiveIsOk || item.notes?.trim()) {
+                        const remoteIssueImages = [];
+                        for (const image of item.images ?? []) {
+                            if (image.remotePath) {
+                                remoteIssueImages.push(image.remotePath);
+                                continue;
+                            }
+                            if (!image.file) continue;
+                            const formData = new FormData();
+                            formData.append("file", image.file);
+                            const uploadRes = await api.post(
+                                `/api/checklists/results/${checklist.data._id}/items/${item._id}/images`,
+                                formData
+                            );
+                            if (uploadRes?.data?.success && uploadRes?.data?.data?.remotePath) {
+                                remoteIssueImages.push(uploadRes.data.data.remotePath);
+                            }
+                        }
                         itemResults.push({
                             itemId: item._id,
                             sectionKey: sec.sectionKey,
                             isOk: effectiveIsOk,
                             notes: item.notes?.trim() ?? "",
+                            issueImages: remoteIssueImages,
                         });
                     }
                 }

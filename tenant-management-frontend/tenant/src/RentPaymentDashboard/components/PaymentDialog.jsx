@@ -34,7 +34,7 @@ function resolveId(val) {
 
 function proportionalAllocate(unitBreakdown, totalRupees) {
   const totalEffectiveRemainingPaisa = unitBreakdown.reduce((sum, u) => {
-    const effective = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    const effective = (u.grossRentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
     return sum + Math.max(0, effective - (u.paidAmountPaisa || 0));
   }, 0);
 
@@ -43,13 +43,13 @@ function proportionalAllocate(unitBreakdown, totalRupees) {
   const totalPaymentPaisa = Math.round(totalRupees * 100);
   let remaining = totalPaymentPaisa;
   const unpaidUnits = unitBreakdown.filter((u) => {
-    const eff = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    const eff = (u.grossRentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
     return eff - (u.paidAmountPaisa || 0) > 0;
   });
   const result = [];
 
   unpaidUnits.forEach((u, idx) => {
-    const unitEffectivePaisa = (u.rentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
+    const unitEffectivePaisa = (u.grossRentAmountPaisa || 0) - (u.tdsAmountPaisa || 0);
     const unitRemainingPaisa = unitEffectivePaisa - (u.paidAmountPaisa || 0);
 
     let alloc;
@@ -145,7 +145,7 @@ export const PaymentDialog = ({
       return rent.unitBreakdown.map((ub, index) => {
         const unit = ub.unit;
         const id = resolveId(unit);
-        const effectivePaisa = ub.rentAmountPaisa || 0;
+        const effectivePaisa = ub.grossRentAmountPaisa || 0;
         const rentDue = effectivePaisa / 100;
         const paidSoFar = (ub.paidAmountPaisa || 0) / 100;
         const remaining = rentDue - paidSoFar;

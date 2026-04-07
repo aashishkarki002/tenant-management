@@ -19,6 +19,7 @@ import { usePagination } from "../hooks/usePagination";
 import { useExpenseSummary, useBankAccounts } from "../hooks/useAccounting";
 import { useIsMobile } from "@/hooks/use-mobile";
 import api from "../../../plugins/axios";
+import { NEPALI_MONTH_NAMES, QUARTER_LABELS, toBSDate } from "../utils/nepaliCalendar";
 
 // ─── Tokens ──────────────────────────────────────────────────────────────────
 const T = {
@@ -72,11 +73,6 @@ const fmtK = (v) => {
     return a >= 100000 ? `${(a / 100000).toFixed(1)}L`
         : a >= 1000 ? `${(a / 1000).toFixed(0)}K`
             : String(a);
-};
-
-const Q_LABELS = {
-    1: "Q1 · Shrawan–Ashwin", 2: "Q2 · Kartik–Poush",
-    3: "Q3 · Magh–Chaitra", 4: "Q4 · Baishakh–Ashadh",
 };
 
 const KEYFRAMES = `
@@ -292,13 +288,19 @@ export default function ExpenseBreakDown({
 
     const onSuccess = () => { refetch(); onExpenseAdded?.(); };
 
-    const BS_MONTHS = ["Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin", "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra"];
+    const q = selectedQuarter != null ? Number(selectedQuarter) : null;
     const periodLabel =
-        customStartDate && customEndDate ? `${customStartDate} → ${customEndDate}`
-            : selectedMonth ? `${BS_MONTHS[selectedMonth - 1]}${fiscalYear ? ` ${fiscalYear}` : ""}`
-                : selectedQuarter ? (Q_LABELS[Number(selectedQuarter)] ?? "All")
-                    : fiscalYear ? `FY ${fiscalYear}/${String(fiscalYear + 1).slice(2)}`
-                        : "All Periods";
+        customStartDate && customEndDate
+            ? `${toBSDate(customStartDate)} → ${toBSDate(customEndDate)}`
+            : selectedMonth
+                ? `${NEPALI_MONTH_NAMES[selectedMonth - 1] ?? "—"}${fiscalYear ? ` ${fiscalYear}` : ""}`
+                : q && QUARTER_LABELS[q]
+                    ? `Q${q} · ${QUARTER_LABELS[q]}`
+                    : selectedQuarter
+                        ? "All"
+                        : fiscalYear
+                            ? `FY ${fiscalYear}/${String(fiscalYear + 1).slice(2)}`
+                            : "All Periods";
 
     const exportCSV = () => {
         if (!D) return;
@@ -396,7 +398,7 @@ export default function ExpenseBreakDown({
                     <div className="flex items-center gap-6 flex-wrap">
                         {[
                             { lbl: periodLabel, val: totals.total, color: T.red },
-                            { lbl: compareQuarter ? Q_LABELS[compareQuarter] : "Compare", val: DB.totals.total, color: T.amber },
+                            { lbl: compareQuarter && QUARTER_LABELS[compareQuarter] ? `Q${compareQuarter} · ${QUARTER_LABELS[compareQuarter]}` : "Compare", val: DB.totals.total, color: T.amber },
                         ].map(x => (
                             <div key={x.lbl} className="text-right">
                                 <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-0.5" style={{ color: T.sub }}>{x.lbl}</div>

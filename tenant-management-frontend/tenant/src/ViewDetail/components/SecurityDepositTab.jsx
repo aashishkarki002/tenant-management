@@ -152,10 +152,9 @@ export function SecurityDepositTab({ tenantId, blockId, sdId: sdIdProp }) {
     // ── SD is fully settled — disable button ─────────────────────────────────
     const isFullySettled = sd?.status === "refunded" || sd?.status === "adjusted";
 
-    // ── Remaining paisa ───────────────────────────────────────────────────────
-    // The SD document has a virtual `remainingAmountPaisa` — if not present,
-    // fall back to amountPaisa (nothing settled yet)
-    const remainingPaisa = sd?.remainingAmountPaisa ?? sd?.amountPaisa ?? 0;
+    // ── Backend-provided financials (UI stays dumb) ─────────────────────────
+    const totalPaisa = sd?.amountPaisa ?? 0;
+    const remainingPaisa = sd?.remainingAmountPaisa ?? 0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // RENDER
@@ -209,7 +208,7 @@ export function SecurityDepositTab({ tenantId, blockId, sdId: sdIdProp }) {
                             </button>
                         )}
                         {isFullySettled && (
-                            <span className="sd-settled-badge">✓ Fully Settled</span>
+                            <span className="sd-settled-badge"> Fully Settled</span>
                         )}
                     </div>
 
@@ -217,7 +216,7 @@ export function SecurityDepositTab({ tenantId, blockId, sdId: sdIdProp }) {
                     <div className="sd-amounts">
                         <div className="sd-amount-card">
                             <span className="sd-amount-label">Total Deposit</span>
-                            <span className="sd-amount-value">{formatRs(sd.amountPaisa)}</span>
+                            <span className="sd-amount-value">{formatRs(totalPaisa)}</span>
                         </div>
                         <div className="sd-amount-card highlight">
                             <span className="sd-amount-label">Remaining Balance</span>
@@ -236,7 +235,7 @@ export function SecurityDepositTab({ tenantId, blockId, sdId: sdIdProp }) {
                     </div>
 
                     {/* BALANCE BAR */}
-                    <SdBalanceBar totalPaisa={sd.amountPaisa} remainingPaisa={remainingPaisa} />
+                    <SdBalanceBar totalPaisa={totalPaisa} remainingPaisa={remainingPaisa} />
 
                     {/* CHEQUE / BG DETAILS */}
                     {sd.mode === "cheque" && sd.chequeDetails?.chequeNumber && (

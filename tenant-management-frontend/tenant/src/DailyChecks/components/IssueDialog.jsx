@@ -20,7 +20,14 @@ export function IssueDialog({ item, onConfirm, onCancel }) {
         files.slice(0, remaining).forEach((file) => {
             const reader = new FileReader();
             reader.onload = (ev) => {
-                setImages((prev) => [...prev, { dataUrl: ev.target.result, name: file.name }]);
+                setImages((prev) => [
+                    ...prev,
+                    {
+                        dataUrl: ev.target.result,
+                        name: file.name,
+                        file,
+                    },
+                ]);
             };
             reader.readAsDataURL(file);
         });
@@ -110,7 +117,7 @@ export function IssueDialog({ item, onConfirm, onCancel }) {
                             <div className="grid grid-cols-3 gap-2">
                                 {images.map((img, i) => (
                                     <div key={i} className="relative aspect-square rounded-xl overflow-hidden border-2 border-[var(--color-border)] bg-[var(--color-surface-raised)]">
-                                        <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+                                        <img src={img.dataUrl ?? img.remotePath} alt={img.name} className="w-full h-full object-cover" />
                                         <button
                                             type="button"
                                             onClick={() => removeImage(i)}

@@ -40,7 +40,7 @@ export default function SdRefundHistory({ sdId, onInitiateRefund }) {
   useEffect(() => {
     if (!sdId) return;
     api
-      .get(`/sd-refund/by-sd/${sdId}`)
+      .get(`api/sd-refund/by-sd/${sdId}`)
       .then((r) => setRefunds(r.data.data ?? []))
       .finally(() => setLoading(false));
   }, [sdId]);
@@ -108,7 +108,7 @@ export default function SdRefundHistory({ sdId, onInitiateRefund }) {
                       </div>
                     ))}
                     {r.internalNotes && (
-                      <p className="sdrh-notes">📝 {r.internalNotes}</p>
+                      <p className="sdrh-notes"> {r.internalNotes}</p>
                     )}
                     {r.status === "REVERSED" && (
                       <div className="sdrh-reversed-note">
@@ -127,130 +127,3 @@ export default function SdRefundHistory({ sdId, onInitiateRefund }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ACCOUNTS.JS ADDITION
-// Add this to your existing ACCOUNT_CODES object in accounts.js:
-// ─────────────────────────────────────────────────────────────────────────────
-
-/*
-  // ── Maintenance Revenue (new — must be seeded) ─────────────────────────────
-  //
-  // Credited when SD is withheld for repairs/maintenance.
-  // Distinct from REVENUE ("4000") so maintenance deductions appear
-  // separately in the P&L statement and can be filtered independently.
-  //
-  // Add Account "4300" to your seed script (seedLoanAccounts.js or a new
-  // seedMiscAccounts.js) for every OwnershipEntity:
-  //
-  //   { code: "4300", name: "Maintenance Revenue", type: "REVENUE", entityId: X }
-  //
-  MAINTENANCE_REVENUE: "4300",
-*/
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MODULE README
-// ─────────────────────────────────────────────────────────────────────────────
-
-/*
-╔══════════════════════════════════════════════════════════════════════════════╗
-║          SD REFUND MODULE — SENIOR ARCHITECT REFERENCE                      ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-  FILES TO CREATE:
-  ─────────────────────────────────────────────────────────────────────────────
-  backend/
-    src/modules/sdRefund/
-      SdRefund.Model.js          ← Mongoose model (lineItems, status lifecycle)
-      sdRefund.service.js        ← Business logic (preflight, draft, post, reverse)
-      sdRefund.controller.js     ← Thin HTTP layer + inline routes
-
-    src/modules/ledger/journal-builders/
-      sdRefund.builder.js        ← Produces the canonical journal payload
-
-  frontend/
-    src/ViewDetail/components/
-      SdRefundWizard.jsx          ← 4-step settlement wizard
-      SdRefundHistory.jsx         ← Audit history for the tenant detail tab
-
-  ─────────────────────────────────────────────────────────────────────────────
-  REGISTRATION (app.js):
-  ─────────────────────────────────────────────────────────────────────────────
-    import sdRefundRoutes from "./modules/sdRefund/sdRefund.controller.js";
-    app.use("/api/sd-refund", sdRefundRoutes);
-
-  ─────────────────────────────────────────────────────────────────────────────
-  DB CHANGES (none destructive):
-  ─────────────────────────────────────────────────────────────────────────────
-    1. New collection: sdrefunds
-    2. Add "SdRefund" to Transaction.referenceType enum (if strict enum)
-    3. Seed Account "4300" (Maintenance Revenue) for every OwnershipEntity
-
-  ─────────────────────────────────────────────────────────────────────────────
-  ADJUSTMENT TYPES + DOUBLE ENTRY:
-  ─────────────────────────────────────────────────────────────────────────────
-
-    CASH_REFUND
-      DR  2100  Security Deposit Liability
-      CR  1010* Bank / Cash sub-account          (* resolved by bankAccountCode)
-
-    MAINTENANCE_ADJUSTMENT (deduct → revenue)
-      DR  2100  Security Deposit Liability
-      CR  4300  Maintenance Revenue
-
-    MAINTENANCE_EXPENSE_OFFSET (deduct → contra expense)
-      DR  2100  Security Deposit Liability
-      CR  5000  General Expense                  (reduces expense balance)
-
-    RENT_ADJUSTMENT | CAM_ADJUSTMENT | ELECTRICITY_ADJUSTMENT
-      DR  2100  Security Deposit Liability
-      CR  1200  Accounts Receivable              (clears tenant's open debt)
-
-    COMPOUND: any combination above — one DR per line, balanced journal.
-
-  ─────────────────────────────────────────────────────────────────────────────
-  STATUS LIFECYCLE:
-  ─────────────────────────────────────────────────────────────────────────────
-    DRAFT ──► CONFIRMED ──► POSTED ──► (REVERSED within 24h, super_admin only)
-
-    - DRAFT:    created by wizard step 2 (before user confirms)
-    - POSTED:   confirmAndPost() writes atomic journal + updates SD
-    - REVERSED: reverseJournalEntry() + rollback SD.refundHistory
-
-  ─────────────────────────────────────────────────────────────────────────────
-  API ROUTES:
-  ─────────────────────────────────────────────────────────────────────────────
-    GET  /api/sd-refund/preflight/:sdId          → balance check + open dues
-    GET  /api/sd-refund/by-sd/:sdId              → list all settlements for SD
-    GET  /api/sd-refund/:refundId                → single settlement detail
-    POST /api/sd-refund/draft                    → create DRAFT
-    POST /api/sd-refund/:refundId/confirm        → DRAFT → POSTED (ledger write)
-    POST /api/sd-refund/:refundId/reverse        → POSTED → REVERSED (super_admin)
-
-  ─────────────────────────────────────────────────────────────────────────────
-  INVARIANTS (enforced in service):
-  ─────────────────────────────────────────────────────────────────────────────
-    1. Sum(non-REVERSED SdRefund.totalAmountPaisa) ≤ Sd.amountPaisa
-    2. POSTED SdRefund.transactionId always set
-    3. Every write uses MongoDB session (atomic across Sd + SdRefund + LedgerEntry)
-    4. postJournalEntry idempotency guard: duplicate referenceId → no-op (safe retry)
-    5. All amounts in paisa (integers). Zero and negative amounts rejected.
-    6. MAINTENANCE_REVENUE "4300" must be seeded before first maintenance adjustment.
-
-  ─────────────────────────────────────────────────────────────────────────────
-  FRONTEND USAGE:
-  ─────────────────────────────────────────────────────────────────────────────
-    // In tenant detail page (ViewDetail SecurityDepositsTab):
-    import SdRefundWizard from "./SdRefundWizard.jsx";
-    import SdRefundHistory from "./SdRefundHistory.jsx";
-
-    <SdRefundHistory sdId={sd._id} onInitiateRefund={() => setWizardOpen(true)} />
-    {wizardOpen && (
-      <SdRefundWizard
-        sdId={sd._id}
-        blockId={tenant.block}
-        onSuccess={() => { setWizardOpen(false); refetchSd(); }}
-        onClose={() => setWizardOpen(false)}
-      />
-    )}
-*/

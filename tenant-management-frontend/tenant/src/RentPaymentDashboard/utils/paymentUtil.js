@@ -34,12 +34,12 @@ export const getPaymentAmounts = (rent, cams) => {
   const matchingCam = findMatchingCam(cams, rent);
 
   const tdsAmountPaisa = rent.tdsAmountPaisa || 0;
-  const rentAmountPaisa = rent.rentAmountPaisa || 0;
-  // Effective rent = gross rent minus TDS withheld by tenant.
+  const grossRentAmountPaisa = rent.grossRentAmountPaisa || 0;
+  // Net rent = gross rent minus TDS withheld by tenant.
   // TDS is not paid to the landlord (tenant remits it to govt directly),
   // so the receivable and allocation must be based on the net amount.
-  const effectiveRentPaisa = rentAmountPaisa - tdsAmountPaisa;
-  const rentAmount = effectiveRentPaisa / 100;
+  const netRentAmountPaisa = grossRentAmountPaisa - tdsAmountPaisa;
+  const rentAmount = netRentAmountPaisa / 100;
 
   // ── CAM ───────────────────────────────────────────────────────────────────
   const camAmountPaisa =
@@ -56,7 +56,7 @@ export const getPaymentAmounts = (rent, cams) => {
 
   // ── Totals ────────────────────────────────────────────────────────────────
   const totalDuePaisa =
-    effectiveRentPaisa + camAmountPaisa + remainingLateFeePaisa;
+    netRentAmountPaisa + camAmountPaisa + remainingLateFeePaisa;
   const totalDue = totalDuePaisa / 100;
 
   return {
@@ -67,8 +67,8 @@ export const getPaymentAmounts = (rent, cams) => {
     totalDue,
     // Paisa (for allocation calculations)
     tdsAmountPaisa,
-    rentAmountPaisa,
-    effectiveRentPaisa,
+    grossRentAmountPaisa,
+    netRentAmountPaisa,
     camAmountPaisa,
     lateFeePaisa,
     latePaidAmountPaisa,
