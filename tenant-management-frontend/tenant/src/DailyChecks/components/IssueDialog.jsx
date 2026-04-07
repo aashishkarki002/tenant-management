@@ -1,15 +1,35 @@
 import { useState, useEffect, useRef } from "react";
-import { Flag, Wrench, X } from "lucide-react";
+import { Flag, Wrench, X, ImagePlus, Trash2 } from "lucide-react";
 
 export function IssueDialog({ item, onConfirm, onCancel }) {
     const [description, setDescription] = useState(item.notes ?? "");
+    const [images, setImages] = useState(item.images ?? []);
     const textareaRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         document.body.style.overflow = "hidden";
         const t = setTimeout(() => textareaRef.current?.focus(), 150);
         return () => { document.body.style.overflow = ""; clearTimeout(t); };
     }, []);
+
+    function handleImageSelect(e) {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+        const remaining = 5 - images.length;
+        files.slice(0, remaining).forEach((file) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                setImages((prev) => [...prev, { dataUrl: ev.target.result, name: file.name }]);
+            };
+            reader.readAsDataURL(file);
+        });
+        e.target.value = "";
+    }
+
+    function removeImage(index) {
+        setImages((prev) => prev.filter((_, i) => i !== index));
+    }
 
     return (
         <div
@@ -51,6 +71,69 @@ export function IssueDialog({ item, onConfirm, onCancel }) {
                             className="w-full text-base rounded-2xl px-4 py-3 resize-none border-2 border-[var(--color-border)] bg-[var(--color-surface-raised)] placeholder:text-[var(--color-text-weak)] text-[var(--color-text-body)] focus:outline-none focus:border-red-400 transition-all"
                         />
                     </div>
+
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-sm font-bold text-[var(--color-text-body)]">
+                                Attach Photos
+                                <span className="ml-1.5 font-normal text-[var(--color-text-weak)]">(optional, up to 5)</span>
+                            </label>
+                            {images.length < 5 && (
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold border-2 border-dashed border-[var(--color-border)] text-[var(--color-text-sub)] hover:border-red-300 hover:text-red-500 transition-all"
+                                >
+                                    <ImagePlus className="w-4 h-4" />
+                                    Add Photo
+                                </button>
+                            )}
+                        </div>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={handleImageSelect}
+                        />
+                        {images.length === 0 ? (
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-full flex flex-col items-center justify-center gap-2 py-6 rounded-2xl border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text-weak)] hover:border-red-300 hover:text-red-400 transition-all"
+                            >
+                                <ImagePlus className="w-7 h-7" />
+                                <span className="text-sm">Tap to add a photo of the issue</span>
+                            </button>
+                        ) : (
+                            <div className="grid grid-cols-3 gap-2">
+                                {images.map((img, i) => (
+                                    <div key={i} className="relative aspect-square rounded-xl overflow-hidden border-2 border-[var(--color-border)] bg-[var(--color-surface-raised)]">
+                                        <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+                                        <button
+                                            type="button"
+                                            onClick={() => removeImage(i)}
+                                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center hover:bg-red-600 transition-colors"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5 text-white" />
+                                        </button>
+                                    </div>
+                                ))}
+                                {images.length < 5 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="aspect-square rounded-xl border-2 border-dashed border-[var(--color-border)] flex flex-col items-center justify-center gap-1 text-[var(--color-text-weak)] hover:border-red-300 hover:text-red-400 transition-all"
+                                    >
+                                        <ImagePlus className="w-5 h-5" />
+                                        <span className="text-xs">Add</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
                         <Wrench className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                         <p className="text-sm text-amber-800">A <strong>repair task</strong> will be auto-created once submitted.</p>
@@ -65,7 +148,7 @@ export function IssueDialog({ item, onConfirm, onCancel }) {
                         Cancel
                     </button>
                     <button
-                        onClick={() => { if (description.trim()) onConfirm({ notes: description.trim(), isOk: false }); else textareaRef.current?.focus(); }}
+                        onClick={() => { if (description.trim()) onConfirm({ notes: description.trim(), isOk: false, images }); else textareaRef.current?.focus(); }}
                         disabled={!description.trim()}
                         className={`flex-[2] py-4 rounded-2xl text-white text-base font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${description.trim() ? "bg-red-500 hover:bg-red-600" : "bg-[var(--color-muted)] text-[var(--color-text-weak)] cursor-not-allowed"}`}
                     >
