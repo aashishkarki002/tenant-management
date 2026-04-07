@@ -27,6 +27,20 @@ export function CheckItemRow({ item, sectionKey, onChange }) {
                                 📝 {item.notes}
                             </p>
                         )}
+                        {isIssue && item.images?.length > 0 && (
+                            <div className="flex gap-1 mt-1.5 flex-wrap">
+                                {item.images.slice(0, 4).map((img, i) => (
+                                    <div key={i} className="relative w-10 h-10 rounded-lg overflow-hidden border border-amber-300 shrink-0">
+                                        <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+                                        {i === 3 && item.images.length > 4 && (
+                                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                                <span className="text-white text-xs font-bold">+{item.images.length - 4}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex gap-2 shrink-0">
@@ -76,7 +90,7 @@ export function CheckItemRow({ item, sectionKey, onChange }) {
             {dialogOpen && (
                 <IssueDialog
                     item={item}
-                    onConfirm={({ notes }) => { onChange(sectionKey, item._id, { isOk: false, notes }); setDialogOpen(false); }}
+                    onConfirm={({ notes, images }) => { onChange(sectionKey, item._id, { isOk: false, notes, images }); setDialogOpen(false); }}
                     onCancel={() => setDialogOpen(false)}
                 />
             )}
