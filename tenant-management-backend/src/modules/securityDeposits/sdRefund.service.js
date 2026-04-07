@@ -38,20 +38,11 @@ import { formatNepaliISO } from "../../utils/nepaliDateHelper.js";
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function nowNepali() {
-  const nd = new NepaliDate(new Date());
-  return {
-    nepaliDate: formatNepaliISO(nd),
-    nepaliMonth: nd.getMonth() + 1,
-    nepaliYear: nd.getYear(),
-  };
-}
-
 /**
- * Compute how much of an SD is still unresolved.
- * remainingPaisa = sd.amountPaisa − sum(non-REVERSED refunds).totalAmountPaisa
+ * Compute settled SD amount from authoritative SdRefund records.
+ * settledPaisa = sum(non-REVERSED refunds).totalAmountPaisa
  */
-async function computeRemainingPaisa(sdId, excludeRefundId = null) {
+async function computeSettledPaisa(sdId, excludeRefundId = null) {
   const match = {
     sd: new mongoose.Types.ObjectId(String(sdId)),
     status: { $ne: "REVERSED" },
@@ -99,7 +90,7 @@ export async function preflightSdRefund(sdId) {
     };
   }
 
-  const settledPaisa = await computeRemainingPaisa(sdId);
+  const settledPaisa = await computeSettledPaisa(sdId);
   const remainingPaisa = sd.amountPaisa - settledPaisa;
   const existingRefunds = await SdRefund.find({ sd: sdId })
     .sort({ refundDate: -1 })
@@ -124,7 +115,7 @@ export async function preflightSdRefund(sdId) {
       $group: {
         _id: null,
         totalDuePaisa: {
-          $sum: { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+          $sum: { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
         },
       },
     },
@@ -191,7 +182,7 @@ export async function createSdRefund(payload, adminId, entityId) {
   if (!sd) throw new Error(`SD not found: ${sdId}`);
 
   // Guard: total line items must not exceed remaining SD balance
-  const settledPaisa = await computeRemainingPaisa(sdId);
+  const settledPaisa = await computeSettledPaisa(sdId);
   const remainingPaisa = sd.amountPaisa - settledPaisa;
   const requestedPaisa = lineItems.reduce(
     (s, item) => s + (item.amountPaisa ?? 0),
@@ -275,7 +266,7 @@ export async function confirmAndPost(refundId, adminId, entityId) {
     if (!sd) throw new Error(`SD not found: ${refund.sd}`);
 
     // Re-validate remaining balance (concurrent guard)
-    const settledPaisa = await computeRemainingPaisa(refund.sd, refundId);
+    const settledPaisa = await computeSettledPaisa(refund.sd, refundId);
     const remainingPaisa = sd.amountPaisa - settledPaisa;
 
     if (refund.totalAmountPaisa > remainingPaisa) {
@@ -304,7 +295,7 @@ export async function confirmAndPost(refundId, adminId, entityId) {
       entityId,
     );
 
-    // Update SD document — apply refund history entries
+    // Update SD document audit trail (non-authoritative for balance math)
     const cashRefundLines = refund.lineItems.filter(
       (l) => l.type === "CASH_REFUND",
     );
@@ -321,6 +312,7 @@ export async function confirmAndPost(refundId, adminId, entityId) {
           .filter(Boolean)
           .join("; "),
         cashRefundLines[0]?.paymentMethod ?? "bank_transfer",
+        refund._id,
       );
     }
 
@@ -330,6 +322,7 @@ export async function confirmAndPost(refundId, adminId, entityId) {
     );
     for (const line of adjustmentLines) {
       sd.refundHistory.push({
+        sdRefundId: refund._id,
         amountPaisa: line.amountPaisa,
         refundDate: refund.refundDate,
         refundedBy: adminId,
@@ -407,21 +400,12 @@ export async function reverseSdRefund(refundId, reason, adminId) {
       session,
     );
 
-    // Roll back SD refundHistory entries that this refund created
+    // Roll back SD refundHistory entries created by this SdRefund id
     const sd = await Sd.findById(refund.sd).session(session);
     if (sd) {
-      // Remove history entries added on the refund date by this admin
-      // (best-effort — full fidelity requires referenceId on refundHistory)
-      const refundDateStr = refund.refundDate.toISOString().split("T")[0];
-      sd.refundHistory = sd.refundHistory.filter((h) => {
-        const hDateStr =
-          h.refundDate instanceof Date
-            ? h.refundDate.toISOString().split("T")[0]
-            : "";
-        return !(
-          hDateStr === refundDateStr && String(h.refundedBy) === String(adminId)
-        );
-      });
+      sd.refundHistory = sd.refundHistory.filter(
+        (h) => String(h.sdRefundId) !== String(refund._id),
+      );
       await sd.save({ session });
     }
 

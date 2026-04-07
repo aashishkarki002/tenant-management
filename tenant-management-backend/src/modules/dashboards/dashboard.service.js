@@ -124,7 +124,7 @@ async function buildBuildingPerformance({ npYear, npMonth, nepaliTodayDate }) {
         {
           $group: {
             _id: "$block",
-            target: { $sum: { $divide: ["$rentAmountPaisa", 100] } },
+            target: { $sum: { $divide: ["$grossRentAmountPaisa", 100] } },
             collected: { $sum: { $divide: ["$paidAmountPaisa", 100] } },
           },
         },
@@ -139,7 +139,10 @@ async function buildBuildingPerformance({ npYear, npMonth, nepaliTodayDate }) {
           $match: {
             englishDueDate: { $lt: nepaliTodayDate },
             $expr: {
-              $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+              $gt: [
+                { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+                0,
+              ],
             },
           },
         },
@@ -149,7 +152,7 @@ async function buildBuildingPerformance({ npYear, npMonth, nepaliTodayDate }) {
             overdueAmount: {
               $sum: {
                 $divide: [
-                  { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+                  { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
                   100,
                 ],
               },
@@ -277,7 +280,9 @@ async function buildSafetySummary({ npYear, npMonth, nepaliToday }) {
     if (!d) return { date: dateStr, rate: null, hasIssues: false };
     return {
       date: dateStr,
-      rate: Math.round((d.completedCategories / SAFETY_CATEGORIES.length) * 100),
+      rate: Math.round(
+        (d.completedCategories / SAFETY_CATEGORIES.length) * 100,
+      ),
       hasIssues: d.hasIssues === 1,
     };
   });
@@ -392,10 +397,28 @@ export async function getDashboardStatsData({ adminId } = {}) {
     Rent.aggregate([
       {
         $project: {
-          rentAmountPaisa: 1,
+          netRentPaisa: {
+            $subtract: [
+              "$grossRentAmountPaisa",
+              { $ifNull: ["$tdsAmountPaisa", 0] },
+            ],
+          },
           paidAmountPaisa: 1,
           remaining: {
-            $max: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+            $max: [
+              {
+                $subtract: [
+                  {
+                    $subtract: [
+                      "$grossRentAmountPaisa",
+                      { $ifNull: ["$tdsAmountPaisa", 0] },
+                    ],
+                  },
+                  "$paidAmountPaisa",
+                ],
+              },
+              0,
+            ],
           },
         },
       },
@@ -403,7 +426,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
         $group: {
           _id: null,
           totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
-          totalRentPaisa: { $sum: "$rentAmountPaisa" },
+          totalRentPaisa: { $sum: "$netRentPaisa" }, // ← was grossRentAmountPaisa
           totalOutstandingPaisa: { $sum: "$remaining" },
         },
       },
@@ -415,7 +438,14 @@ export async function getDashboardStatsData({ adminId } = {}) {
       {
         $group: {
           _id: null,
-          billedPaisa: { $sum: "$rentAmountPaisa" },
+          billedPaisa: {
+            $sum: {
+              $subtract: [
+                "$grossRentAmountPaisa",
+                { $ifNull: ["$tdsAmountPaisa", 0] },
+              ],
+            },
+          },
           collectedPaisa: { $sum: "$paidAmountPaisa" },
         },
       },
@@ -455,7 +485,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
     ]),
 
     Revenue.aggregate([
-      { $group: { _id: null, totalRevenue: { $sum: "$amount" } } },
+      { $group: { _id: null, totalRevenue: { $sum: "$amountPaisa" } } },
     ]),
 
     // nepaliYear comes from getNepaliMonthDates() — 1-based, matches Revenue.nepaliYear index
@@ -609,7 +639,10 @@ export async function getDashboardStatsData({ adminId } = {}) {
           nepaliYear: npYear,
           nepaliMonth: npMonth,
           $expr: {
-            $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+            $gt: [
+              { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+              0,
+            ],
           },
         },
       },
@@ -634,7 +667,10 @@ export async function getDashboardStatsData({ adminId } = {}) {
         $match: {
           englishDueDate: { $lt: nepaliTodayDate },
           $expr: {
-            $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+            $gt: [
+              { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+              0,
+            ],
           },
         },
       },
@@ -649,7 +685,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
             $sum: { $cond: [{ $eq: ["$rentFrequency", "quarterly"] }, 1, 0] },
           },
           totalOutstandingPaisa: {
-            $sum: { $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] },
+            $sum: { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
           },
         },
       },
@@ -675,7 +711,10 @@ export async function getDashboardStatsData({ adminId } = {}) {
       $match: {
         englishDueDate: { $lt: nepaliTodayDate },
         $expr: {
-          $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+          $gt: [
+            { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+            0,
+          ],
         },
       },
     },
@@ -707,7 +746,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
           $subtract: [
             {
               $subtract: [
-                "$rentAmountPaisa",
+                "$grossRentAmountPaisa",
                 { $ifNull: ["$tdsAmountPaisa", 0] },
               ],
             },
@@ -732,7 +771,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
                     "$paidAmountPaisa",
                     {
                       $subtract: [
-                        "$rentAmountPaisa",
+                        "$grossRentAmountPaisa",
                         { $ifNull: ["$tdsAmountPaisa", 0] },
                       ],
                     },
@@ -754,7 +793,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
       $project: {
         tenant: 1,
         property: 1,
-        rentAmountPaisa: 1,
+        grossRentAmountPaisa: 1,
         paidAmountPaisa: 1,
         tdsAmountPaisa: 1,
         nepaliDueDate: 1,
@@ -817,7 +856,10 @@ export async function getDashboardStatsData({ adminId } = {}) {
       $match: {
         englishDueDate: { $gte: nepaliTodayDate, $lte: upcomingEndDate },
         $expr: {
-          $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+          $gt: [
+            { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+            0,
+          ],
         },
       },
     },
@@ -849,7 +891,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
           $subtract: [
             {
               $subtract: [
-                "$rentAmountPaisa",
+                "$grossRentAmountPaisa",
                 { $ifNull: ["$tdsAmountPaisa", 0] },
               ],
             },
@@ -871,7 +913,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
                     "$paidAmountPaisa",
                     {
                       $subtract: [
-                        "$rentAmountPaisa",
+                        "$grossRentAmountPaisa",
                         { $ifNull: ["$tdsAmountPaisa", 0] },
                       ],
                     },
@@ -893,7 +935,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
       $project: {
         tenant: 1,
         property: 1,
-        rentAmountPaisa: 1,
+        grossRentAmountPaisa: 1,
         paidAmountPaisa: 1,
         tdsAmountPaisa: 1,
         nepaliDueDate: 1,

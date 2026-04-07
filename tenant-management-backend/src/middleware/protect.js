@@ -33,9 +33,12 @@ export const protect = (req, res, next) => {
 
     // Attach minimal identity — never the full DB document.
     // authorize.js reads req.admin.role for RBAC.
+    // tokenExp (seconds) is forwarded so getMe can return accessTokenExpiresAt
+    // to the client — needed for proactive refresh scheduling in the PWA.
     req.admin = {
       id: decoded.id,
       role: decoded.role,
+      tokenExp: decoded.exp,
     };
 
     next();

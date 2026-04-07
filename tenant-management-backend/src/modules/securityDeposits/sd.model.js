@@ -169,6 +169,11 @@ const sdSchema = new mongoose.Schema(
     // Track refunds
     refundHistory: [
       {
+        sdRefundId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "SdRefund",
+          default: null,
+        },
         amountPaisa: { type: Number, required: true },
         refundDate: { type: Date, required: true },
         refundedBy: {
@@ -220,6 +225,8 @@ sdSchema.virtual("totalAdjustedPaisa").get(function () {
 });
 
 sdSchema.virtual("remainingAmountPaisa").get(function () {
+  // DISPLAY ONLY: uses embedded refundHistory which may lag.
+  // Authoritative remaining should be derived from SdRefund aggregation.
   return this.amountPaisa - this.totalRefundedPaisa - this.totalAdjustedPaisa;
 });
 
@@ -319,6 +326,7 @@ sdSchema.methods.applyRefund = function (
   unitRefunds = null,
   reason = "",
   mode = "bank_transfer",
+  sdRefundId = null,
 ) {
   if (!Number.isInteger(amountPaisa)) {
     throw new Error(`Refund amount must be integer paisa, got: ${amountPaisa}`);
@@ -363,6 +371,7 @@ sdSchema.methods.applyRefund = function (
 
       // Add to refund history
       this.refundHistory.push({
+        sdRefundId,
         amountPaisa: unitAmountPaisa,
         refundDate,
         refundedBy,
@@ -374,6 +383,7 @@ sdSchema.methods.applyRefund = function (
   } else {
     // Legacy refund (no unit breakdown)
     this.refundHistory.push({
+      sdRefundId,
       amountPaisa,
       refundDate,
       refundedBy,

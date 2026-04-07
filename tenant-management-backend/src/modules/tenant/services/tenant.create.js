@@ -5,7 +5,7 @@ import {
   getNepaliMonthDates,
   getRentCycleDates,
 } from "../../../utils/nepaliDateHelper.js";
-import { createNewRent } from "../../rents/rent.service.js";
+import { createNewRent, recordTdsLedgerEntry } from "../../rents/rent.service.js";
 import { ledgerService } from "../../ledger/ledger.service.js";
 import { buildRentChargeJournal } from "../../ledger/journal-builders/index.js";
 import { applyPaymentToBank } from "../../banks/bank.domain.js";
@@ -313,9 +313,17 @@ export async function createTenantTransaction(body, files, adminId, session) {
   );
   const periodTdsPaisa = totals.totalTdsPaisa * rentFrequencyCalc.periodMonths;
 
+  // ── Compute period-level paisa values ────────────────────────────────────
+  // grossRentAmountPaisa = GROSS (= net + TDS) so that:
+  //   RENT_CHARGE journal: DR AR = GROSS, CR Revenue = GROSS
+  //   TDS_WITHHELD journal: DR TDS_Recoverable = TDS, CR AR = TDS
+  //   → net AR = GROSS - TDS = NET (what tenant pays in cash)
+  const grossRentPeriodPaisa = totals.grossMonthlyPaisa * rentFrequencyCalc.periodMonths;
+
   console.log("\n📊 Rent Record Payload:");
-  console.log(`├─ rentAmountPaisa: ${rentFrequencyCalc.chargeAmountPaisa}`);
+  console.log(`├─ grossRentAmountPaisa: ${grossRentPeriodPaisa}`);
   console.log(`├─ tdsAmountPaisa: ${periodTdsPaisa}`);
+  console.log(`├─ netRentAmountPaisa (gross-TDS): ${grossRentPeriodPaisa - periodTdsPaisa}`);
   console.log(`└─ paidAmountPaisa: 0`);
 
   const rentResult = await createNewRent(
@@ -324,7 +332,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
       innerBlock: tenant[0].innerBlock,
       block: tenant[0].block,
       property: tenant[0].property,
-      rentAmountPaisa: rentFrequencyCalc.chargeAmountPaisa,
+      grossRentAmountPaisa: grossRentPeriodPaisa,
       tdsAmountPaisa: periodTdsPaisa,
       paidAmountPaisa: 0,
       rentFrequency: body.rentPaymentFrequency,
@@ -346,7 +354,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
       useUnitBreakdown: true,
       unitBreakdown: calculatedUnits.map((u) => ({
         unit: u.unitId,
-        rentAmountPaisa: u.rentMonthlyPaisa * rentFrequencyCalc.periodMonths,
+        grossRentAmountPaisa: u.grossMonthlyPaisa * rentFrequencyCalc.periodMonths,
         tdsAmountPaisa: u.totalTdsPaisa * rentFrequencyCalc.periodMonths,
         paidAmountPaisa: 0,
       })),
@@ -355,12 +363,17 @@ export async function createTenantTransaction(body, files, adminId, session) {
   );
   if (!rentResult.success) throw new Error(rentResult.message);
 
-  // ── Journal 1: Rent charge ─────────────────────────────────────────────────
+  // ── Journal 1: Rent charge — DR AR (GROSS) / CR Revenue (GROSS) ─────────────
   await ledgerService.postJournalEntry(
     buildRentChargeJournal(rentResult.data),
     session,
     entityId,
   );
+
+  // ── Journal 1b: TDS withheld — DR TDS_Recoverable / CR AR ─────────────────
+  // Reduces the tenant's net AR to the cash amount they actually owe.
+  // Skipped automatically when tdsAmountPaisa === 0.
+  await recordTdsLedgerEntry(rentResult.data, session, entityId);
 
   const camResult = await createCam(
     {
@@ -496,11 +509,15 @@ export async function createTenantTransaction(body, files, adminId, session) {
   console.log("│");
   console.log("├─ 📝 RENT RECORD (Period Values):");
   console.log(
-    "│  ├─ Rent Charge:",
-    formatMoney(rentFrequencyCalc.chargeAmountPaisa),
+    "│  ├─ Gross Rent Charge (grossRentAmountPaisa):",
+    formatMoney(grossRentPeriodPaisa),
   );
-  console.log("│  ├─ Period:", `${rentFrequencyCalc.periodMonths} month(s)`);
-  console.log("│  └─ TDS:", formatMoney(periodTdsPaisa));
+  console.log("│  ├─ TDS (tdsAmountPaisa):", formatMoney(periodTdsPaisa));
+  console.log(
+    "│  ├─ Net Rent (effectiveRent = gross-TDS):",
+    formatMoney(grossRentPeriodPaisa - periodTdsPaisa),
+  );
+  console.log("│  └─ Period:", `${rentFrequencyCalc.periodMonths} month(s)`);
   console.log("│");
   console.log("└─ 💾 Stored Paisa Values:");
   console.log(
@@ -509,13 +526,13 @@ export async function createTenantTransaction(body, files, adminId, session) {
     "(monthly)",
   );
   console.log(
-    "   ├─ Rent.rentAmountPaisa:",
-    rentFrequencyCalc.chargeAmountPaisa,
+    "   ├─ Rent.grossRentAmountPaisa:",
+    grossRentPeriodPaisa,
     `(${rentFrequencyCalc.periodMonths} months)`,
   );
   console.log(
-    "   └─ Calculation:",
-    `${totals.rentMonthlyPaisa} × ${rentFrequencyCalc.periodMonths} = ${rentFrequencyCalc.chargeAmountPaisa}`,
+    "   └─ Gross Calculation:",
+    `${totals.grossMonthlyPaisa} × ${rentFrequencyCalc.periodMonths} = ${grossRentPeriodPaisa}`,
   );
   console.log("=".repeat(60) + "\n");
 

@@ -36,13 +36,27 @@ const rentSchema = new mongoose.Schema(
     },
 
     // ── Primary financial fields (INTEGER PAISA) ─────────────────────────
-    rentAmountPaisa: {
+    //
+    // NAMING CONVENTION — important:
+    //   grossRentAmountPaisa = GROSS rent (net + TDS). Used as the AR debit in
+    //                          the RENT_CHARGE journal. Always ≥ tdsAmountPaisa.
+    //   tdsAmountPaisa       = TDS withheld by tenant and remitted to government.
+    //   netRentAmountPaisa (virtual) = grossRentAmountPaisa − tdsAmountPaisa
+    //                        = NET cash the tenant pays to the landlord.
+    //   paidAmountPaisa      = cash actually received (tracks against netRentAmountPaisa).
+    //
+    // Ledger flow:
+    //   RENT_CHARGE:   DR AR = GROSS,  CR Revenue = GROSS
+    //   TDS_WITHHELD:  DR TDS_Recoverable = TDS, CR AR = TDS  → net AR = NET
+    //   PAYMENT:       DR Bank = NET,  CR AR = NET             → AR = 0
+    //
+    grossRentAmountPaisa: {
       type: Number,
       required: true,
       min: 0,
       validate: {
         validator: Number.isInteger,
-        message: "rentAmountPaisa must be an integer",
+        message: "grossRentAmountPaisa must be an integer",
       },
     },
     paidAmountPaisa: {
@@ -189,12 +203,12 @@ const rentSchema = new mongoose.Schema(
           ref: "Unit",
           required: true,
         },
-        rentAmountPaisa: {
+        grossRentAmountPaisa: {
           type: Number,
           required: true,
           validate: {
             validator: Number.isInteger,
-            message: "rentAmountPaisa must be an integer",
+            message: "grossRentAmountPaisa must be an integer",
           },
         },
         tdsAmountPaisa: {
@@ -230,16 +244,16 @@ const rentSchema = new mongoose.Schema(
 
 // ── Virtuals ─────────────────────────────────────────────────────────────────
 
-rentSchema.virtual("effectiveRentPaisa").get(function () {
-  return this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
+rentSchema.virtual("netRentAmountPaisa").get(function () {
+  return this.grossRentAmountPaisa - (this.tdsAmountPaisa || 0);
 });
-rentSchema.virtual("effectiveRent").get(function () {
-  return paisaToRupees(this.effectiveRentPaisa);
+rentSchema.virtual("netRentAmount").get(function () {
+  return paisaToRupees(this.netRentAmountPaisa);
 });
 
 rentSchema.virtual("remainingAmountPaisa").get(function () {
   return (
-    this.rentAmountPaisa - (this.tdsAmountPaisa || 0) - this.paidAmountPaisa
+    this.grossRentAmountPaisa - (this.tdsAmountPaisa || 0) - this.paidAmountPaisa
   );
 });
 rentSchema.virtual("remainingAmount").get(function () {
@@ -263,8 +277,8 @@ rentSchema.virtual("totalDue").get(function () {
   return paisaToRupees(this.totalDuePaisa);
 });
 
-rentSchema.virtual("rentAmountFormatted").get(function () {
-  return formatMoney(this.rentAmountPaisa);
+rentSchema.virtual("grossRentAmountFormatted").get(function () {
+  return formatMoney(this.grossRentAmountPaisa);
 });
 rentSchema.virtual("tdsAmountFormatted").get(function () {
   return formatMoney(this.tdsAmountPaisa);
@@ -280,7 +294,7 @@ rentSchema.set("toObject", { virtuals: true, getters: false });
 // BUG-10 FIX: Round paisa values BEFORE validation runs
 rentSchema.pre("validate", function () {
   for (const field of [
-    "rentAmountPaisa",
+    "grossRentAmountPaisa",
     "tdsAmountPaisa",
     "paidAmountPaisa",
     "lateFeePaisa",
@@ -295,7 +309,7 @@ rentSchema.pre("validate", function () {
   if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
     this.unitBreakdown.forEach((ub) => {
       for (const field of [
-        "rentAmountPaisa",
+        "grossRentAmountPaisa",
         "tdsAmountPaisa",
         "paidAmountPaisa",
       ]) {
@@ -312,8 +326,8 @@ rentSchema.pre("validate", function () {
 rentSchema.pre("save", function () {
   // Sync root fields from unit breakdown
   if (this.useUnitBreakdown && this.unitBreakdown?.length > 0) {
-    this.rentAmountPaisa = this.unitBreakdown.reduce(
-      (s, u) => s + (u.rentAmountPaisa || 0),
+    this.grossRentAmountPaisa = this.unitBreakdown.reduce(
+      (s, u) => s + (u.grossRentAmountPaisa || 0),
       0,
     );
     this.paidAmountPaisa = this.unitBreakdown.reduce(
@@ -326,7 +340,7 @@ rentSchema.pre("save", function () {
     );
 
     this.unitBreakdown.forEach((ub) => {
-      const effectiveUnit = ub.rentAmountPaisa - (ub.tdsAmountPaisa || 0);
+      const effectiveUnit = ub.grossRentAmountPaisa - (ub.tdsAmountPaisa || 0);
       if (ub.paidAmountPaisa === 0) ub.status = "pending";
       else if (ub.paidAmountPaisa >= effectiveUnit) ub.status = "paid";
       else ub.status = "partially_paid";
@@ -334,7 +348,7 @@ rentSchema.pre("save", function () {
   }
 
   // BUG-04 FIX: Calculate rent status but handle 'overdue' carefully
-  const effectiveRentPaisa = this.rentAmountPaisa - (this.tdsAmountPaisa || 0);
+  const effectiveRentPaisa = this.grossRentAmountPaisa - (this.tdsAmountPaisa || 0);
   const remainingRentPaisa = effectiveRentPaisa - this.paidAmountPaisa;
   const remainingLateFee =
     (this.lateFeePaisa || 0) - (this.latePaidAmountPaisa || 0);
@@ -444,18 +458,18 @@ rentSchema.methods.getUnitPaymentStatus = function (unitId) {
   );
   if (!ub) return null;
 
-  const effective = ub.rentAmountPaisa - (ub.tdsAmountPaisa || 0);
+  const effective = ub.grossRentAmountPaisa - (ub.tdsAmountPaisa || 0);
   const remaining = effective - ub.paidAmountPaisa;
 
   return {
     status: ub.status,
     paidAmountPaisa: ub.paidAmountPaisa,
     remainingAmountPaisa: remaining,
-    rentAmountPaisa: ub.rentAmountPaisa,
+    grossRentAmountPaisa: ub.grossRentAmountPaisa,
     tdsAmountPaisa: ub.tdsAmountPaisa,
     paidAmount: paisaToRupees(ub.paidAmountPaisa),
     remainingAmount: paisaToRupees(remaining),
-    rentAmount: paisaToRupees(ub.rentAmountPaisa),
+    grossRentAmount: paisaToRupees(ub.grossRentAmountPaisa),
     tdsAmount: paisaToRupees(ub.tdsAmountPaisa),
   };
 };
@@ -463,9 +477,9 @@ rentSchema.methods.getUnitPaymentStatus = function (unitId) {
 rentSchema.methods.getFinancialSummary = function () {
   return {
     paisa: {
-      rentAmount: this.rentAmountPaisa,
+      grossRentAmount: this.grossRentAmountPaisa,
       tdsAmount: this.tdsAmountPaisa,
-      effectiveRent: this.effectiveRentPaisa,
+      netRentAmount: this.netRentAmountPaisa,
       paidAmount: this.paidAmountPaisa,
       remainingAmount: this.remainingAmountPaisa,
       lateFee: this.lateFeePaisa || 0,
@@ -474,9 +488,9 @@ rentSchema.methods.getFinancialSummary = function () {
       totalDue: this.totalDuePaisa,
     },
     formatted: {
-      rentAmount: formatMoney(this.rentAmountPaisa),
+      grossRentAmount: formatMoney(this.grossRentAmountPaisa),
       tdsAmount: formatMoney(this.tdsAmountPaisa),
-      effectiveRent: formatMoney(this.effectiveRentPaisa),
+      netRentAmount: formatMoney(this.netRentAmountPaisa),
       paidAmount: formatMoney(this.paidAmountPaisa),
       remainingAmount: formatMoney(this.remainingAmountPaisa),
       lateFee: formatMoney(this.lateFeePaisa || 0),
@@ -510,7 +524,7 @@ rentSchema.statics.getRentsDueWithinEnglishPeriod = async function (
       $match: {
         englishDueDate: { $gte: startDate, $lte: endDate },
         $expr: {
-          $gt: [{ $subtract: ["$rentAmountPaisa", "$paidAmountPaisa"] }, 0],
+          $gt: [{ $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] }, 0],
         },
       },
     },
@@ -542,7 +556,7 @@ rentSchema.statics.getRentsDueWithinEnglishPeriod = async function (
           $subtract: [
             {
               $subtract: [
-                "$rentAmountPaisa",
+                "$grossRentAmountPaisa",
                 { $ifNull: ["$tdsAmountPaisa", 0] },
               ],
             },
@@ -555,7 +569,7 @@ rentSchema.statics.getRentsDueWithinEnglishPeriod = async function (
       $project: {
         tenant: 1,
         property: 1,
-        rentAmountPaisa: 1,
+        grossRentAmountPaisa: 1,
         paidAmountPaisa: 1,
         tdsAmountPaisa: 1,
         englishDueDate: 1,

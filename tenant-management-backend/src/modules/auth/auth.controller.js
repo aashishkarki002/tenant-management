@@ -395,6 +395,7 @@ export const loginUser = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Login successful",
+      accessTokenExpiresAt: Date.now() + ACCESS_MAX_AGE,
       user: {
         id: result.admin._id,
         name: result.admin.name,
@@ -466,7 +467,11 @@ export const changePassword = async (req, res) => {
       cookieOptions(ACCESS_MAX_AGE),
     );
 
-    return res.status(200).json({ success: true, message: result.message });
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      accessTokenExpiresAt: Date.now() + ACCESS_MAX_AGE,
+    });
   } catch (error) {
     // FIX: Replaced `throw new Error(...)` with a proper response.
     // Throwing inside an async Express handler swallows the error or
@@ -565,6 +570,7 @@ export const refreshToken = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Token refreshed",
+      accessTokenExpiresAt: Date.now() + ACCESS_MAX_AGE,
     });
   } catch (error) {
     console.error("Refresh token error:", error);
@@ -596,6 +602,9 @@ export const getMe = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      // accessTokenExpiresAt (ms) lets the PWA frontend schedule proactive
+      // token refresh without having to read the httpOnly cookie.
+      accessTokenExpiresAt: req.admin.tokenExp * 1000,
       admin: {
         id: admin._id,
         name: admin.name,

@@ -161,10 +161,10 @@ export async function getRentSummary(req, res) {
         $group: {
           _id: null,
           totalCollectedPaisa: { $sum: "$paidAmountPaisa" },
-          totalDuePaisa: { $sum: "$rentAmountPaisa" },
+          totalDuePaisa: { $sum: "$grossRentAmountPaisa" },
           totalPendingPaisa: {
             $sum: {
-              $cond: [{ $eq: ["$status", "pending"] }, "$rentAmountPaisa", 0],
+              $cond: [{ $eq: ["$status", "pending"] }, "$grossRentAmountPaisa", 0],
             },
           },
         },

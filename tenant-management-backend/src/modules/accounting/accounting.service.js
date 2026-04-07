@@ -70,6 +70,53 @@ function toBS(date) {
   }
 }
 
+/**
+ * BS label for a Revenue row: prefer denormalized nepali* (authoritative billing month),
+ * else derive from englishDate. Mirrors getExpenseBreakdownSummary transaction logic.
+ */
+function revenueTransactionBsDate(r) {
+  const eng = r.englishDate ?? r.createdAt;
+  if (r.nepaliYear && r.nepaliMonth) {
+    const m0 = (r.nepaliMonth - 1) % 12;
+    const name = NEPALI_MONTH_NAMES[m0];
+    if (r.nepaliDate && /^\d{4}-\d{2}-\d{2}$/.test(r.nepaliDate)) {
+      const day = parseInt(String(r.nepaliDate).split("-")[2], 10);
+      if (day >= 1 && day <= 32) return `${day} ${name} ${r.nepaliYear}`;
+    }
+    return `${name} ${r.nepaliYear}`;
+  }
+  const bs = toBS(new Date(eng));
+  if (!bs) return "—";
+  const d = new NepaliDate(eng instanceof Date ? eng : new Date(eng)).getDate();
+  return `${d} ${NEPALI_MONTH_NAMES[bs.month0]} ${bs.year}`;
+}
+
+function addRevenueTrendBucket(r, trendMap) {
+  let key;
+  let label;
+  if (r.nepaliYear && r.nepaliMonth) {
+    const month0 = (r.nepaliMonth - 1) % 12;
+    key = `${r.nepaliYear}-${String(r.nepaliMonth).padStart(2, "0")}`;
+    label = NEPALI_MONTH_NAMES[month0];
+  } else {
+    const bs = toBS(new Date(r.englishDate ?? r.createdAt));
+    if (!bs) return;
+    key = `${bs.year}-${String(bs.month0 + 1).padStart(2, "0")}`;
+    label = NEPALI_MONTH_NAMES[bs.month0];
+  }
+  if (!trendMap.has(key)) {
+    trendMap.set(key, {
+      key,
+      label,
+      amountPaisa: 0,
+      count: 0,
+    });
+  }
+  const entry = trendMap.get(key);
+  entry.amountPaisa += r.amountPaisa || 0;
+  entry.count += 1;
+}
+
 function bsMonthToDateRange(year, month0) {
   const firstNp = new NepaliDate(year, month0, 1);
   const lastDay = NepaliDate.getDaysOfMonth(year, month0);
@@ -546,7 +593,7 @@ export async function getRevenueBreakdownSummary({
       },
     },
     { $unwind: { path: "$tenant", preserveNullAndEmptyArrays: true } },
-    { $sort: { date: -1 } },
+    { $sort: { englishDate: -1 } },
   ]);
 
   if (!revenues.length) {
@@ -599,24 +646,9 @@ export async function getRevenueBreakdownSummary({
     }))
     .sort((a, b) => b.amount - a.amount);
 
-  // ── Monthly trend ─────────────────────────────────────────────────────────
+  // ── Monthly trend (prefer stored nepaliYear/nepaliMonth — same as Expense breakdown)
   const trendMap = new Map();
-  revenues.forEach((r) => {
-    const bs = toBS(new Date(r.date));
-    if (!bs) return;
-    const key = `${bs.year}-${String(bs.month0 + 1).padStart(2, "0")}`;
-    if (!trendMap.has(key)) {
-      trendMap.set(key, {
-        key,
-        label: NEPALI_MONTH_NAMES[bs.month0],
-        amountPaisa: 0,
-        count: 0,
-      });
-    }
-    const entry = trendMap.get(key);
-    entry.amountPaisa += r.amountPaisa || 0;
-    entry.count += 1;
-  });
+  revenues.forEach((r) => addRevenueTrendBucket(r, trendMap));
 
   const trend = [...trendMap.values()]
     .sort((a, b) => a.key.localeCompare(b.key))
@@ -750,10 +782,7 @@ export async function getRevenueBreakdownSummary({
 
   // ── Transactions ──────────────────────────────────────────────────────────
   const transactions = revenues.map((r) => {
-    const bs = toBS(new Date(r.date));
-    const bsDate = bs
-      ? `${new NepaliDate(r.date instanceof Date ? r.date : new Date(r.date)).getDate()} ${NEPALI_MONTH_NAMES[bs.month0]} ${bs.year}`
-      : "—";
+    const bsDate = revenueTransactionBsDate(r);
 
     return {
       id: String(r._id),

@@ -185,7 +185,7 @@ export async function createPayment(paymentData) {
             ub.paidAmountPaisa = (ub.paidAmountPaisa || 0) + unitAmt;
             ub.status =
               ub.paidAmountPaisa >=
-              ub.rentAmountPaisa - (ub.tdsAmountPaisa || 0)
+              ub.grossRentAmountPaisa - (ub.tdsAmountPaisa || 0)
                 ? "paid"
                 : "partially_paid";
           }

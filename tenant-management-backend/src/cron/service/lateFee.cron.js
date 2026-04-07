@@ -261,7 +261,7 @@ async function processOneRent(rent, policy, adminId) {
   }
 
   // ── Outstanding rent balance ────────────────────────────────────────────
-  const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
+  const effectiveRentPaisa = rent.grossRentAmountPaisa - (rent.tdsAmountPaisa || 0);
   const overdueAmountPaisa = Math.max(
     0,
     effectiveRentPaisa - rent.paidAmountPaisa,

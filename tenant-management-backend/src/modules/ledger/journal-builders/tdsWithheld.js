@@ -14,8 +14,8 @@
  *   CR  Accounts Receivable (1200) ASSET ↓  — tenant's net obligation reduced
  *
  * Net AR impact:
- *   After rent charge:   AR = rentAmountPaisa (gross)
- *   After TDS entry:     AR = rentAmountPaisa − tdsAmountPaisa (net payable)
+ *   After rent charge:   AR = grossRentAmountPaisa
+ *   After TDS entry:     AR = grossRentAmountPaisa − tdsAmountPaisa (= netRentAmountPaisa)
  *   After payment:       AR = 0
  *
  * This entry is posted once per rent document, guarded by rent.tdsRecordedInLedger.

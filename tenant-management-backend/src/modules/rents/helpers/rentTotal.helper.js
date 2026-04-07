@@ -16,9 +16,9 @@
 /**
  * @param {Object} rent  Mongoose Rent document or plain object
  * @returns {{
- *   rentAmountPaisa:        number,   gross rent (before TDS)
+ *   grossRentAmountPaisa:   number,   gross rent (before TDS)
  *   tdsAmountPaisa:         number,   TDS withheld by tenant → govt
- *   effectiveRentPaisa:     number,   what landlord actually receives (gross − TDS)
+ *   netRentAmountPaisa:     number,   what landlord actually receives (gross − TDS)
  *   paidAmountPaisa:        number,   rent principal received so far
  *   remainingRentPaisa:     number,   rent still owed
  *   lateFeePaisa:           number,   total late fee charged
@@ -44,7 +44,7 @@ export function calculateRentTotals(rent) {
     rent.unitBreakdown.length > 0
   ) {
     rentAmountPaisa = rent.unitBreakdown.reduce(
-      (s, u) => s + (Math.round(Number(u.rentAmountPaisa)) || 0),
+      (s, u) => s + (Math.round(Number(u.grossRentAmountPaisa)) || 0),
       0,
     );
     tdsAmountPaisa = rent.unitBreakdown.reduce(
@@ -63,7 +63,7 @@ export function calculateRentTotals(rent) {
       }
       return Math.round(Number(rent[field])) || 0;
     };
-    rentAmountPaisa = getRaw("rentAmountPaisa");
+    rentAmountPaisa = getRaw("grossRentAmountPaisa");
     tdsAmountPaisa = getRaw("tdsAmountPaisa");
     paidAmountPaisa = getRaw("paidAmountPaisa");
   }
@@ -80,15 +80,15 @@ export function calculateRentTotals(rent) {
   const latePaidAmountPaisa = getRawRoot("latePaidAmountPaisa");
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const effectiveRentPaisa = rentAmountPaisa - tdsAmountPaisa;
-  const remainingRentPaisa = effectiveRentPaisa - paidAmountPaisa;
+  const netRentAmountPaisa = rentAmountPaisa - tdsAmountPaisa;
+  const remainingRentPaisa = netRentAmountPaisa - paidAmountPaisa;
   const remainingLateFeePaisa = Math.max(0, lateFeePaisa - latePaidAmountPaisa);
   const totalDuePaisa = Math.max(0, remainingRentPaisa) + remainingLateFeePaisa;
 
   return {
-    rentAmountPaisa,
+    grossRentAmountPaisa: rentAmountPaisa,
     tdsAmountPaisa,
-    effectiveRentPaisa,
+    netRentAmountPaisa,
     paidAmountPaisa,
     remainingRentPaisa,
     lateFeePaisa,

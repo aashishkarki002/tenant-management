@@ -103,9 +103,9 @@ export async function getRentsService(filters = {}) {
         return {
           ...rentObj,
           totals: {
-            rentAmountPaisa: t.rentAmountPaisa,
+            grossRentAmountPaisa: t.grossRentAmountPaisa,
             tdsAmountPaisa: t.tdsAmountPaisa,
-            effectiveRentPaisa: t.effectiveRentPaisa,
+            netRentAmountPaisa: t.netRentAmountPaisa,
             paidAmountPaisa: t.paidAmountPaisa,
             remainingAmountPaisa: t.remainingAmountPaisa,
             lateFeePaisa: t.lateFeePaisa,
@@ -114,9 +114,9 @@ export async function getRentsService(filters = {}) {
             carryForwardFromRentId: t.carryForwardFromRentId,
           },
           formatted: {
-            rentAmount: formatMoney(t.rentAmountPaisa),
+            grossRentAmount: formatMoney(t.grossRentAmountPaisa),
             tdsAmount: formatMoney(t.tdsAmountPaisa),
-            effectiveRent: formatMoney(t.effectiveRentPaisa),
+            netRentAmount: formatMoney(t.netRentAmountPaisa),
             paidAmount: formatMoney(t.paidAmountPaisa),
             remainingAmount: formatMoney(t.remainingAmountPaisa),
             lateFee: formatMoney(t.lateFeePaisa),
@@ -159,18 +159,18 @@ export async function getRentByIdService(rentId) {
       rent: {
         ...rentObj,
         totals: {
-          rentAmountPaisa: t.rentAmountPaisa,
+          grossRentAmountPaisa: t.grossRentAmountPaisa,
           tdsAmountPaisa: t.tdsAmountPaisa,
-          effectiveRentPaisa: t.effectiveRentPaisa,
+          netRentAmountPaisa: t.netRentAmountPaisa,
           paidAmountPaisa: t.paidAmountPaisa,
           remainingAmountPaisa: t.remainingAmountPaisa,
           lateFeePaisa: t.lateFeePaisa,
           totalDuePaisa: t.totalDuePaisa,
         },
         formatted: {
-          rentAmount: formatMoney(t.rentAmountPaisa),
+          grossRentAmount: formatMoney(t.grossRentAmountPaisa),
           tdsAmount: formatMoney(t.tdsAmountPaisa),
-          effectiveRent: formatMoney(t.effectiveRentPaisa),
+          netRentAmount: formatMoney(t.netRentAmountPaisa),
           paidAmount: formatMoney(t.paidAmountPaisa),
           remainingAmount: formatMoney(t.remainingAmountPaisa),
           lateFee: formatMoney(t.lateFeePaisa),
@@ -270,9 +270,9 @@ export async function updateRentService(rentId, body) {
  */
 export async function createNewRent(rentData, session = null, entityId = null) {
   try {
-    if (!Number.isInteger(rentData.rentAmountPaisa))
+    if (!Number.isInteger(rentData.grossRentAmountPaisa))
       throw new Error(
-        `rentAmountPaisa must be integer, got: ${rentData.rentAmountPaisa}`,
+        `grossRentAmountPaisa must be integer, got: ${rentData.grossRentAmountPaisa}`,
       );
     if (!Number.isInteger(rentData.tdsAmountPaisa))
       throw new Error(
@@ -284,9 +284,9 @@ export async function createNewRent(rentData, session = null, entityId = null) {
 
     if (rentData.unitBreakdown?.length > 0) {
       rentData.unitBreakdown = rentData.unitBreakdown.map((ub) => {
-        if (!Number.isInteger(ub.rentAmountPaisa))
+        if (!Number.isInteger(ub.grossRentAmountPaisa))
           throw new Error(
-            `Unit rentAmountPaisa must be integer, got: ${ub.rentAmountPaisa}`,
+            `Unit grossRentAmountPaisa must be integer, got: ${ub.grossRentAmountPaisa}`,
           );
         return {
           ...ub,
@@ -514,16 +514,17 @@ export async function handleMonthlyRents(adminId) {
         status: "overdue",
       }
         .select(
-          "tenant rentAmountPaisa tdsAmountPaisa lateFeePaisa latePaidAmountPaisa ",
+          "tenant grossRentAmountPaisa tdsAmountPaisa paidAmountPaisa lateFeePaisa latePaidAmountPaisa",
         )
         .lean(),
     );
     const overdueRentsMap = new Map();
     for (const r of overdueRents) {
       const tId = r.tenant.toString();
-      const effectivePaisa = r.rentAmountPaisa;
-      const remainingPaisa = effectivePaisa - r.latePaidAmountPaisa;
-      const lateFeeRemainingPaisa = r.lateFeePaisa - r.latePaidAmountPaisa;
+      const effectivePaisa = r.grossRentAmountPaisa - (r.tdsAmountPaisa || 0);
+      const remainingPaisa = effectivePaisa - (r.paidAmountPaisa || 0);
+      const lateFeeRemainingPaisa =
+        (r.lateFeePaisa || 0) - (r.latePaidAmountPaisa || 0);
       const prev = carryForwardMap.get(tId) || 0;
       carryForwardMap.set(
         tId,
@@ -532,31 +533,51 @@ export async function handleMonthlyRents(adminId) {
     }
 
     // Step 5: Build rent documents (unchanged shape)
-    const rentsToInsert = tenantsToProcess.map((tenant) => ({
-      tenant: tenant._id,
-      innerBlock: tenant.innerBlock,
-      block: tenant.block,
-      property: tenant.property,
-      nepaliMonth: npMonth,
-      nepaliYear: npYear,
-      nepaliDate: firstDayNepali,
-      rentAmountPaisa:
-        tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0),
-      tdsAmountPaisa: tenant.tdsPaisa || rupeesToPaisa(tenant.tds || 0),
-      paidAmountPaisa: 0,
-      lateFeePaisa: 0,
-      units: tenant.units,
-      createdBy,
-      nepaliDueDate: lastDayNepali,
-      englishDueDate,
-      englishMonth,
-      englishYear,
-      status: "pending",
-      rentFrequency: tenant.rentPaymentFrequency || "monthly",
-      carryForwardBalancePaisa: carryForwardMap.get(tenant._id.toString()) || 0,
-      carryForwardFromRentId:
-        overdueRentsMap.get(tenant._id.toString()) || null,
-    }));
+    const rentsToInsert = tenantsToProcess.map((tenant) => {
+      // grossRentAmountPaisa must be GROSS (= net + TDS) so that:
+      //   RENT_CHARGE  → DR AR = GROSS
+      //   TDS_WITHHELD → CR AR = TDS  →  net AR = GROSS - TDS = NET cash owed
+      //
+      // grossAmountPaisa is the stored gross monthly rent on the Tenant document.
+      // For tenants created before this fix, grossAmountPaisa may be 0; in that
+      // case fall back to totalRentPaisa (NET) with tdsAmountPaisa = 0 — the AR
+      // will be slightly overstated but won't cause a negative balance.
+      //
+      // tdsAmountPaisa: derive from gross - net (NOT from tdsPaisa which is a
+      // per-sqft rate, not the total monthly TDS amount).
+      const grossPaisa = tenant.grossAmountPaisa || 0;
+      const netPaisa =
+        tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0);
+      const grossRentAmountPaisa = grossPaisa || netPaisa;
+      const tdsAmountPaisa =
+        grossPaisa > 0 ? Math.max(0, grossPaisa - netPaisa) : 0;
+
+      return {
+        tenant: tenant._id,
+        innerBlock: tenant.innerBlock,
+        block: tenant.block,
+        property: tenant.property,
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate: firstDayNepali,
+        grossRentAmountPaisa,
+        tdsAmountPaisa,
+        paidAmountPaisa: 0,
+        lateFeePaisa: 0,
+        units: tenant.units,
+        createdBy,
+        nepaliDueDate: lastDayNepali,
+        englishDueDate,
+        englishMonth,
+        englishYear,
+        status: "pending",
+        rentFrequency: tenant.rentPaymentFrequency || "monthly",
+        carryForwardBalancePaisa:
+          carryForwardMap.get(tenant._id.toString()) || 0,
+        carryForwardFromRentId:
+          overdueRentsMap.get(tenant._id.toString()) || null,
+      };
+    });
 
     // Step 6: Bulk insert (unchanged)
     const insertedRents = await Rent.insertMany(rentsToInsert);

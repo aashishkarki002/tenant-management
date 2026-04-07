@@ -5,7 +5,7 @@
  * All monetary values are INTEGER PAISA throughout.
  *
  * Late fee design:
- *   - lateFeePaisa is a SEPARATE receivable from rentAmountPaisa
+ *   - lateFeePaisa is a SEPARATE receivable from grossRentAmountPaisa
  *   - paidAmountPaisa tracks rent principal payments only
  *   - latePaidAmountPaisa tracks late fee payments only
  *   - Partial late fee payment is not supported (full or nothing)
@@ -27,7 +27,7 @@ export function applyPaymentToRent(rent, amountPaisa, paymentDate, receivedBy) {
   rent.lastPaidBy = receivedBy;
 
   const effectiveAmountPaisa =
-    rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
+    rent.grossRentAmountPaisa - (rent.tdsAmountPaisa || 0);
 
   if (rent.paidAmountPaisa === 0) rent.status = "pending";
   else if (rent.paidAmountPaisa >= effectiveAmountPaisa) rent.status = "paid";
@@ -139,14 +139,14 @@ export function applyPaymentWithUnitBreakdown(
     unitEntry.paidAmountPaisa += amountPaisa;
 
     const effectiveUnitPaisa =
-      unitEntry.rentAmountPaisa - (unitEntry.tdsAmountPaisa || 0);
+      unitEntry.grossRentAmountPaisa - (unitEntry.tdsAmountPaisa || 0);
     if (unitEntry.paidAmountPaisa === 0) unitEntry.status = "pending";
     else if (unitEntry.paidAmountPaisa >= effectiveUnitPaisa)
       unitEntry.status = "paid";
     else unitEntry.status = "partially_paid";
   });
 
-  const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
+  const effectiveRentPaisa = rent.grossRentAmountPaisa - (rent.tdsAmountPaisa || 0);
   if (rent.paidAmountPaisa === 0) rent.status = "pending";
   else if (rent.paidAmountPaisa >= effectiveRentPaisa) rent.status = "paid";
   else rent.status = "partially_paid";
@@ -169,7 +169,7 @@ export function applyPaymentWithUnitBreakdown(
  * @returns {{ rentPaymentPaisa: number, lateFeePaymentPaisa: number }}
  */
 export function allocatePayment(rent, totalAmountPaisa, explicitSplit = null) {
-  const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
+  const effectiveRentPaisa = rent.grossRentAmountPaisa - (rent.tdsAmountPaisa || 0);
   const remainingRentPaisa = Math.max(
     0,
     effectiveRentPaisa - rent.paidAmountPaisa,
@@ -257,7 +257,7 @@ export function validateRentPayment(rent, paymentAmountPaisa) {
     return { valid: false, error: "Payment amount must be positive" };
   }
 
-  const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
+  const effectiveRentPaisa = rent.grossRentAmountPaisa - (rent.tdsAmountPaisa || 0);
   const remainingPaisa = effectiveRentPaisa - rent.paidAmountPaisa;
 
   if (paymentAmountPaisa > remainingPaisa) {
@@ -325,7 +325,7 @@ export function calculateCompoundLateFee(
  * Full payment breakdown for reporting/receipts.
  */
 export function getRentPaymentBreakdown(rent) {
-  const effectiveRentPaisa = rent.rentAmountPaisa - (rent.tdsAmountPaisa || 0);
+  const effectiveRentPaisa = rent.grossRentAmountPaisa - (rent.tdsAmountPaisa || 0);
   const remainingRentPaisa = effectiveRentPaisa - rent.paidAmountPaisa;
   const lateFeePaisa = rent.lateFeePaisa || 0;
   const latePaidAmountPaisa = rent.latePaidAmountPaisa || 0;
@@ -334,9 +334,9 @@ export function getRentPaymentBreakdown(rent) {
 
   return {
     paisa: {
-      gross: rent.rentAmountPaisa,
+      gross: rent.grossRentAmountPaisa,
       tds: rent.tdsAmountPaisa,
-      effectiveRent: effectiveRentPaisa,
+      netRent: effectiveRentPaisa,
       paid: rent.paidAmountPaisa,
       remainingRent: remainingRentPaisa,
       lateFee: lateFeePaisa,
@@ -345,9 +345,9 @@ export function getRentPaymentBreakdown(rent) {
       totalDue: totalDuePaisa,
     },
     rupees: {
-      gross: rent.rentAmountPaisa / 100,
+      gross: rent.grossRentAmountPaisa / 100,
       tds: rent.tdsAmountPaisa / 100,
-      effectiveRent: effectiveRentPaisa / 100,
+      netRent: effectiveRentPaisa / 100,
       paid: rent.paidAmountPaisa / 100,
       remainingRent: remainingRentPaisa / 100,
       lateFee: lateFeePaisa / 100,

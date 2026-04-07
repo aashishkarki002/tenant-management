@@ -308,7 +308,7 @@ export async function recordUnitRentPayment(params) {
 
 export function calculateRentRemaining(rent) {
   const effectiveRentPaisa =
-    (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
+    (rent.grossRentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
   const paid = rent.paidAmountPaisa || 0;
   const remaining = effectiveRentPaisa - paid;
   return remaining > 0 ? remaining : 0;
@@ -316,7 +316,7 @@ export function calculateRentRemaining(rent) {
 
 export function updateRentStatus(rent) {
   const effectiveRentPaisa =
-    (rent.rentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
+    (rent.grossRentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0);
   const paid = rent.paidAmountPaisa || 0;
 
   if (paid <= 0) rent.status = "pending";
@@ -333,14 +333,14 @@ export function getUnitPaymentDetails(rent) {
 
   return rent.unitBreakdown.map((ub) => {
     const effectiveUnitPaisa =
-      (ub.rentAmountPaisa || 0) - (ub.tdsAmountPaisa || 0);
+      (ub.grossRentAmountPaisa || 0) - (ub.tdsAmountPaisa || 0);
     const paid = ub.paidAmountPaisa || 0;
     const remaining = Math.max(0, effectiveUnitPaisa - paid);
 
     return {
       unitId: ub.unit?._id ?? ub.unit,
       unitName: ub.unit?.name ?? ub.unitName ?? undefined,
-      rentAmountPaisa: ub.rentAmountPaisa,
+      grossRentAmountPaisa: ub.grossRentAmountPaisa,
       tdsAmountPaisa: ub.tdsAmountPaisa,
       paidAmountPaisa: ub.paidAmountPaisa,
       remainingPaisa: remaining,

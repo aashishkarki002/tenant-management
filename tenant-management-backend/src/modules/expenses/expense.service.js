@@ -39,6 +39,7 @@ import {
   getNepaliYearMonthFromDate,
 } from "../../utils/nepaliDateHelper.js";
 import { OwnershipEntity } from "../ownership/OwnershipEntity.Model.js";
+import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -107,22 +108,68 @@ function resolveExpenseAccountCode({
 }
 
 /**
- * Resolve bank account code from bankAccountId.
- * Returns null if no bank account provided (cash/default payment assumed).
+ * Resolve payout account code for a specific entity + payment method.
+ *
+ * Priority:
+ *  1) explicit bankAccountCode
+ *  2) payment method specific account (cash / mobile_wallet)
+ *  3) explicit bankAccountId (entity-verified)
+ *  4) entity default bank account
+ *  5) first active entity bank account
+ *  6) fallback cash
  */
-async function resolveBankAccountCode(paymentMethod, bankAccountId, session) {
-  if (
-    bankAccountId &&
-    (paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
-      paymentMethod === PAYMENT_METHODS.CHEQUE)
-  ) {
-    const bank = await BankAccount.findById(bankAccountId).session(session);
-    if (!bank || bank.isDeleted) {
-      throw new Error(`Bank account not found or deleted: ${bankAccountId}`);
+async function resolvePaymentAccountCodeForEntity({
+  bankAccountCode,
+  bankAccountId,
+  entityId,
+  paymentMethod,
+  session,
+}) {
+  if (bankAccountCode) return bankAccountCode;
+  if (paymentMethod === PAYMENT_METHODS.CASH) return ACCOUNT_CODES.CASH;
+  if (paymentMethod === PAYMENT_METHODS.MOBILE_WALLET)
+    return ACCOUNT_CODES.MOBILE_WALLET;
+
+  if (bankAccountId) {
+    const doc = await BankAccount.findById(bankAccountId)
+      .select("accountCode entityId isDeleted")
+      .session(session)
+      .lean();
+
+    if (!doc) throw new Error(`Bank account not found: ${bankAccountId}`);
+    if (doc.isDeleted)
+      throw new Error(`Bank account ${bankAccountId} has been deleted`);
+    if (entityId && String(doc.entityId) !== String(entityId)) {
+      throw new Error(
+        `Bank account ${bankAccountId} (${doc.accountCode}) belongs to entity ` +
+          `${doc.entityId}, not ${entityId}.`,
+      );
     }
-    return bank.accountCode;
+    return doc.accountCode;
   }
-  return null;
+
+  if (entityId) {
+    const defaultBank = await BankAccount.findOne({
+      entityId,
+      isDefault: true,
+      isDeleted: false,
+    })
+      .select("accountCode")
+      .session(session)
+      .lean();
+    if (defaultBank) return defaultBank.accountCode;
+
+    const anyBank = await BankAccount.findOne({
+      entityId,
+      isDeleted: false,
+    })
+      .select("accountCode")
+      .session(session)
+      .lean();
+    if (anyBank) return anyBank.accountCode;
+  }
+
+  return ACCOUNT_CODES.CASH;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,22 +328,12 @@ export async function createExpense(expenseData, externalSession = null) {
         : PAYMENT_METHODS.BANK_TRANSFER;
     assertValidPaymentMethod(paymentMethod);
 
-    // Accept bankAccountCode from payload, or resolve from bankAccountId
-    let bankAccountCode;
-    if (
-      (paymentMethod === PAYMENT_METHODS.BANK_TRANSFER ||
-        paymentMethod === PAYMENT_METHODS.CHEQUE) &&
-      typeof rawBankAccountCode === "string" &&
-      rawBankAccountCode.trim()
-    ) {
-      bankAccountCode = rawBankAccountCode.trim();
-    } else {
-      bankAccountCode = await resolveBankAccountCode(
-        paymentMethod,
-        bankAccountId,
-        session,
-      );
-    }
+    // Normalize optional explicit bank code. Actual resolved account is chosen
+    // per-entity right before each journal post.
+    const bankAccountCode =
+      typeof rawBankAccountCode === "string" && rawBankAccountCode.trim()
+        ? rawBankAccountCode.trim()
+        : null;
 
     // Normalize: accept legacy PascalCase "EnglishDate" from older callers
     const resolvedEnglishDate = englishDate ?? _legacyEnglishDate;
@@ -409,23 +446,37 @@ export async function createExpense(expenseData, externalSession = null) {
     const journalDateFields = { nepaliDate, nepaliMonth, nepaliYear };
 
     if (scope === "building") {
+      const resolvedAccountCode = await resolvePaymentAccountCodeForEntity({
+        bankAccountCode,
+        bankAccountId,
+        entityId: resolvedEntityId,
+        paymentMethod,
+        session,
+      });
       // Single journal → single entity's CoA
       await postExpenseJournalForEntity({
         expense: expenseBase,
         entityId: resolvedEntityId,
         amountPaisa: finalAmountPaisa,
-        bankAccountCode,
+        bankAccountCode: resolvedAccountCode,
         expenseAccountCode,
         ...journalDateFields,
         session,
       });
     } else if (scope === "head_office") {
+      const resolvedAccountCode = await resolvePaymentAccountCodeForEntity({
+        bankAccountCode,
+        bankAccountId,
+        entityId: resolvedEntityId,
+        paymentMethod,
+        session,
+      });
       // Single journal → head office entity's CoA
       await postExpenseJournalForEntity({
         expense: expenseBase,
         entityId: resolvedEntityId,
         amountPaisa: finalAmountPaisa,
-        bankAccountCode,
+        bankAccountCode: resolvedAccountCode,
         expenseAccountCode,
         ...journalDateFields,
         session,
@@ -445,6 +496,14 @@ export async function createExpense(expenseData, externalSession = null) {
       }
 
       for (const allocation of splitAllocations) {
+        const resolvedAccountCode = await resolvePaymentAccountCodeForEntity({
+          bankAccountCode:
+            allocation.bankAccountCode ?? bankAccountCode ?? null,
+          bankAccountId: allocation.bankAccountId ?? bankAccountId ?? null,
+          entityId: allocation.entityId,
+          paymentMethod,
+          session,
+        });
         const result = await postExpenseJournalForEntity({
           expense: {
             ...expenseBase,
@@ -452,7 +511,7 @@ export async function createExpense(expenseData, externalSession = null) {
           },
           entityId: allocation.entityId,
           amountPaisa: allocation.amountPaisa,
-          bankAccountCode,
+          bankAccountCode: resolvedAccountCode,
           expenseAccountCode,
           ...journalDateFields,
           session,

@@ -38,9 +38,7 @@ export function validateUnitAllocations(
 
     if (!unit) throw new Error(`Unit ${unitId} not found in rent breakdown`);
 
-    // rentAmountPaisa on unitBreakdown is already net of TDS — do NOT subtract
-    // tdsAmountPaisa again here or it double-counts the deduction.
-    const remaining = (unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
+    const remaining = (unit.grossRentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
     if (amountPaisa > remaining) {
       throw new Error(
         `Payment ${formatMoneySafe(amountPaisa)} exceeds remaining ${formatMoneySafe(remaining)} for unit ${unitId}`,
@@ -206,7 +204,7 @@ export function validatePaymentNotExceeding(
       const totalRemaining = rent.unitBreakdown.reduce((sum, unit) => {
         return (
           sum +
-          ((unit.rentAmountPaisa || 0) - (unit.paidAmountPaisa || 0)) +
+          ((unit.grossRentAmountPaisa || 0) - (unit.paidAmountPaisa || 0)) +
           (unit.lateFeePaisa || 0)
         );
       }, 0);
@@ -218,7 +216,7 @@ export function validatePaymentNotExceeding(
     }
   } else {
     const remaining =
-      (rent.rentAmountPaisa || 0) -
+      (rent.grossRentAmountPaisa || 0) -
       (rent.paidAmountPaisa || 0) +
       (rent.lateFeePaisa || 0);
     if (paymentPaisa > remaining) {

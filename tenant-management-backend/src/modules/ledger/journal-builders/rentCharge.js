@@ -30,7 +30,7 @@ import NepaliDate from "nepali-datetime";
 /**
  * @param {Object} rent  - Rent document (Mongoose doc or plain object)
  *   Must have:  _id, tenant, property, nepaliMonth, nepaliYear,
- *               rentAmountPaisa (integer), rentFrequency
+ *               grossRentAmountPaisa (integer), rentFrequency
  *   Optional:   createdAt, createdBy, nepaliDate
  *
  * @returns {Object} Canonical journal payload for postJournalEntry
@@ -43,7 +43,7 @@ export function buildRentChargeJournal(rent) {
   });
 
   // ── 2. Extract raw paisa ─────────────────────────────────────────────────
-  const rentAmountPaisa = getRawPaisa(rent, "rentAmountPaisa");
+  const rentAmountPaisa = getRawPaisa(rent, "grossRentAmountPaisa");
 
   // ── 3. Metadata ──────────────────────────────────────────────────────────
   const transactionDate =

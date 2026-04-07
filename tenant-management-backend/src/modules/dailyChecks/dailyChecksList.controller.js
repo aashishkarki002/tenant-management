@@ -22,6 +22,7 @@ import {
   updateItemInTemplate,
   removeItemFromTemplate,
   reorderSectionsInTemplate,
+  uploadItemImage,
 } from "./dailyChecksList.service.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,7 +40,6 @@ export async function createTemplateController(req, res) {
 }
 
 // POST /api/checklists/templates/:id/rebuild
-// Re-runs the factory to regenerate sections (e.g. after building layout change)
 export async function rebuildTemplateController(req, res) {
   try {
     const result = await rebuildTemplate(req.params.id, req.admin.id);
@@ -49,7 +49,7 @@ export async function rebuildTemplateController(req, res) {
   }
 }
 
-// GET /api/checklists/templates?propertyId=&category=&checklistType=&isActive=
+// GET /api/checklists/templates
 export async function getTemplatesController(req, res) {
   try {
     const result = await getTemplates(req.query);
@@ -74,7 +74,6 @@ export async function getTemplateByIdController(req, res) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // POST /api/checklists/results
-// Body: { templateId, checkDate, nepaliDate?, nepaliMonth?, nepaliYear? }
 export async function createResultController(req, res) {
   try {
     const { templateId, ...dateData } = req.body;
@@ -92,7 +91,6 @@ export async function createResultController(req, res) {
 }
 
 // PATCH /api/checklists/results/:id/submit
-// Body: { itemResults: [...], overallNotes?, status?, nepaliDate?, ... }
 export async function submitResultController(req, res) {
   try {
     const result = await submitResult(req.params.id, req.body, req.admin.id);
@@ -102,8 +100,7 @@ export async function submitResultController(req, res) {
   }
 }
 
-// GET /api/checklists/results?propertyId=&blockId=&category=&status=&nepaliYear=&nepaliMonth=&nepaliDate=&startDate=&endDate=&page=&limit=
-// Date filters use stored BS `nepaliDate` (not `checkDate`). Pass `nepaliDate=2082-04-01` for a single day, or `startDate`/`endDate` as Gregorian YYYY-MM-DD to filter by converted BS range.
+// GET /api/checklists/results
 export async function getResultsController(req, res) {
   try {
     const result = await getResults(req.query);
@@ -113,7 +110,7 @@ export async function getResultsController(req, res) {
   }
 }
 
-// GET /api/checklists/results/:id  — full merged view (template sections + delta)
+// GET /api/checklists/results/:id
 export async function getResultByIdController(req, res) {
   try {
     const result = await getResultById(req.params.id);
@@ -123,7 +120,7 @@ export async function getResultByIdController(req, res) {
   }
 }
 
-// GET /api/checklists/summary?propertyId=&nepaliYear=&nepaliMonth=
+// GET /api/checklists/summary
 export async function getResultSummaryController(req, res) {
   try {
     const { propertyId, nepaliYear, nepaliMonth } = req.query;
@@ -152,6 +149,8 @@ export async function deleteResultController(req, res) {
     return res.status(500).json({ success: false, message: error.message });
   }
 }
+
+// GET /api/checklists/calendar
 export async function getCalendarSummaryController(req, res) {
   try {
     const { propertyId, nepaliYear, nepaliMonth } = req.query;
@@ -166,7 +165,7 @@ export async function getCalendarSummaryController(req, res) {
   }
 }
 
-// GET /api/checklists/today?propertyId=&nepaliDate=
+// GET /api/checklists/today
 export async function getTodayResultsController(req, res) {
   try {
     const { propertyId, nepaliDate } = req.query;
@@ -176,6 +175,11 @@ export async function getTodayResultsController(req, res) {
     return res.status(500).json({ success: false, message: error.message });
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TEMPLATE section / item management controllers
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function addSectionController(req, res) {
   try {
     const result = await addSectionToTemplate(
@@ -189,8 +193,6 @@ export async function addSectionController(req, res) {
   }
 }
 
-// PATCH /api/checklists/templates/:id/sections/:sectionKey
-// Body: { sectionLabel }
 export async function updateSectionController(req, res) {
   try {
     const result = await updateSectionInTemplate(
@@ -205,7 +207,6 @@ export async function updateSectionController(req, res) {
   }
 }
 
-// DELETE /api/checklists/templates/:id/sections/:sectionKey
 export async function removeSectionController(req, res) {
   try {
     const result = await removeSectionFromTemplate(
@@ -219,8 +220,6 @@ export async function removeSectionController(req, res) {
   }
 }
 
-// POST /api/checklists/templates/:id/sections/:sectionKey/items
-// Body: { label, quantity? }
 export async function addItemController(req, res) {
   try {
     const result = await addItemToTemplate(
@@ -235,8 +234,6 @@ export async function addItemController(req, res) {
   }
 }
 
-// PATCH /api/checklists/templates/:id/sections/:sectionKey/items/:itemId
-// Body: { label?, quantity? }
 export async function updateItemController(req, res) {
   try {
     const result = await updateItemInTemplate(
@@ -252,7 +249,6 @@ export async function updateItemController(req, res) {
   }
 }
 
-// DELETE /api/checklists/templates/:id/sections/:sectionKey/items/:itemId
 export async function removeItemController(req, res) {
   try {
     const result = await removeItemFromTemplate(
@@ -267,8 +263,6 @@ export async function removeItemController(req, res) {
   }
 }
 
-// PATCH /api/checklists/templates/:id/sections/reorder
-// Body: { orderedSectionKeys: ["KEY_A", "KEY_B", ...] }
 export async function reorderSectionsController(req, res) {
   try {
     const result = await reorderSectionsInTemplate(
@@ -278,6 +272,57 @@ export async function reorderSectionsController(req, res) {
     );
     return res.status(result.success ? 200 : 400).json(result);
   } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  IMAGE UPLOAD controller
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/checklists/results/:id/items/:itemId/images
+ *
+ * Uploads an evidence photo for a specific failed item via FTP and appends
+ * the remote path to that item's issueImages array.
+ *
+ * Expects multipart/form-data with a single file field named "file".
+ * The tenantId is derived from the result's property._id so the caller
+ * does not need to send it explicitly — mirrors ftpUpload behaviour.
+ */
+export async function uploadItemImageController(req, res) {
+  try {
+    const { id: resultId, itemId } = req.params;
+    const file = req.file;
+
+    console.log(
+      "[uploadItemImage] controller hit — resultId:",
+      resultId,
+      "itemId:",
+      itemId,
+    );
+
+    if (!file) {
+      console.warn(
+        "[uploadItemImage] no file in request (multer did not attach req.file)",
+      );
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
+    }
+
+    console.log("[uploadItemImage] file received:", {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      path: file.path,
+    });
+
+    const result = await uploadItemImage(resultId, itemId, file);
+    console.log("[uploadItemImage] service result:", result);
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    console.error("[uploadItemImage] controller error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 }

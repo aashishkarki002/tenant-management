@@ -748,7 +748,7 @@ export async function searchTenants(query) {
                         },
                         {
                           $subtract: [
-                            "$$this.rentAmountPaisa",
+                            "$$this.grossRentAmountPaisa",
                             "$$this.paidAmountPaisa",
                           ],
                         },
@@ -1015,10 +1015,10 @@ async function updatePendingRentRecords(tenant, newFinancials, session) {
       const newTdsAmount = newFinancials.tdsPaisa * multiplier;
 
       if (
-        Math.abs(rent.rentAmountPaisa - newRentAmount) > 1 ||
+        Math.abs(rent.grossRentAmountPaisa - newRentAmount) > 1 ||
         Math.abs(rent.tdsAmountPaisa - newTdsAmount) > 1
       ) {
-        rent.rentAmountPaisa = newRentAmount;
+        rent.grossRentAmountPaisa = newRentAmount;
         rent.tdsAmountPaisa = newTdsAmount;
         await rent.save({ session });
         updatedCount++;

@@ -1,3 +1,4 @@
+import multer from "multer";
 import { Router } from "express";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -22,16 +23,18 @@ import {
   updateItemController,
   removeItemController,
   reorderSectionsController,
+  uploadItemImageController,
 } from "./dailyChecksList.controller.js";
 
 const router = Router();
+
+// Multer — temp storage, same pattern as ftpUpload route
+const upload = multer({ dest: "temp/" });
 
 // ── All routes require authentication ─────────────────────────────────────────
 router.use(protect);
 
 // ── Template routes ───────────────────────────────────────────────────────────
-// Named routes before /:id wildcard
-
 router.get("/templates", getTemplatesController);
 router.post(
   "/templates",
@@ -45,18 +48,9 @@ router.post(
   rebuildTemplateController,
 );
 router.post("/templates/:id/sections", addSectionController);
-router.patch(
-  "/templates/:id/sections/:sectionKey",
-  updateSectionController,
-);
-router.delete(
-  "/templates/:id/sections/:sectionKey",
-  removeSectionController,
-);
-router.post(
-  "/templates/:id/sections/:sectionKey/items",
-  addItemController,
-);
+router.patch("/templates/:id/sections/:sectionKey", updateSectionController);
+router.delete("/templates/:id/sections/:sectionKey", removeSectionController);
+router.post("/templates/:id/sections/:sectionKey/items", addItemController);
 router.patch(
   "/templates/:id/sections/:sectionKey/items/:itemId",
   updateItemController,
@@ -65,10 +59,7 @@ router.delete(
   "/templates/:id/sections/:sectionKey/items/:itemId",
   removeItemController,
 );
-router.post(
-  "/templates/:id/sections/reorder",
-  reorderSectionsController,
-);
+router.post("/templates/:id/sections/reorder", reorderSectionsController);
 
 // ── Result routes ─────────────────────────────────────────────────────────────
 
@@ -85,7 +76,17 @@ router.delete(
   authorize("admin", "super_admin"),
   deleteResultController,
 );
-// router.get("/calendar", getCalendarSummaryController);
+
+// ── Image upload for a specific item result ───────────────────────────────────
+// POST /api/checklists/results/:id/items/:itemId/images
+// Body: multipart/form-data — field name "file"
+// Response: { success, remotePath, itemId, resultId }
+router.post(
+  "/results/:id/items/:itemId/images",
+  upload.single("file"),
+  uploadItemImageController,
+);
+
 router.get("/calendar", getCalendarSummaryController);
 router.get("/today", getTodayResultsController);
 

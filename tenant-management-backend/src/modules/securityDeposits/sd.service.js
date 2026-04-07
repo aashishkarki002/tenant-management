@@ -1,16 +1,70 @@
 import { Sd } from "./sd.model.js";
+import { SdRefund } from "./sdRefund.model.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildSecurityDepositJournal } from "../ledger/journal-builders/index.js";
 import { createLiability } from "../liabilities/liabilty.service.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
 
+async function buildRefundTotalsMap(sdIds = []) {
+  if (!sdIds.length) return new Map();
+
+  const objectIds = sdIds.map((id) => id);
+  const rows = await SdRefund.aggregate([
+    {
+      $match: {
+        sd: { $in: objectIds },
+        status: { $ne: "REVERSED" },
+      },
+    },
+    {
+      $group: {
+        _id: "$sd",
+        totalRefundedPaisa: { $sum: "$totalAmountPaisa" },
+      },
+    },
+  ]);
+
+  return new Map(
+    rows.map((row) => [String(row._id), Number(row.totalRefundedPaisa ?? 0)]),
+  );
+}
+
+function withAuthoritativeSdTotals(sd, refundedPaisa) {
+  if (!sd) return null;
+  const total = Number(sd.amountPaisa ?? 0);
+  const refunded = Number(refundedPaisa ?? 0);
+  const remaining = Math.max(0, total - refunded);
+
+  return {
+    ...sd,
+    totalRefundedPaisa: refunded,
+    remainingAmountPaisa: remaining,
+    remainingAmount: remaining / 100,
+  };
+}
+
+async function enrichSdWithRefundTotals(sd) {
+  if (!sd?._id) return sd;
+  const totalsMap = await buildRefundTotalsMap([sd._id]);
+  return withAuthoritativeSdTotals(sd, totalsMap.get(String(sd._id)) ?? 0);
+}
+
+async function enrichManySdsWithRefundTotals(sds = []) {
+  if (!sds.length) return sds;
+  const totalsMap = await buildRefundTotalsMap(sds.map((sd) => sd._id));
+  return sds.map((sd) =>
+    withAuthoritativeSdTotals(sd, totalsMap.get(String(sd._id)) ?? 0),
+  );
+}
+
 export async function getSdById(sdId) {
   if (!sdId) throw new Error("Invalid security deposit id");
-  return Sd.findById(sdId)
+  const sd = await Sd.findById(sdId)
     .populate("tenant", "name phone")
     .populate("block", "name")
     .populate("innerBlock", "name")
     .lean({ virtuals: true });
+  return enrichSdWithRefundTotals(sd);
 }
 
 /**
@@ -30,24 +84,26 @@ export async function getSdByTenant(tenantId) {
     .populate("innerBlock", "name")
     .lean({ virtuals: true });
 
-  if (active) return active;
+  if (active) return enrichSdWithRefundTotals(active);
 
-  return Sd.findOne({ tenant: tenantId })
+  const latest = await Sd.findOne({ tenant: tenantId })
     .sort({ createdAt: -1 })
     .populate("tenant", "name phone")
     .populate("block", "name")
     .populate("innerBlock", "name")
     .lean({ virtuals: true });
+  return enrichSdWithRefundTotals(latest);
 }
 
 export async function getAllSdsByTenant(tenantId) {
   if (!tenantId) throw new Error("Invalid tenant id");
-  return Sd.find({ tenant: tenantId })
+  const docs = await Sd.find({ tenant: tenantId })
     .sort({ createdAt: -1 })
     .populate("tenant", "name phone")
     .populate("block", "name")
     .populate("innerBlock", "name")
     .lean({ virtuals: true });
+  return enrichManySdsWithRefundTotals(docs);
 }
 
 /**
@@ -68,10 +124,12 @@ export async function getSdsByBlock(blockId, opts = {}) {
     .populate("innerBlock", "name")
     .lean({ virtuals: true });
 
-  const search = String(opts.search ?? "").trim().toLowerCase();
-  if (!search) return docs;
+  const enrichedDocs = await enrichManySdsWithRefundTotals(docs);
 
-  return docs.filter((d) => {
+  const search = String(opts.search ?? "").trim().toLowerCase();
+  if (!search) return enrichedDocs;
+
+  return enrichedDocs.filter((d) => {
     const tenantName = String(d?.tenant?.name ?? "").toLowerCase();
     const tenantPhone = String(d?.tenant?.phone ?? "").toLowerCase();
     return tenantName.includes(search) || tenantPhone.includes(search);

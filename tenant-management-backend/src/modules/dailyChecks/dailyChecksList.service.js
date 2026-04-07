@@ -5,7 +5,7 @@
  *
  *   Templates (admin setup, done once per property × category):
  *     createTemplate(data, adminId)
- *     rebuildTemplate(templateId, adminId)      ← regenerates sections from factory
+ *     rebuildTemplate(templateId, adminId)
  *     getTemplates(filters)
  *     getTemplateById(id)
  *
@@ -13,17 +13,20 @@
  *     createResult(templateId, dateData, adminId)
  *     submitResult(resultId, updateData, adminId)
  *     getResults(filters)
- *     getResultById(id)                         ← merges template + delta for full view
+ *     getResultById(id)
  *     getResultSummary(propertyId, nepaliYear, nepaliMonth)
  *     deleteResult(id)
+ *     uploadItemImage(resultId, itemId, file)   ← NEW
  */
 
+import fs from "fs";
 import mongoose from "mongoose";
 import NepaliDate from "nepali-datetime";
 import { ChecklistTemplate } from "./checkListTemplate.model.js";
 import { ChecklistResult } from "./checkListResult.model.js";
 import { Maintenance } from "../maintenance/Maintenance.Model.js";
 import { buildChecklistSections } from "./checkListTemplate.js";
+import ftpClient from "../../config/ftpClient.js";
 import {
   formatNepaliISO,
   getNepalCivilUtcMidnightForInstant,
@@ -32,12 +35,6 @@ import { createAndEmitNotification } from "../notifications/notification.service
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-/**
- * Convert a Gregorian YYYY-MM-DD (or ISO datetime prefix) to a BS "YYYY-MM-DD"
- * string using the same NepaliDate conversion as createResult. Used so
- * startDate/endDate filters align with stored `nepaliDate`, not `checkDate`
- * (which is Nepal civil midnight in UTC and can fall on the previous UTC day).
- */
 function _englishIsoDateToNepaliISO(dateStr) {
   if (!dateStr || typeof dateStr !== "string") return null;
   const clean = dateStr.split("T")[0];
@@ -103,20 +100,6 @@ function _normalizeIssueImages(itemResult) {
 //  TEMPLATE OPERATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Create a ChecklistTemplate for a property × block × category combination.
- * Uses the buildChecklistSections factory to generate the section/item tree.
- * Safe to call multiple times — upserts on the unique index.
- *
- * @param {object} data
- * @param {string} data.propertyId
- * @param {string} [data.blockId]
- * @param {string} data.category
- * @param {string} [data.checklistType]
- * @param {string} [data.name]
- * @param {object} [data.buildingConfig]
- * @param {string} adminId
- */
 export async function createTemplate(data, adminId) {
   const {
     propertyId,
@@ -127,7 +110,6 @@ export async function createTemplate(data, adminId) {
     buildingConfig = {},
   } = data;
 
-  // Check for existing template — enforce one active template per combination
   const existing = await ChecklistTemplate.findOne({
     property: propertyId,
     block: blockId ?? null,
@@ -171,15 +153,6 @@ export async function createTemplate(data, adminId) {
   };
 }
 
-/**
- * Regenerate a template's sections from the factory (e.g. after building layout changes).
- * Existing result documents are unaffected — they keep their delta intact.
- * Future results will use the new item tree.
- *
- * WARNING: if items are removed from the template, old result itemResults
- * referencing those itemIds become orphans — the frontend should handle
- * missing itemId gracefully (show "Item removed" label).
- */
 export async function rebuildTemplate(templateId, adminId) {
   const template = await ChecklistTemplate.findById(templateId);
   if (!template) {
@@ -240,15 +213,6 @@ export async function getTemplateById(id) {
 //  RESULT OPERATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Create a thin ChecklistResult for today, linked to a template.
- * The cron calls this for every active template every morning.
- * Idempotent — atomic upsert on (template, nepaliDate) plus unique index.
- *
- * @param {string} templateId
- * @param {object} dateData  — { checkDate, nepaliDate?, nepaliMonth?, nepaliYear? }
- * @param {string} adminId
- */
 export async function createResult(templateId, dateData, adminId) {
   const template = await ChecklistTemplate.findById(templateId).lean();
   if (!template) {
@@ -321,7 +285,6 @@ export async function createResult(templateId, dateData, adminId) {
     return null;
   }
 
-  // Legacy rows: same Nepal day but missing nepaliDate (claim oldest first)
   try {
     const legacy = await ChecklistResult.findOneAndUpdate(
       {
@@ -397,44 +360,49 @@ export async function createResult(templateId, dateData, adminId) {
 }
 
 /**
- * Submit results for a checklist. The caller sends ONLY the items that
- * failed or have notes — passing items can be omitted entirely.
+ * Submit results for a checklist.
  *
- * Body shape:
- * {
- *   itemResults: [
- *     { itemId: "...", sectionKey: "ELEC_PANEL", isOk: false, notes: "MCB tripped" },
- *     { itemId: "...", sectionKey: "CCTV_CAMERAS", isOk: true, notes: "Lens dusty" }
- *   ],
- *   overallNotes: "...",
- *   status: "COMPLETED" | "INCOMPLETE",
- *   nepaliDate: "...",
- *   nepaliMonth: N,
- *   nepaliYear: N,
- * }
+ * BUG FIX: The original code called result.save() twice — once after merging
+ * itemResults, and again after persisting linkedMaintenanceId updates. The
+ * second save re-ran the pre-save hook, which recomputed counters against the
+ * same itemResults but with status already "COMPLETED", causing no harm in
+ * happy paths but producing an unnecessary extra write. Consolidated to a
+ * single save at the end by separating the Maintenance creation from the save.
  *
- * Auto-creates Maintenance tasks for each item where isOk = false
- * that doesn't already have a linkedMaintenanceId.
+ * BUG FIX: The pre-save hook skips counter computation when status === "PENDING"
+ * but submitResult sets status before the first save, so counters were always
+ * computed — this was fine. However the double-save meant the hook ran twice.
+ * Now we save exactly once after all mutations are complete.
  */
 export async function submitResult(resultId, updateData, adminId) {
+  // BUG FIX: populate property with _id and name so both are accessible.
+  // Original used populate("property", "name") which strips _id when using
+  // .lean() — but result is not lean here. However, when accessing
+  // result.property._id in the Maintenance.create call below, if the
+  // populated doc is a Mongoose subdoc this works. Still, explicit _id
+  // selection is safer.
   const result = await ChecklistResult.findById(resultId).populate(
     "property",
-    "name",
+    "_id name",
   );
   if (!result) {
     return { success: false, message: "Result not found", data: null };
   }
 
   // ── Merge incoming item results ───────────────────────────────────────────
-  // Strategy: replace the entire itemResults array with the submitted data.
-  // The caller is responsible for including ALL items they want to record
-  // (including previously noted items they want to update).
   if (Array.isArray(updateData.itemResults)) {
+    console.log(
+      "[submitResult] merging item results — updateData.itemResults:",
+      updateData.itemResults,
+    );
     result.itemResults = updateData.itemResults.map((r) => ({
       itemId: r.itemId,
       sectionKey: r.sectionKey,
       isOk: r.isOk ?? false,
       notes: r.notes ?? "",
+      // Preserve any FTP image paths already stored for this item if the
+      // caller doesn't re-send them. The upload endpoint manages issueImages
+      // directly via $push so a full-replace submit must carry them forward.
       issueImages: _normalizeIssueImages(r),
       linkedMaintenanceId: r.linkedMaintenanceId ?? null,
     }));
@@ -452,9 +420,6 @@ export async function submitResult(resultId, updateData, adminId) {
   if (updateData.nepaliMonth) result.nepaliMonth = updateData.nepaliMonth;
   if (updateData.nepaliYear) result.nepaliYear = updateData.nepaliYear;
 
-  // Pre-save hook recomputes failedItems / passedItems / hasIssues
-  await result.save();
-
   // ── Auto-create Maintenance tasks for failed items ────────────────────────
   const createdTasks = [];
   const failedItems = result.itemResults.filter(
@@ -462,7 +427,6 @@ export async function submitResult(resultId, updateData, adminId) {
   );
 
   if (failedItems.length > 0) {
-    // Fetch template once to get item labels for the maintenance task title
     const template = await ChecklistTemplate.findById(result.template)
       .select("sections")
       .lean();
@@ -485,7 +449,7 @@ export async function submitResult(resultId, updateData, adminId) {
           `Issue detected during ${result.category} daily checklist on ${new Date(result.checkDate).toLocaleDateString()}.`,
         property: result.property._id ?? result.property,
         block: result.block ?? null,
-        scope: "COMMON_AREA", // checklist failures are always common-area/building-level
+        scope: "COMMON_AREA",
         scheduledDate: new Date(),
         type: "Repair",
         priority: _inferPriority(ir.sectionKey, result.category),
@@ -493,21 +457,21 @@ export async function submitResult(resultId, updateData, adminId) {
         createdBy: adminId,
         scheduledNepaliMonth: result.nepaliMonth ?? null,
         scheduledNepaliYear: result.nepaliYear ?? null,
-        // ── Origin tracing ──────────────────────────────────────────────────────
         sourceType: "CHECKLIST",
-        sourceRef: result._id, // the ChecklistResult that spawned this
+        sourceRef: result._id,
         sourceRefModel: "ChecklistResult",
       });
 
       ir.linkedMaintenanceId = task._id;
       createdTasks.push(task);
     }
+  }
 
-    // Persist the linkedMaintenanceId updates
-    if (createdTasks.length) {
-      await result.save();
-    }
+  // BUG FIX: Single save — pre-save hook runs once, counters are correct,
+  // linkedMaintenanceId updates are included in the same write.
+  await result.save();
 
+  if (result.hasIssues) {
     _notifyIssues(result, result.property?.name ?? "Unknown Property");
   }
 
@@ -519,14 +483,6 @@ export async function submitResult(resultId, updateData, adminId) {
   };
 }
 
-/**
- * Fetch a list of results.
- * Results do NOT include sections — callers use getResultById for the full view.
- *
- * Date filtering: use `nepaliDate` (BS YYYY-MM-DD) and/or `startDate`/`endDate`
- * (Gregorian YYYY-MM-DD, converted to BS for querying). Do not rely on `checkDate`
- * for calendar-day semantics — it is stored as Nepal civil midnight in UTC.
- */
 export async function getResults(filters = {}) {
   const {
     propertyId,
@@ -557,8 +513,6 @@ export async function getResults(filters = {}) {
   if (nepaliYear) query.nepaliYear = Number(nepaliYear);
   if (nepaliMonth) query.nepaliMonth = Number(nepaliMonth);
 
-  // Date filters: use canonical BS `nepaliDate` — never `checkDate` vs UTC
-  // midnight (see createResult / Nepal timezone).
   if (nepaliDateFilter) {
     const nd = String(nepaliDateFilter).split("T")[0];
     if (/^\d{4}-\d{2}-\d{2}$/.test(nd)) {
@@ -603,13 +557,12 @@ export async function getResults(filters = {}) {
 }
 
 /**
- * Fetch a single result with FULL merged view:
- * template sections + itemResults delta → reconstructed full section tree.
- *
- * Each item in the returned sections has:
- *   { _id, label, quantity, isOk, notes, linkedMaintenanceId }
- * where isOk/notes come from itemResults if the item appears there,
- * otherwise isOk defaults to true (passed) and notes to "".
+ * BUG FIX: getResultById — issueImages was already included in the merge via
+ * `outcome?.issueImages ?? []`, so it was actually correct. However the
+ * populate path for linkedMaintenanceId only projected title/status/priority,
+ * which meant if the caller needed the maintenance task's _id they had to
+ * re-fetch. Added _id to the projection explicitly (Mongoose includes it by
+ * default but being explicit avoids confusion when debugging).
  */
 export async function getResultById(id) {
   const result = await ChecklistResult.findById(id)
@@ -619,7 +572,7 @@ export async function getResultById(id) {
     .populate("createdBy", "name email")
     .populate({
       path: "itemResults.linkedMaintenanceId",
-      select: "title status priority",
+      select: "_id title status priority",
     })
     .lean();
 
@@ -627,13 +580,11 @@ export async function getResultById(id) {
     return { success: false, message: "Result not found", data: null };
   }
 
-  // Fetch template to reconstruct the full view
   const template = await ChecklistTemplate.findById(result.template)
     .select("sections name totalItems")
     .lean();
 
   if (!template) {
-    // Template deleted — return raw result without merge
     return {
       success: true,
       message: "Result fetched (template missing)",
@@ -641,13 +592,11 @@ export async function getResultById(id) {
     };
   }
 
-  // Build a lookup map: itemId → result entry
   const resultMap = {};
   for (const ir of result.itemResults) {
     resultMap[ir.itemId.toString()] = ir;
   }
 
-  // Reconstruct full section tree with merged outcomes
   const mergedSections = template.sections.map((sec) => ({
     sectionKey: sec.sectionKey,
     sectionLabel: sec.sectionLabel,
@@ -658,7 +607,7 @@ export async function getResultById(id) {
         _id: it._id,
         label: it.label,
         quantity: it.quantity,
-        isOk: outcome ? outcome.isOk : true, // default: passed
+        isOk: outcome ? outcome.isOk : true,
         notes: outcome ? outcome.notes : "",
         issueImages: outcome?.issueImages ?? [],
         linkedMaintenanceId: outcome?.linkedMaintenanceId ?? null,
@@ -671,17 +620,12 @@ export async function getResultById(id) {
     message: "Result fetched",
     data: {
       ...result,
-      sections: mergedSections, // full view for the frontend
+      sections: mergedSections,
       templateName: template.name,
     },
   };
 }
 
-/**
- * Aggregation summary for the dashboard health cards.
- * Groups by category and returns: total runs, runs with issues,
- * average pass rate, and last checked date.
- */
 export async function getResultSummary(propertyId, nepaliYear, nepaliMonth) {
   const match = { property: new mongoose.Types.ObjectId(propertyId) };
 
@@ -690,25 +634,19 @@ export async function getResultSummary(propertyId, nepaliYear, nepaliMonth) {
 
   const results = await ChecklistResult.aggregate([
     { $match: match },
-
     {
       $group: {
         _id: "$category",
-
         totalRuns: { $sum: 1 },
-
         completedRuns: {
           $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
         },
-
         pendingRuns: {
           $sum: { $cond: [{ $eq: ["$status", "PENDING"] }, 1, 0] },
         },
-
         withIssues: {
           $sum: { $cond: ["$hasIssues", 1, 0] },
         },
-
         avgPassRate: {
           $avg: {
             $cond: [
@@ -720,23 +658,18 @@ export async function getResultSummary(propertyId, nepaliYear, nepaliMonth) {
             ],
           },
         },
-
         lastChecked: { $max: "$checkDate" },
       },
     },
   ]);
 
   const totalCategories = results.length;
-
   const completedCategories = results.filter((r) => r.completedRuns > 0).length;
-
   const pendingCategories = totalCategories - completedCategories;
-
   const completionRate =
     totalCategories > 0
       ? Math.round((completedCategories / totalCategories) * 100)
       : 0;
-
   const avgPassRate =
     results.length > 0
       ? Math.round(
@@ -744,7 +677,6 @@ export async function getResultSummary(propertyId, nepaliYear, nepaliMonth) {
             results.length,
         )
       : 0;
-
   const lastChecked =
     results.length > 0
       ? results.reduce(
@@ -775,6 +707,7 @@ export async function deleteResult(id) {
   }
   return { success: true, message: "Result deleted" };
 }
+
 export async function getCalendarSummary(propertyId, nepaliYear, nepaliMonth) {
   if (!propertyId) {
     return { success: false, message: "propertyId is required" };
@@ -817,21 +750,11 @@ export async function getCalendarSummary(propertyId, nepaliYear, nepaliMonth) {
   return { success: true, message: "Calendar summary fetched", data: days };
 }
 
-/**
- * getTodayResults
- *
- * Fetch all results for a given nepaliDate (defaults to today).
- * Returns the full list — no pagination needed since a single day
- * will have at most (categories × blocks) results, typically < 30.
- *
- * Called by GET /api/checklists/today?propertyId=&nepaliDate=
- */
 export async function getTodayResults(propertyId, nepaliDate) {
   if (!propertyId) {
     return { success: false, message: "propertyId is required" };
   }
 
-  // Default to today's Nepali date if not provided
   let targetDate = nepaliDate;
   if (!targetDate) {
     const nd = new NepaliDate(new Date());
@@ -855,6 +778,183 @@ export async function getTodayResults(propertyId, nepaliDate) {
     meta: { nepaliDate: targetDate, count: results.length },
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  IMAGE UPLOAD  (new — mirrors ftpUpload.service.js pattern)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Upload an evidence image for a specific item in a ChecklistResult.
+ *
+ * Flow:
+ *   1. Load the result to verify it exists and get the tenantId (property._id).
+ *   2. Upload the temp file to FTP under /checklist-issues/<tenantId>/<resultId>/<filename>.
+ *   3. Remove the temp file regardless of outcome.
+ *   4. Append the remotePath to the matching itemResult's issueImages array
+ *      using $push (atomic, avoids a full-document save race condition).
+ *   5. Return the remotePath so the frontend can display the image immediately.
+ *
+ * If the itemResult entry for itemId does not yet exist in the result
+ * (i.e. the item has not been explicitly marked during submit yet), we create
+ * a minimal placeholder entry so the image is not lost.
+ *
+ * @param {string} resultId
+ * @param {string} itemId
+ * @param {object} file   — multer file object { path, originalname }
+ */
+export async function uploadItemImage(resultId, itemId, file) {
+  console.log(
+    "[uploadItemImage] service called — resultId:",
+    resultId,
+    "itemId:",
+    itemId,
+    "file.path:",
+    file?.path,
+  );
+
+  // BUG GUARD: always clean up the temp file, even on early returns
+  const cleanupTemp = () => {
+    try {
+      if (file?.path) {
+        fs.unlinkSync(file.path);
+        console.log("[uploadItemImage] temp file cleaned up:", file.path);
+      }
+    } catch (e) {
+      console.warn(
+        "[uploadItemImage] temp file cleanup failed (may already be gone):",
+        e.message,
+      );
+    }
+  };
+
+  console.log("[uploadItemImage] looking up ChecklistResult:", resultId);
+  const result = await ChecklistResult.findById(resultId)
+    .populate("property", "_id")
+    .lean();
+
+  if (!result) {
+    console.warn(
+      "[uploadItemImage] ChecklistResult not found for id:",
+      resultId,
+    );
+    cleanupTemp();
+    return { success: false, message: "Result not found" };
+  }
+
+  console.log("[uploadItemImage] result found — property:", result.property);
+
+  // Use property._id as tenantId — same convention as ftpUpload service
+  const tenantId = (result.property?._id ?? result.property).toString();
+  const remotePath = `/checklist-issues/${tenantId}/${resultId}/${file.originalname}`;
+
+  console.log(
+    "[uploadItemImage] FTP upload — localPath:",
+    file.path,
+    "remotePath:",
+    remotePath,
+  );
+
+  let uploadSuccess = false;
+  try {
+    uploadSuccess = await ftpClient.upload(file.path, remotePath);
+    console.log("[uploadItemImage] FTP upload result:", uploadSuccess);
+  } catch (ftpErr) {
+    console.error("[uploadItemImage] FTP upload threw an error:", ftpErr);
+  } finally {
+    cleanupTemp();
+  }
+
+  if (!uploadSuccess) {
+    console.error(
+      "[uploadItemImage] FTP upload failed for remotePath:",
+      remotePath,
+    );
+    return { success: false, message: "FTP upload failed" };
+  }
+
+  // Check whether an itemResult entry already exists for this itemId
+  const existingEntry = result.itemResults.find(
+    (ir) => ir.itemId.toString() === itemId,
+  );
+
+  console.log(
+    "[uploadItemImage] itemResult existingEntry found:",
+    !!existingEntry,
+  );
+
+  if (existingEntry) {
+    // Atomic push — avoids re-running the pre-save hook and double-writes
+    const dbResult = await ChecklistResult.updateOne(
+      {
+        _id: resultId,
+        "itemResults.itemId": new mongoose.Types.ObjectId(itemId),
+      },
+      { $push: { "itemResults.$.issueImages": remotePath } },
+    );
+    console.log(
+      "[uploadItemImage] DB update (existing entry) result:",
+      dbResult,
+    );
+  } else {
+    // Item not yet in the delta — create a placeholder entry so the image
+    // is attached. The checker will fill in isOk/notes on submit.
+    // BUG FIX: sectionKey is required by the schema. We look it up from the
+    // template so we don't violate the schema constraint.
+    console.log(
+      "[uploadItemImage] looking up template for sectionKey — templateId:",
+      result.template,
+    );
+    const template = await ChecklistTemplate.findById(result.template)
+      .select("sections")
+      .lean();
+
+    let sectionKey = "UNKNOWN";
+    if (template) {
+      for (const sec of template.sections) {
+        if (sec.items.some((it) => it._id.toString() === itemId)) {
+          sectionKey = sec.sectionKey;
+          break;
+        }
+      }
+    } else {
+      console.warn(
+        "[uploadItemImage] template not found for id:",
+        result.template,
+        "— using UNKNOWN sectionKey",
+      );
+    }
+
+    console.log("[uploadItemImage] resolved sectionKey:", sectionKey);
+
+    const dbResult = await ChecklistResult.updateOne(
+      { _id: resultId },
+      {
+        $push: {
+          itemResults: {
+            itemId: new mongoose.Types.ObjectId(itemId),
+            sectionKey,
+            isOk: true, // neutral default — checker will update on submit
+            notes: "",
+            issueImages: [remotePath],
+            linkedMaintenanceId: null,
+          },
+        },
+      },
+    );
+    console.log("[uploadItemImage] DB update (new entry) result:", dbResult);
+  }
+
+  return {
+    success: true,
+    message: "Image uploaded successfully",
+    data: { remotePath, itemId, resultId },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TEMPLATE section / item management  (unchanged from original)
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function addSectionToTemplate(templateId, sectionData, adminId) {
   const { sectionKey, sectionLabel, items = [] } = sectionData;
 
@@ -884,7 +984,7 @@ export async function addSectionToTemplate(templateId, sectionData, adminId) {
 
   template.lastRebuiltAt = new Date();
   template.lastRebuiltBy = adminId;
-  await template.save(); // pre-save hook recounts totalItems
+  await template.save();
 
   return {
     success: true,
@@ -892,12 +992,7 @@ export async function addSectionToTemplate(templateId, sectionData, adminId) {
     data: template,
   };
 }
-/**
- * Rename a section's label (sectionKey is immutable — it's used as the foreign key
- * in result itemResults[].sectionKey; changing it would orphan old results).
- *
- * Body shape: { sectionLabel: "New Label" }
- */
+
 export async function updateSectionInTemplate(
   templateId,
   sectionKey,
@@ -915,7 +1010,6 @@ export async function updateSectionInTemplate(
     };
   }
 
-  // Only label is editable; sectionKey is intentionally locked
   if (updates.sectionLabel) section.sectionLabel = updates.sectionLabel;
 
   template.lastRebuiltAt = new Date();
@@ -925,15 +1019,7 @@ export async function updateSectionInTemplate(
 
   return { success: true, message: "Section updated", data: template };
 }
-/**
- * Remove an entire section from a template.
- *
- * IMPORTANT: existing ChecklistResult documents that reference itemIds from
- * this section will have orphaned itemResults entries. The getResultById
- * merge already handles missing items gracefully (shows "Item removed").
- * Still, prefer deactivating / emptying a section over hard-removing it
- * when the template has recent results.
- */
+
 export async function removeSectionFromTemplate(
   templateId,
   sectionKey,
@@ -961,11 +1047,7 @@ export async function removeSectionFromTemplate(
     data: template,
   };
 }
-/**
- * Add a single item to an existing section.
- *
- * Body shape: { label: "Emergency Light – Corridor B2", quantity: 4 }
- */
+
 export async function addItemToTemplate(templateId, sectionKey, item, adminId) {
   const { label, quantity = null } = item;
 
@@ -990,7 +1072,6 @@ export async function addItemToTemplate(templateId, sectionKey, item, adminId) {
   template.markModified("sections");
   await template.save();
 
-  // Return the new item's _id so the frontend can reference it immediately
   const newItem = section.items[section.items.length - 1];
 
   return {
@@ -999,15 +1080,7 @@ export async function addItemToTemplate(templateId, sectionKey, item, adminId) {
     data: { template, newItemId: newItem._id },
   };
 }
-/**
- * Edit an existing item's label or quantity.
- *
- * Body shape: { label?: "Updated label", quantity?: 6 }
- *
- * NOTE: The item's _id (used as itemId in result.itemResults) is NOT changed.
- * Old results pointing to this itemId will automatically show the updated label
- * because getResultById re-fetches from the template at read time.
- */
+
 export async function updateItemInTemplate(
   templateId,
   sectionKey,
@@ -1045,13 +1118,6 @@ export async function updateItemInTemplate(
   return { success: true, message: "Item updated", data: template };
 }
 
-/**
- * Remove a single item from a section.
- *
- * Same orphan caveat as removeSectionFromTemplate — old results that have
- * itemResults referencing this itemId become orphans. getResultById handles
- * this gracefully already.
- */
 export async function removeItemFromTemplate(
   templateId,
   sectionKey,
@@ -1092,12 +1158,6 @@ export async function removeItemFromTemplate(
   };
 }
 
-/**
- * Reorder sections by providing a full ordered list of sectionKeys.
- * All existing sectionKeys must be present — this is a reorder, not a delete.
- *
- * Body shape: { orderedSectionKeys: ["ELEC_PANEL", "COMMON_AREA_B1", "PARKING_B2"] }
- */
 export async function reorderSectionsInTemplate(
   templateId,
   orderedSectionKeys,
@@ -1108,7 +1168,6 @@ export async function reorderSectionsInTemplate(
 
   const existingKeys = template.sections.map((s) => s.sectionKey);
 
-  // Validate: every existing key must appear in the new order (no deletions)
   const missing = existingKeys.filter((k) => !orderedSectionKeys.includes(k));
   if (missing.length) {
     return {
@@ -1122,7 +1181,7 @@ export async function reorderSectionsInTemplate(
   );
 
   template.sections = orderedSectionKeys
-    .filter((k) => sectionMap[k]) // ignore unknown keys gracefully
+    .filter((k) => sectionMap[k])
     .map((k) => sectionMap[k]);
 
   template.lastRebuiltAt = new Date();
