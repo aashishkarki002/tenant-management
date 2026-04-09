@@ -812,7 +812,7 @@ export function AddRevenueDialog({
               !entitiesLoading &&
               blocksForRevenueEntity.length === 1 &&
               formik.values.blockId && (
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <p className="text-[11px] flex items-center gap-1.5" style={{ color: "var(--color-success)" }}>
                   <CheckCircle2 className="w-3 h-3" />
                   Block automatically selected: {blocksForRevenueEntity[0].name || "Unnamed block"}
                 </p>

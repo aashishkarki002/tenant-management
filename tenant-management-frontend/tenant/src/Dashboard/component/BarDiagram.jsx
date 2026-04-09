@@ -151,12 +151,12 @@ function HeaderMeta({ monthlyData, currentMonth, currentYear }) {
                     <span className="text-[11px] font-bold" style={{ color: C.barHighlight }}>
                         {mthName}
                     </span>
-                    <span className="text-[11px] font-bold tabular-nums" style={{ color: C.axisStrong }}>
+                    <span className="text-[13px] font-bold tabular-nums" style={{ color: C.axisStrong, fontFamily: 'var(--font-serif)' }}>
                         {fmtFull(currentPoint.revenue)}
                     </span>
                     {currentPoint.momChange != null && (
                         <span
-                            className="text-[10px] font-bold tabular-nums"
+                            className="text-[11px] font-bold tabular-nums"
                             style={{ color: currentPoint.momChange > 0 ? C.up : C.down }}
                         >
                             ({currentPoint.momChange > 0 ? '+' : ''}{currentPoint.momChange}%)
@@ -167,7 +167,7 @@ function HeaderMeta({ monthlyData, currentMonth, currentYear }) {
 
             {/* Trend pill */}
             <span
-                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
                 style={{
                     background: direction === 'up'
                         ? 'color-mix(in oklch, var(--success) 14%, transparent)'
@@ -180,12 +180,12 @@ function HeaderMeta({ monthlyData, currentMonth, currentYear }) {
                 {dirIcon} {dirLabel}
             </span>
 
-            <span className="text-[10px] text-muted-foreground font-medium">
+            <span className="text-[11px] text-muted-foreground font-medium">
                 {recentLabel}
             </span>
 
             {/* Trend line legend */}
-            <span className="flex items-center gap-1 ml-auto text-[10px] font-medium"
+            <span className="flex items-center gap-1 ml-auto text-[11px] font-medium"
                 style={{ color: C.trendLine }}>
                 <svg width="18" height="8" viewBox="0 0 18 8">
                     <path d="M1 7 C4 7 6 1 9 1 C12 1 14 4 17 3"
@@ -224,14 +224,14 @@ function SummaryStrip({ data }) {
             {items.map(({ label, value }) => (
                 <div key={label} className="flex items-center gap-1">
                     <span
-                        className="text-[9px] font-semibold tracking-widest uppercase"
+                        className="text-[10px] font-semibold tracking-widest uppercase"
                         style={{ color: C.axisText }}
                     >
                         {label}
                     </span>
                     <span
-                        className="text-[10px] font-bold tabular-nums"
-                        style={{ color: C.axisStrong }}
+                        className="text-[11px] font-bold tabular-nums"
+                        style={{ color: C.axisStrong, fontFamily: 'var(--font-serif)' }}
                     >
                         {value}
                     </span>
@@ -434,7 +434,7 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
                                 <button
                                     key={q}
                                     onClick={() => setQuarterFilter(q)}
-                                    className="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide transition-colors"
+                                    className="px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide transition-colors"
                                     style={{
                                         background: quarterFilter === q
                                             ? 'color-mix(in oklch, var(--primary) 12%, transparent)'

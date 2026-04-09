@@ -74,6 +74,12 @@ const REFERENCE_TYPES = [
   { value: "ADVANCE", label: "Advance" },
 ];
 
+// Only these reference types make sense for INTERNAL (staff) expenses
+const INTERNAL_REFERENCE_TYPES = [
+  { value: "SALARY", label: "Salary" },
+  { value: "ADVANCE", label: "Advance" },
+];
+
 // ─── Entity badge helpers (mirrors AddRevenueDialog) ─────────────────────────
 
 function getEntityBadgeColor(type) {
@@ -186,11 +192,11 @@ export function AddExpenseDialog({
   const [fetchedStaffList, setFetchedStaffList] = useState([]);
   const [didFetchStaffs, setDidFetchStaffs] = useState(false);
   // Fetch all ownership entities and blocks via hook
-  const { 
-    entities: rawEntities, 
-    blocks, 
-    loading: entitiesLoading, 
-    getBlocksForEntity 
+  const {
+    entities: rawEntities,
+    blocks,
+    loading: entitiesLoading,
+    getBlocksForEntity
   } = useOwnership();
 
   const allEntities = useMemo(() => {
@@ -211,6 +217,21 @@ export function AddExpenseDialog({
         const englishDate = values.date || new Date().toISOString().split("T")[0];
         const bsDate =
           values.nepaliDate?.trim() || adIsoToBsIso(englishDate);
+        const referenceType = values.referenceType || "MANUAL";
+        const requiresReferenceId =
+          payeeType === "INTERNAL" &&
+          ["SALARY", "ADVANCE"].includes(referenceType);
+        const resolvedReferenceId = requiresReferenceId
+          ? values.staffId || values.referenceId || undefined
+          : values.referenceId || undefined;
+
+        if (requiresReferenceId && !resolvedReferenceId) {
+          console.error(
+            "Reference ID is required for INTERNAL SALARY/ADVANCE expenses. Please select a staff member.",
+          );
+          setSubmitting(false);
+          return;
+        }
 
         const paymentMethod = normalizeLedgerPaymentMethod(values.paymentMethod);
 
@@ -230,8 +251,8 @@ export function AddExpenseDialog({
           amount: Number(values.amount),
           EnglishDate: englishDate,
           nepaliDate: bsDate || undefined,
-          referenceType: values.referenceType || "MANUAL",
-          referenceId: values.referenceId || undefined,
+          referenceType,
+          referenceId: resolvedReferenceId,
           notes: values.notes || undefined,
           payeeType,
           paymentMethod,
@@ -278,7 +299,7 @@ export function AddExpenseDialog({
         }
 
         const response = await api.post("/api/expense/create", payload);
-        if (response.data?.expense != null) {
+        if (response.data?.success) {
           onSuccess?.(response.data);
           handleClose();
         } else {
@@ -371,19 +392,29 @@ export function AddExpenseDialog({
     };
   }, [open, hasProvidedStaffList, didFetchStaffs]);
 
-  // When a staff member is selected, auto-fill role + department from their profile
+  // When a staff member is selected, auto-fill role + department from their profile,
+  // default referenceType to SALARY, and pre-fill amount from their contracted salary.
   const handleStaffSelect = (staffId) => {
     formik.setFieldValue("staffId", staffId);
     const staff = resolvedStaffList.find((s) => s._id === staffId);
 
     // Staff object shape varies across modules; support both:
     // - { role, department }
-    // - { profile: { designation, department } }
+    // - { profile: { designation, department, salaryAmountPaisa } }
     const role = staff?.role ?? staff?.profile?.designation ?? "";
     const department = staff?.department ?? staff?.profile?.department ?? "";
 
     formik.setFieldValue("staffRole", role);
     formik.setFieldValue("staffDepartment", department);
+
+    // Default to SALARY when picking a staff member
+    formik.setFieldValue("referenceType", "SALARY");
+
+    // Pre-fill amount from contracted salary if available (stored as paisa → convert to rupees)
+    const salaryPaisa = staff?.profile?.salaryAmountPaisa ?? staff?.salaryAmountPaisa;
+    if (salaryPaisa != null && salaryPaisa > 0) {
+      formik.setFieldValue("amount", String(salaryPaisa / 100));
+    }
   };
 
   const { payeeType } = formik.values;
@@ -452,7 +483,21 @@ export function AddExpenseDialog({
                   <button
                     key={value}
                     type="button"
-                    onClick={() => formik.setFieldValue("payeeType", value)}
+                    onClick={() => {
+                      formik.setFieldValue("payeeType", value);
+                      // When switching TO internal, default referenceType to SALARY
+                      if (value === "INTERNAL") {
+                        formik.setFieldValue("referenceType", "SALARY");
+                      }
+                      // When switching AWAY from internal, reset referenceType to MANUAL
+                      if (value !== "INTERNAL" && payeeType === "INTERNAL") {
+                        formik.setFieldValue("referenceType", "MANUAL");
+                        formik.setFieldValue("staffId", "");
+                        formik.setFieldValue("staffRole", "");
+                        formik.setFieldValue("staffDepartment", "");
+                        formik.setFieldValue("amount", "");
+                      }
+                    }}
                     className={[
                       "relative flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 text-center transition-all duration-150 cursor-pointer",
                       active
@@ -704,7 +749,7 @@ export function AddExpenseDialog({
               selectedEntity.type !== "head_office" &&
               blocksForSelected.length === 1 &&
               formik.values.blockId && (
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <p className="text-[11px] flex items-center gap-1.5" style={{ color: "var(--color-success)" }}>
                   <CheckCircle2 className="w-3 h-3" />
                   Block automatically selected: {blocksForSelected[0].name || "Unnamed block"}
                 </p>
@@ -755,21 +800,40 @@ export function AddExpenseDialog({
             </div>
             <div className="space-y-2">
               <FieldLabel>Reference Type</FieldLabel>
-              <Select
-                value={formik.values.referenceType ?? "MANUAL"}
-                onValueChange={(v) => formik.setFieldValue("referenceType", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REFERENCE_TYPES.map((r) => (
-                    <SelectItem key={r.value} value={r.value}>
-                      {r.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {payeeType === "INTERNAL" ? (
+                // For internal/staff expenses, only Salary or Advance are valid
+                <Select
+                  value={formik.values.referenceType ?? "SALARY"}
+                  onValueChange={(v) => formik.setFieldValue("referenceType", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INTERNAL_REFERENCE_TYPES.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select
+                  value={formik.values.referenceType ?? "MANUAL"}
+                  onValueChange={(v) => formik.setFieldValue("referenceType", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REFERENCE_TYPES.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 
@@ -785,6 +849,14 @@ export function AddExpenseDialog({
                 value={formik.values.amount ?? ""}
                 onChange={(e) => formik.setFieldValue("amount", e.target.value)}
               />
+              {payeeType === "INTERNAL" &&
+                formik.values.staffId &&
+                formik.values.amount && (
+                  <p className="text-[11px] flex items-center gap-1 text-muted-foreground">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                    Pre-filled from staff contracted salary. Adjust if needed.
+                  </p>
+                )}
             </div>
             <div className="space-y-2">
               <FieldLabel>Date</FieldLabel>

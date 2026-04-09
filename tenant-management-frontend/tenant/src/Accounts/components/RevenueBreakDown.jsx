@@ -4,7 +4,7 @@ import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { Plus, Download, RefreshCw, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
+import { Plus, Download, RefreshCw, ArrowUpRight, ArrowDownRight, BarChart2 } from "lucide-react";
 import SectionToggle from "./SectionToggle";
 import { AddRevenueDialog } from "./AddRevenueDialog";
 import { usePagination } from "../hooks/usePagination";
@@ -13,84 +13,76 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import api from "../../../plugins/axios";
 import { NEPALI_MONTH_NAMES, QUARTER_LABELS, toBSDate } from "../utils/nepaliCalendar";
 
-// ─── Tokens ──────────────────────────────────────────────────────────────────
+// ─── Design tokens (petrol system aliases) ────────────────────────────────────
 const T = {
-    bg: "var(--color-bg)",
-    surface: "var(--color-surface)",
-    raised: "var(--color-surface-raised)",
-    alt: "var(--color-muted)",
-    border: "var(--color-border)",
-    text: "var(--color-text-strong)",
-    body: "var(--color-text-body)",
-    sub: "var(--color-text-sub)",
-    weak: "var(--color-text-weak)",
-    accent: "var(--color-accent)",
-    green: "var(--color-success)",
-    greenBg: "var(--color-success-bg)",
+    bg:          "var(--color-bg)",
+    surface:     "var(--color-surface)",
+    raised:      "var(--color-surface-raised)",
+    alt:         "var(--color-muted)",
+    border:      "var(--color-border)",
+    text:        "var(--color-text-strong)",
+    body:        "var(--color-text-body)",
+    sub:         "var(--color-text-sub)",
+    weak:        "var(--color-text-weak)",
+    accent:      "var(--color-accent)",
+    // Semantic
+    revenue:     "var(--color-info)",          // blue — matches OverviewTab
+    revenueBg:   "var(--color-info-bg)",
+    green:       "var(--color-success)",
+    greenBg:     "var(--color-success-bg)",
     greenBorder: "var(--color-success-border)",
-    amber: "var(--color-warning)",
-    amberBg: "var(--color-warning-bg)",
-    red: "var(--color-danger)",
-    redBg: "var(--color-danger-bg)",
-    blue: "var(--color-info)",
-    blueBg: "var(--color-info-bg)",
-    violet: "#5B21B6",
-    violetBg: "#EDE9FE",
-    teal: "#0E7490",
-    tealBg: "#ECFEFF",
+    amber:       "var(--color-warning)",
+    amberBg:     "var(--color-warning-bg)",
+    amberBorder: "var(--color-warning-border)",
+    red:         "var(--color-danger)",
+    redBg:       "var(--color-danger-bg)",
+    blue:        "var(--color-info)",
+    blueBg:      "var(--color-info-bg)",
 };
 
+// Multi-category palette — intentional distinct colors for pie/distribution charts
+// First two use system tokens; rest are intentional categorical colors
 const PALETTE = [
-    "var(--color-info)",
-    "#1D4ED8",
-    "#6D28D9",
-    "#B45309",
-    "#0E7490",
-    "#BE185D",
-    "#D97706",
-    "#0891B2",
+    "var(--color-info)",    // blue
+    "var(--color-accent)",  // petrol
+    "#6D28D9",              // violet
+    "var(--color-warning)", // amber
+    "#0E7490",              // teal
+    "#BE185D",              // pink
+    "var(--color-success)", // green
+    "var(--color-danger)",  // red
 ];
 
+// Reference type badge config (intentional categorical colors per revenue type)
 const REF_CFG = {
-    RENT: { bg: T.blueBg, color: T.blue },
-    PARKING: { bg: "#DBEAFE", color: "#1D4ED8" },
-    AD: { bg: T.violetBg, color: T.violet },
-    CAM: { bg: T.amberBg, color: T.amber },
-    ELECTRICITY: { bg: "#FEF9C3", color: "#A16207" },
-    MAINTENANCE: { bg: T.tealBg, color: T.teal },
-    MANUAL: { bg: T.alt, color: T.sub },
+    RENT:        { bg: T.blueBg,    color: T.blue },
+    PARKING:     { bg: "#DBEAFE",   color: "#1D4ED8" },
+    AD:          { bg: "#EDE9FE",   color: "#5B21B6" },
+    CAM:         { bg: T.amberBg,   color: T.amber },
+    ELECTRICITY: { bg: "#FEF9C3",   color: "#A16207" },
+    MAINTENANCE: { bg: "#ECFEFF",   color: "#0E7490" },
+    MANUAL:      { bg: T.alt,       color: T.sub },
 };
 
-const fmt = (n) => `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+const fmt  = (n) => `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
 const fmtK = (v) => {
     const a = Math.abs(v);
     return a >= 100000 ? `${(a / 100000).toFixed(1)}L`
-        : a >= 1000 ? `${(a / 1000).toFixed(0)}K`
-            : String(a);
+         : a >= 1000   ? `${(a / 1000).toFixed(0)}K`
+         : String(a);
 };
-
-const KEYFRAMES = `
-  @keyframes rb-up     { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
-  @keyframes rb-spin   { from { transform:rotate(0deg) } to { transform:rotate(360deg) } }
-  @keyframes rb-shimmer{ 0%,100%{ opacity:.4 } 50%{ opacity:.75 } }
-  .rb-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .rb-num  { font-family: 'Instrument Serif', Georgia, serif; letter-spacing: -0.025em; }
-  .rb-card { animation: rb-up .28s ease both; }
-  .rb-spin { animation: rb-spin .9s linear infinite; }
-  .rb-row:hover td { background: var(--color-muted) !important; }
-`;
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
 function Panel({ children, style = {}, delay = 0, noPad = false }) {
     return (
         <div
-            className="rb-card rounded-xl border"
+            className="ap-card rounded-xl border"
             style={{
-                background: T.surface,
-                borderColor: T.border,
-                padding: noPad ? 0 : "18px 20px",
-                animationDelay: `${delay * 0.045}s`,
+                background:    T.surface,
+                borderColor:   T.border,
+                padding:       noPad ? 0 : "18px 20px",
+                animationDelay: `${Math.min(delay, 4) * 0.05}s`,
                 ...style,
             }}
         >
@@ -99,14 +91,16 @@ function Panel({ children, style = {}, delay = 0, noPad = false }) {
     );
 }
 
+// Hero "ink" panel — dark petrol, consistent with DarkCard in AccountingPrimitives
 function InkPanel({ children, style = {}, delay = 0 }) {
     return (
         <div
-            className="rb-card rounded-xl"
+            className="ap-card rounded-xl overflow-hidden"
             style={{
-                background: T.accent,
-                padding: "18px 20px",
-                animationDelay: `${delay * 0.045}s`,
+                background:    "#0d2535",
+                boxShadow:     "inset 0 1px 0 rgba(255,255,255,0.08)",
+                padding:       "18px 20px",
+                animationDelay: `${Math.min(delay, 4) * 0.05}s`,
                 ...style,
             }}
         >
@@ -126,10 +120,11 @@ function Label({ children, inverted, className = "", style = {} }) {
     );
 }
 
+// Numbers use DM Sans font-black (matching AccountingPrimitives KpiNumber)
 function BigNum({ v, size = 36, inverted = false }) {
     return (
         <div
-            className="rb-num leading-none"
+            className="font-black leading-none tabular-nums"
             style={{ fontSize: size, color: inverted ? "#fff" : T.text }}
         >
             ₹{Number(Math.abs(v)).toLocaleString("en-IN")}
@@ -139,15 +134,15 @@ function BigNum({ v, size = 36, inverted = false }) {
 
 function Chip({ up, label, size = "sm" }) {
     const pad = size === "sm" ? "1px 7px" : "3px 10px";
-    const fs = size === "sm" ? 10 : 12;
+    const fs  = size === "sm" ? 10 : 12;
     return (
         <span
-            className="inline-flex items-center gap-[3px] rounded-sm font-bold"
+            className="inline-flex items-center gap-[3px] rounded font-bold"
             style={{
-                padding: pad,
-                fontSize: fs,
-                background: up ? T.greenBg : T.redBg,
-                color: up ? T.green : T.red,
+                padding:    pad,
+                fontSize:   fs,
+                background: up ? T.greenBg  : T.redBg,
+                color:      up ? T.green    : T.red,
             }}
         >
             {up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
@@ -156,7 +151,7 @@ function Chip({ up, label, size = "sm" }) {
     );
 }
 
-function MiniBar({ value, max, color = T.blue, h = 4 }) {
+function MiniBar({ value, max, color = T.revenue, h = 4 }) {
     const w = max > 0 ? Math.min((value / max) * 100, 100) : 0;
     return (
         <div className="w-full overflow-hidden" style={{ height: h, borderRadius: 2, background: T.border }}>
@@ -168,8 +163,8 @@ function MiniBar({ value, max, color = T.blue, h = 4 }) {
 function Skeleton({ h = 14 }) {
     return (
         <div
-            className="rounded mb-1.5"
-            style={{ height: h, background: T.alt, animation: "rb-shimmer 1.6s ease-in-out infinite" }}
+            className="rounded mb-1.5 animate-pulse"
+            style={{ height: h, background: T.alt }}
         />
     );
 }
@@ -177,24 +172,30 @@ function Skeleton({ h = 14 }) {
 function Empty({ msg = "No data for this period" }) {
     return (
         <div className="py-10 text-center" style={{ color: T.sub }}>
-            <Minus size={20} className="mx-auto mb-2 opacity-30" />
+            <BarChart2 size={20} className="mx-auto mb-2 opacity-30" />
             <div className="text-xs">{msg}</div>
         </div>
     );
 }
 
+// Chart tooltip — fixed dark petrol background, works in both light and dark mode
 function ChartTip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     return (
         <div
             className="rounded-lg px-3.5 py-2.5"
-            style={{ background: T.text, boxShadow: "0 8px 24px rgba(0,0,0,.22)", minWidth: 140 }}
+            style={{
+                background: "linear-gradient(140deg, #0a2f46 0%, #1a5276 100%)",
+                boxShadow:  "0 8px 24px rgba(0,0,0,.22)",
+                minWidth:   140,
+                border:     "1px solid rgba(255,255,255,0.08)",
+            }}
         >
             <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-2" style={{ color: "rgba(255,255,255,.38)" }}>{label}</div>
             {payload.map(p => (
                 <div key={p.dataKey} className="flex items-center justify-between gap-4 text-xs text-white">
                     <span style={{ opacity: 0.6 }}>{p.name}</span>
-                    <span className="font-bold">₹{Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}</span>
+                    <span className="font-bold tabular-nums">₹{Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}</span>
                 </div>
             ))}
         </div>
@@ -203,26 +204,34 @@ function ChartTip({ active, payload, label }) {
 
 function StatusBadge({ s }) {
     const cfgs = {
-        RECORDED: { bg: T.amberBg, color: T.amber },
-        SYNCED: { bg: T.greenBg, color: T.green },
-        REVERSED: { bg: T.redBg, color: T.red },
+        RECORDED: { bg: T.amberBg,  color: T.amber },
+        SYNCED:   { bg: T.greenBg,  color: T.green },
+        REVERSED: { bg: T.redBg,    color: T.red },
     };
     const { bg, color } = cfgs[s] ?? { bg: T.alt, color: T.sub };
-    return <span className="rounded-sm text-[9px] font-bold px-1.5 py-0.5" style={{ background: bg, color }}>{s}</span>;
+    return (
+        <span className="rounded text-[9px] font-bold px-1.5 py-0.5" style={{ background: bg, color }}>
+            {s}
+        </span>
+    );
 }
 
 function RefBadge({ t }) {
     const c = REF_CFG[t] ?? { bg: T.alt, color: T.sub };
-    return <span className="rounded-sm text-[9px] font-bold px-1.5 py-0.5" style={{ background: c.bg, color: c.color }}>{t}</span>;
+    return (
+        <span className="rounded text-[9px] font-bold px-1.5 py-0.5" style={{ background: c.bg, color: c.color }}>
+            {t}
+        </span>
+    );
 }
 
 function TypeBadge({ t }) {
     return (
         <span
-            className="rounded-sm text-[9px] font-bold px-1.5 py-0.5"
+            className="rounded text-[9px] font-bold px-1.5 py-0.5"
             style={{
-                background: t === "TENANT" ? T.blueBg : T.amberBg,
-                color: t === "TENANT" ? T.blue : T.amber,
+                background: t === "TENANT" ? T.blueBg  : T.amberBg,
+                color:      t === "TENANT" ? T.blue    : T.amber,
             }}
         >
             {t}
@@ -233,16 +242,16 @@ function TypeBadge({ t }) {
 // ─── Main ────────────────────────────────────────────────────────────────────
 export default function RevenueBreakDown({
     onRevenueAdded,
-    selectedQuarter = null,
-    selectedMonth = null,
-    fiscalYear = null,
-    compareMode = false,
-    compareQuarter = null,
-    customStartDate = "",
-    customEndDate = "",
-    openDialog = false,
+    selectedQuarter  = null,
+    selectedMonth    = null,
+    fiscalYear       = null,
+    compareMode      = false,
+    compareQuarter   = null,
+    customStartDate  = "",
+    customEndDate    = "",
+    openDialog       = false,
     onDialogOpenHandled,
-    entityId = null,
+    entityId         = null,
 }) {
     const isMobile = useIsMobile();
     const [tab, setTab] = useState("overview");
@@ -264,8 +273,7 @@ export default function RevenueBreakDown({
 
     useEffect(() => {
         api.get("/api/tenant/get-tenants").then(({ data }) => setTenants(data?.tenants ?? [])).catch(() => { });
-        api
-            .get("/api/revenue/get-revenue-source")
+        api.get("/api/revenue/get-revenue-source")
             .then(({ data }) => setSources(data?.revenueSource ?? []))
             .catch(() => { });
     }, []);
@@ -297,19 +305,18 @@ export default function RevenueBreakDown({
     };
 
     const TABS = ["overview", "transactions", "analysis"];
-    const totals = D?.totals ?? { total: 0, count: 0, avg: 0, momPct: null };
-    const streams = D?.streams ?? [];
-    const trend = D?.trend ?? [];
-    const tenantSplit = D?.tenantSplit ?? [];
-    const refTypes = D?.refTypes ?? [];
-    const statusMap = D?.statusMap ?? {};
+    const totals      = D?.totals       ?? { total: 0, count: 0, avg: 0, momPct: null };
+    const streams     = D?.streams      ?? [];
+    const trend       = D?.trend        ?? [];
+    const tenantSplit = D?.tenantSplit  ?? [];
+    const refTypes    = D?.refTypes     ?? [];
+    const statusMap   = D?.statusMap    ?? {};
     const transactions = D?.transactions ?? [];
     const TXN_PAGE_SIZE = 20;
     const { paginatedItems: pageTxns, currentPage, totalPages, nextPage, prevPage, startIndex } = usePagination(transactions, TXN_PAGE_SIZE);
 
     return (
-        <div className="rb-root" style={{ color: T.text }}>
-            <style>{KEYFRAMES}</style>
+        <div style={{ color: T.text }}>
 
             {/* ── Header ───────────────────────────────────────────────────────── */}
             <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
@@ -325,16 +332,17 @@ export default function RevenueBreakDown({
                 <div className={`flex gap-2 ${isMobile ? "flex-wrap w-full" : ""}`}>
                     <button
                         onClick={refetch}
-                        className="flex items-center justify-center rounded-lg border "
-
+                        title="Refresh"
+                        className="flex items-center justify-center h-8 w-8 rounded-lg border cursor-pointer transition-colors hover:bg-[var(--color-surface)]"
+                        style={{ borderColor: T.border }}
                     >
-                        <RefreshCw size={13} color={T.body} className={loading ? "rb-spin" : ""} />
+                        <RefreshCw size={13} color={T.body} className={loading ? "animate-spin" : ""} />
                     </button>
 
                     <button
                         onClick={exportCSV}
-                        className="flex items-center gap-1.5 rounded-lg border text-xs font-semibold"
-                        style={{ padding: "7px 14px", borderColor: T.border, background: T.surface, color: T.body, cursor: "pointer" }}
+                        className="flex items-center gap-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors"
+                        style={{ padding: "7px 14px", borderColor: T.border, background: T.surface, color: T.body }}
                     >
                         <Download size={12} />
                         {isMobile ? "" : "Export"}
@@ -342,8 +350,8 @@ export default function RevenueBreakDown({
 
                     <button
                         onClick={() => setDialogOpen(true)}
-                        className="flex items-center gap-1.5 p-2 rounded-lg text-[13px] font-bold text-white bg-primary hover:bg-primary/80"
-
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-bold text-white cursor-pointer transition-colors"
+                        style={{ background: T.accent }}
                     >
                         <Plus size={13} />
                         Add Revenue
@@ -362,22 +370,22 @@ export default function RevenueBreakDown({
                 </div>
             )}
 
-            {/* ── Compare banner ───────────────────────────────────────────────── */}
+            {/* ── Compare banner — amber to match system compare palette ───────── */}
             {compareMode && !loading && !loadingB && DB && (
                 <div className="rounded-xl px-5 py-4 flex items-center justify-between flex-wrap gap-4 mb-5"
-                    style={{ background: T.greenBg, border: `1px solid ${T.greenBorder}` }}>
+                    style={{ background: T.amberBg, border: `1px solid ${T.amberBorder}` }}>
                     <div>
-                        <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-1" style={{ color: T.green }}>Compare Mode</div>
+                        <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-1" style={{ color: T.amber }}>Compare Mode</div>
                         <div className="text-xs" style={{ color: T.body }}>Period vs period revenue analysis</div>
                     </div>
                     <div className="flex items-center gap-6 flex-wrap">
                         {[
-                            { lbl: periodLabel, val: totals.total, color: T.green },
+                            { lbl: periodLabel, val: totals.total, color: T.amber },
                             { lbl: compareQuarter && QUARTER_LABELS[compareQuarter] ? `Q${compareQuarter} · ${QUARTER_LABELS[compareQuarter]}` : "Compare", val: DB.totals.total, color: T.blue },
                         ].map(x => (
                             <div key={x.lbl} className="text-right">
                                 <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-0.5" style={{ color: T.sub }}>{x.lbl}</div>
-                                <div className="rb-num text-xl" style={{ color: x.color }}>{fmt(x.val)}</div>
+                                <div className="font-black tabular-nums text-xl" style={{ color: x.color }}>{fmt(x.val)}</div>
                             </div>
                         ))}
                         {totals.total > 0 && (
@@ -427,13 +435,11 @@ export default function RevenueBreakDown({
                         label: "Top Revenue Stream",
                         value: streams[0]?.name ?? "—",
                         sub: streams[0] ? `${fmt(streams[0].amount)} · ${streams[0].pct}% share` : "No data",
-
                     },
                     {
                         label: "Rent Revenue",
                         value: fmt(streams.find(s => s.code === "RENT")?.amount ?? 0),
                         sub: "Primary collection stream",
-
                     },
                     {
                         label: "Other Streams",
@@ -445,7 +451,7 @@ export default function RevenueBreakDown({
                         <div />
                         <div className="px-4 py-3.5">
                             <Label>{k.label}</Label>
-                            <div className="rb-num text-[22px] leading-tight mb-1" style={{ color: T.text }}>{k.value}</div>
+                            <div className="font-black tabular-nums text-[22px] leading-tight mb-1" style={{ color: T.text }}>{k.value}</div>
                             <div className="text-[10px]" style={{ color: T.sub }}>{k.sub}</div>
                         </div>
                     </Panel>
@@ -467,7 +473,7 @@ export default function RevenueBreakDown({
 
                     {/* Area chart + Pie */}
                     <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[1fr_260px]"}`}>
-                        <Panel delay={5}>
+                        <Panel delay={0}>
                             <div className="flex justify-between items-start mb-4">
                                 <div>
                                     <Label style={{ marginBottom: 2 }}>Revenue Trend</Label>
@@ -486,9 +492,9 @@ export default function RevenueBreakDown({
                                     <ResponsiveContainer width="100%" height={200}>
                                         <AreaChart data={trend} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
                                             <defs>
-                                                <linearGradient id="rv-fill" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor={T.green} stopOpacity={0.13} />
-                                                    <stop offset="100%" stopColor={T.green} stopOpacity={0} />
+                                                <linearGradient id="rb-rv-fill" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor={T.revenue} stopOpacity={0.13} />
+                                                    <stop offset="100%" stopColor={T.revenue} stopOpacity={0} />
                                                 </linearGradient>
                                             </defs>
                                             <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={T.border} />
@@ -499,10 +505,10 @@ export default function RevenueBreakDown({
                                                 type="monotone"
                                                 dataKey="revenue"
                                                 name="Revenue"
-                                                stroke={T.green}
+                                                stroke={T.revenue}
                                                 strokeWidth={2}
-                                                fill="url(#rv-fill)"
-                                                dot={{ r: 2.5, fill: T.green, strokeWidth: 0 }}
+                                                fill="url(#rb-rv-fill)"
+                                                dot={{ r: 2.5, fill: T.revenue, strokeWidth: 0 }}
                                                 activeDot={{ r: 4, strokeWidth: 0 }}
                                             />
                                         </AreaChart>
@@ -510,7 +516,7 @@ export default function RevenueBreakDown({
                                 )}
                         </Panel>
 
-                        <Panel delay={6}>
+                        <Panel delay={1}>
                             <Label>By Stream</Label>
                             {loading ? <Skeleton h={130} /> : streams.length === 0 ? <Empty /> : (
                                 <>
@@ -560,7 +566,7 @@ export default function RevenueBreakDown({
                     {/* Tenant split + Ref types + Stats */}
                     <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[2fr_1fr_1fr]"}`}>
 
-                        <Panel delay={7}>
+                        <Panel delay={2}>
                             <Label>Tenant Distribution</Label>
                             {loading ? <><Skeleton /><Skeleton /></> : tenantSplit.length === 0 ? <Empty /> : (
                                 <>
@@ -596,7 +602,7 @@ export default function RevenueBreakDown({
                             )}
                         </Panel>
 
-                        <Panel delay={8}>
+                        <Panel delay={3}>
                             <Label>By Reference</Label>
                             {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : refTypes.length === 0 ? <Empty /> : (
                                 <div className="flex flex-col gap-3.5">
@@ -616,15 +622,15 @@ export default function RevenueBreakDown({
                             )}
                         </Panel>
 
-                        <Panel delay={9}>
+                        <Panel delay={4}>
                             <Label>Quick Stats</Label>
                             {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : (
                                 <>
                                     {[
-                                        { l: "Transactions", v: totals.count },
-                                        { l: "Avg / Txn", v: fmt(totals.avg) },
-                                        { l: "Streams", v: streams.length },
-                                        { l: "Top Stream %", v: streams[0] ? `${streams[0].pct}%` : "—" },
+                                        { l: "Transactions",  v: totals.count },
+                                        { l: "Avg / Txn",     v: fmt(totals.avg) },
+                                        { l: "Streams",       v: streams.length },
+                                        { l: "Top Stream %",  v: streams[0] ? `${streams[0].pct}%` : "—" },
                                         { l: "Tenant Payers", v: tenantSplit.length },
                                     ].map(s => (
                                         <div key={s.l} className="flex justify-between items-center py-2 border-b"
@@ -667,7 +673,7 @@ export default function RevenueBreakDown({
                         </div>
                         <button
                             onClick={exportCSV}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors"
                             style={{ borderColor: T.border, background: T.surface, color: T.body }}
                         >
                             <Download size={11} /> Export CSV
@@ -696,7 +702,7 @@ export default function RevenueBreakDown({
                                                 {pageTxns.map((t, i) => (
                                                     <tr
                                                         key={t.id}
-                                                        className="rb-row transition-colors"
+                                                        className="transition-colors hover:bg-[var(--color-muted)]"
                                                         style={{ borderBottom: `1px solid ${T.border}44` }}
                                                     >
                                                         <td className="px-3.5 py-2.5 text-[10px]" style={{ color: T.weak }}>{startIndex + i + 1}</td>
@@ -704,7 +710,7 @@ export default function RevenueBreakDown({
                                                         <td className="px-3.5 py-2.5 text-[12px]" style={{ color: T.body }}>{t.source}</td>
                                                         <td className="px-3.5 py-2.5"><RefBadge t={t.refType} /></td>
                                                         <td className="px-3.5 py-2.5"><TypeBadge t={t.payerType} /></td>
-                                                        <td className="px-3.5 py-2.5 text-[12px] font-bold tabular-nums" style={{ color: T.green }}>
+                                                        <td className="px-3.5 py-2.5 text-[12px] font-bold tabular-nums" style={{ color: T.revenue }}>
                                                             {fmt(t.amount)}
                                                         </td>
                                                         <td className="px-3.5 py-2.5 text-[10px] tabular-nums" style={{ color: T.sub }}>{t.bsDate}</td>
@@ -834,7 +840,7 @@ export default function RevenueBreakDown({
                                             {trend.map((_, i) => (
                                                 <Cell
                                                     key={i}
-                                                    fill={i === trend.length - 1 ? T.green : `${T.green}55`}
+                                                    fill={i === trend.length - 1 ? T.revenue : `${T.revenue}55`}
                                                 />
                                             ))}
                                         </Bar>

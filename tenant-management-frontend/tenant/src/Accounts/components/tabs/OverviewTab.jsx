@@ -35,7 +35,7 @@ function HeroNumber({ value, loading }) {
             >
                 {value < 0 && "−"}₹{fmtK(Math.abs(value))}
             </div>
-            <div className="text-[11px] font-mono mt-1 text-white/35 tabular-nums">
+            <div className="text-[11px] mt-1 text-white/35 tabular-nums">
                 ₹{fmtN(Math.abs(value))}
             </div>
         </div>
@@ -61,7 +61,7 @@ function KpiNumber({ value, color, loading, size = "lg" }) {
                 ₹{fmtK(value)}
             </div>
             <div
-                className="text-[10px] font-mono mt-0.5 tabular-nums"
+                className="text-[10px] mt-0.5 tabular-nums"
                 style={{ color: "var(--color-text-sub)" }}
             >
                 ₹{fmtN(value)}

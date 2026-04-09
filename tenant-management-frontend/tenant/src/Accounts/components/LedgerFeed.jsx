@@ -69,7 +69,7 @@ export default function LedgerFeed({ entries = [], loading, onViewAll }) {
                                 <div className="text-[13px] font-medium text-[var(--color-text-strong)] truncate leading-tight">
                                     {description}
                                 </div>
-                                <div className="text-[10px] font-mono text-[var(--color-text-sub)] mt-0.5 tabular-nums">
+                                <div className="text-[10px] text-[var(--color-text-sub)] mt-0.5 tabular-nums">
                                     {toBSDate(e.date)}
                                 </div>
                             </div>

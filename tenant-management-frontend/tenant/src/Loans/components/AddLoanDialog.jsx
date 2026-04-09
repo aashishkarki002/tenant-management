@@ -4,13 +4,23 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 import { C, fmtRupees, LOAN_TYPE_LABELS } from "../loan.constants";
-import { resolveEntityId } from "../loan.service";
 import { useBankAccounts } from "../hooks/useBankAccounts";
+import useOwnership from "@/hooks/use-ownership";
 
-export function AddLoanDialog({ open, onOpenChange, onAdded }) {
+const entityDot = (type) => type === "private" ? "#16a34a" : C.accent;
+
+export function AddLoanDialog({ open, onOpenChange, onAdded, defaultEntityId = null }) {
   const { banks } = useBankAccounts(open);
+  const { entities, loading: entitiesLoading } = useOwnership();
+
+  // Entities eligible for loan ownership — exclude head_office
+  const loanEntities = useMemo(
+    () => (entities ?? []).filter((e) => e.type !== "head_office"),
+    [entities],
+  );
 
   const [form, setForm] = useState({
+    entityId: "",
     lender: "",
     loanAccountNumber: "",
     loanType: "MORTGAGE",
@@ -24,11 +34,41 @@ export function AddLoanDialog({ open, onOpenChange, onAdded }) {
   });
   const [saving, setSaving] = useState(false);
 
+  // Auto-select entity when dialog opens
+  useEffect(() => {
+    if (!open) return;
+    if (entitiesLoading) return;
+    setForm((prev) => {
+      if (prev.entityId) return prev; // already set — don't override
+      const preferred = defaultEntityId ?? (loanEntities.length === 1 ? loanEntities[0]._id : "");
+      return { ...prev, entityId: preferred };
+    });
+  }, [open, entitiesLoading, loanEntities, defaultEntityId]);
+
+  // Auto-select first bank account
   useEffect(() => {
     if (!open) return;
     if (!banks?.length) return;
     setForm((p) => (p.bankAccountCode ? p : { ...p, bankAccountCode: banks[0].accountCode }));
   }, [open, banks]);
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (open) return;
+    setForm({
+      entityId: "",
+      lender: "",
+      loanAccountNumber: "",
+      loanType: "MORTGAGE",
+      principalRupees: "",
+      interestRateAnnual: "",
+      tenureMonths: "",
+      disbursedDate: new Date().toISOString().split("T")[0],
+      firstEmiDate: "",
+      bankAccountCode: "",
+      notes: "",
+    });
+  }, [open]);
 
   const previewEmi = useMemo(() => {
     try {
@@ -45,6 +85,10 @@ export function AddLoanDialog({ open, onOpenChange, onAdded }) {
   }, [form.principalRupees, form.interestRateAnnual, form.tenureMonths]);
 
   const handleSubmit = async () => {
+    if (!form.entityId) {
+      toast.error("Select an entity for this loan");
+      return;
+    }
     if (!form.lender.trim()) {
       toast.error("Lender name required");
       return;
@@ -68,14 +112,8 @@ export function AddLoanDialog({ open, onOpenChange, onAdded }) {
 
     try {
       setSaving(true);
-      const entityId = await resolveEntityId();
-      if (!entityId) {
-        toast.error("Could not resolve entity");
-        return;
-      }
-
       await api.post("/api/loan", {
-        entityId,
+        entityId: form.entityId,
         lender: form.lender.trim(),
         loanAccountNumber: form.loanAccountNumber.trim() || null,
         loanType: form.loanType,
@@ -91,16 +129,6 @@ export function AddLoanDialog({ open, onOpenChange, onAdded }) {
       toast.success("Loan recorded. Disbursement journal posted.");
       onOpenChange(false);
       onAdded?.();
-      setForm((f) => ({
-        ...f,
-        lender: "",
-        loanAccountNumber: "",
-        principalRupees: "",
-        interestRateAnnual: "",
-        tenureMonths: "",
-        firstEmiDate: "",
-        notes: "",
-      }));
     } catch (err) {
       toast.error(err.response?.data?.message ?? "Failed to create loan");
     } finally {
@@ -116,6 +144,8 @@ export function AddLoanDialog({ open, onOpenChange, onAdded }) {
     </label>
   );
 
+  const showEntityPicker = loanEntities.length > 1;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent style={{ background: C.surface, maxWidth: 520 }}>
@@ -127,6 +157,38 @@ export function AddLoanDialog({ open, onOpenChange, onAdded }) {
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-3 mt-2">
+
+          {/* ── Entity selector (multi-entity only) ── */}
+          {showEntityPicker && (
+            <div className="col-span-2 flex flex-col gap-1.5">
+              {lbl("Ownership entity *")}
+              <div className="flex flex-wrap gap-1.5">
+                {loanEntities.map((e) => {
+                  const active = form.entityId === e._id;
+                  const dot = entityDot(e.type);
+                  return (
+                    <button
+                      key={e._id}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, entityId: e._id }))}
+                      className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-medium border transition-colors duration-150 cursor-pointer"
+                      style={active
+                        ? { background: dot, borderColor: dot, color: "white" }
+                        : { borderColor: C.border, color: C.textMid, background: "transparent" }
+                      }
+                    >
+                      <span
+                        className="w-[6px] h-[6px] rounded-full shrink-0"
+                        style={{ background: active ? "rgba(255,255,255,0.6)" : dot }}
+                      />
+                      {e.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="col-span-2 flex flex-col gap-1.5">
             {lbl("Lender / Bank name *")}
             <input
@@ -289,4 +351,3 @@ export function AddLoanDialog({ open, onOpenChange, onAdded }) {
     </Dialog>
   );
 }
-

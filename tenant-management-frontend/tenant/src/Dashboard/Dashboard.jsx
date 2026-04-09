@@ -58,11 +58,13 @@ export default function Dashboard() {
   const PageHeader = (
     <div className="px-4 sm:px-5 pt-4 pb-3 shrink-0 flex items-end justify-between gap-4">
       <div>
-        <p className="text-[10px] font-semibold tracking-[0.18em] uppercase
-                      text-muted-foreground mb-1">
+        <p
+          className="text-sm font-medium text-muted-foreground mb-1.5"
+          style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}
+        >
           {greeting}, {user?.name}
         </p>
-        <h1 className="text-2xl font-bold leading-none tracking-tight text-foreground">
+        <h1 className="text-2xl sm:text-3xl font-bold leading-none tracking-tight text-foreground">
           Property Overview
         </h1>
       </div>
@@ -71,12 +73,18 @@ export default function Dashboard() {
       <div className="relative shrink-0">
         <button
           onClick={() => setFyOpen((o) => !o)}
+          aria-expanded={fyOpen}
+          aria-haspopup="listbox"
           className="flex items-center gap-2 rounded-xl border border-border
                      px-3.5 py-2 text-sm font-semibold bg-card text-primary
-                     transition-all hover:shadow-sm active:scale-[0.98]"
+                     transition-[box-shadow,transform] hover:shadow-sm active:scale-[0.98]
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {FY_LABELS[period]}
-          <ChevronDown className="w-3.5 h-3.5 opacity-40" />
+          <ChevronDown
+            className="w-3.5 h-3.5 opacity-40 transition-transform duration-200"
+            style={{ transform: fyOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+          />
         </button>
 
         {fyOpen && (
@@ -88,6 +96,7 @@ export default function Dashboard() {
                 onClick={() => { setPeriod(p); setFyOpen(false); }}
                 className={`w-full flex items-center justify-between px-4 py-2.5
                             text-sm font-medium transition-colors
+                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset
                             ${period === p
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-secondary"
@@ -95,7 +104,7 @@ export default function Dashboard() {
               >
                 <span>{FY_LABELS[p]}</span>
                 {period === p && (
-                  <span className="text-[9px] font-bold uppercase tracking-widest opacity-50">
+                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">
                     Active
                   </span>
                 )}
@@ -104,7 +113,7 @@ export default function Dashboard() {
           </div>
         )}
         {fyOpen && (
-          <div className="fixed inset-0 z-20" onClick={() => setFyOpen(false)} />
+          <div className="fixed inset-0 z-20" aria-hidden="true" onClick={() => setFyOpen(false)} />
         )}
       </div>
     </div>
@@ -145,99 +154,39 @@ export default function Dashboard() {
       {PageHeader}
       {ErrorBanner}
 
-      {/* ─── Main Bento Grid Container ───────────────────────────────────────── */}
+      {/* ─── Main Grid ───────────────────────────────────────────────────────── */}
       {(stats || !loading) && (
         <div className="px-3 sm:px-4 lg:px-5 pb-6 lg:pb-8">
+          <div className="grid gap-3 sm:gap-4 lg:gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
 
-          {/* ═══════════════════════════════════════════════════════════════════
-              HYBRID BENTO GRID - Space-Efficient, Context-Aware Layout
-              
-              Strategy:
-              1. Reduced chart height (380px) - see revenue trend at a glance
-              2. Right sidebar: Attention + Health stacked vertically (related context)
-              3. Smart spacing: No wasted vertical space
-              4. Current month clearly visible in chart header
-              
-              VISUAL BALANCE OPTIMIZATIONS:
-              - Chart: Subtle gradient background for visual weight (4 cols = 66%)
-              - Sidebar: Increased spacing/padding for better breathing room (2 cols = 33%)
-              - KPIs: Micro-interactions (hover lift) for engagement
-              - Proportions follow 2:1 ratio (industry standard for dashboard layouts)
-              ═══════════════════════════════════════════════════════════════ */}
-          <div
-            className="
-              grid gap-3 sm:gap-4 lg:gap-5
-              grid-cols-1
-              sm:grid-cols-2
-              lg:grid-cols-4
-              xl:grid-cols-6
-              2xl:grid-cols-6
-            "
-            style={{
-              gridAutoFlow: 'dense',
-              gridTemplateRows: 'auto auto auto auto',
-            }}
-          >
-
-            {/* ─── Row 1: KPI Cards ────────────────────────────────────────── */}
-            <div className="
-              col-span-1 sm:col-span-2 lg:col-span-4 xl:col-span-6 2xl:col-span-6
-            ">
+            {/* KPI strip */}
+            <div className="col-span-1 sm:col-span-2 lg:col-span-4 xl:col-span-6">
               <KpiStrip stats={stats} loading={loading} />
             </div>
 
-            {/* ─── Row 2: Compact Chart + Attention/Health Sidebar ─────────── */}
-
-            {/* Revenue Chart - COMPACT HEIGHT for at-a-glance viewing */}
+            {/* Revenue chart — 50% on lg, 67% on xl+ */}
             <div className="
-              col-span-1 sm:col-span-2 
-              lg:col-span-3
-              xl:col-span-4
-              2xl:col-span-4
-              rounded-2xl border border-border bg-card
-              flex flex-col
-              h-[380px] sm:h-[400px] lg:h-[420px]
-              shadow-sm
-              ring-1 ring-black/[0.02]
+              col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-4
+              rounded-2xl border border-border bg-card shadow-sm
+              flex flex-col h-[380px] sm:h-[400px] lg:h-[420px]
             ">
-              <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
-                <BarDiagram stats={stats} loading={loading} error={error} period={period} />
-              </div>
+              <BarDiagram stats={stats} loading={loading} error={error} period={period} />
             </div>
 
-            {/* Right Sidebar: Attention + Health STACKED (space-efficient) */}
-            <div className="
-              col-span-1 sm:col-span-2
-              lg:col-span-1
-              xl:col-span-2
-              2xl:col-span-2
-              flex flex-col gap-3 sm:gap-4 lg:gap-5
-            ">
-
-              {/* Needs Attention - Compact, auto-sizing */}
-              <div className="flex-shrink-0 transition-all duration-200 hover:scale-[1.01]">
+            {/* Alerts + health sidebar — 50% on lg, 33% on xl+ */}
+            <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2 flex flex-col gap-3 sm:gap-4 lg:gap-5">
+              <div className="flex-shrink-0">
                 <NeedsAttentionPanel stats={stats} loading={loading} />
               </div>
-
-              {/* Building Health - Right below attention for context */}
-              <div className="flex-shrink-0 transition-all duration-200 hover:scale-[1.01]">
+              <div className="flex-shrink-0">
                 <BuildingHealthPanel stats={stats} loading={loading} />
               </div>
-
             </div>
 
-            {/* ─── Row 3: Recent Activities (Full Width) ───────────────────── */}
-            <div className="
-              col-span-1 sm:col-span-2
-              lg:col-span-4
-              xl:col-span-6
-              2xl:col-span-6
-              overflow-auto scrollbar-thin
-              h-auto
-            ">
+            {/* Recent activity — full width */}
+            <div className="col-span-1 sm:col-span-2 lg:col-span-4 xl:col-span-6">
               <RecentActivities stats={stats} loading={loading} error={error} />
             </div>
-
 
           </div>
         </div>

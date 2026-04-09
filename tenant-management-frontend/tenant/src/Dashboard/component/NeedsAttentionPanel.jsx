@@ -328,7 +328,8 @@ function AlertRow({ item }) {
             to={item.to}
             className="group relative flex items-start gap-3.5 px-4 py-3.5
                  transition-colors hover:bg-secondary/50
-                 border-b border-border/40 last:border-0 overflow-hidden"
+                 border-b border-border/40 last:border-0 overflow-hidden
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             style={{ background: rowTint }}
         >
             {/* Left severity strip — pulses for overdue items */}
@@ -349,7 +350,7 @@ function AlertRow({ item }) {
                 {/* Pulsing dot for critical severity */}
                 {item.severity === "critical" && (
                     <span
-                        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full animate-ping opacity-75"
+                        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full animate-ping opacity-75 motion-reduce:animate-none"
                         style={{ background: "var(--destructive)" }}
                     />
                 )}
@@ -358,14 +359,14 @@ function AlertRow({ item }) {
             {/* Text block */}
             <div className="flex-1 min-w-0">
                 {/* Line 1: title */}
-                <p className="text-xs font-semibold text-foreground truncate leading-relaxed">
+                <p className="text-[13px] font-semibold text-foreground truncate leading-relaxed">
                     {item.title}
                 </p>
 
                 {/* Line 2: sub — overdue items lead with days count in a strong color */}
                 {item.sub && (
                     <p
-                        className="text-[10px] truncate mt-1 leading-relaxed font-medium"
+                        className="text-[11px] truncate mt-1 leading-relaxed font-medium"
                         style={{
                             color: item.overdue
                                 ? "var(--destructive)"
@@ -381,7 +382,7 @@ function AlertRow({ item }) {
                 {/* Line 3: location */}
                 {item.meta && (
                     <p
-                        className="text-[10px] truncate mt-1 leading-relaxed flex items-center gap-1"
+                        className="text-[11px] truncate mt-1 leading-relaxed flex items-center gap-1"
                         style={{ color: "color-mix(in oklch, var(--color-muted-foreground) 60%, transparent)" }}
                     >
                         <Building2 className="w-2.5 h-2.5 shrink-0" />
@@ -406,7 +407,7 @@ function AlertRow({ item }) {
                 )}
                 <ChevronRight
                     className="w-3 h-3 opacity-0 group-hover:opacity-40
-                       group-hover:translate-x-0.5 transition-all text-muted-foreground"
+                       group-hover:translate-x-0.5 transition-[opacity,transform] text-muted-foreground"
                 />
             </div>
         </Link>
@@ -459,7 +460,7 @@ export default function NeedsAttentionPanel({ stats, loading }) {
             {/* ── Header ── */}
             <div className="px-4 py-3 border-b border-border shrink-0 flex items-center justify-between gap-2 min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-semibold text-foreground whitespace-nowrap">Needs attention</span>
+                    <span className="text-sm font-bold text-foreground whitespace-nowrap tracking-tight">Needs attention</span>
                     {!loading && hasAlerts && (
                         <span
                             className="text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap"
@@ -481,7 +482,8 @@ export default function NeedsAttentionPanel({ stats, loading }) {
                     <Link
                         to="/rent-payment"
                         className="text-[11px] text-muted-foreground hover:text-foreground
-                       transition-colors flex items-center gap-0.5 shrink-0 whitespace-nowrap"
+                       transition-colors flex items-center gap-0.5 shrink-0 whitespace-nowrap
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                     >
                         <span className="hidden sm:inline">View all</span>
                         <ChevronRight className="w-3.5 h-3.5" />
@@ -498,8 +500,9 @@ export default function NeedsAttentionPanel({ stats, loading }) {
                             <button
                                 key={f.key}
                                 onClick={() => setActiveFilter(f.key)}
-                                className="flex items-center gap-1 text-[10px] font-semibold
-                             px-2 py-0.5 rounded-md border transition-colors"
+                                className="flex items-center gap-1 text-[11px] font-semibold
+                             px-2 py-0.5 rounded-md border transition-colors
+                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 style={{
                                     background: isActive ? "var(--primary)" : "transparent",
                                     color: isActive ? "var(--primary-foreground)" : "var(--color-muted-foreground)",
