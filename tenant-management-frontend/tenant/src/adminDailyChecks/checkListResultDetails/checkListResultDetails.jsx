@@ -124,53 +124,75 @@ function SegmentedBar({ passed, failed, total }) {
         </div>
     );
 }
+const IMAGE_BASE = "https://app.sallyanhouse.com/tenantsDocs";
 
-// ─── Single item row ──────────────────────────────────────────────────────────
-// Left-border pattern: passes = subtle, failures = prominent
 function ItemRow({ item, index }) {
     const passed = item.isOk ?? item.passed ?? item.status === "pass";
     const note = item.notes ?? item.note ?? item.remarks ?? "";
     const label = item.label ?? item.name ?? item.checkItem ?? `Item ${index + 1}`;
+    const images = Array.isArray(item.issueImages) ? item.issueImages.filter(Boolean) : [];
 
     return (
         <div
             className={cn(
-                "flex items-start gap-3 border-l-2 pl-3 py-2.5 transition-colors",
-                passed
-                    ? "border-l-emerald-300"
-                    : "border-l-rose-400"
+                "flex flex-col gap-2 border-l-2 pl-3 py-2.5 transition-colors",
+                passed ? "border-l-emerald-300" : "border-l-rose-400"
             )}
         >
-            <div className="mt-0.5 shrink-0">
-                {passed ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                ) : (
-                    <XCircle className="h-3.5 w-3.5 text-rose-500" />
-                )}
-            </div>
-            <div className="flex-1 min-w-0">
-                <p
-                    className={cn(
+            <div className="flex items-start gap-3">
+                <div className="mt-0.5 shrink-0">
+                    {passed ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    ) : (
+                        <XCircle className="h-3.5 w-3.5 text-rose-500" />
+                    )}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className={cn(
                         "text-sm leading-snug",
                         passed ? "text-zinc-700 font-normal" : "text-zinc-900 font-medium"
-                    )}
-                >
-                    {label}
-                </p>
-                {note && (
-                    <p className="mt-0.5 text-xs text-zinc-400 flex items-start gap-1">
-                        <StickyNote className="h-3 w-3 mt-0.5 shrink-0 text-amber-400" />
-                        {note}
+                    )}>
+                        {label}
                     </p>
+                    {note && (
+                        <p className="mt-0.5 text-xs text-zinc-400 flex items-start gap-1">
+                            <StickyNote className="h-3 w-3 mt-0.5 shrink-0 text-amber-400" />
+                            {note}
+                        </p>
+                    )}
+                </div>
+                {!passed && (
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-rose-500/80 mt-0.5">
+                        Issue
+                    </span>
                 )}
             </div>
-            {!passed && (
-                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-rose-500/80 mt-0.5">
-                    Issue
-                </span>
+
+            {/* Issue images */}
+            {images.length > 0 && (
+                <div className="flex flex-wrap gap-2 pl-6 mt-1">
+                    {images.map((src, i) => (
+                        <a
+                            key={i}
+                            href={`${IMAGE_BASE}${src}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block"
+                        >
+                            <img
+                                src={`${IMAGE_BASE}${src}`}
+                                alt={`Issue ${i + 1}`}
+                                className="h-20 w-20 object-cover rounded-lg border border-rose-100 hover:opacity-90 transition-opacity"
+                                onError={(e) => {
+                                    e.currentTarget.style.display = "none";
+                                }}
+                            />
+                        </a>
+                    ))}
+                </div>
             )}
         </div>
-    );
+    )
 }
 
 // ─── Section group ────────────────────────────────────────────────────────────
@@ -446,8 +468,9 @@ function ChecklistResultDetail() {
         : null;
 
     // Support section-based structure (new API) and flat items (old API)
-    const sections = result?.mergedSections ?? result?.sections ?? [];
-    const flatItems = result?.items ?? result?.checkItems ?? [];
+    // The service returns mergedSections under `sections` key
+    const sections = result?.sections ?? result?.mergedSections ?? [];
+    const flatItems = result?.items ?? result?.checkItems ?? result?.itemResults ?? [];
     const hasSections = sections.length > 0;
 
     const allFlatItems = hasSections

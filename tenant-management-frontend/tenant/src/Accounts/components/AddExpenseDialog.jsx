@@ -148,6 +148,7 @@ function getInitialValues() {
     notes: "",
     paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
     bankAccountId: "",
+    chequeNumber: "",
     // Ownership
     entityId: "",
     blockId: "",
@@ -268,6 +269,10 @@ export function AddExpenseDialog({
           values.bankAccountId
         ) {
           payload.bankAccountId = values.bankAccountId;
+        }
+
+        if (paymentMethod === "cheque" && values.chequeNumber?.trim()) {
+          payload.chequeNumber = values.chequeNumber.trim();
         }
 
         // Payee-specific fields
@@ -914,6 +919,23 @@ export function AddExpenseDialog({
                 showBalance
                 triggerClassName="w-full"
               />
+            </div>
+          )}
+
+          {/* ── Cheque number (only for cheque payments) ── */}
+          {formik.values.paymentMethod === "cheque" && (
+            <div className="space-y-2">
+              <FieldLabel required>Cheque Number</FieldLabel>
+              <input
+                type="text"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="e.g. 000123"
+                value={formik.values.chequeNumber ?? ""}
+                onChange={(e) => formik.setFieldValue("chequeNumber", e.target.value)}
+              />
+              {formik.touched.chequeNumber && formik.errors.chequeNumber && (
+                <p className="text-xs text-destructive">{formik.errors.chequeNumber}</p>
+              )}
             </div>
           )}
 

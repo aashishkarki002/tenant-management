@@ -39,8 +39,12 @@ export default function PushNotificationBanner() {
         setDismissed(true);
     };
 
-    // Never show if: dismissed, no user, hook not ready, already subscribed/granted
-    if (dismissed || !user || !isReady || isSubscribed || permissionState === "granted") return null;
+    // Never show if: dismissed, no user, hook not ready, or already subscribed
+    // Note: do NOT gate on permissionState === "granted" — when the server DB record
+    // was deleted the user has permission but is effectively unsubscribed, and the
+    // auto-resubscribe in usePushNotifications will fire. If that fails we still want
+    // the banner visible so the user can manually re-enable.
+    if (dismissed || !user || !isReady || isSubscribed) return null;
 
     // ── Shared container: fixed floating card ────────────────────────────────
     // top-[57px] = sits just below the 56px sticky header (h-14)

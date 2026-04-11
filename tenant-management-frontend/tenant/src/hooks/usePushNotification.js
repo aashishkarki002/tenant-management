@@ -48,21 +48,29 @@ export function usePushNotifications(user) {
   }, [browserSupportsPush]);
 
   // ── Silent renewal on every app open ───────────────────────────────────────
+  // Returns "ok", "no_subscription", or "unknown_endpoint".
+  // "unknown_endpoint" means the server DB record was deleted (e.g. after a
+  // 410 Gone from the push service) — caller should trigger re-subscription.
   const silentRenew = useCallback(async () => {
-    if (!VAPID_PUBLIC_KEY || !browserSupportsPush) return;
+    if (!VAPID_PUBLIC_KEY || !browserSupportsPush) return "no_subscription";
     try {
       const registration =
         await navigator.serviceWorker.getRegistration("/sw.js");
-      if (!registration) return;
+      if (!registration) return "no_subscription";
       const sub = await registration.pushManager.getSubscription();
-      if (!sub) return;
-      await fetch("/api/push/renew", {
+      if (!sub) return "no_subscription";
+      const res = await fetch("/api/push/renew", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: sub.toJSON() }),
       });
+      const data = await res.json();
+      if (!data.success && data.reason === "unknown_endpoint") {
+        return "unknown_endpoint";
+      }
+      return "ok";
     } catch {
-      // Always silent
+      return "ok"; // network error — stay silent, don't thrash
     }
   }, [browserSupportsPush]);
 
@@ -168,8 +176,16 @@ export function usePushNotifications(user) {
     setPermissionState(Notification.permission);
     setIsReady(true);
     checkSubscription();
-    silentRenew();
-  }, [user, browserSupportsPush, checkSubscription, silentRenew]);
+    silentRenew().then((result) => {
+      // If the server DB record was deleted (push subscription expired/rotated),
+      // auto-resubscribe when the user is logged in and permission is already granted.
+      // This fixes the silent failure where the browser still holds a subscription
+      // object but the server has no record to push to.
+      if (result === "unknown_endpoint" && Notification.permission === "granted") {
+        requestPermissionAndSubscribe();
+      }
+    });
+  }, [user, browserSupportsPush, checkSubscription, silentRenew, requestPermissionAndSubscribe]);
 
   return {
     permissionState,

@@ -1,33 +1,3 @@
-/**
- * ChecklistCalendar.jsx
- *
- * Migrated from a hand-rolled Nepali calendar grid to FullCalendar React.
- *
- * Install:
- *   npm install @fullcalendar/core @fullcalendar/react \
- *               @fullcalendar/daygrid @fullcalendar/interaction \
- *               nepali-date
- *
- * ── Nepali calendar strategy ─────────────────────────────────────────────────
- * FullCalendar has no native BS support. The approach here is:
- *
- *   1. Let FullCalendar render its standard Gregorian month grid.
- *   2. In the `dayCellContent` render hook, convert each AD cell date → BS
- *      using the `nepali-date` package, then render the BS day number and
- *      your dots/badges instead of the default AD number.
- *   3. On each BS month change, call `calendarApi.gotoDate(bsMonthStartToAd())`
- *      so FullCalendar scrolls to the AD month that contains the BS month's
- *      first day (e.g. Baisakh 1 ≈ April 14, so FullCalendar shows April).
- *   4. Cells at the leading/trailing edges will show days from adjacent BS
- *      months — dim them with `isOutsideBsMonth` so the user sees a clear
- *      "current month" boundary in BS space, not AD space.
- *
- * This gives you a bilingual Gregorian-grid / BS-labeled calendar that
- * FullCalendar handles entirely (navigation, keyboard, accessibility, SSR)
- * while the domain stays in BS throughout.
- * ─────────────────────────────────────────────────────────────────────────────
- */
-
 import { useState, useRef, useEffect } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -39,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import useChecklistCalendar from "../hooks/useCheckListCalendar";
 import TodayBoard from "./TodayBoard";
 import {
-  jsDateToNepali,
-  NEPALI_MONTH_NAMES,
-  parseNepaliISO,
+    jsDateToNepali,
+    NEPALI_MONTH_NAMES,
+    parseNepaliISO,
 } from "@/utils/nepaliDate";
 
 /** FullCalendar must receive a stable plugins reference (see resetOptions on each render). */
@@ -67,9 +37,9 @@ function adToBsStr(jsDate) {
  * Convert BS year + month (1-indexed) → JS Date for the 1st of that month.
  * Used to tell FullCalendar which AD month to navigate to.
  */
-function bsMonthStartToAd(bsYear, bsMonth) {
-    const bsMonthStart = `${bsYear}-${String(bsMonth).padStart(2, "0")}-01`;
-    return parseNepaliISO(bsMonthStart).nd.getDateObject();
+function bsMonthRepresentativeAdDate(bsYear, bsMonth) {
+    const bsStr = `${bsYear}-${String(bsMonth).padStart(2, "0")}-20`;
+    return parseNepaliISO(bsStr).nd.getDateObject();
 }
 
 // ─── Legend ───────────────────────────────────────────────────────────────────
@@ -168,7 +138,7 @@ function ChecklistCalendar({
     useEffect(() => {
         const api = calendarRef.current?.getApi();
         if (!api) return;
-        api.gotoDate(bsMonthStartToAd(nepaliYear, nepaliMonth));
+        api.gotoDate(bsMonthRepresentativeAdDate(nepaliYear, nepaliMonth));
     }, [nepaliYear, nepaliMonth]);
 
     const monthLabel = `${NEPALI_MONTH_NAMES[nepaliMonth - 1]} ${nepaliYear}`;
@@ -368,7 +338,7 @@ function ChecklistCalendar({
                                 // Disable FullCalendar's own header — we render our own above
                                 headerToolbar={false}
                                 // Seed the calendar on the AD month that contains the initial BS month's start
-                                initialDate={bsMonthStartToAd(
+                                initialDate={bsMonthRepresentativeAdDate(
                                     initialYear ?? nepaliYear,
                                     initialMonth ?? nepaliMonth,
                                 )}

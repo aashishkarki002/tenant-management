@@ -210,9 +210,9 @@ export default function AccountingPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[var(--color-bg)]">
+        <div className="h-full flex flex-col overflow-hidden bg-[var(--color-bg)]">
 
-            {/* Sticky filter bar */}
+            {/* Filter bar — pinned at top, never scrolls away */}
             <FilterControlBar
                 entities={entities}
                 activeEntityId={activeEntityId}
@@ -238,11 +238,16 @@ export default function AccountingPage() {
                 filterLabel={filterLabel}
             />
 
-            {/* Tab bar */}
-            <div className="no-print flex items-center gap-0.5 px-4 sm:px-7 pt-3 pb-0 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
+            {/* Tab bar — pinned below filter bar, scrolls horizontally on narrow viewports */}
+            <div
+                role="tablist"
+                className="no-print flex-shrink-0 flex items-center gap-0.5 px-4 sm:px-7 pt-3 pb-0 border-b border-[var(--color-border)] bg-[var(--color-bg)] overflow-x-auto [&::-webkit-scrollbar]:hidden"
+            >
                 {TABS.map(t => (
                     <button
                         key={t.id}
+                        role="tab"
+                        aria-selected={activeTab === t.id}
                         onClick={() => setActiveTab(t.id)}
                         className={cn(
                             "px-4 py-2 text-[13px] font-semibold cursor-pointer transition-all border-b-2 -mb-px whitespace-nowrap",
@@ -260,81 +265,84 @@ export default function AccountingPage() {
                 ))}
             </div>
 
-            {/* Tab content */}
-            <AnimatePresence mode="wait">
-                <motion.div
-                    key={activeTab}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.18, ease: "easeOut" }}
-                    className="flex flex-col gap-4 px-4 sm:px-7 pb-10 pt-5"
-                >
-                    {activeTab === "overview" && (
-                        <OverviewTab
-                            summary={summary}
-                            loadingSummary={loadingSummary}
-                            totals={totals}
-                            netMargin={netMargin}
-                            chartData={chartData}
-                            compareData={compareData}
-                            comparisonStats={comparisonStats}
-                            loadingChart={loadingChart}
-                            compareMode={compareMode}
-                            labelA={labelA}
-                            labelB={labelB}
-                            filterLabel={filterLabel}
-                            ledgerEntries={ledgerEntries}
-                            loadingLedger={loadingLedger}
-                            onViewLedger={() => setActiveTab("ledger")}
-                            currentBSMonth={CURRENT_BS_MONTH_NAME}
-                        />
-                    )}
+            {/* Tab content — this div owns the scroll, everything above stays pinned */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={activeTab}
+                        role="tabpanel"
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="flex flex-col gap-4 px-4 sm:px-7 pb-10 pt-5"
+                    >
+                        {activeTab === "overview" && (
+                            <OverviewTab
+                                summary={summary}
+                                loadingSummary={loadingSummary}
+                                totals={totals}
+                                netMargin={netMargin}
+                                chartData={chartData}
+                                compareData={compareData}
+                                comparisonStats={comparisonStats}
+                                loadingChart={loadingChart}
+                                compareMode={compareMode}
+                                labelA={labelA}
+                                labelB={labelB}
+                                filterLabel={filterLabel}
+                                ledgerEntries={ledgerEntries}
+                                loadingLedger={loadingLedger}
+                                onViewLedger={() => setActiveTab("ledger")}
+                                currentBSMonth={CURRENT_BS_MONTH_NAME}
+                            />
+                        )}
 
-                    {activeTab === "revenue" && (
-                        <RevenueTab
-                            filterProps={filterProps}
-                            filterLabel={filterLabel}
-                            totalRevenue={totals.totalRevenue}
-                            pendingAction={pendingAction}
-                            onDialogOpenHandled={() => setPendingAction(null)}
-                            onRevenueAdded={refetch}
-                        />
-                    )}
+                        {activeTab === "revenue" && (
+                            <RevenueTab
+                                filterProps={filterProps}
+                                filterLabel={filterLabel}
+                                totalRevenue={totals.totalRevenue}
+                                pendingAction={pendingAction}
+                                onDialogOpenHandled={() => setPendingAction(null)}
+                                onRevenueAdded={refetch}
+                            />
+                        )}
 
-                    {activeTab === "expenses" && (
-                        <ExpensesTab
-                            filterProps={filterProps}
-                            filterLabel={filterLabel}
-                            totalExpenses={totals.totalExpenses}
-                            pendingAction={pendingAction}
-                            onDialogOpenHandled={() => setPendingAction(null)}
-                            onExpenseAdded={refetch}
-                        />
-                    )}
+                        {activeTab === "expenses" && (
+                            <ExpensesTab
+                                filterProps={filterProps}
+                                filterLabel={filterLabel}
+                                totalExpenses={totals.totalExpenses}
+                                pendingAction={pendingAction}
+                                onDialogOpenHandled={() => setPendingAction(null)}
+                                onExpenseAdded={refetch}
+                            />
+                        )}
 
-                    {activeTab === "liabilities" && (
-                        <LiabilitiesTab />
-                    )}
+                        {activeTab === "liabilities" && (
+                            <LiabilitiesTab />
+                        )}
 
-                    {activeTab === "banking" && (
-                        <BankingTab entityId={resolvedEntityId} />
-                    )}
+                        {activeTab === "banking" && (
+                            <BankingTab entityId={resolvedEntityId} />
+                        )}
 
-                    {activeTab === "ledger" && (
-                        <LedgerTab
-                            filterLabel={filterLabel}
-                            totals={totals}
-                            ledgerEntries={ledgerEntries}
-                            loadingLedger={loadingLedger}
-                        />
-                    )}
+                        {activeTab === "ledger" && (
+                            <LedgerTab
+                                filterLabel={filterLabel}
+                                totals={totals}
+                                ledgerEntries={ledgerEntries}
+                                loadingLedger={loadingLedger}
+                            />
+                        )}
 
-                    {activeTab === "balance-sheet" && (
-                        <BalanceSheetTab entityId={resolvedEntityId} />
-                    )}
-                </motion.div>
-            </AnimatePresence>
+                        {activeTab === "balance-sheet" && (
+                            <BalanceSheetTab entityId={resolvedEntityId} />
+                        )}
+                    </motion.div>
+                </AnimatePresence>
+            </div>
         </div>
     );
 }

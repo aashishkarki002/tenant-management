@@ -1,12 +1,3 @@
-/**
- * MaintenancePage Component
- *
- * Updated for backend v2:
- *  - formik includes `scope` and contractor fields
- *  - `CATEGORY_MAP` drives type mapping
- *  - SettlementDialog (via MaintenanceCard/Table) replaces CompletionDialog
- */
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { List, Calendar, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -33,6 +24,11 @@ import {
   generateWorkOrderId,
 } from './utils/maintenance.utils';
 import { getPriorityStyle, CATEGORY_MAP } from './constants/maintenance.constants';
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
 export default function MaintenancePage() {
   const { units = [] } = useUnits();
@@ -210,32 +206,26 @@ export default function MaintenancePage() {
   return (
     <div className="min-h-screen px-4 sm:px-6 font-sans">
 
-      {/* Tab Navigation */}
-      <div className="flex items-center justify-between border-b border-muted-fill mb-6">
-        <nav className="flex items-center">
-          {[
-            { id: 'list', label: 'List', Icon: List },
-            { id: 'calendar', label: 'Calendar', Icon: Calendar },
-            { id: 'generator', label: 'Generator', Icon: Zap },
-          ].map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setActiveTab(id)}
-              className={cn(
-                'flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px',
-                activeTab === id
-                  ? 'border-text-strong text-text-strong'
-                  : 'border-transparent text-text-sub hover:text-text-body hover:border-muted-fill',
-              )}
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              {label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full  p-2">
+        <div className="border-b border-muted-fill ">
+          <TabsList className=" h-auto  gap-2">
+            {[
+              { id: "list", label: "List", Icon: List },
+              { id: "calendar", label: "Calendar", Icon: Calendar },
+              { id: "generator", label: "Generator", Icon: Zap },
+            ].map(({ id, label, Icon }) => (
+              <TabsTrigger
+                key={id}
+                value={id}
+                className="flex items-center gap-2  font-medium "
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+      </Tabs>
       {/* List Tab */}
       {activeTab === 'list' && (
         <div className="space-y-6">
