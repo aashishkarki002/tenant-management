@@ -1,12 +1,8 @@
 import * as tenantService from "./tenant.service.js";
-
+import { getTenantBalance } from "../tenantBalance/tenantBalance.service.js";
 export const createTenant = async (req, res) => {
   const adminId = req.admin_id ?? req.admin?.id;
-  const result = await tenantService.createTenant(
-    req.body,
-    req.files,
-    adminId
-  );
+  const result = await tenantService.createTenant(req.body, req.files, adminId);
   const statusCode = result.statusCode ?? 500;
   if (result.success) {
     return res.status(statusCode).json({
@@ -60,7 +56,7 @@ export const updateTenant = async (req, res) => {
     const result = await tenantService.updateTenant(
       req.params.id,
       req.body,
-      req.files
+      req.files,
     );
     if (!result.success) {
       return res.status(result.statusCode).json({
@@ -173,7 +169,7 @@ export const searchTenants = async (req, res) => {
     ];
 
     const unknownParams = Object.keys(normalizedQuery).filter(
-      (key) => !allowedParams.includes(key)
+      (key) => !allowedParams.includes(key),
     );
 
     if (unknownParams.length > 0) {
@@ -195,7 +191,7 @@ export const searchTenants = async (req, res) => {
       const invalidStatus = statusArr.filter((s) => !validStatuses.includes(s));
       if (invalidStatus.length > 0) {
         validationErrors.push(
-          `Invalid status values: ${invalidStatus.join(", ")}. Valid: ${validStatuses.join(", ")}`
+          `Invalid status values: ${invalidStatus.join(", ")}. Valid: ${validStatuses.join(", ")}`,
         );
       }
     }
@@ -206,11 +202,11 @@ export const searchTenants = async (req, res) => {
         : [normalizedQuery.paymentStatus];
       const validPayments = ["paid", "due_soon", "overdue"];
       const invalidPayment = paymentArr.filter(
-        (p) => !validPayments.includes(p)
+        (p) => !validPayments.includes(p),
       );
       if (invalidPayment.length > 0) {
         validationErrors.push(
-          `Invalid paymentStatus values: ${invalidPayment.join(", ")}. Valid: ${validPayments.join(", ")}`
+          `Invalid paymentStatus values: ${invalidPayment.join(", ")}. Valid: ${validPayments.join(", ")}`,
         );
       }
     }
@@ -223,7 +219,7 @@ export const searchTenants = async (req, res) => {
       const invalidFreq = freqArr.filter((f) => !validFreqs.includes(f));
       if (invalidFreq.length > 0) {
         validationErrors.push(
-          `Invalid frequency values: ${invalidFreq.join(", ")}. Valid: ${validFreqs.join(", ")}`
+          `Invalid frequency values: ${invalidFreq.join(", ")}. Valid: ${validFreqs.join(", ")}`,
         );
       }
     }
@@ -236,7 +232,7 @@ export const searchTenants = async (req, res) => {
       const invalidLease = leaseArr.filter((l) => !validLease.includes(l));
       if (invalidLease.length > 0) {
         validationErrors.push(
-          `Invalid lease values: ${invalidLease.join(", ")}. Valid: ${validLease.join(", ")}`
+          `Invalid lease values: ${invalidLease.join(", ")}. Valid: ${validLease.join(", ")}`,
         );
       }
     }
@@ -258,7 +254,7 @@ export const searchTenants = async (req, res) => {
     if (elapsed > 1000) {
       console.warn(
         `⚠️ Slow tenant search query (${elapsed}ms):`,
-        JSON.stringify(req.query)
+        JSON.stringify(req.query),
       );
     }
 
@@ -293,5 +289,26 @@ export const searchTenants = async (req, res) => {
           : "Failed to search tenants. Please try again.",
       ...(process.env.NODE_ENV === "development" && { error: error.message }),
     });
+  }
+};
+export const getTenantBalanceController = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const balance = await getTenantBalance(tenantId);
+
+    // If no snapshot yet, compute on-the-fly and persist for next call
+    if (!balance) {
+      const { syncTenantBalance } =
+        await import("../../helper/tenant-balance.service.js");
+      const computed = await syncTenantBalance(tenantId, null);
+      return res
+        .status(200)
+        .json({ success: true, balance: computed, fresh: true });
+    }
+
+    return res.status(200).json({ success: true, balance, fresh: false });
+  } catch (error) {
+    console.error("[getTenantBalanceController]", error.message);
+    res.status(500).json({ success: false, message: error.message });
   }
 };

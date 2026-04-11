@@ -54,16 +54,22 @@ export function getDebitAccountForPayment(paymentMethod, bankAccountCode) {
       return ACCOUNT_CODES.CASH;
 
     case PAYMENT_METHODS.BANK_TRANSFER:
-    case PAYMENT_METHODS.CHEQUE:
       // Must always know WHICH bank account — no silent fallback to "1000"
       if (!bankAccountCode) {
         throw new Error(
-          `bankAccountCode is required for payment method "${paymentMethod}". ` +
+          `bankAccountCode is required for payment method "bank_transfer". ` +
             `Pass the chart-of-accounts code of the destination bank account ` +
             `(e.g. "1010-NABIL"). Never use CASH_BANK as a fallback.`,
         );
       }
       return bankAccountCode;
+
+    case PAYMENT_METHODS.CHEQUE:
+      // Cheque payments go to the clearing account (1020), NOT directly to bank.
+      // The bankAccountCode is validated at the service layer and stored on the
+      // ChequeDraft document — it is used for the second (deposit) journal entry
+      // when the accountant marks the cheque as cleared.
+      return ACCOUNT_CODES.CHEQUE_CLEARING;
 
     case PAYMENT_METHODS.MOBILE_WALLET: {
       // Wallet float has its own Account document — no fallback to cash/bank

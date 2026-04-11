@@ -17,6 +17,7 @@ import {
   sendPaymentReceiptEmail,
   logPaymentActivity,
   getPaymentActivities,
+  createBulkArrearsPayment,
 } from "./payment.service.js";
 import { Rent } from "../rents/rent.Model.js";
 import { Payment } from "./payment.model.js";
@@ -469,6 +470,185 @@ export async function getActivities(req, res) {
     return res.status(500).json({
       success: false,
       message: err.message || "Failed to get payment activities",
+    });
+  }
+}
+
+export async function getTenantArrears(req, res) {
+  try {
+    const { tenantId } = req.params;
+    if (!tenantId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "tenantId is required" });
+    }
+
+    const arrears = await Rent.find({
+      tenant: tenantId,
+      status: { $in: ["pending", "overdue", "partially_paid"] },
+    })
+      .populate("units", "name")
+      .populate("block", "name")
+      .populate("innerBlock", "name")
+      .sort({ nepaliYear: 1, nepaliMonth: 1 })
+      .lean();
+
+    const NEPALI_MONTHS = [
+      "Baisakh",
+      "Jestha",
+      "Ashadh",
+      "Shrawan",
+      "Bhadra",
+      "Ashwin",
+      "Kartik",
+      "Mangsir",
+      "Poush",
+      "Magh",
+      "Falgun",
+      "Chaitra",
+    ];
+
+    const shaped = arrears.map((r) => {
+      const grossPaisa = r.grossRentAmountPaisa ?? 0;
+      const tdsPaisa = r.tdsAmountPaisa ?? 0;
+      const paidPaisa = r.paidAmountPaisa ?? 0;
+      const effectiveDuePaisa = grossPaisa - tdsPaisa;
+      const remainingRentPaisa = Math.max(0, effectiveDuePaisa - paidPaisa);
+
+      const hasLateFee =
+        r.lateFeeApplied &&
+        (r.lateFeePaisa ?? 0) > 0 &&
+        r.lateFeeStatus !== "paid";
+      const remainingLateFeePaisa = hasLateFee
+        ? (r.lateFeePaisa ?? 0) - (r.latePaidAmountPaisa ?? 0)
+        : 0;
+
+      return {
+        _id: r._id.toString(),
+        nepaliMonth: r.nepaliMonth,
+        nepaliYear: r.nepaliYear,
+        monthName: NEPALI_MONTHS[r.nepaliMonth - 1] ?? `Month ${r.nepaliMonth}`,
+        status: r.status,
+        grossRentAmountPaisa: grossPaisa,
+        remainingRentPaisa,
+        remainingRent: remainingRentPaisa / 100,
+        remainingLateFeePaisa,
+        remainingLateFee: remainingLateFeePaisa / 100,
+        totalRemainingPaisa: remainingRentPaisa + remainingLateFeePaisa,
+        totalRemaining: (remainingRentPaisa + remainingLateFeePaisa) / 100,
+        hasLateFee,
+        rentFrequency: r.rentFrequency,
+        units: r.units,
+        block: r.block,
+        innerBlock: r.innerBlock,
+      };
+    });
+
+    const totalRemainingPaisa = shaped.reduce(
+      (sum, r) => sum + r.totalRemainingPaisa,
+      0,
+    );
+
+    return res.json({
+      success: true,
+      data: shaped,
+      totalMonths: shaped.length,
+      totalRemainingPaisa,
+      totalRemaining: totalRemainingPaisa / 100,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to fetch tenant arrears",
+    });
+  }
+}
+
+export async function payArrears(req, res) {
+  try {
+    const {
+      tenantId,
+      rentIds,
+      totalAmount,
+      paymentDate,
+      nepaliDate,
+      paymentMethod,
+      bankAccountId,
+      bankAccountCode,
+      transactionRef,
+      note,
+      allocationStrategy,
+    } = req.body;
+
+    if (!tenantId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "tenantId is required" });
+    }
+    if (!Array.isArray(rentIds) || rentIds.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "rentIds must be a non-empty array" });
+    }
+    if (!totalAmount || Number(totalAmount) <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "totalAmount must be > 0" });
+    }
+    if (!paymentDate || !nepaliDate) {
+      return res.status(400).json({
+        success: false,
+        message: "paymentDate and nepaliDate are required",
+      });
+    }
+
+    const normalizedMethod = (paymentMethod ?? "").toLowerCase().trim();
+    const VALID_METHODS = ["cash", "bank_transfer", "cheque", "mobile_wallet"];
+    if (!normalizedMethod || !VALID_METHODS.includes(normalizedMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: `paymentMethod must be one of: ${VALID_METHODS.join(", ")}`,
+      });
+    }
+
+    const result = await createBulkArrearsPayment({
+      adminId: req.admin.id,
+      tenantId,
+      rentIds,
+      totalAmount: Number(totalAmount),
+      paymentDate,
+      nepaliDate,
+      paymentMethod: normalizedMethod,
+      bankAccountId: bankAccountId || null,
+      bankAccountCode: bankAccountCode || null,
+      transactionRef: transactionRef || null,
+      note: note || null,
+      allocationStrategy: allocationStrategy || "proportional",
+    });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.error || result.message || "Bulk payment failed",
+        data: result,
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: result.message,
+      data: {
+        succeeded: result.succeeded,
+        failed: result.failed,
+        partial: result.partial,
+        totalPaid: result.totalPaid,
+        totalPaidPaisa: result.totalPaidPaisa,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to process arrears payment",
     });
   }
 }

@@ -30,6 +30,18 @@ const cookieOptions = (maxAgeMs) => ({
   path: "/",
 });
 
+// Refresh token uses "lax" even in production so that the cookie is sent when
+// the PWA is cold-started from a push notification tap on iOS/Android.
+// "strict" blocks cookies on that top-level cross-context navigation, which
+// causes the refresh call to fail and forces an unnecessary logout.
+const refreshCookieOptions = (maxAgeMs) => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  maxAge: maxAgeMs,
+  path: "/",
+});
+
 const REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 const ACCESS_MAX_AGE = 15 * 60 * 1000; // 15 minutes
 
@@ -384,7 +396,7 @@ export const loginUser = async (req, res) => {
     res.cookie(
       "refreshToken",
       result.refreshToken,
-      cookieOptions(REFRESH_MAX_AGE),
+      refreshCookieOptions(REFRESH_MAX_AGE),
     );
     res.cookie(
       "accessToken",
@@ -459,7 +471,7 @@ export const changePassword = async (req, res) => {
     res.cookie(
       "refreshToken",
       result.refreshToken,
-      cookieOptions(REFRESH_MAX_AGE),
+      refreshCookieOptions(REFRESH_MAX_AGE),
     );
     res.cookie(
       "accessToken",
@@ -564,7 +576,7 @@ export const refreshToken = async (req, res) => {
     await admin.save({ validateBeforeSave: false });
 
     // FIX: Use consistent cookie options (path: "/") for both tokens.
-    res.cookie("refreshToken", newRefreshToken, cookieOptions(REFRESH_MAX_AGE));
+    res.cookie("refreshToken", newRefreshToken, refreshCookieOptions(REFRESH_MAX_AGE));
     res.cookie("accessToken", newAccessToken, cookieOptions(ACCESS_MAX_AGE));
 
     return res.status(200).json({

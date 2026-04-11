@@ -1,15 +1,3 @@
-/**
- * rent.service.js
- *
- * Changes from previous revision:
- *   1. Import { buildEntityMapForBlocks } from resolveEntity.helper.js
- *   2. createNewRent — gains entityId = null third param, passes it to postJournalEntry
- *   3. handleMonthlyRents — one batch Block query after tenantsToProcess is built,
- *      entityId resolved per rent from the Map inside the journal loop
- *
- * Everything else is character-for-character identical to the uploaded original.
- */
-
 import mongoose from "mongoose";
 import { Rent } from "./rent.Model.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
@@ -76,10 +64,39 @@ function buildRentsFilter(filters = {}) {
 
   return query;
 }
+export async function buildCarryForwardMap(tenantIds, prevNpYear, prevNpMonth) {
+  const prevRents = await Rent.find({
+    tenant: { $in: tenantIds },
+    nepaliYear: prevNpYear,
+    nepaliMonth: prevNpMonth,
+    status: { $in: ["pending", "partially_paid", "overdue"] },
+  })
+    .select(
+      "tenant grossRentAmountPaisa tdsAmountPaisa paidAmountPaisa lateFeePaisa latePaidAmountPaisa",
+    )
+    .lean();
+
+  const map = new Map();
+  for (const r of prevRents) {
+    const netRent = r.grossRentAmountPaisa - (r.tdsAmountPaisa || 0);
+    const remaining = netRent - r.paidAmountPaisa;
+    const lateFeeRemaining = Math.max(
+      0,
+      (r.lateFeePaisa || 0) - (r.latePaidAmountPaisa || 0),
+    );
+    map.set(r.tenant.toString(), {
+      remainingAmountPaisa: Math.max(0, remaining) + lateFeeRemaining,
+      carryForwardFromRentId: r._id,
+    });
+  }
+  return map;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // READ (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { TenantBalance } from "../tenantBalance/tenantBalance.model.js";
 
 export async function getRentsService(filters = {}) {
   try {
@@ -95,37 +112,103 @@ export async function getRentsService(filters = {}) {
       .populate({ path: "property", select: "name" })
       .populate({ path: "units", select: "name" });
 
-    const result = rents
-      .filter((r) => r.tenant)
-      .map((rent) => {
-        const rentObj = rent.toObject({ virtuals: false, getters: false });
-        const t = calculateRentTotals(rent);
-        return {
-          ...rentObj,
-          totals: {
-            grossRentAmountPaisa: t.grossRentAmountPaisa,
-            tdsAmountPaisa: t.tdsAmountPaisa,
-            netRentAmountPaisa: t.netRentAmountPaisa,
-            paidAmountPaisa: t.paidAmountPaisa,
-            remainingAmountPaisa: t.remainingAmountPaisa,
-            lateFeePaisa: t.lateFeePaisa,
-            totalDuePaisa: t.totalDuePaisa,
-            carryForwardBalancePaisa: t.carryForwardBalancePaisa,
-            carryForwardFromRentId: t.carryForwardFromRentId,
-          },
-          formatted: {
-            grossRentAmount: formatMoney(t.grossRentAmountPaisa),
-            tdsAmount: formatMoney(t.tdsAmountPaisa),
-            netRentAmount: formatMoney(t.netRentAmountPaisa),
-            paidAmount: formatMoney(t.paidAmountPaisa),
-            remainingAmount: formatMoney(t.remainingAmountPaisa),
-            lateFee: formatMoney(t.lateFeePaisa),
-            totalDue: formatMoney(t.totalDuePaisa),
-            carryForwardBalance: formatMoney(t.carryForwardBalancePaisa),
-            carryForwardFromRentId: t.carryForwardFromRentId,
-          },
-        };
-      });
+    const filtered = rents.filter((r) => r.tenant);
+    if (!filtered.length) return { success: true, rents: [] };
+
+    // ── Batch balance lookup — one query for ALL tenants in this page ────────
+    const tenantIds = [
+      ...new Set(filtered.map((r) => r.tenant._id.toString())),
+    ];
+
+    const balanceDocs = await TenantBalance.find(
+      { tenant: { $in: tenantIds } },
+      {
+        tenant: 1,
+        rentDuePaisa: 1,
+        camDuePaisa: 1,
+        lateFeeDuePaisa: 1,
+        totalDuePaisa: 1,
+        oldestOverdueNepaliYear: 1,
+        oldestOverdueNepaliMonth: 1,
+      },
+    ).lean();
+
+    const balanceByTenant = new Map(
+      balanceDocs.map((b) => [b.tenant.toString(), b]),
+    );
+
+    // ── Build result ─────────────────────────────────────────────────────────
+    const result = filtered.map((rent) => {
+      const rentObj = rent.toObject({ virtuals: false, getters: false });
+      const t = calculateRentTotals(rent);
+      const balance = balanceByTenant.get(rent.tenant._id.toString()) ?? null;
+
+      // ── prevBalance logic ──────────────────────────────────────────────────
+      // balance.totalDuePaisa = ALL open dues for this tenant (rent + cam + late fee,
+      //                         across ALL months) as maintained by syncTenantBalance().
+      //
+      // thisRentRemainingPaisa = what THIS specific rent document still owes,
+      //                          i.e. the portion of totalDuePaisa that belongs
+      //                          to the row currently being rendered.
+      //
+      // prevBalancePaisa = everything else the tenant owes that is NOT this row —
+      //                    overdue months buried behind the current period filter.
+      //
+      // We use remainingAmountPaisa (net rent unpaid) + remaining late fee
+      // because that is exactly what syncTenantBalance() accumulates: it does NOT
+      // include CAM here since CAM has its own document and is already in
+      // balance.camDuePaisa separately.
+      const thisRentRemainingPaisa =
+        t.remainingAmountPaisa + // net rent unpaid
+        Math.max(0, (t.lateFeePaisa || 0) - (rentObj.latePaidAmountPaisa || 0)); // late fee unpaid
+
+      const prevBalancePaisa = balance
+        ? Math.max(0, balance.totalDuePaisa - thisRentRemainingPaisa)
+        : 0;
+
+      const hasPrevBalance = prevBalancePaisa > 0;
+
+      return {
+        ...rentObj,
+        totals: {
+          grossRentAmountPaisa: t.grossRentAmountPaisa,
+          tdsAmountPaisa: t.tdsAmountPaisa,
+          netRentAmountPaisa: t.netRentAmountPaisa,
+          paidAmountPaisa: t.paidAmountPaisa,
+          remainingAmountPaisa: t.remainingAmountPaisa,
+          lateFeePaisa: t.lateFeePaisa,
+          totalDuePaisa: t.totalDuePaisa,
+          carryForwardBalancePaisa: t.carryForwardBalancePaisa,
+          carryForwardFromRentId: t.carryForwardFromRentId,
+        },
+        formatted: {
+          grossRentAmount: formatMoney(t.grossRentAmountPaisa),
+          tdsAmount: formatMoney(t.tdsAmountPaisa),
+          netRentAmount: formatMoney(t.netRentAmountPaisa),
+          paidAmount: formatMoney(t.paidAmountPaisa),
+          remainingAmount: formatMoney(t.remainingAmountPaisa),
+          lateFee: formatMoney(t.lateFeePaisa),
+          totalDue: formatMoney(t.totalDuePaisa),
+          carryForwardBalance: formatMoney(t.carryForwardBalancePaisa),
+          carryForwardFromRentId: t.carryForwardFromRentId,
+        },
+        prevBalance: hasPrevBalance
+          ? {
+              totalDuePaisa: balance.totalDuePaisa,
+              rentDuePaisa: balance.rentDuePaisa,
+              camDuePaisa: balance.camDuePaisa,
+              lateFeeDuePaisa: balance.lateFeeDuePaisa,
+              prevBalancePaisa,
+              formatted: {
+                totalDue: formatMoney(balance.totalDuePaisa),
+                prevBalance: formatMoney(prevBalancePaisa),
+              },
+              oldestOverdueNepaliYear: balance.oldestOverdueNepaliYear,
+              oldestOverdueNepaliMonth: balance.oldestOverdueNepaliMonth,
+            }
+          : null,
+      };
+    });
 
     return { success: true, rents: result };
   } catch (error) {
@@ -502,23 +585,28 @@ export async function handleMonthlyRents(adminId) {
         updatedOverdueCount: overdueResult.modifiedCount,
       };
     }
+    const prevNpMonth = npMonth === 1 ? 12 : npMonth - 1;
+    const prevNpYear = npMonth === 1 ? npYear - 1 : npYear;
 
+    const carryForwardMap = await buildCarryForwardMap(
+      tenantsToProcess.map((t) => t.id),
+      prevNpMonth,
+      prevNpYear,
+    );
     // Step 4: Batch-resolve entityId — ONE query for all blocks ← NEW
     const entityByBlock = await buildEntityMapForBlocks(
       tenantsToProcess.map((t) => t.block),
     );
-    const tenantIdSet = new Set(tenantsToProcess.map((t) => t._id.toString()));
-    const overdueRents = await Rent.find(
-      {
-        tenant: { $in: tenantsToProcess.map((t) => t._id()) },
-        status: "overdue",
-      }
-        .select(
-          "tenant grossRentAmountPaisa tdsAmountPaisa paidAmountPaisa lateFeePaisa latePaidAmountPaisa",
-        )
-        .lean(),
-    );
-    const overdueRentsMap = new Map();
+
+    const overdueRents = await Rent.find({
+      tenant: { $in: tenantsToProcess.map((t) => t._id) },
+      status: "overdue",
+    })
+      .select(
+        "tenant grossRentAmountPaisa tdsAmountPaisa paidAmountPaisa lateFeePaisa latePaidAmountPaisa",
+      )
+      .lean();
+
     for (const r of overdueRents) {
       const tId = r.tenant.toString();
       const effectivePaisa = r.grossRentAmountPaisa - (r.tdsAmountPaisa || 0);
@@ -551,6 +639,7 @@ export async function handleMonthlyRents(adminId) {
       const grossRentAmountPaisa = grossPaisa || netPaisa;
       const tdsAmountPaisa =
         grossPaisa > 0 ? Math.max(0, grossPaisa - netPaisa) : 0;
+      const cf = carryForwardMap.get(tenant._id.toString());
 
       return {
         tenant: tenant._id,
@@ -572,10 +661,8 @@ export async function handleMonthlyRents(adminId) {
         englishYear,
         status: "pending",
         rentFrequency: tenant.rentPaymentFrequency || "monthly",
-        carryForwardBalancePaisa:
-          carryForwardMap.get(tenant._id.toString()) || 0,
-        carryForwardFromRentId:
-          overdueRentsMap.get(tenant._id.toString()) || null,
+        carryForwardBalancePaisa: cf.remainingAmountPaisa ?? 0,
+        carryForwardFromRentId: cf.carryForwardFromRentId ?? null,
       };
     });
 
@@ -628,6 +715,161 @@ export async function handleMonthlyRents(adminId) {
     return {
       success: false,
       message: "Rents processing failed",
+      error: error.message,
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN: backfillTenantRents — create past-month rents for a single tenant
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Create rent records for a specific tenant for one or more past months.
+ *
+ * Use case: tenant was onboarded late, cron was missed, or historical records
+ * are being entered retroactively. This is idempotent — months that already
+ * have a rent record are skipped and reported.
+ *
+ * @param {string} tenantId - MongoDB ObjectId string
+ * @param {{ nepaliYear: number, nepaliMonth: number }[]} monthsToCreate - 1-based months
+ * @param {string} adminId - who triggered the backfill
+ * @returns {Promise<{ success: boolean, created: string[], skipped: string[], message: string }>}
+ */
+export async function backfillTenantRents(tenantId, monthsToCreate, adminId) {
+  try {
+    // 1. Fetch and validate tenant
+    const tenant = await Tenant.findById(tenantId).lean();
+    if (!tenant) {
+      return { success: false, message: "Tenant not found" };
+    }
+    if (tenant.status !== "active" || tenant.isDeleted) {
+      return { success: false, message: "Tenant is not active" };
+    }
+
+    // 2. Idempotency — check which months already have a rent record
+    const existingRents = await Rent.find({
+      tenant: tenant._id,
+      $or: monthsToCreate.map((m) => ({
+        nepaliYear: m.nepaliYear,
+        nepaliMonth: m.nepaliMonth,
+      })),
+    }).select("nepaliYear nepaliMonth");
+
+    const existingSet = new Set(
+      existingRents.map((r) => `${r.nepaliYear}-${r.nepaliMonth}`),
+    );
+
+    const toCreate = monthsToCreate.filter(
+      (m) => !existingSet.has(`${m.nepaliYear}-${m.nepaliMonth}`),
+    );
+    const skipped = monthsToCreate
+      .filter((m) => existingSet.has(`${m.nepaliYear}-${m.nepaliMonth}`))
+      .map((m) => `${m.nepaliYear}-${m.nepaliMonth}`);
+
+    if (!toCreate.length) {
+      return {
+        success: true,
+        message:
+          "All requested months already have rent records — nothing created",
+        created: [],
+        skipped,
+      };
+    }
+
+    // 3. Resolve entityId for journals (one batch query)
+    const entityByBlock = await buildEntityMapForBlocks([tenant.block]);
+    const entityId = entityByBlock.get(tenant.block?.toString()) ?? null;
+
+    // 4. Build rent documents
+    const grossPaisa = tenant.grossAmountPaisa || 0;
+    const netPaisa =
+      tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0);
+    const grossRentAmountPaisa = grossPaisa || netPaisa;
+    const tdsAmountPaisa =
+      grossPaisa > 0 ? Math.max(0, grossPaisa - netPaisa) : 0;
+
+    const rentsToInsert = toCreate.map(({ nepaliYear, nepaliMonth }) => {
+      // nepaliMonth in DB is 1-based; getNepaliMonthDates expects 0-based
+      const {
+        firstDayNepali,
+        lastDayNepali,
+        englishDueDate,
+        englishMonth,
+        englishYear,
+      } = getNepaliMonthDates(nepaliYear, nepaliMonth - 1);
+
+      return {
+        tenant: tenant._id,
+        innerBlock: tenant.innerBlock,
+        block: tenant.block,
+        property: tenant.property,
+        units: tenant.units,
+        nepaliYear,
+        nepaliMonth,
+        nepaliDate: firstDayNepali,
+        nepaliDueDate: lastDayNepali,
+        englishDueDate,
+        englishMonth,
+        englishYear,
+        grossRentAmountPaisa,
+        tdsAmountPaisa,
+        paidAmountPaisa: 0,
+        lateFeePaisa: 0,
+        carryForwardBalancePaisa: 0,
+        status: "overdue", // past months are immediately overdue
+        rentFrequency: tenant.rentPaymentFrequency || "monthly",
+        createdBy: adminId,
+      };
+    });
+
+    // 5. Bulk insert
+    const insertedRents = await Rent.insertMany(rentsToInsert);
+
+    // 6. Post journals per rent
+    const journalLog = { success: 0, failed: 0, errors: [] };
+
+    for (const rent of insertedRents) {
+      const session = await mongoose.startSession();
+      try {
+        session.startTransaction();
+
+        const payload = buildRentChargeJournal(rent);
+        await ledgerService.postJournalEntry(payload, session, entityId);
+
+        await recordTdsLedgerEntry(rent, session, entityId);
+
+        await session.commitTransaction();
+        journalLog.success++;
+      } catch (err) {
+        await session.abortTransaction();
+        journalLog.failed++;
+        journalLog.errors.push({ rentId: rent._id, error: err.message });
+        console.error(
+          `[backfillTenantRents] journal failed for ${rent._id}:`,
+          err.message,
+        );
+      } finally {
+        session.endSession();
+      }
+    }
+
+    const created = insertedRents.map(
+      (r) => `${r.nepaliYear}-${r.nepaliMonth}`,
+    );
+
+    return {
+      success: true,
+      message: `${insertedRents.length} rent record(s) created, ${journalLog.failed} journal error(s)`,
+      created,
+      skipped,
+      journalErrors: journalLog.errors.length ? journalLog.errors : undefined,
+    };
+  } catch (error) {
+    console.error("[backfillTenantRents]", error.message);
+    return {
+      success: false,
+      message: "Backfill failed",
       error: error.message,
     };
   }

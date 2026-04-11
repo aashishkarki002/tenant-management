@@ -1,19 +1,3 @@
-/**
- * payment.route.js  (FIXED)
- *
- * FIX — Added authorize() to every route.
- *   Old routes only had protect (authentication check).
- *   Any authenticated user (including staff) could record payments,
- *   trigger dashboard stats, and log activities.
- *
- * Role assignments:
- *   admin / super_admin — full access including recording payments
- *   staff               — read-only (history, stats, receipt, activities)
- *
- * Also: payRentAndCam now requires bankAccountCode in the request body.
- * The controller threads it through to createPayment() → journal builders.
- */
-
 import { Router } from "express";
 import multer from "multer";
 import {
@@ -28,6 +12,8 @@ import {
   getPaymentById,
   logActivity,
   getActivities,
+  getTenantArrears,
+  payArrears,
 } from "./payment.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -117,6 +103,20 @@ router.get(
   protect,
   authorize("admin", "super_admin", "staff"),
   getActivities,
+);
+
+router.get(
+  "/tenant-arrears/:tenantId",
+  protect,
+  authorize("admin", "super_admin", "staff"),
+  getTenantArrears,
+);
+
+router.post(
+  "/pay-arrears",
+  protect,
+  authorize("admin", "super_admin"),
+  payArrears,
 );
 
 export default router;

@@ -51,6 +51,7 @@ import {
 } from "./helpers/rent-payment.helper.js";
 import { resolveEntityFromBlock } from "../../helper/resolveEntity.js";
 import { handleTdsDocumentUpload } from "../rents/rent.tds.service.js";
+import { syncTenantBalance } from "../tenantBalance/tenantBalance.service.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE PAYMENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -435,6 +436,15 @@ export async function createPayment(paymentData) {
         session,
       });
     }
+    const tenantIdForSync =
+      paymentData.tenantId ??
+      rent?.tenant?._id?.toString() ??
+      cam?.tenant?._id?.toString() ??
+      null;
+
+    if (tenantIdForSync) {
+      await syncTenantBalance(tenantIdForSync, session);
+    }
 
     // ── Step 9: Commit ────────────────────────────────────────────────────────
     await session.commitTransaction();
@@ -758,3 +768,170 @@ export const getPaymentActivities = async (paymentId) => {
     return { success: false, error: error.message };
   }
 };
+
+/**
+ * Apply one payment across multiple rent months (oldest first).
+ * Each slice is recorded via createPayment (rent + optional late fee only; no CAM).
+ */
+export async function createBulkArrearsPayment(params) {
+  const {
+    adminId,
+    tenantId,
+    rentIds,
+    totalAmount,
+    paymentDate,
+    nepaliDate,
+    paymentMethod,
+    bankAccountId,
+    bankAccountCode,
+    transactionRef,
+    note,
+    allocationStrategy = "proportional",
+  } = params;
+
+  const rents = await Rent.find({ _id: { $in: rentIds } })
+    .populate("tenant")
+    .populate("property")
+    .populate("units")
+    .populate({ path: "unitBreakdown.unit", select: "name" })
+    .lean();
+
+  const orderedRents = rentIds
+    .map((id) => rents.find((r) => r._id.toString() === id.toString()))
+    .filter(Boolean);
+
+  if (orderedRents.length === 0) {
+    return {
+      success: false,
+      error: "No valid rent records found for provided IDs",
+    };
+  }
+
+  let budgetPaisa = rupeesToPaisa(totalAmount);
+
+  const plan = [];
+
+  for (const rent of orderedRents) {
+    if (budgetPaisa <= 0) break;
+
+    const grossPaisa = rent.grossRentAmountPaisa ?? 0;
+    const tdsPaisa = rent.tdsAmountPaisa ?? 0;
+    const paidPaisa = rent.paidAmountPaisa ?? 0;
+    const effectiveDuePaisa = grossPaisa - tdsPaisa;
+    const remainingRentPaisa = Math.max(0, effectiveDuePaisa - paidPaisa);
+
+    const hasLateFee =
+      rent.lateFeeApplied &&
+      (rent.lateFeePaisa ?? 0) > 0 &&
+      rent.lateFeeStatus !== "paid";
+    const remainingLateFeePaisa = hasLateFee
+      ? (rent.lateFeePaisa ?? 0) - (rent.latePaidAmountPaisa ?? 0)
+      : 0;
+
+    if (remainingRentPaisa === 0 && remainingLateFeePaisa === 0) continue;
+
+    const allocatedRentPaisa = Math.min(remainingRentPaisa, budgetPaisa);
+    budgetPaisa -= allocatedRentPaisa;
+
+    let allocatedLateFeePaisa = 0;
+    if (
+      hasLateFee &&
+      budgetPaisa >= remainingLateFeePaisa &&
+      allocatedRentPaisa >= remainingRentPaisa
+    ) {
+      allocatedLateFeePaisa = remainingLateFeePaisa;
+      budgetPaisa -= allocatedLateFeePaisa;
+    }
+
+    if (allocatedRentPaisa > 0 || allocatedLateFeePaisa > 0) {
+      plan.push({ rent, allocatedRentPaisa, allocatedLateFeePaisa });
+    }
+  }
+
+  if (plan.length === 0) {
+    return {
+      success: false,
+      error: "All selected rents are already fully paid",
+    };
+  }
+
+  const results = {
+    succeeded: [],
+    failed: [],
+    totalPaidPaisa: 0,
+  };
+
+  for (const { rent, allocatedRentPaisa, allocatedLateFeePaisa } of plan) {
+    const allocations = {
+      rent: {
+        rentId: rent._id.toString(),
+        amount: allocatedRentPaisa / 100,
+        amountPaisa: allocatedRentPaisa,
+      },
+    };
+
+    if (allocatedLateFeePaisa > 0) {
+      allocations.lateFee = {
+        rentId: rent._id.toString(),
+        amount: allocatedLateFeePaisa / 100,
+        amountPaisa: allocatedLateFeePaisa,
+      };
+    }
+
+    const paymentData = {
+      adminId,
+      tenantId,
+      amount: (allocatedRentPaisa + allocatedLateFeePaisa) / 100,
+      paymentDate,
+      nepaliDate,
+      paymentMethod,
+      paymentStatus: "paid",
+      bankAccountId: bankAccountId || null,
+      bankAccountCode: bankAccountCode || null,
+      transactionRef: transactionRef || null,
+      note: note || null,
+      allocations,
+      allocationStrategy,
+      receivedBy: adminId,
+    };
+
+    const result = await createPayment(paymentData);
+
+    if (result.success) {
+      results.succeeded.push({
+        rentId: rent._id.toString(),
+        nepaliMonth: rent.nepaliMonth,
+        nepaliYear: rent.nepaliYear,
+        paidPaisa: allocatedRentPaisa + allocatedLateFeePaisa,
+        paymentId: result.payment?.id,
+        rentStatus: result.rent?.status,
+      });
+      results.totalPaidPaisa += allocatedRentPaisa + allocatedLateFeePaisa;
+    } else {
+      results.failed.push({
+        rentId: rent._id.toString(),
+        nepaliMonth: rent.nepaliMonth,
+        nepaliYear: rent.nepaliYear,
+        error: result.error || "Unknown error",
+      });
+    }
+  }
+
+  const allFailed = results.succeeded.length === 0;
+  const partialFailure =
+    results.failed.length > 0 && results.succeeded.length > 0;
+
+  return {
+    success: !allFailed,
+    partial: partialFailure,
+    totalPaidPaisa: results.totalPaidPaisa,
+    totalPaid: results.totalPaidPaisa / 100,
+    succeeded: results.succeeded,
+    failed: results.failed,
+    message: allFailed
+      ? "All payments failed. No charges were recorded."
+      : partialFailure
+        ? `${results.succeeded.length} of ${plan.length} months paid. ${results.failed.length} failed.`
+        : `${results.succeeded.length} month(s) cleared successfully.`,
+  };
+}

@@ -121,7 +121,9 @@ const revenueSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["RECORDED", "SYNCED", "REVERSED"],
+      // PENDING_CHEQUE: cheque received but not yet deposited — excluded from revenue totals
+      // until markDeposited() is called, which transitions it to RECORDED.
+      enum: ["PENDING_CHEQUE", "RECORDED", "SYNCED", "REVERSED"],
       default: "RECORDED",
     },
 

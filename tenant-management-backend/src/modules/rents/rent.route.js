@@ -19,6 +19,8 @@ import {
   sendEmailToTenantsController,
   recordRentPaymentController,
   markTdsPaidController,
+  uploadTdsDocumentController,
+  backfillTenantRentsController,
 } from "./rent.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { validateTdsDocumentMiddleware } from "../../utils/fileValidation.js";
@@ -29,6 +31,7 @@ const upload = multer({ dest: "temp/" });
 // ── Cron / admin triggers ─────────────────────────────────────────────────────
 router.post("/process-monthly-rents", protect, processMonthlyRents);
 router.post("/send-email-to-tenants", protect, sendEmailToTenantsController);
+router.post("/backfill-tenant-rents", protect, backfillTenantRentsController);
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 router.get("/get-rents", protect, getRentsController);
@@ -59,6 +62,13 @@ router.patch(
   upload.single("tdsDocument"),
   validateTdsDocumentMiddleware,
   markTdsPaidController,
+);
+router.post(
+  "/:rentId/tds/upload-document",
+  protect,
+  upload.single("tdsDocument"),
+  validateTdsDocumentMiddleware,
+  uploadTdsDocumentController,
 );
 
 export default router;

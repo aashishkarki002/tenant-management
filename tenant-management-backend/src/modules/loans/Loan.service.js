@@ -58,6 +58,8 @@ import { assertValidPaymentMethod } from "../../utils/paymentAccountUtils.js";
 import NepaliDate from "nepali-datetime";
 import { Expense } from "../expenses/Expense.Model.js";
 import ExpenseSource from "../expenses/ExpenseSource.Model.js";
+import { createChequeDraft } from "../chequeDrafts/chequeDraft.service.js";
+import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
@@ -220,7 +222,7 @@ export async function createLoan(data, session = null) {
     }).session(sess);
 
     if (!existingLiability) {
-      await Liability.create(
+      const [liability] = await Liability.create(
         [
           {
             source: loanSourceId,
@@ -240,6 +242,9 @@ export async function createLoan(data, session = null) {
         ],
         { session: sess },
       );
+      loan.liability = liability._id;
+      console.log("liability", liability);
+      await loan.save({ session: sess });
     }
 
     if (ownedSession) await sess.commitTransaction();
@@ -275,6 +280,7 @@ export async function recordLoanPayment(data, session = null) {
     customPrincipalPaisa,
     notes,
     createdBy,
+    chequeNumber,
   } = data;
 
   assertValidPaymentMethod(paymentMethod);
@@ -472,7 +478,31 @@ export async function recordLoanPayment(data, session = null) {
       expenseDoc = created;
     }
 
-    // ── 9. Update Loan outstanding + status ─────────────────────────────────
+    // ── 9. Create ChequeDraft when paying EMI by cheque ────────────────────
+    if (paymentMethod === "cheque" && chequeNumber) {
+      await createChequeDraft(
+        {
+          chequeNumber,
+          chequeDate: dateObj,
+          direction: "ISSUED",
+          // Full EMI amount (principal + interest) is what the cheque covers
+          amountPaisa: totalPaisa,
+          bankAccountCode,
+          referenceAccountCode: ACCOUNT_CODES.LOAN_LIABILITY,
+          referenceType: "LoanPayment",
+          referenceId: payment._id,
+          entityId,
+          partyName: loan.lender ?? null,
+          nepaliDate,
+          nepaliMonth,
+          nepaliYear,
+          createdBy,
+        },
+        sess,
+      );
+    }
+
+    // ── 10. Update Loan outstanding + status ────────────────────────────────
     //
     // installmentsPaid was already incremented atomically in step 5.
     // We only need to update outstandingPaisa and status here.
@@ -488,7 +518,7 @@ export async function recordLoanPayment(data, session = null) {
       { session: sess },
     );
 
-    // ── 10. Update Liability document ────────────────────────────────────────
+    // ── 11. Update Liability document ────────────────────────────────────────
     await Liability.findOneAndUpdate(
       { referenceType: "LOAN", referenceId: loan._id },
       {

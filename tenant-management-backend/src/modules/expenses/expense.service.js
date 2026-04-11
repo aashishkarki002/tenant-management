@@ -1,24 +1,3 @@
-/**
- * expense.service.js — v3 (multi-entity)
- *
- * Changes from v2:
- *  - payeeType INTERNAL: staffPayee sub-doc fully wired
- *  - transactionScope "split": posts one journal entry per entity allocation
- *  - transactionScope "head_office": posts to head office entity's CoA
- *  - entityId is now threaded through to ledgerService.postJournalEntry
- *    as a required argument (no more optional null)
- *  - All account lookups use (code, entityId) via resolveAccountsByEntity
- *  - getExpensesByEntity() — new: per-entity expense report
- *  - nepaliDate stored as "YYYY-MM-DD" BS string throughout
- *
- * SPLIT EXPENSE FLOW:
- *   When transactionScope === "split", we create ONE Expense document but
- *   post MULTIPLE journals — one per entity in splitAllocations.
- *   Each journal debits the expense account in that entity's CoA and
- *   credits their bank/cash account for their allocated amount.
- *   This keeps each entity's books independent and correct.
- */
-
 import mongoose from "mongoose";
 import { Expense } from "./Expense.Model.js";
 import ExpenseSource from "./ExpenseSource.Model.js";
@@ -40,6 +19,8 @@ import {
 } from "../../utils/nepaliDateHelper.js";
 import { OwnershipEntity } from "../ownership/OwnershipEntity.Model.js";
 import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
+import StaffProfile from "../staffs/staffProfile.model.js";
+import { createChequeDraft } from "../chequeDrafts/chequeDraft.service.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -227,6 +208,62 @@ async function postExpenseJournalForEntity({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SALARY HISTORY — write-back to StaffProfile
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Push a salaryHistory entry onto the staff's StaffProfile when a SALARY
+ * expense is recorded.  Runs inside the caller's session so it rolls back
+ * atomically with the expense + journal entry if anything fails downstream.
+ *
+ * NOTE: This records that a salary *payment* was made for a given period.
+ * It does NOT update salaryAmountPaisa — that field only changes when the
+ * staff member's contracted salary is revised via updateStaffProfileService.
+ *
+ * @param {Object} params
+ * @param {string|ObjectId} params.staffId        — Admin._id of the staff member
+ * @param {number}          params.amountPaisa     — salary paid this period
+ * @param {Date}            params.effectiveFrom   — expense englishDate
+ * @param {string|ObjectId} params.changedBy       — Admin._id of recorder (createdBy)
+ * @param {number}          params.nepaliYear      — BS year  (for the reason label)
+ * @param {number}          params.nepaliMonth     — BS month (for the reason label)
+ * @param {mongoose.ClientSession} params.session
+ */
+async function recordSalaryPaymentOnProfile({
+  staffId,
+  amountPaisa,
+  effectiveFrom,
+  changedBy,
+  nepaliYear,
+  nepaliMonth,
+  session,
+}) {
+  const historyEntry = {
+    amountPaisa,
+    effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : new Date(),
+    changedBy,
+    reason: `Salary payment — BS ${nepaliYear}/${String(nepaliMonth).padStart(2, "0")}`,
+  };
+
+  const result = await StaffProfile.findOneAndUpdate(
+    { admin: staffId },
+    { $push: { salaryHistory: historyEntry } },
+    { session, new: true },
+  );
+
+  if (!result) {
+    // StaffProfile may not exist yet for older staff records — warn but don't
+    // block the expense from saving.  Operators can backfill later.
+    console.warn(
+      `[expense.service] No StaffProfile found for staffId ${staffId}. ` +
+        `Salary history entry was NOT recorded. Create a StaffProfile to enable tracking.`,
+    );
+  }
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // RESOLVE TRANSACTION SCOPE FROM ENTITY ID
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -310,6 +347,8 @@ export async function createExpense(expenseData, externalSession = null) {
       propertyId,
       splitAllocations,
       blockId,
+      // Cheque-specific
+      chequeNumber,
     } = expenseData;
 
     // ── Resolve scope from entity type (frontend only needs to send entityId) ─
@@ -377,6 +416,10 @@ export async function createExpense(expenseData, externalSession = null) {
       }
     }
 
+    if (["SALARY", "ADVANCE"].includes(referenceType) && !referenceId) {
+      throw new Error("referenceId is required for SALARY/ADVANCE expenses");
+    }
+
     // ── Source & admin validation ───────────────────────────────────────────
     const expenseSource = await ExpenseSource.findById(source).session(session);
     if (!expenseSource) throw new Error("Expense source not found");
@@ -396,7 +439,9 @@ export async function createExpense(expenseData, externalSession = null) {
     const expenseDoc = {
       source: expenseSource._id,
       amountPaisa: finalAmountPaisa,
-      englishDate: resolvedEnglishDate ? new Date(resolvedEnglishDate) : new Date(),
+      englishDate: resolvedEnglishDate
+        ? new Date(resolvedEnglishDate)
+        : new Date(),
       nepaliDate,
       nepaliMonth,
       nepaliYear,
@@ -433,6 +478,26 @@ export async function createExpense(expenseData, externalSession = null) {
 
     // ── Persist Expense document ────────────────────────────────────────────
     const [expense] = await Expense.create([expenseDoc], { session });
+
+    // ── Salary history write-back ───────────────────────────────────────────
+    // When a salary expense is recorded for an internal staff member, push a
+    // salaryHistory entry to their StaffProfile — within the same transaction
+    // so both writes succeed or roll back together.
+    if (
+      payeeType === "INTERNAL" &&
+      referenceType === "SALARY" &&
+      staffPayee?.staffId
+    ) {
+      await recordSalaryPaymentOnProfile({
+        staffId: staffPayee.staffId,
+        amountPaisa: finalAmountPaisa,
+        effectiveFrom: resolvedEnglishDate ?? new Date(),
+        changedBy: createdBy,
+        nepaliYear,
+        nepaliMonth,
+        session,
+      });
+    }
 
     // ── Post journal entries ────────────────────────────────────────────────
     const expenseBase = {
@@ -527,6 +592,71 @@ export async function createExpense(expenseData, externalSession = null) {
         { $set: { splitAllocations: splitAllocations } },
         { session },
       );
+    }
+
+    // ── Create ChequeDraft when paying by cheque ────────────────────────────
+    if (paymentMethod === PAYMENT_METHODS.CHEQUE && chequeNumber) {
+      const partyName =
+        externalPayee?.name ?? tenant?.name ?? staffPayee?.name ?? null;
+
+      if (scope === "split") {
+        // One ChequeDraft per allocation (each covers its share of the cheque)
+        for (const allocation of splitAllocations) {
+          const allocBankCode = await resolvePaymentAccountCodeForEntity({
+            bankAccountCode: allocation.bankAccountCode ?? bankAccountCode ?? null,
+            bankAccountId: allocation.bankAccountId ?? bankAccountId ?? null,
+            entityId: allocation.entityId,
+            paymentMethod: PAYMENT_METHODS.BANK_TRANSFER, // resolve actual bank code
+            session,
+          });
+          await createChequeDraft(
+            {
+              chequeNumber,
+              chequeDate: resolvedEnglishDate ? new Date(resolvedEnglishDate) : new Date(),
+              direction: "ISSUED",
+              amountPaisa: allocation.amountPaisa,
+              bankAccountCode: allocBankCode,
+              referenceAccountCode: expenseAccountCode,
+              referenceType: "Expense",
+              referenceId: expense._id,
+              entityId: allocation.entityId,
+              partyName,
+              nepaliDate,
+              nepaliMonth,
+              nepaliYear,
+              createdBy,
+            },
+            session,
+          );
+        }
+      } else {
+        const resolvedBankCode = await resolvePaymentAccountCodeForEntity({
+          bankAccountCode,
+          bankAccountId,
+          entityId: resolvedEntityId,
+          paymentMethod: PAYMENT_METHODS.BANK_TRANSFER, // resolve actual bank code
+          session,
+        });
+        await createChequeDraft(
+          {
+            chequeNumber,
+            chequeDate: resolvedEnglishDate ? new Date(resolvedEnglishDate) : new Date(),
+            direction: "ISSUED",
+            amountPaisa: finalAmountPaisa,
+            bankAccountCode: resolvedBankCode,
+            referenceAccountCode: expenseAccountCode,
+            referenceType: "Expense",
+            referenceId: expense._id,
+            entityId: resolvedEntityId,
+            partyName,
+            nepaliDate,
+            nepaliMonth,
+            nepaliYear,
+            createdBy,
+          },
+          session,
+        );
+      }
     }
 
     if (ownsSession) {

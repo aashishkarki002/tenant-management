@@ -1,22 +1,3 @@
-/**
- * revenue.service.js — v2 (multi-entity)
- *
- * Changes from v1:
- *  - createRevenue() handles transactionScope: "building" | "split" | "head_office"
- *  - entityId threaded through to ledgerService.postJournalEntry (REQUIRED by v3 ledger)
- *  - "split" scope: posts one journal per entity allocation
- *  - "head_office" scope: entityId IS the HQ entity (no separate headOfficeEntityId)
- *  - bankAccountCode passed as 3rd arg to buildRevenueReceivedJournal so the
- *    journal debits the actual bank account (e.g. "1010-SANIMA") not generic "1000"
- *  - applyPaymentToBank() removed from createRevenue() — it was causing a phantom
- *    DR 5200 / CR bank journal on top of the revenue journal (double-post bug)
- *  - getAllRevenue() accepts optional filters
- *
- * UNCHANGED:
- *  - recordRentRevenue / recordCamRevenue / recordElectricityRevenue / recordLateFeeRevenue
- *    Called from payment services that own the session and post their own journals.
- */
-
 import { Revenue } from "./Revenue.Model.js";
 import { RevenueSource } from "./RevenueSource.Model.js";
 import Admin from "../auth/admin.Model.js";
@@ -30,6 +11,7 @@ import {
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildRevenueReceivedJournal } from "../ledger/journal-builders/index.js";
 import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
+import { createChequeDraft } from "../chequeDrafts/chequeDraft.service.js";
 import { rupeesToPaisa, formatMoney } from "../../utils/moneyUtil.js";
 import { getNepaliYearMonthFromDate } from "../../utils/nepaliDateHelper.js";
 import BankAccount from "../banks/BankAccountModel.js";
@@ -272,6 +254,7 @@ async function createRevenue(revenueData) {
       propertyId,
       splitAllocations,
       blockId,
+      chequeNumber,
     } = revenueData;
 
     // ── Scope validation ────────────────────────────────────────────────────
@@ -415,7 +398,10 @@ async function createRevenue(revenueData) {
       externalPayer: payerType === "EXTERNAL" ? externalPayer : undefined,
       referenceType,
       referenceId,
-      status,
+      // Cheque revenue is not recognised until the cheque is deposited.
+      // markDeposited() transitions PENDING_CHEQUE → RECORDED and posts the
+      // DR Bank / CR Revenue journal at that point.
+      status: resolvedPaymentMethod === "cheque" ? "PENDING_CHEQUE" : (status ?? "RECORDED"),
       notes,
       createdBy: createdBy || adminId,
       transactionScope: scope,
@@ -467,53 +453,120 @@ async function createRevenue(revenueData) {
       session,
     };
 
-    if (scope === "building") {
-      const { transaction } = await postRevenueJournalForEntity({
-        ...journalBase,
-        entityId,
-        amountPaisa: finalAmountPaisa,
-      });
-      revenue.transactionId = transaction._id;
-      await revenue.save({ session });
-    } else if (scope === "head_office") {
-      const { transaction } = await postRevenueJournalForEntity({
-        ...journalBase,
-        entityId,
-        amountPaisa: finalAmountPaisa,
-      });
-      revenue.transactionId = transaction._id;
-      await revenue.save({ session });
-    } else if (scope === "split") {
-      let firstTransactionId = null;
+    // Cheque revenue: skip journal posting at creation time.
+    // The journal (DR Bank / CR Revenue) is posted by markDeposited() when the
+    // cheque physically clears the bank. Nothing hits the ledger until then.
+    if (resolvedPaymentMethod !== "cheque") {
+      if (scope === "building") {
+        const { transaction } = await postRevenueJournalForEntity({
+          ...journalBase,
+          entityId,
+          amountPaisa: finalAmountPaisa,
+        });
+        revenue.transactionId = transaction._id;
+        await revenue.save({ session });
+      } else if (scope === "head_office") {
+        const { transaction } = await postRevenueJournalForEntity({
+          ...journalBase,
+          entityId,
+          amountPaisa: finalAmountPaisa,
+        });
+        revenue.transactionId = transaction._id;
+        await revenue.save({ session });
+      } else if (scope === "split") {
+        let firstTransactionId = null;
 
-      for (const allocation of splitAllocations) {
-        const { transaction, ledgerEntries } =
-          await postRevenueJournalForEntity({
-            ...journalBase,
-            revenue: {
-              ...revenue.toObject(),
-              _id: new mongoose.Types.ObjectId(), // unique ref per allocation for idempotency guard
-            },
-            entityId: allocation.entityId,
-            amountPaisa: allocation.amountPaisa,
-            // Allow per-allocation bank override:
-            // If the caller knows exactly which bank to use for this allocation,
-            // they can set allocation.bankAccountId or allocation.bankAccountCode.
-            // Otherwise, resolveBankAccountCodeForEntity() picks the entity default.
-            bankAccountCode:
-              allocation.bankAccountCode ?? bankAccountCode ?? null,
-            bankAccountId: allocation.bankAccountId ?? bankAccountId ?? null,
-          });
+        for (const allocation of splitAllocations) {
+          const { transaction, ledgerEntries } =
+            await postRevenueJournalForEntity({
+              ...journalBase,
+              revenue: {
+                ...revenue.toObject(),
+                _id: new mongoose.Types.ObjectId(), // unique ref per allocation for idempotency guard
+              },
+              entityId: allocation.entityId,
+              amountPaisa: allocation.amountPaisa,
+              bankAccountCode:
+                allocation.bankAccountCode ?? bankAccountCode ?? null,
+              bankAccountId: allocation.bankAccountId ?? bankAccountId ?? null,
+            });
 
-        if (!firstTransactionId) firstTransactionId = transaction._id;
-        allocation.ledgerEntryId = ledgerEntries[0]?._id ?? null;
+          if (!firstTransactionId) firstTransactionId = transaction._id;
+          allocation.ledgerEntryId = ledgerEntries[0]?._id ?? null;
+        }
+
+        await Revenue.findByIdAndUpdate(
+          revenue._id,
+          { $set: { transactionId: firstTransactionId, splitAllocations } },
+          { session },
+        );
       }
+    }
 
-      await Revenue.findByIdAndUpdate(
-        revenue._id,
-        { $set: { transactionId: firstTransactionId, splitAllocations } },
-        { session },
-      );
+    // ── Create ChequeDraft when receiving by cheque ─────────────────────────
+    if (resolvedPaymentMethod === "cheque" && chequeNumber) {
+      const partyName =
+        payerType === "EXTERNAL"
+          ? (externalPayer?.name ?? null)
+          : (tenant?.name ?? null);
+
+      if (scope === "split") {
+        for (const allocation of splitAllocations) {
+          const allocBankCode = await resolveBankAccountCodeForEntity({
+            bankAccountCode: allocation.bankAccountCode ?? bankAccountCode ?? null,
+            bankAccountId: allocation.bankAccountId ?? bankAccountId ?? null,
+            entityId: allocation.entityId,
+            paymentMethod: "bank_transfer", // resolve actual bank, not clearing
+            session,
+          });
+          await createChequeDraft(
+            {
+              chequeNumber,
+              chequeDate: date,
+              direction: "RECEIVED",
+              amountPaisa: allocation.amountPaisa,
+              bankAccountCode: allocBankCode,
+              referenceAccountCode: ACCOUNT_CODES.REVENUE,
+              referenceType: "Revenue",
+              referenceId: revenue._id,
+              entityId: allocation.entityId,
+              partyName,
+              nepaliDate: nepaliDate || null,
+              nepaliMonth,
+              nepaliYear,
+              createdBy: createdBy || adminId,
+            },
+            session,
+          );
+        }
+      } else {
+        const resolvedBankCode = await resolveBankAccountCodeForEntity({
+          bankAccountCode,
+          bankAccountId,
+          entityId,
+          paymentMethod: "bank_transfer", // resolve actual bank, not clearing
+          session,
+        });
+        await createChequeDraft(
+          {
+            chequeNumber,
+            chequeDate: date,
+            direction: "RECEIVED",
+            amountPaisa: finalAmountPaisa,
+            bankAccountCode: resolvedBankCode,
+            referenceAccountCode: ACCOUNT_CODES.REVENUE,
+            referenceType: "Revenue",
+            referenceId: revenue._id,
+            entityId,
+            partyName,
+            nepaliDate: nepaliDate || null,
+            nepaliMonth,
+            nepaliYear,
+            createdBy: createdBy || adminId,
+          },
+          session,
+        );
+      }
     }
 
     // ── Commit ──────────────────────────────────────────────────────────────
@@ -622,7 +675,7 @@ export { getRevenue };
 
 async function getAllRevenue(filters = {}) {
   try {
-    const query = { status: { $ne: "REVERSED" } };
+    const query = { status: { $nin: ["REVERSED", "PENDING_CHEQUE"] } };
 
     if (filters.entityId)
       query.entityId = new mongoose.Types.ObjectId(filters.entityId);
