@@ -1,13 +1,3 @@
-/**
- * nepaliCalendar.js — single import point for all Nepali calendar helpers.
- *
- * Previously every component re-declared BS_MONTHS[], toBSDate(), getCurrentFiscalYear() etc.
- * Now everything comes from `src/utils/nepaliDate.js` (including `toNepaliDate`).
- *
- * Import from this file everywhere instead of repeating the same 40-line block
- * in AccountingPage, RevenueBreakDown, ExpenseBreakDown, LedgerTable …
- */
-
 // ── Re-export everything from the canonical util files ──────────────────────
 import NepaliDate from "nepali-datetime";
 import {

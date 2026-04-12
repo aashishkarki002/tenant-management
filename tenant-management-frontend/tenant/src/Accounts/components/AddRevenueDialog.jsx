@@ -84,6 +84,7 @@ const getInitialValues = () => {
   notes: "",
   paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
   bankAccountId: "",
+  chequeNumber: "",
   // Ownership fields
   entityId: "",
   blockId: "",
@@ -370,6 +371,10 @@ export function AddRevenueDialog({
 
         if (paymentMethodRequiresBankAccount(paymentMethod) && values.bankAccountId) {
           payload.bankAccountId = values.bankAccountId;
+        }
+
+        if (paymentMethod === "cheque" && values.chequeNumber?.trim()) {
+          payload.chequeNumber = values.chequeNumber.trim();
         }
 
         if (payerType === "TENANT") {
@@ -812,7 +817,7 @@ export function AddRevenueDialog({
               !entitiesLoading &&
               blocksForRevenueEntity.length === 1 &&
               formik.values.blockId && (
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <p className="text-[11px] flex items-center gap-1.5" style={{ color: "var(--color-success)" }}>
                   <CheckCircle2 className="w-3 h-3" />
                   Block automatically selected: {blocksForRevenueEntity[0].name || "Unnamed block"}
                 </p>
@@ -929,6 +934,22 @@ export function AddRevenueDialog({
                   onValueChange={(id) => formik.setFieldValue("bankAccountId", id)}
                   showBalance
                   triggerClassName="w-full h-11 rounded-xl text-sm"
+                />
+              </div>
+            )}
+
+            {/* ── Cheque number (only for cheque payments) ─────────── */}
+            {formik.values.paymentMethod === "cheque" && (
+              <div className="space-y-3">
+                <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Cheque Number <span className="text-destructive">*</span>
+                </Label>
+                <input
+                  type="text"
+                  className="flex h-11 w-full rounded-xl border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  placeholder="e.g. 000123"
+                  value={formik.values.chequeNumber ?? ""}
+                  onChange={(e) => formik.setFieldValue("chequeNumber", e.target.value)}
                 />
               </div>
             )}

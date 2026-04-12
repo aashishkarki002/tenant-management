@@ -22,6 +22,7 @@ export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
     notes: "",
     customAmount: false,
     customPrincipalRupees: "",
+    chequeNumber: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -50,6 +51,10 @@ export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
 
       if (form.customAmount && form.customPrincipalRupees) {
         payload.customPrincipalPaisa = Math.round(Number(form.customPrincipalRupees) * 100);
+      }
+
+      if (form.paymentMethod === "cheque" && form.chequeNumber?.trim()) {
+        payload.chequeNumber = form.chequeNumber.trim();
       }
 
       const res = await api.post(`/api/loan/${loan._id}/payment`, payload);
@@ -174,6 +179,22 @@ export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
             </div>
           )}
 
+          {form.paymentMethod === "cheque" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: C.textMuted }}>
+                Cheque Number <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={form.chequeNumber}
+                onChange={(e) => setForm((p) => ({ ...p, chequeNumber: e.target.value }))}
+                placeholder="e.g. 000123"
+                className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none"
+                style={{ borderColor: C.border, color: C.text }}
+              />
+            </div>
+          )}
+
           <div className="flex flex-col gap-1.5">
             <label className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: C.textMuted }}>
               Notes (optional)
@@ -182,7 +203,7 @@ export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
               type="text"
               value={form.notes}
               onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-              placeholder="Cheque no., remarks…"
+              placeholder="Remarks…"
               className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none"
               style={{ borderColor: C.border, color: C.text }}
             />

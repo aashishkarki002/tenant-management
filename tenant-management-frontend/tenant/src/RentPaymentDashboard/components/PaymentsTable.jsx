@@ -119,11 +119,11 @@ export const PaymentsTable = ({ payments }) => {
           <TableBody>
             {sorted.length === 0 ? (
               <TableRow>
-                <TableCell
-                  colSpan={8}
-                  className="text-center text-muted-foreground py-12"
-                >
-                  No payments found
+                <TableCell colSpan={8} className="py-14 text-center">
+                  <p className="text-sm font-medium text-foreground">No payments found</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Try adjusting the date range or payment method filter.
+                  </p>
                 </TableCell>
               </TableRow>
             ) : (

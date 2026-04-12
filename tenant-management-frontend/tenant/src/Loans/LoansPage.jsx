@@ -11,7 +11,8 @@ import {
 
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { useLoans } from "./hooks/useLoans";
-import { fmtK, fmtRupees, paisaToRupees } from "./loan.constants";
+import { fmtK, fmtRupees, paisaToRupees, C } from "./loan.constants";
+import useOwnership from "@/hooks/use-ownership";
 import { getTodayNepali } from "@/utils/nepaliDate";
 import { KpiCard, LoanCard } from "./components/loan.ui";
 import { LoanDetailSheet } from "./components/LoanDetailSheet";
@@ -21,8 +22,18 @@ import { Button } from "@/components/ui/button";
 //   from this file's depth for some bundler configs)
 import { LiabilityBreakdown } from "./components/LiabilityBreakdown";
 
+const entityDot = (type) => type === "private" ? "#16a34a" : C.accent;
+
 export default function LoansPage() {
-  const { loans, loading, error, refetch } = useLoans();
+  const { entities } = useOwnership();
+  const loanEntities = useMemo(
+    () => (entities ?? []).filter((e) => e.type !== "head_office"),
+    [entities],
+  );
+  const showEntityFilter = loanEntities.length > 1;
+
+  const [activeEntityId, setActiveEntityId] = useState(null);
+  const { loans, loading, error, refetch } = useLoans(activeEntityId);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -112,6 +123,43 @@ export default function LoansPage() {
           <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3">
             <AlertCircle size={14} className="text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
             <p className="text-[12px] text-red-700 dark:text-red-300 font-medium">{error}</p>
+          </div>
+        )}
+
+        {/* ── Entity filter pills (multi-entity only) ── */}
+        {showEntityFilter && (
+          <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+            <button
+              onClick={() => setActiveEntityId(null)}
+              className={`h-7 px-3.5 rounded-full text-[11px] font-semibold transition-all duration-150 border
+                ${activeEntityId === null
+                  ? "bg-[var(--color-accent)] text-white border-transparent shadow-sm"
+                  : "bg-card text-muted-foreground border-border hover:border-[var(--color-accent)]/40 hover:text-foreground"
+                }`}
+            >
+              All entities
+            </button>
+            {loanEntities.map((e) => {
+              const active = activeEntityId === e._id;
+              const dot = entityDot(e.type);
+              return (
+                <button
+                  key={e._id}
+                  onClick={() => setActiveEntityId(e._id)}
+                  className="inline-flex items-center gap-1.5 h-7 px-3.5 rounded-full text-[11px] font-semibold transition-all duration-150 border cursor-pointer"
+                  style={active
+                    ? { background: dot, borderColor: dot, color: "white" }
+                    : { borderColor: C.border, color: C.textMid, background: "transparent" }
+                  }
+                >
+                  <span
+                    className="w-[5px] h-[5px] rounded-full shrink-0"
+                    style={{ background: active ? "rgba(255,255,255,0.6)" : dot }}
+                  />
+                  {e.name}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -225,7 +273,12 @@ export default function LoansPage() {
         onPaymentSuccess={refetch}
       />
 
-      <AddLoanDialog open={addOpen} onOpenChange={setAddOpen} onAdded={refetch} />
+      <AddLoanDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onAdded={refetch}
+        defaultEntityId={activeEntityId}
+      />
     </>
   );
 }

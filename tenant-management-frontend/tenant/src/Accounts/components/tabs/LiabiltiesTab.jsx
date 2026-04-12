@@ -106,14 +106,17 @@ function Skeleton({ className }) {
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, loading }) {
     return (
-        <div className="flex flex-col gap-3 p-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]">
+        <div className="ap-card flex flex-col gap-3 p-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]">
             <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--color-text-weak)]">
                 {label}
             </span>
             {loading ? (
                 <Skeleton className="h-8 w-28" />
             ) : (
-                <div className="text-[26px] font-black leading-none tracking-tight text-[var(--color-text-strong)]">
+                <div
+                    className="text-[26px] font-black leading-none tracking-tight text-[var(--color-text-strong)]"
+                    style={{ fontFamily: "var(--font-serif)" }}
+                >
                     {value}
                 </div>
             )}
@@ -159,7 +162,7 @@ function LoanCard({ loan }) {
         : 0;
 
     return (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
+        <div className="ap-card rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
                 <div className="flex items-center gap-3">
@@ -329,10 +332,17 @@ function DepositRow({ liability, index }) {
 }
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
+const EMPTY_ICON_MAP = {
+    "✅": CheckCircle2Icon,
+    "📋": BuildingIcon,
+    "🏦": CreditCardIcon,
+};
+
 function EmptyState({ message = "No data yet", icon = "📋" }) {
+    const Icon = EMPTY_ICON_MAP[icon] ?? BuildingIcon;
     return (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="text-4xl mb-3 opacity-40">{icon}</div>
+            <Icon size={32} className="mx-auto mb-3 opacity-30 text-[var(--color-text-sub)]" />
             <div className="text-[14px] font-semibold text-[var(--color-text-body)] mb-1">{message}</div>
             <div className="text-[13px] text-[var(--color-text-sub)]">
                 Nothing to display for the selected period.

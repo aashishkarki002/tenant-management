@@ -35,14 +35,17 @@ function HealthRing({ completionRate = 0, size = 120 }) {
                     strokeWidth={strokeWidth}
                     strokeDasharray={`${fillAmount} ${circumference - fillAmount}`}
                     strokeLinecap="round"
-                    style={{ transition: 'stroke-dasharray 0.6s ease' }}
+                    style={{ transition: 'stroke-dasharray 0.6s cubic-bezier(0.22, 1, 0.36, 1)' }}
                 />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold" style={{ color }}>
+                <span
+                    className="text-2xl font-bold"
+                    style={{ color, fontFamily: "var(--font-serif)" }}
+                >
                     {completionRate}%
                 </span>
-                <span className="text-[9px] text-muted-foreground mt-0.5">Complete</span>
+                <span className="text-[10px] text-muted-foreground mt-0.5 font-medium tracking-wide uppercase">Complete</span>
             </div>
         </div>
     );
@@ -66,13 +69,14 @@ export default function BuildingHealthPanel({ stats, loading }) {
     const trend = stats?.safety?.trend ?? [];
 
     return (
-        <div className="bg-card dark:bg-card rounded-2xl shadow-sm border border-border overflow-hidden h-full flex flex-col">
+        <div className="bg-card rounded-2xl shadow-sm border border-border overflow-hidden h-full flex flex-col">
             {/* Header */}
             <div className="px-5 py-4 flex items-center justify-between border-b border-border">
-                <h3 className="text-sm font-medium text-foreground">Safety Compliance</h3>
+                <h3 className="text-sm font-bold tracking-tight text-foreground">Safety Compliance</h3>
                 <Link
                     to="/admin-daily-checks"
-                    className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                    className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1
+                               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                 >
                     View All
                     <ChevronRight className="w-3 h-3" />
@@ -119,7 +123,7 @@ export default function BuildingHealthPanel({ stats, loading }) {
                                 <div
                                     key={day?.date ?? i}
                                     title={noData ? `${day?.date ?? `D-${6 - i}`}: No data` : `${day.date}: ${day.rate}%`}
-                                    className="flex-1 rounded-sm transition-all duration-300 cursor-default"
+                                    className="flex-1 rounded-sm transition-[background-color,opacity] duration-300 cursor-default"
                                     style={{
                                         height: `${height}px`,
                                         backgroundColor: color,
@@ -132,8 +136,8 @@ export default function BuildingHealthPanel({ stats, loading }) {
                         })}
                     </div>
                     <div className="flex justify-between px-1">
-                        <span className="text-[8px] text-muted-foreground">6d ago</span>
-                        <span className="text-[8px] text-muted-foreground font-medium">Today</span>
+                        <span className="text-[10px] text-muted-foreground">6d ago</span>
+                        <span className="text-[10px] text-muted-foreground font-medium">Today</span>
                     </div>
                 </div>
             </div>

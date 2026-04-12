@@ -52,6 +52,13 @@ export const ACCOUNT_CODES = {
   CASH: "1000",
 
   /**
+   * Cheques in transit — clearing account for cheque payments.
+   * DR on cheque receipt (first leg); CR when cheque is deposited to bank (second leg).
+   * Reversal posts here on bounce/cancel.
+   */
+  CHEQUE_CLEARING: "1020",
+
+  /**
    * @deprecated  alias for CASH.
    * Kept for backward-compat with LedgerEntry rows written before the rename.
    * Do NOT reference in new code. Grep and replace periodically.
@@ -156,4 +163,6 @@ export const ACCOUNT_CODES = {
   BANK_CHARGES: "5400",
   ELECTRICITY_EXPENSE_NEA: "5610", // or whatever code fits your chart
   NEA_PAYABLE: "2050", // or whatever liability code fits
+  TDS_RECOVERABLE: "1300",
+  TDS_VERIFIED_PAID: "1350",
 };

@@ -75,23 +75,13 @@ const fmtK = (v) => {
             : String(a);
 };
 
-const KEYFRAMES = `
-  @keyframes slide-up   { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
-  @keyframes spin-slow   { from { transform:rotate(0deg) } to { transform:rotate(360deg) } }
-  @keyframes shimmer     { 0%,100%{ opacity:.4 } 50%{ opacity:.75 } }
-  .eb-root { font-family: 'DM Sans', system-ui, sans-serif; }
-  .eb-num  { font-family: 'Instrument Serif', Georgia, serif; letter-spacing: -0.025em; }
-  .eb-card { animation: slide-up .28s ease both; }
-  .eb-spin { animation: spin-slow .9s linear infinite; }
-  .eb-row:hover td { background: var(--color-muted) !important; }
-`;
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
 function Panel({ children, style = {}, delay = 0, noPad = false }) {
     return (
         <div
-            className="eb-card rounded-xl border"
+            className="ap-card rounded-xl border"
             style={{
                 background: T.surface,
                 borderColor: T.border,
@@ -108,9 +98,10 @@ function Panel({ children, style = {}, delay = 0, noPad = false }) {
 function InkPanel({ children, style = {}, delay = 0 }) {
     return (
         <div
-            className="eb-card rounded-xl"
+            className="ap-card rounded-xl overflow-hidden"
             style={{
-                background: T.accent,
+                background: "#0d2535",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
                 padding: "18px 20px",
                 animationDelay: `${delay * 0.045}s`,
                 ...style,
@@ -135,9 +126,10 @@ function Label({ children, inverted, className = "", style = {} }) {
 function BigNum({ v, size = 36, inverted = false, negative = false }) {
     return (
         <div
-            className="eb-num leading-none"
+            className="font-black leading-none tabular-nums"
             style={{
                 fontSize: size,
+                fontFamily: "var(--font-serif)",
                 color: inverted ? "#fff" : negative ? T.red : T.text,
             }}
         >
@@ -198,7 +190,7 @@ function ChartTip({ active, payload, label }) {
     return (
         <div
             className="rounded-lg px-3.5 py-2.5"
-            style={{ background: T.text, boxShadow: "0 8px 24px rgba(0,0,0,.22)", minWidth: 140 }}
+            style={{ background: "linear-gradient(140deg, #0a2f46 0%, #1a5276 100%)", boxShadow: "0 8px 24px rgba(0,0,0,.22)", minWidth: 140, border: "1px solid rgba(255,255,255,0.08)" }}
         >
             <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-2" style={{ color: "rgba(255,255,255,.38)" }}>{label}</div>
             {payload.map(p => (
@@ -326,8 +318,7 @@ export default function ExpenseBreakDown({
     const { paginatedItems: pageTxns, currentPage, totalPages, nextPage, prevPage, startIndex } = usePagination(transactions, TXN_PAGE_SIZE);
 
     return (
-        <div className="eb-root" style={{ color: T.text }}>
-            <style>{KEYFRAMES}</style>
+        <div style={{ color: T.text }}>
 
             {/* ── Header ───────────────────────────────────────────────────────── */}
             <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
@@ -346,7 +337,7 @@ export default function ExpenseBreakDown({
                         className="flex items-center justify-center rounded-lg border"
                         style={{ padding: "7px 10px", borderColor: T.border, background: T.surface, cursor: "pointer" }}
                     >
-                        <RefreshCw size={13} color={T.body} className={loading ? "eb-spin" : ""} />
+                        <RefreshCw size={13} color={T.body} className={loading ? "animate-spin" : ""} />
                     </button>
 
                     <button
@@ -402,7 +393,7 @@ export default function ExpenseBreakDown({
                         ].map(x => (
                             <div key={x.lbl} className="text-right">
                                 <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-0.5" style={{ color: T.sub }}>{x.lbl}</div>
-                                <div className="eb-num text-xl" style={{ color: x.color }}>{fmt(x.val)}</div>
+                                <div className="text-xl font-black tabular-nums" style={{ color: x.color, fontFamily: "var(--font-serif)" }}>{fmt(x.val)}</div>
                             </div>
                         ))}
                         {totals.total > 0 && (
@@ -474,7 +465,7 @@ export default function ExpenseBreakDown({
                         <div />
                         <div className="px-4 py-3.5">
                             <Label>{k.label}</Label>
-                            <div className="eb-num text-[22px] leading-tight mb-1" style={{ color: T.text }}>
+                            <div className="text-[22px] font-black leading-tight tabular-nums mb-1" style={{ color: T.text, fontFamily: "var(--font-serif)" }}>
                                 {k.value}
                             </div>
                             <div className="text-[10px]" style={{ color: T.sub }}>{k.sub}</div>
@@ -732,7 +723,7 @@ export default function ExpenseBreakDown({
                                                 {pageTxns.map((t, i) => (
                                                     <tr
                                                         key={t.id}
-                                                        className="eb-row transition-colors"
+                                                        className="transition-colors [&:hover>td]:bg-[var(--color-muted)]"
                                                         style={{ borderBottom: `1px solid ${T.border}44` }}
                                                     >
                                                         <td className="px-3.5 py-2.5 text-[10px]" style={{ color: T.weak }}>{startIndex + i + 1}</td>
@@ -801,7 +792,7 @@ export default function ExpenseBreakDown({
                                         ].map(x => (
                                             <div key={x.l} className="rounded-lg px-4 py-3" style={{ background: x.bg }}>
                                                 <div className="text-[9px] font-bold tracking-[0.09em] uppercase mb-1.5" style={{ color: x.color }}>{x.l}</div>
-                                                <div className="eb-num text-lg leading-tight mb-2" style={{ color: T.text }}>{fmt(x.v)}</div>
+                                                <div className="text-lg font-black leading-tight tabular-nums mb-2" style={{ color: T.text, fontFamily: "var(--font-serif)" }}>{fmt(x.v)}</div>
                                                 <MiniBar value={x.v} max={totals.total} color={x.color} h={3} />
                                                 <div className="text-[9px] mt-1" style={{ color: T.sub }}>
                                                     {totals.total > 0 ? ((x.v / totals.total) * 100).toFixed(1) : 0}% · {x.note}

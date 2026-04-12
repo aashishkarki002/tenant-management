@@ -27,12 +27,12 @@ export const PaymentTableRow = ({ payment, showBillingPeriod = false }) => {
         <div className="font-medium">{payment.tenant?.name || "N/A"}</div>
       </TableCell>
       <TableCell className="whitespace-nowrap">{formatPaymentDate(payment.paymentDate)}</TableCell>
-      <TableCell className="whitespace-nowrap">₹{payment.amount?.toLocaleString() || "0"}</TableCell>
+      <TableCell className="whitespace-nowrap tabular-nums">Rs {Number(payment.amount || 0).toLocaleString("en-IN")}</TableCell>
       <TableCell className="whitespace-nowrap">{formatPaymentMethod(payment.paymentMethod)}</TableCell>
       <TableCell className="whitespace-nowrap">
         <Badge
           className={`capitalize border ${statusStyles[normalizeStatus(payment.paymentStatus)] ||
-            "bg-gray-100 text-gray-700 border-gray-300"
+            "bg-muted text-muted-foreground border-border"
             }`}
         >
           {formatPaymentStatus(payment.paymentStatus)}

@@ -12,10 +12,6 @@ import { Cam } from "../cam/cam.model.js";
 import { SystemConfig } from "../systemConfig/SystemConfig.Model.js";
 import { enableEscalation } from "./escalation/rent.escalation.service.js";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CREATE
-// ─────────────────────────────────────────────────────────────────────────────
-
 export async function createTenant(body, files, adminId) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -748,7 +744,7 @@ export async function searchTenants(query) {
                         },
                         {
                           $subtract: [
-                            "$$this.grossRentAmountPaisa",
+                            "$$this.rentAmountPaisa",
                             "$$this.paidAmountPaisa",
                           ],
                         },
@@ -1015,10 +1011,10 @@ async function updatePendingRentRecords(tenant, newFinancials, session) {
       const newTdsAmount = newFinancials.tdsPaisa * multiplier;
 
       if (
-        Math.abs(rent.grossRentAmountPaisa - newRentAmount) > 1 ||
+        Math.abs(rent.rentAmountPaisa - newRentAmount) > 1 ||
         Math.abs(rent.tdsAmountPaisa - newTdsAmount) > 1
       ) {
-        rent.grossRentAmountPaisa = newRentAmount;
+        rent.rentAmountPaisa = newRentAmount;
         rent.tdsAmountPaisa = newTdsAmount;
         await rent.save({ session });
         updatedCount++;

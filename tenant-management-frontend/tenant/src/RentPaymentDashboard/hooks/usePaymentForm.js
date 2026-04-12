@@ -1,17 +1,3 @@
-/**
- * usePaymentForm.js
- *
- * Manages formik state + allocation state for the rent payment dialog.
- *
- * Late fee support (new):
- *   - lateFeeAllocation: separate allocation bucket for the penalty charge
- *   - allocation strategy: rent first → CAM → late fee (senior obligations first)
- *   - payload: allocations.lateFee = { rentId, amount } sent to backend
- *     which routes it to LATE_FEE_PAYMENT_RECEIVED journal separately
- *   - full-payment-only rule enforced: late fee accepts all-or-nothing
- *     (mirrors backend allocatePayment() constraint)
- */
-
 import { useState } from "react";
 import { useFormik } from "formik";
 import { toast } from "sonner";
@@ -52,10 +38,7 @@ export const usePaymentForm = ({ rents, cams, onSuccess }) => {
           amount: values.amount,
           paymentDate: values.paymentDate,
           nepaliDate: values.nepaliDate,
-          paymentMethod: normalizeLedgerPaymentMethod(
-            values.paymentMethod,
-            "",
-          ),
+          paymentMethod: normalizeLedgerPaymentMethod(values.paymentMethod, ""),
           paymentStatus: values.paymentStatus || "paid",
           note: values.note || "",
           bankAccountId: values.bankAccountId || null,

@@ -195,6 +195,8 @@ export const PaymentDialog = ({
   const [tdsNotes, setTdsNotes] = React.useState("");
   const [tdsDocument, setTdsDocument] = React.useState(null);
   const [tdsDocumentError, setTdsDocumentError] = React.useState("");
+  const [tdsUploading, setTdsUploading] = React.useState(false);
+  const [tdsUploadedPath, setTdsUploadedPath] = React.useState("");
 
   React.useEffect(() => {
     setSelectedUnitIds(units.filter((u) => u.hasOutstanding).map((u) => u.id));
@@ -300,7 +302,8 @@ export const PaymentDialog = ({
     !formik.values?.paymentMethod ||
     !formik.values?.paymentDate ||
     (needsBankAccount && !formik.values?.bankAccountCode) ||
-    unitAllocationMismatch;
+    unitAllocationMismatch ||
+    tdsUploading;
 
   // ── Summary tone ──────────────────────────────────────────────────────────
   const summaryState =
@@ -565,10 +568,12 @@ export const PaymentDialog = ({
                             } else {
                               setTdsDocumentError("");
                               setTdsDocument(file);
+                              setTdsUploadedPath("");
                             }
                           } else {
                             setTdsDocument(null);
                             setTdsDocumentError("");
+                            setTdsUploadedPath("");
                           }
                         }}
                         style={{ fontSize: "12px" }}
@@ -581,6 +586,11 @@ export const PaymentDialog = ({
                       {tdsDocument && !tdsDocumentError && (
                         <p style={{ ...S.textSub, fontSize: "10px", marginTop: "4px" }}>
                           Selected: {tdsDocument.name} ({(tdsDocument.size / 1024).toFixed(1)} KB)
+                        </p>
+                      )}
+                      {tdsUploadedPath && (
+                        <p style={{ ...S.success, fontSize: "10px", marginTop: "4px" }}>
+                          Uploaded receipt attached successfully.
                         </p>
                       )}
                     </div>
@@ -1334,59 +1344,34 @@ export const PaymentDialog = ({
                   e.preventDefault();
                   const payload = buildPayload();
                   await formik.setValues({ ...formik.values, ...payload });
-                  
-                  // If TDS is being marked as paid with document upload, use multipart/form-data
-                  if (tdsPaidToGovt && !rent?.tdsPaidToGovernment && tdsDocument) {
-                    try {
-                      const formData = new FormData();
-                      
-                      // Add all payment data
-                      formData.append('tenantId', payload.tenantId);
-                      formData.append('amount', payload.amount);
-                      formData.append('paymentDate', payload.paymentDate);
-                      formData.append('nepaliDate', payload.nepaliDate || '');
-                      formData.append('paymentMethod', payload.paymentMethod);
-                      formData.append('paymentStatus', 'paid');
-                      formData.append('note', payload.note || '');
-                      formData.append('bankAccountId', payload.bankAccountId || '');
-                      formData.append('bankAccountCode', payload.bankAccountCode || '');
-                      formData.append('transactionRef', payload.transactionRef || '');
-                      formData.append('allocations', JSON.stringify(payload.allocations));
-                      
-                      // Add TDS verification data
-                      formData.append('tdsPaidToGovt', 'true');
-                      formData.append('tdsPaidDate', tdsPaidDate || new Date().toISOString());
-                      formData.append('tdsNepaliDate', tdsNepaliDate || '');
-                      formData.append('tdsNotes', tdsNotes || '');
-                      
-                      // Add TDS document file
-                      formData.append('tdsDocument', tdsDocument);
-                      
-                      const api = (await import("../../../plugins/axios")).default;
-                      const response = await api.post(
-                        '/api/payment/pay-rent-and-cam',
-                        formData,
-                        {
-                          headers: { 'Content-Type': 'multipart/form-data' }
-                        }
+
+                  try {
+                    const api = (await import("../../../plugins/axios")).default;
+                    const toast = (await import("sonner")).toast;
+
+                    // Same pattern as checklist image upload:
+                    // upload file first, then submit primary payload.
+                    if (
+                      tdsPaidToGovt &&
+                      !rent?.tdsPaidToGovernment &&
+                      tdsDocument &&
+                      !tdsUploadedPath
+                    ) {
+                      setTdsUploading(true);
+                      const uploadForm = new FormData();
+                      uploadForm.append("tdsDocument", tdsDocument);
+                      const uploadRes = await api.post(
+                        `/api/rent/${rent._id}/tds/upload-document`,
+                        uploadForm,
                       );
-                      
-                      if (response.data.success) {
-                        const toast = (await import("sonner")).toast;
-                        toast.success("Payment and TDS document uploaded successfully");
-                        if (onTdsVerified) onTdsVerified();
-                        onClose();
+                      if (!uploadRes?.data?.success) {
+                        throw new Error(uploadRes?.data?.message || "TDS document upload failed");
                       }
-                    } catch (error) {
-                      console.error("Payment with TDS document error:", error);
-                      const toast = (await import("sonner")).toast;
-                      toast.error(error?.response?.data?.message || "Payment failed. Please try again.");
+                      setTdsUploadedPath(uploadRes?.data?.data?.tdsReceiptUrl || "");
                     }
-                  } else {
-                    // Normal payment flow without TDS document
+
                     await formik.handleSubmit();
-                    
-                    // Handle TDS verification after successful payment (without document)
+
                     if (formik.isValid && tdsPaidToGovt && !rent?.tdsPaidToGovernment) {
                       try {
                         const tdsPayload = {
@@ -1394,26 +1379,31 @@ export const PaymentDialog = ({
                           nepaliTdsPaidDate: tdsNepaliDate || "",
                           tdsPaidNotes: tdsNotes || "",
                         };
-                        
-                        const api = (await import("../../../plugins/axios")).default;
                         const response = await api.patch(
                           `/api/rent/${rent._id}/tds/mark-paid`,
-                          tdsPayload
+                          tdsPayload,
                         );
-                        
                         if (response.data.success) {
-                          const toast = (await import("sonner")).toast;
-                          toast.success("TDS payment verified successfully");
+                          toast.success(
+                            tdsUploadedPath || tdsDocument
+                              ? "Payment recorded and TDS receipt linked successfully"
+                              : "TDS payment verified successfully",
+                          );
                           if (onTdsVerified) onTdsVerified();
                         }
                       } catch (error) {
                         console.error("TDS verification error:", error);
-                        const toast = (await import("sonner")).toast;
                         toast.error("Payment successful, but TDS verification failed. Please verify manually.");
                       }
                     }
-                    
+
                     if (formik.isValid) onClose();
+                  } catch (error) {
+                    console.error("Payment with TDS upload flow error:", error);
+                    const toast = (await import("sonner")).toast;
+                    toast.error(error?.response?.data?.message || error?.message || "Payment failed. Please try again.");
+                  } finally {
+                    setTdsUploading(false);
                   }
                 }}
                 style={{
@@ -1439,7 +1429,7 @@ export const PaymentDialog = ({
                   if (!isSubmitDisabled) e.currentTarget.style.backgroundColor = "var(--color-accent)";
                 }}
               >
-                Submit Payment
+                {tdsUploading ? "Uploading TDS..." : "Submit Payment"}
               </button>
             </div>
           </div>

@@ -45,6 +45,8 @@ import {
   addNepaliMonths,
   getNepaliToday,
 } from "../../utils/nepaliDateHelper.js";
+import { rebuildAllTenantBalances } from "../../modules/tenantBalance/tenantBalance.service.js";
+import { buildCarryForwardMap } from "../../modules/rents/rent.service.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -154,7 +156,14 @@ async function markOverdueRents(today) {
     { $set: { status: "overdue" } },
   );
   console.log(`       → ${camResult.modifiedCount} CAM(s) marked overdue`);
-
+  const overdueRentTenants = await Rent.distinct("tenant", {
+    nepaliYear: prevYear,
+    nepaliMonth: prevMonth,
+    status: "overdue",
+  });
+  await Promise.allSettled(
+    overdueRentTenants.map((t) => syncTenantBalance(t, null)),
+  );
   return { marked: result.modifiedCount, camsMarked: camResult.modifiedCount };
 }
 
@@ -320,7 +329,20 @@ export async function masterCron({ forceRun = false } = {}) {
         error: emailResult?.error?.toString() ?? null,
       });
     }
-
+    console.log("\n  📊 [6] Rebuilding tenant balance snapshots...");
+    const balanceResult = await rebuildAllTenantBalances();
+    console.log(
+      `       → Synced: ${balanceResult.processed}, errors: ${balanceResult.errors}`,
+    );
+    await CronLog.create({
+      type: "TENANT_BALANCE_REBUILD",
+      ranAt: startedAt,
+      message: `${balanceResult.processed} synced, ${balanceResult.errors} errors`,
+      count: balanceResult.processed,
+      success: balanceResult.errors === 0,
+      error:
+        balanceResult.errors > 0 ? `${balanceResult.errors} sync errors` : null,
+    });
     // ── [3b] Late fees — runs EVERY day ──────────────────────────────────────
     // Flat policies: no-op on non-first days (lateFeeApplied guard inside cron)
     // Compounding policies: recalculates and posts delta journal daily
@@ -361,6 +383,15 @@ export async function masterCron({ forceRun = false } = {}) {
         },
       });
     }
+    if (lateFeeResult.processed > 0) {
+      const lateFeeAffectedTenants = await Rent.distinct("tenant", {
+        status: "overdue",
+        lateFeeApplied: true,
+      });
+      await Promise.allSettled(
+        lateFeeAffectedTenants.map((t) => syncTenantBalance(t, null)),
+      );
+    }
     console.log("\n  🏦 [6] Loan EMI reminder run...");
     const loanEmiResult = await applyLoanEmiReminders(adminIds); // ← ADD
 
@@ -378,6 +409,7 @@ export async function masterCron({ forceRun = false } = {}) {
           : null,
       });
     }
+    console.log("\n  📊 [6] Rebuilding tenant balance snapshots...");
 
     // ── [5] Admin reminders (reminder day only) ───────────────────────────────
     if (isReminderDay) {

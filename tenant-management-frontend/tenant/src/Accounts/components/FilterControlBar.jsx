@@ -408,7 +408,7 @@ export default function FilterControlBar({
     }
 
     return (
-        <div className="no-print sticky top-0 z-20 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur-sm">
+        <div className="no-print flex-shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur-sm">
             <div className="flex items-center h-12 min-w-0">
 
                 {/* ── ZONE A: Entity scope ─────────────────────────────────── */}

@@ -37,7 +37,7 @@ function fmtFull(val) {
 //
 //   A ±1.5% soft blend zone at the boundary replaces a hard colour cut.
 //
-// Easing: cubic-bezier(0.34, 1.56, 0.64, 1) — mild spring, ~3% overshoot.
+// Easing: cubic-bezier(0.22, 1, 0.36, 1) — mild spring, ~3% overshoot.
 // Double-rAF: lets React flush the 0-reset before starting the transition so
 // the browser always sees a 0 → target change and plays the full animation.
 
@@ -77,7 +77,7 @@ function StackedBar({ rentPct = 0, camPct = 0 }) {
                     width: `${displayPct}%`,
                     background,
                     borderRadius: "9999px",
-                    transition: "width 750ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                    transition: "width 750ms cubic-bezier(0.22, 1, 0.36, 1)",
                     willChange: "width",
                 }}
             />
@@ -110,7 +110,7 @@ function SimpleBar({ pct = 0, colorVar }) {
                     width: `${width}%`,
                     backgroundColor: colorVar ?? "var(--color-muted)",
                     borderRadius: "9999px",
-                    transition: "width 750ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                    transition: "width 750ms cubic-bezier(0.22, 1, 0.36, 1)",
                     willChange: "width",
                 }}
             />
@@ -134,7 +134,10 @@ function Tile({
     return (
         <Link
             to={to}
-            className="group rounded-2xl border flex flex-col overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
+            className="group rounded-2xl border flex flex-col overflow-hidden
+                       transition-[box-shadow,transform] duration-200
+                       hover:shadow-md hover:-translate-y-0.5 active:translate-y-0
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             style={{
                 backgroundColor: "var(--color-surface)",
                 borderColor,
@@ -147,7 +150,7 @@ function Tile({
 
                     {/* Label */}
                     <p
-                        className="text-[10px] font-medium tracking-[0.18em] uppercase mb-2"
+                        className="text-[11px] font-semibold tracking-[0.14em] uppercase mb-2"
                         style={{ color: "var(--color-text-sub)" }}
                     >
                         {label}
@@ -157,14 +160,14 @@ function Tile({
                     {loading
                         ? (
                             <div
-                                className="animate-pulse rounded h-7 w-24"
+                                className="animate-pulse rounded h-8 w-28"
                                 style={{ backgroundColor: "var(--color-muted)" }}
                             />
                         )
                         : (
                             <p
-                                className="text-lg sm:text-xl xl:text-2xl font-bold tabular-nums leading-none truncate"
-                                style={valueStyle}
+                                className="text-xl sm:text-2xl xl:text-3xl font-bold tabular-nums leading-none truncate"
+                                style={{ ...valueStyle, fontFamily: "var(--font-serif)" }}
                             >
                                 {value}
                             </p>
@@ -174,7 +177,7 @@ function Tile({
                     {/* Sub-label */}
                     {!loading && sub && (
                         <p
-                            className="text-[11px] mt-1.5 leading-tight font-medium"
+                            className="text-xs mt-1.5 leading-tight font-medium"
                             style={{ color: "var(--color-text-sub)" }}
                         >
                             {sub}
@@ -207,8 +210,6 @@ function Tile({
                     <Icon className="w-4 h-4" style={iconColorStyle} />
                 </div>
             </div>
-
-
         </Link>
     );
 }

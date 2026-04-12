@@ -105,6 +105,19 @@ function getChartOfAccounts() {
       description: "Small cash held for day-to-day operational expenses.",
     },
     {
+      // CHEQUE_CLEARING = "1020"
+      // Cheques sit here from issuance/receipt until the bank processes them.
+      // DR on receipt (RECEIVED cheques), CR on issuance (ISSUED cheques).
+      // Clears to zero after deposit; reversal on bounce.
+      code: ACCOUNT_CODES.CHEQUE_CLEARING,
+      name: "Cheques in Transit",
+      type: "ASSET",
+      description:
+        "Cheques issued or received that have not yet been processed by the bank. " +
+        "First leg of every cheque journal posts here. Second leg (deposit) moves " +
+        "the balance to the actual bank sub-account. Net balance = sum of pending cheques.",
+    },
+    {
       code: "1200",
       name: "Accounts Receivable - Tenants",
       type: "ASSET",

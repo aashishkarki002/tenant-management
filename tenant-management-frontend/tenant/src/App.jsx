@@ -11,6 +11,7 @@ import Account from "./Accounts/Account";
 import ElectricityPage from "./electricity/ElectricityPage";
 import Maintenance from "./Maintenance/Maintenance";
 import ChequeDrafts from "./cheque-drafts/Cheque_drafts";
+import ChequeDraftsPage from "./ChequeDrafts/ChequeDraftsPage";
 import Payments from "./payments";
 import AddTenants from "./Tenant/addTenant/addTenants";
 import VerifyEmail from "./verify_email";
@@ -131,6 +132,9 @@ export default function App() {
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Payments /></RoleRoute></ProtectedRoutes>}
       />
       <Route path="/cheque-drafts"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><ChequeDraftsPage /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/cheque-drafts/print"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><ChequeDrafts /></RoleRoute></ProtectedRoutes>}
       />
       <Route path="/tenant/addTenants"

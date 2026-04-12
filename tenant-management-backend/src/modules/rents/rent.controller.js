@@ -17,6 +17,7 @@ import {
   handleMonthlyRents,
   sendEmailToTenants,
   markTdsPaidToGovernment,
+  backfillTenantRents,
 } from "./rent.service.js";
 import {
   recordRentPayment,
@@ -296,6 +297,44 @@ export async function recordRentPaymentController(req, res) {
   }
 }
 
+// ── Admin backfill ────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/rent/backfill-tenant-rents
+ *
+ * Body:
+ *   tenantId  {string}   required — MongoDB ObjectId
+ *   months    {Array}    required — [{ nepaliYear: number, nepaliMonth: number }]
+ *                         nepaliMonth is 1-based (1=Baisakh … 12=Chaitra)
+ */
+export async function backfillTenantRentsController(req, res) {
+  try {
+    const { tenantId, months } = req.body;
+
+    if (!tenantId) {
+      return res.status(400).json({ success: false, message: "tenantId is required" });
+    }
+    if (!Array.isArray(months) || !months.length) {
+      return res.status(400).json({ success: false, message: "months must be a non-empty array" });
+    }
+    for (const m of months) {
+      if (!Number.isInteger(m.nepaliYear) || !Number.isInteger(m.nepaliMonth) ||
+          m.nepaliMonth < 1 || m.nepaliMonth > 12) {
+        return res.status(400).json({
+          success: false,
+          message: "Each month entry must have integer nepaliYear and nepaliMonth (1-12)",
+        });
+      }
+    }
+
+    const result = await backfillTenantRents(tenantId, months, req.admin?._id ?? req.admin?.id);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    console.error("[backfillTenantRentsController]", error.message);
+    return res.status(500).json({ success: false, message: "Backfill failed", error: error.message });
+  }
+}
+
 // ── TDS Management ────────────────────────────────────────────────────────────
 
 /**
@@ -377,6 +416,64 @@ export async function markTdsPaidController(req, res) {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to mark TDS as paid",
+    });
+  }
+}
+
+/**
+ * POST /api/rent/:rentId/tds/upload-document
+ *
+ * Files:
+ *   tdsDocument — required TDS receipt document (via multer)
+ *
+ * Uploads the TDS document and stores its FTP path on rent.tdsReceiptUrl.
+ */
+export async function uploadTdsDocumentController(req, res) {
+  try {
+    const { rentId } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No TDS document uploaded",
+      });
+    }
+
+    const Rent = (await import("./rent.Model.js")).Rent;
+    const rent = await Rent.findById(rentId).select("tenant");
+    if (!rent) {
+      return res.status(404).json({
+        success: false,
+        message: "Rent not found",
+      });
+    }
+
+    const uploadResult = await handleTdsDocumentUpload({
+      tdsDocument: req.file,
+      rentId,
+      tenantId: rent.tenant,
+    });
+
+    if (!uploadResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: uploadResult.error || "TDS document upload failed",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "TDS document uploaded successfully",
+      data: {
+        rentId,
+        tdsReceiptUrl: uploadResult.remotePath,
+      },
+    });
+  } catch (error) {
+    console.error("[uploadTdsDocumentController]", error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to upload TDS document",
     });
   }
 }

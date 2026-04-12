@@ -34,31 +34,13 @@ export function Card({ children, className = "" }) {
 export function DarkCard({ children, className = "" }) {
     return (
         <div
-            className={cn("rounded-2xl overflow-hidden relative", className)}
+            className={cn("rounded-2xl overflow-hidden", className)}
             style={{
-                background:
-                    "linear-gradient(140deg, #0b3d5a 0%, var(--color-accent) 55%, #1a6a8a 100%)",
+                background: "#0d2535",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
             }}
         >
-            {/* Dot-grid texture overlay */}
-            <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                    backgroundImage:
-                        "radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)",
-                    backgroundSize: "18px 18px",
-                    opacity: 0.6,
-                }}
-            />
-            {/* Highlight ring at top-left */}
-            <div
-                className="absolute -top-20 -left-20 w-48 h-48 rounded-full pointer-events-none"
-                style={{
-                    background:
-                        "radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 70%)",
-                }}
-            />
-            <div className="relative z-10 p-5">{children}</div>
+            <div className="p-5">{children}</div>
         </div>
     );
 }
@@ -85,12 +67,16 @@ export function Delta({ value, label }) {
     const up = value >= 0;
     return (
         <span
-            className={cn(
-                "inline-flex items-center gap-[3px] text-[10px] font-bold px-2 py-[3px] rounded-full select-none",
-                up
-                    ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                    : "bg-red-50 text-red-500 border border-red-100",
-            )}
+            className="inline-flex items-center gap-[3px] text-[10px] font-bold px-2 py-[3px] rounded-full select-none border"
+            style={up ? {
+                background: "var(--color-success-bg)",
+                color: "var(--color-success)",
+                borderColor: "var(--color-success-border)",
+            } : {
+                background: "var(--color-danger-bg)",
+                color: "var(--color-danger)",
+                borderColor: "var(--color-danger-border)",
+            }}
         >
             {up ? (
                 <TrendingUpIcon size={9} strokeWidth={2.5} />

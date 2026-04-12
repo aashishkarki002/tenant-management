@@ -42,6 +42,7 @@ import sdRefundRoute from "./modules/securityDeposits/sdRefund.route.js";
 import sdRoute from "./modules/securityDeposits/sd.route.js";
 import liabilitiesRoute from "./modules/liabilities/liabilties.route.js";
 import ftpUploadRoute from "./modules/ftpUpload/ftpUpload.route.js";
+import chequeDraftRoute from "./modules/chequeDrafts/chequeDraft.route.js";
 const app = express();
 
 app.disable("x-powered-by");
@@ -124,6 +125,7 @@ app.use("/api/sd-refund", sdRefundRoute);
 app.use("/api/sd", sdRoute);
 app.use("/api/liabilities", liabilitiesRoute);
 app.use("/api/ftp-upload", ftpUploadRoute);
+app.use("/api/cheque-drafts", chequeDraftRoute);
 app.get("/api/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 // -------------------- ERROR HANDLERS --------------------

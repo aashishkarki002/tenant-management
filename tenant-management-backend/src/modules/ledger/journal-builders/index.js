@@ -45,3 +45,6 @@ export {
 
 // Security deposit refund
 export { buildSdRefundJournal } from "./sdRefund.js";
+
+// Cheque clearing (deposit + bounce/cancel reversal)
+export { buildChequeDepositJournal, buildChequeBounceJournal } from "./chequeClearing.js";

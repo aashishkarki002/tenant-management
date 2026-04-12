@@ -7,6 +7,7 @@ import {
   restoreTenant,
   searchTenants,
   createTenant,
+  getTenantBalanceController,
 } from "./tenant.controller.js";
 import upload from "../../middleware/upload.js";
 import { multerErrorHandler } from "../../middleware/multerErrorHandler.js";
@@ -45,5 +46,6 @@ router.patch(
 
 router.patch("/delete-tenant/:id", protect, deleteTenant);
 router.patch("/restore-tenant/:id", protect, restoreTenant);
+router.get("/tenant-balance/:tenantId", protect, getTenantBalanceController);
 
 export default router;

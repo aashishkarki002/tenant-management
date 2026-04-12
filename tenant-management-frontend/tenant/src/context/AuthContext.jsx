@@ -93,7 +93,13 @@ export const AuthProvider = ({ children }) => {
               scheduleProactiveRefresh(newExpiry);
             }
           })
-          .catch(() => {}); // 401 interceptor will redirect to /login if needed
+          .catch(() => {
+            // Refresh failed — cookies may have been cleared by the OS (iOS PWA).
+            // Re-check auth state immediately so the UI reflects logged-out rather
+            // than waiting for the next API call to trigger the 401 → /login redirect.
+            tokenExpiresAtRef.current = null;
+            fetchMe(true);
+          });
       }
     };
 
@@ -103,7 +109,7 @@ export const AuthProvider = ({ children }) => {
       document.removeEventListener("visibilitychange", handleResume);
       window.removeEventListener("focus", handleResume);
     };
-  }, [scheduleProactiveRefresh]);
+  }, [scheduleProactiveRefresh, fetchMe]);
 
   // Cancel the scheduled refresh on unmount.
   useEffect(() => {

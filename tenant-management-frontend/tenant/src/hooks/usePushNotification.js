@@ -48,21 +48,29 @@ export function usePushNotifications(user) {
   }, [browserSupportsPush]);
 
   // ── Silent renewal on every app open ───────────────────────────────────────
+  // Returns "ok", "no_subscription", or "unknown_endpoint".
+  // "unknown_endpoint" means the server DB record was deleted (e.g. after a
+  // 410 Gone from the push service) — caller should trigger re-subscription.
   const silentRenew = useCallback(async () => {
-    if (!VAPID_PUBLIC_KEY || !browserSupportsPush) return;
+    if (!VAPID_PUBLIC_KEY || !browserSupportsPush) return "no_subscription";
     try {
       const registration =
         await navigator.serviceWorker.getRegistration("/sw.js");
-      if (!registration) return;
+      if (!registration) return "no_subscription";
       const sub = await registration.pushManager.getSubscription();
-      if (!sub) return;
-      await fetch("/api/push/renew", {
+      if (!sub) return "no_subscription";
+      const res = await fetch("/api/push/renew", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: sub.toJSON() }),
       });
+      const data = await res.json();
+      if (!data.success && data.reason === "unknown_endpoint") {
+        return "unknown_endpoint";
+      }
+      return "ok";
     } catch {
-      // Always silent
+      return "ok"; // network error — stay silent, don't thrash
     }
   }, [browserSupportsPush]);
 
@@ -150,26 +158,35 @@ export function usePushNotifications(user) {
 
   // ── Effect ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user) {
-      setIsReady(false);
-      return;
-    }
-    if (!VAPID_PUBLIC_KEY) {
-      if (import.meta.env.DEV)
-        console.warn("[push] VITE_VAPID_PUBLIC_KEY not set");
-      setIsReady(false);
-      return;
-    }
-    if (!browserSupportsPush) {
+    if (!user || !VAPID_PUBLIC_KEY || !browserSupportsPush) {
       setIsReady(false);
       return;
     }
 
     setPermissionState(Notification.permission);
     setIsReady(true);
-    checkSubscription();
-    silentRenew();
-  }, [user, browserSupportsPush, checkSubscription, silentRenew]);
+
+    (async () => {
+      const result = await silentRenew();
+      if (
+        result === "unknown_endpoint" &&
+        Notification.permission === "granted"
+      ) {
+        await requestPermissionAndSubscribe();
+      } else if (result === "no_subscription") {
+        setIsSubscribed(false);
+      } else {
+        // "ok" — server confirmed the endpoint exists
+        await checkSubscription(); // safe to trust browser now
+      }
+    })();
+  }, [
+    user,
+    browserSupportsPush,
+    checkSubscription,
+    silentRenew,
+    requestPermissionAndSubscribe,
+  ]);
 
   return {
     permissionState,
