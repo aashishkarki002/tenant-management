@@ -400,6 +400,8 @@ export async function createPayment(paymentData) {
       await recordRentRevenue({
         amountPaisa: allocations.rent.amountPaisa,
         paymentDate: payment.paymentDate,
+        rentPeriodMonth: rent.nepaliMonth,
+        rentPeriodYear: rent.nepaliYear,
         tenantId: paymentData.tenantId,
         rentId: rent._id,
         note: payment.note,

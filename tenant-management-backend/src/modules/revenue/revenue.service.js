@@ -745,6 +745,8 @@ export async function recordRentRevenue({
   amountPaisa,
   amount,
   paymentDate,
+  rentPeriodMonth,
+  rentPeriodYear,
   tenantId,
   rentId,
   note,
@@ -769,7 +771,9 @@ export async function recordRentRevenue({
 
     const resolvedBlockId = resolveBlockObjectId(blockId);
 
-    const { npYear: rr_npYear, npMonth: rr_npMonth } =
+    // Use rent period for revenue recognition (accrual accounting).
+    // paymentNepaliYear/Month stored separately for cash flow reporting.
+    const { npYear: pay_npYear, npMonth: pay_npMonth } =
       getNepaliYearMonthFromDate(paymentDate);
 
     const revenue = await Revenue.create(
@@ -779,8 +783,10 @@ export async function recordRentRevenue({
           amountPaisa: finalAmountPaisa,
           amount: finalAmountPaisa / 100,
           englishDate: paymentDate,
-          nepaliYear: rr_npYear,
-          nepaliMonth: rr_npMonth,
+          nepaliYear: rentPeriodYear ?? pay_npYear,
+          nepaliMonth: rentPeriodMonth ?? pay_npMonth,
+          paymentNepaliYear: pay_npYear,
+          paymentNepaliMonth: pay_npMonth,
           payerType: "TENANT",
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "RENT",

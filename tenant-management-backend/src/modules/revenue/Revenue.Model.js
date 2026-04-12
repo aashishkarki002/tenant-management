@@ -39,11 +39,15 @@ const revenueSchema = new mongoose.Schema(
       index: true,
     },
     nepaliMonth: {
-      type: Number, // 1-based (1 = Baisakh … 12 = Chaitra)
+      type: Number, // 1-based (1 = Baisakh … 12 = Chaitra) — rent/service PERIOD
       min: 1,
       max: 12,
       index: true,
     },
+
+    // Payment date in BS — for cash-flow-by-month queries (may differ from nepaliMonth)
+    paymentNepaliYear: { type: Number },
+    paymentNepaliMonth: { type: Number, min: 1, max: 12 },
 
     payerType: {
       type: String,
