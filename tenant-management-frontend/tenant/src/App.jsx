@@ -10,7 +10,7 @@ import StaffDashboard from "./Dashboard/StaffDashboard";
 import Account from "./Accounts/Account";
 import ElectricityPage from "./electricity/ElectricityPage";
 import Maintenance from "./Maintenance/Maintenance";
-import Cheque_drafts from "./Cheque_drafts";
+import ChequeDrafts from "./cheque-drafts/Cheque_drafts";
 import Payments from "./payments";
 import AddTenants from "./Tenant/addTenant/addTenants";
 import VerifyEmail from "./verify_email";
@@ -131,7 +131,7 @@ export default function App() {
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Payments /></RoleRoute></ProtectedRoutes>}
       />
       <Route path="/cheque-drafts"
-        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Cheque_drafts /></RoleRoute></ProtectedRoutes>}
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><ChequeDrafts /></RoleRoute></ProtectedRoutes>}
       />
       <Route path="/tenant/addTenants"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><AddTenants /></RoleRoute></ProtectedRoutes>}

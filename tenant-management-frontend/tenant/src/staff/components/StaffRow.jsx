@@ -28,7 +28,7 @@ export default function StaffRow({ member, onView, onEdit, onDelete }) {
   return (
     <tr
       onClick={() => onView(member)}
-      className="group border-b border-border hover:bg-muted/40 cursor-pointer transition-colors"
+      className="group border-b border-border hover:bg-accent/40 cursor-pointer transition-colors"
     >
       {/* Identity */}
       <td className="py-3.5 pl-6 pr-4">

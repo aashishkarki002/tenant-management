@@ -52,12 +52,12 @@ export default function Staff() {
         try {
             const res = await api.delete(`/api/staff/delete-staff/${id}`)
             if (res.data.success) {
-                toast.success(res.data.message || 'Staff removed')
+                toast.success(res.data.message || 'Team member removed')
                 fetchStaff(departmentFilter)
                 setDeleteDialog({ open: false, staff: null })
             } else toast.error(res.data.message)
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed to remove staff')
+            toast.error(err.response?.data?.message || 'Couldn\'t remove team member. Please try again.')
         }
     }
 
@@ -69,9 +69,9 @@ export default function Staff() {
     }
 
     const FILTERS = [
-        { key: 'all', label: `All  ${counts.total}` },
-        { key: 'admin', label: `Admins  ${counts.admin}` },
-        { key: 'staff', label: `Staff  ${counts.staff}` },
+        { key: 'all', label: `All ${counts.total}` },
+        { key: 'admin', label: `Admins ${counts.admin}` },
+        { key: 'staff', label: `Staff ${counts.staff}` },
     ]
 
     const DEPARTMENT_FILTERS = [
@@ -84,7 +84,7 @@ export default function Staff() {
 
     return (
         <div className="min-h-screen bg-background text-foreground">
-            <div className=" mx-auto px-4 sm:px-8 py-10 space-y-8">
+            <div className="mx-auto px-4 sm:px-8 py-10 space-y-6">
 
                 {/* ── Page header ── */}
                 <div className="flex items-start justify-between gap-4">
@@ -103,28 +103,12 @@ export default function Staff() {
                     </Button>
                 </div>
 
-                {/* ── Quick stats ── */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                        { label: 'Total members', value: counts.total, sub: 'across all roles' },
-                        { label: 'Admins', value: counts.admin, sub: 'with elevated access' },
-                        { label: 'Staff', value: counts.staff, sub: 'operational roles' },
-                        { label: 'Active today', value: counts.active, sub: 'currently working' },
-                    ].map(({ label, value, sub }) => (
-                        <div key={label} className="bg-card border border-border rounded-2xl px-5 py-4 shadow-sm">
-                            <p className="text-2xl font-bold text-foreground">{value}</p>
-                            <p className="text-xs font-semibold text-muted-foreground mt-0.5">{label}</p>
-                            <p className="text-xs text-muted-foreground">{sub}</p>
-                        </div>
-                    ))}
-                </div>
-
                 {/* ── Search + filter bar ── */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                     <div className="relative flex-1 w-full max-w-sm">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                         <Input
-                            placeholder="Search name, email, role…"
+                            placeholder="Search by name, email or designation…"
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             className="pl-9 bg-card border-border text-sm h-9 rounded-xl"
@@ -181,8 +165,22 @@ export default function Staff() {
                                     ? (
                                         <tr>
                                             <td colSpan={5} className="py-16 text-center">
-                                                <p className="text-sm font-semibold text-muted-foreground">No members found</p>
-                                                {search && <p className="text-xs text-muted-foreground mt-1">Try a different search term</p>}
+                                                {staff.length === 0 ? (
+                                                    <>
+                                                        <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 mb-3">
+                                                            <UserPlus className="w-5 h-5 text-primary" />
+                                                        </div>
+                                                        <p className="text-sm font-semibold text-foreground">No team members yet</p>
+                                                        <p className="text-xs text-muted-foreground mt-1">Add your first member to get started</p>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <p className="text-sm font-semibold text-muted-foreground">
+                                                            {search ? `No results for "${search}"` : 'No members match this filter'}
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground mt-1">Try a different name, email or department</p>
+                                                    </>
+                                                )}
                                             </td>
                                         </tr>
                                     )
@@ -200,9 +198,9 @@ export default function Staff() {
                     </table>
                 </div>
 
-                {filtered.length > 0 && !loading && (
+                {!loading && filtered.length > 0 && filtered.length < staff.length && (
                     <p className="text-xs text-muted-foreground text-center">
-                        Showing {filtered.length} of {staff.length} member{staff.length !== 1 ? 's' : ''}
+                        Showing {filtered.length} of {staff.length} members
                     </p>
                 )}
             </div>

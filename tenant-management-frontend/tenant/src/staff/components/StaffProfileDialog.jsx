@@ -13,8 +13,9 @@ import { Spinner } from '@/components/ui/spinner'
 import RolePill from './RolePill'
 import DeptPill from './DeptPill'
 import {
-    User, Mail, Phone, Lock, Briefcase, DollarSign,
-    Building2, Eye, EyeOff, X, Landmark, CreditCard, MapPin, CalendarDays
+    User, Mail, Phone, Lock, Briefcase, Banknote,
+    Building2, Eye, EyeOff, X, Landmark, CreditCard, MapPin, CalendarDays,
+    ChevronDown
 } from 'lucide-react'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -95,11 +96,11 @@ function FormField({ label, icon: Icon, required, error, children }) {
             <Label className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                 {Icon && <Icon className="w-3.5 h-3.5 text-muted-foreground" />}
                 {label}
-                {required && <span className="text-red-500 ml-0.5">*</span>}
+                {required && <span className="text-destructive ml-0.5">*</span>}
             </Label>
             {children}
             {error && (
-                <p className="text-xs text-red-500 flex items-center gap-1">
+                <p className="text-xs text-destructive flex items-center gap-1">
                     <X className="w-3 h-3 flex-shrink-0" />
                     {error}
                 </p>
@@ -130,6 +131,7 @@ export default function StaffProfileDialog({ open, mode, staff, onOpenChange }) 
     const [isLoading, setIsLoading] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
     const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+    const [showCompensation, setShowCompensation] = useState(false)
 
     const isEdit = mode === 'edit'
     const isView = mode === 'view'
@@ -181,7 +183,7 @@ export default function StaffProfileDialog({ open, mode, staff, onOpenChange }) 
 
                 onOpenChange(false)
             } catch (err) {
-                toast.error(err.response?.data?.message || 'Operation failed')
+                toast.error(err.response?.data?.message || (isEdit ? 'Couldn\'t save changes. Please try again.' : 'Couldn\'t add team member. Please try again.'))
             } finally {
                 setIsLoading(false)
             }
@@ -210,8 +212,11 @@ export default function StaffProfileDialog({ open, mode, staff, onOpenChange }) 
                 password: '',
                 confirmPassword: '',
             })
+            // Auto-expand compensation if data already exists
+            setShowCompensation(!!(p.salaryAmountPaisa || p.bankDetails?.bankName))
         } else if (open && isAdd) {
             formik.resetForm()
+            setShowCompensation(false)
         }
     }, [open, staff, mode])
 
@@ -220,9 +225,10 @@ export default function StaffProfileDialog({ open, mode, staff, onOpenChange }) 
         formik.resetForm()
         setShowPassword(false)
         setShowConfirmPassword(false)
+        setShowCompensation(false)
     }
 
-    const dialogTitle = isEdit ? 'Edit Staff Member' : isView ? 'Staff Profile' : 'Add New Team Member'
+    const dialogTitle = isEdit ? 'Edit team member' : isView ? 'Team member' : 'Add team member'
 
     // Derived label for department in view mode
     const deptLabel = DEPARTMENT_OPTIONS.find(d => d.value === (staff?.profile?.department || staff?.department))?.label
@@ -305,12 +311,12 @@ export default function StaffProfileDialog({ open, mode, staff, onOpenChange }) 
                                                 s => s.value === staff.profile?.salaryType
                                             )?.label
                                         }
-                                        icon={DollarSign}
+                                        icon={Banknote}
                                     />
                                     <ProfileField
-                                        label="Salary Amount"
+                                        label="Salary amount"
                                         value={formatPaisa(staff.profile?.salaryAmountPaisa)}
-                                        icon={DollarSign}
+                                        icon={Banknote}
                                     />
                                 </div>
                             </div>
@@ -486,118 +492,142 @@ export default function StaffProfileDialog({ open, mode, staff, onOpenChange }) 
 
                             <div className="h-px bg-border" />
 
-                            {/* Salary */}
+                            {/* Compensation — collapsed by default, auto-expands on edit if data exists */}
                             <div>
-                                <SectionLabel>Salary</SectionLabel>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <FormField
-                                        label="Salary Type"
-                                        icon={DollarSign}
-                                        error={formik.touched.salaryType && formik.errors.salaryType}
-                                    >
-                                        <Select
-                                            value={formik.values.salaryType}
-                                            onValueChange={(v) => formik.setFieldValue('salaryType', v)}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select type" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {SALARY_TYPE_OPTIONS.map((s) => (
-                                                    <SelectItem key={s.value} value={s.value}>
-                                                        {s.label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </FormField>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCompensation(v => !v)}
+                                    className="flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors w-full text-left"
+                                >
+                                    <ChevronDown
+                                        className="w-4 h-4 flex-shrink-0 transition-transform duration-200"
+                                        style={{ transform: showCompensation ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                                    />
+                                    {showCompensation ? 'Hide compensation & bank details' : 'Add compensation & bank details'}
+                                </button>
 
-                                    <FormField
-                                        label="Salary Amount (NPR)"
-                                        icon={DollarSign}
-                                        error={formik.touched.salaryAmountPaisa && formik.errors.salaryAmountPaisa}
-                                    >
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium pointer-events-none">
-                                                NPR
-                                            </span>
-                                            <Input
-                                                name="salaryAmountPaisa"
-                                                type="number"
-                                                min="0"
-                                                placeholder="0"
-                                                value={
-                                                    formik.values.salaryAmountPaisa !== ''
-                                                        ? Number(formik.values.salaryAmountPaisa) / 100
-                                                        : ''
-                                                }
-                                                onChange={(e) => {
-                                                    const rupees = e.target.value
-                                                    formik.setFieldValue(
-                                                        'salaryAmountPaisa',
-                                                        rupees !== '' ? Math.round(Number(rupees) * 100) : ''
-                                                    )
-                                                }}
-                                                onBlur={formik.handleBlur}
-                                                className="pl-12"
-                                            />
+                                <div
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateRows: showCompensation ? '1fr' : '0fr',
+                                        transition: 'grid-template-rows 200ms ease',
+                                    }}
+                                >
+                                    <div className="overflow-hidden">
+                                        <div className="space-y-6 pt-5">
+
+                                            {/* Salary */}
+                                            <div>
+                                                <SectionLabel>Salary</SectionLabel>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <FormField
+                                                        label="Salary Type"
+                                                        icon={Banknote}
+                                                        error={formik.touched.salaryType && formik.errors.salaryType}
+                                                    >
+                                                        <Select
+                                                            value={formik.values.salaryType}
+                                                            onValueChange={(v) => formik.setFieldValue('salaryType', v)}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select type" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {SALARY_TYPE_OPTIONS.map((s) => (
+                                                                    <SelectItem key={s.value} value={s.value}>
+                                                                        {s.label}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </FormField>
+
+                                                    <FormField
+                                                        label="Salary amount"
+                                                        icon={Banknote}
+                                                        error={formik.touched.salaryAmountPaisa && formik.errors.salaryAmountPaisa}
+                                                    >
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium pointer-events-none">
+                                                                NPR
+                                                            </span>
+                                                            <Input
+                                                                name="salaryAmountPaisa"
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="0"
+                                                                value={
+                                                                    formik.values.salaryAmountPaisa !== ''
+                                                                        ? Number(formik.values.salaryAmountPaisa) / 100
+                                                                        : ''
+                                                                }
+                                                                onChange={(e) => {
+                                                                    const rupees = e.target.value
+                                                                    formik.setFieldValue(
+                                                                        'salaryAmountPaisa',
+                                                                        rupees !== '' ? Math.round(Number(rupees) * 100) : ''
+                                                                    )
+                                                                }}
+                                                                onBlur={formik.handleBlur}
+                                                                className="pl-12"
+                                                            />
+                                                        </div>
+                                                    </FormField>
+                                                </div>
+                                            </div>
+
+                                            <div className="h-px bg-border" />
+
+                                            {/* Bank Details */}
+                                            <div>
+                                                <SectionLabel>Bank Details</SectionLabel>
+                                                <div className="grid grid-cols-3 gap-4">
+                                                    <FormField
+                                                        label="Bank Name"
+                                                        icon={Landmark}
+                                                        error={formik.touched.bankName && formik.errors.bankName}
+                                                    >
+                                                        <Input
+                                                            name="bankName"
+                                                            placeholder="e.g. NIC Asia"
+                                                            value={formik.values.bankName}
+                                                            onChange={formik.handleChange}
+                                                            onBlur={formik.handleBlur}
+                                                        />
+                                                    </FormField>
+
+                                                    <FormField
+                                                        label="Account Number"
+                                                        icon={CreditCard}
+                                                        error={formik.touched.accountNumber && formik.errors.accountNumber}
+                                                    >
+                                                        <Input
+                                                            name="accountNumber"
+                                                            placeholder="XXXXXXXXXXXX"
+                                                            value={formik.values.accountNumber}
+                                                            onChange={formik.handleChange}
+                                                            onBlur={formik.handleBlur}
+                                                        />
+                                                    </FormField>
+
+                                                    <FormField
+                                                        label="Branch"
+                                                        icon={MapPin}
+                                                        error={formik.touched.branchName && formik.errors.branchName}
+                                                    >
+                                                        <Input
+                                                            name="branchName"
+                                                            placeholder="e.g. Newroad"
+                                                            value={formik.values.branchName}
+                                                            onChange={formik.handleChange}
+                                                            onBlur={formik.handleBlur}
+                                                        />
+                                                    </FormField>
+                                                </div>
+                                            </div>
+
                                         </div>
-                                        {formik.values.salaryAmountPaisa !== '' && (
-                                            <p className="text-[11px] text-muted-foreground mt-1">
-                                                Stored as {Number(formik.values.salaryAmountPaisa).toLocaleString()} paisa
-                                            </p>
-                                        )}
-                                    </FormField>
-                                </div>
-                            </div>
-
-                            <div className="h-px bg-border" />
-
-                            {/* Bank Details */}
-                            <div>
-                                <SectionLabel>Bank Details</SectionLabel>
-                                <div className="grid grid-cols-3 gap-4">
-                                    <FormField
-                                        label="Bank Name"
-                                        icon={Landmark}
-                                        error={formik.touched.bankName && formik.errors.bankName}
-                                    >
-                                        <Input
-                                            name="bankName"
-                                            placeholder="e.g. NIC Asia"
-                                            value={formik.values.bankName}
-                                            onChange={formik.handleChange}
-                                            onBlur={formik.handleBlur}
-                                        />
-                                    </FormField>
-
-                                    <FormField
-                                        label="Account Number"
-                                        icon={CreditCard}
-                                        error={formik.touched.accountNumber && formik.errors.accountNumber}
-                                    >
-                                        <Input
-                                            name="accountNumber"
-                                            placeholder="XXXXXXXXXXXX"
-                                            value={formik.values.accountNumber}
-                                            onChange={formik.handleChange}
-                                            onBlur={formik.handleBlur}
-                                        />
-                                    </FormField>
-
-                                    <FormField
-                                        label="Branch"
-                                        icon={MapPin}
-                                        error={formik.touched.branchName && formik.errors.branchName}
-                                    >
-                                        <Input
-                                            name="branchName"
-                                            placeholder="e.g. Newroad"
-                                            value={formik.values.branchName}
-                                            onChange={formik.handleChange}
-                                            onBlur={formik.handleBlur}
-                                        />
-                                    </FormField>
+                                    </div>
                                 </div>
                             </div>
 
@@ -605,9 +635,7 @@ export default function StaffProfileDialog({ open, mode, staff, onOpenChange }) 
 
                             {/* Security */}
                             <div>
-                                <SectionLabel>
-                                    {isEdit ? 'Change Password (optional)' : 'Security'}
-                                </SectionLabel>
+                                <SectionLabel>Password</SectionLabel>
                                 <div className="grid grid-cols-2 gap-4">
                                     <FormField
                                         label="Password"

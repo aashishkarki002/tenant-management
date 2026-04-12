@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import api from '../../../plugins/axios'
-import {
-    Sheet, SheetContent, SheetHeader, SheetTitle
-} from '@/components/ui/sheet'
+import { SheetContent, Sheet } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import {
-    Phone, Mail, Edit, Trash2, MapPin, Calendar,
-    Briefcase, TrendingUp, ShieldCheck, Clock, X,
-    ChevronRight, Building2, CreditCard, History,
-    CheckSquare, Wrench, AlertCircle
+    Phone, Mail, Edit, Trash2, Calendar,
+    Briefcase, TrendingUp, ShieldCheck, X,
+    Building2, CreditCard, FileText
 } from 'lucide-react'
 import StaffAvatar from './StaffAvatar'
 import DeptPill from './DeptPill'
@@ -27,7 +25,7 @@ function formatDate(d) {
 
 function SectionLabel({ children }) {
     return (
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">
             {children}
         </p>
     )
@@ -36,13 +34,13 @@ function SectionLabel({ children }) {
 function InfoRow({ icon: Icon, label, value, mono }) {
     if (!value) return null
     return (
-        <div className="flex items-start gap-3 py-2.5 border-b border-slate-50 last:border-0">
-            <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Icon className="w-3.5 h-3.5 text-slate-500" />
+        <div className="flex items-start gap-3 py-2.5 border-b border-border/50 last:border-0">
+            <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Icon className="w-3.5 h-3.5 text-muted-foreground" />
             </div>
             <div>
-                <p className="text-[11px] text-slate-400 font-medium">{label}</p>
-                <p className={`text-sm text-slate-800 font-semibold mt-0.5 ${mono ? 'font-mono' : ''}`}>{value}</p>
+                <p className="text-[11px] text-muted-foreground font-medium">{label}</p>
+                <p className={`text-sm text-foreground font-semibold mt-0.5 ${mono ? 'font-mono' : ''}`}>{value}</p>
             </div>
         </div>
     )
@@ -52,33 +50,21 @@ function SalaryHistoryEntry({ entry, index }) {
     return (
         <div className="flex items-start gap-3">
             <div className="flex flex-col items-center">
-                <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${index === 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${index === 0 ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
                 {/* connector line — not the last item */}
-                <div className="w-px flex-1 bg-slate-100 mt-1" style={{ minHeight: '20px' }} />
+                <div className="w-px flex-1 bg-border mt-1" style={{ minHeight: '20px' }} />
             </div>
             <div className="pb-4">
-                <p className="text-sm font-bold text-slate-800">{formatPaisa(entry.amountPaisa)}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{formatDate(entry.effectiveFrom)}</p>
+                <p className="text-sm font-bold text-foreground">{formatPaisa(entry.amountPaisa)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{formatDate(entry.effectiveFrom)}</p>
                 {entry.reason && (
-                    <p className="text-xs text-slate-500 mt-1 italic">"{entry.reason}"</p>
+                    <p className="text-xs text-muted-foreground mt-1 italic">"{entry.reason}"</p>
                 )}
             </div>
         </div>
     )
 }
 
-// Placeholder sections for future data
-function PlaceholderSection({ icon: Icon, label, description }) {
-    return (
-        <div className="border border-dashed border-slate-200 rounded-xl p-4 flex items-start gap-3 bg-slate-50/50">
-            <Icon className="w-4 h-4 text-slate-300 flex-shrink-0 mt-0.5" />
-            <div>
-                <p className="text-xs font-semibold text-slate-400">{label}</p>
-                <p className="text-xs text-slate-300 mt-0.5">{description}</p>
-            </div>
-        </div>
-    )
-}
 
 export default function StaffDrawer({ member, open, onClose, onEdit, onDelete }) {
     const [fullData, setFullData] = useState(null)
@@ -110,7 +96,7 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
 
     const handleCall = () => {
         if (member.phone) window.location.href = `tel:${member.phone}`
-        else alert('No phone number on record')
+        else toast.error('No phone number on record')
     }
 
     const handleEmail = () => {
@@ -131,11 +117,11 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
                 hideCloseButton
             >
                 {/* ── Hero header ── */}
-                <div className="relative px-6 pt-10 pb-6 bg-primary border border-border">
+                <div className="relative px-6 pt-10 pb-6 bg-primary">
                     {/* Close */}
                     <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 w-7 h-7 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary/70 hover:text-primary transition-colors"
+                        className="absolute top-4 right-4 w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white/70 hover:text-white transition-colors"
                     >
                         <X className="w-3.5 h-3.5" />
                     </button>
@@ -145,9 +131,9 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
                         <StaffAvatar src={data.profilePicture} name={data.name} size="xl" />
 
                         <div className="min-w-0">
-                            <h2 className="text-2xl font-bold text-foreground leading-tight truncate">{data.name}</h2>
+                            <h2 className="text-2xl font-bold text-primary-foreground leading-tight truncate">{data.name}</h2>
                             {profile?.designation && (
-                                <p className="text-lg font-semibold text-foreground mt-0.5 truncate">{profile.designation}</p>
+                                <p className="text-sm font-medium text-white/70 mt-0.5 truncate">{profile.designation}</p>
                             )}
                             <div className="flex items-center gap-2 mt-2 flex-wrap">
                                 <DeptPill dept={profile?.department} />
@@ -160,14 +146,14 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
                     <div className="grid grid-cols-2 gap-2 mt-5">
                         <button
                             onClick={handleCall}
-                            className="flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
+                            className="flex items-center justify-center gap-2 bg-white text-primary rounded-xl py-2.5 text-sm font-semibold hover:bg-white/90 transition-colors"
                         >
                             <Phone className="w-4 h-4" />
                             Call
                         </button>
                         <button
                             onClick={handleEmail}
-                            className="flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-white/20 transition-colors border border-white/10"
+                            className="flex items-center justify-center gap-2 bg-white/10 text-primary-foreground rounded-xl py-2.5 text-sm font-semibold hover:bg-white/20 transition-colors border border-white/15"
                         >
                             <Mail className="w-4 h-4" />
                             Email
@@ -181,7 +167,7 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
                     {loadingFull && (
                         <div className="space-y-3">
                             {[...Array(4)].map((_, i) => (
-                                <div key={i} className="h-10 bg-slate-100 rounded-xl animate-pulse" />
+                                <div key={i} className="h-10 bg-muted rounded-xl animate-pulse" />
                             ))}
                         </div>
                     )}
@@ -191,7 +177,7 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
                             {/* Contact info */}
                             <div>
                                 <SectionLabel>Contact</SectionLabel>
-                                <div className="bg-slate-50 rounded-2xl px-4 py-1 divide-y divide-slate-100">
+                                <div className="bg-muted/40 rounded-2xl px-4 py-1 divide-y divide-border">
                                     <InfoRow icon={Mail} label="Email" value={data.email} />
                                     <InfoRow icon={Phone} label="Phone" value={data.phone || 'Not provided'} />
                                 </div>
@@ -201,7 +187,7 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
                             {profile && (
                                 <div>
                                     <SectionLabel>Employment</SectionLabel>
-                                    <div className="bg-slate-50 rounded-2xl px-4 py-1 divide-y divide-slate-100">
+                                    <div className="bg-muted/40 rounded-2xl px-4 py-1 divide-y divide-border">
                                         <InfoRow icon={Briefcase} label="Designation" value={profile.designation} />
                                         <InfoRow icon={Building2} label="Department" value={profile.department?.charAt(0).toUpperCase() + profile.department?.slice(1)} />
                                         <InfoRow icon={ShieldCheck} label="Access level" value={profile.accessLevel ? `Level ${profile.accessLevel}` : null} />
@@ -220,25 +206,25 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
                             {profile && (
                                 <div>
                                     <SectionLabel>Compensation</SectionLabel>
-                                    <div className="bg-slate-50 rounded-2xl px-4 py-4">
+                                    <div className="bg-muted/40 rounded-2xl px-4 py-4">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-[11px] text-slate-400 font-medium">Current salary</p>
-                                                <p className="text-xl font-bold text-slate-900 mt-0.5">
+                                                <p className="text-[11px] text-muted-foreground font-medium">Current salary</p>
+                                                <p className="text-xl font-bold text-primary mt-0.5">
                                                     {formatPaisa(profile.salaryAmountPaisa)}
                                                 </p>
                                             </div>
-                                            <span className="text-xs bg-slate-200 text-slate-600 font-semibold px-2 py-1 rounded-lg capitalize">
+                                            <span className="text-xs bg-muted text-muted-foreground font-semibold px-2 py-1 rounded-lg capitalize">
                                                 {profile.salaryType || 'monthly'}
                                             </span>
                                         </div>
 
                                         {profile.bankDetails?.bankName && (
-                                            <div className="mt-3 pt-3 border-t border-slate-200">
-                                                <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
+                                            <div className="mt-3 pt-3 border-t border-border">
+                                                <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1.5">
                                                     <CreditCard className="w-3 h-3" /> Bank
                                                 </p>
-                                                <p className="text-sm font-semibold text-slate-700 mt-0.5">
+                                                <p className="text-sm font-semibold text-foreground mt-0.5">
                                                     {profile.bankDetails.bankName}
                                                     {profile.bankDetails.accountNumber && ` · ****${profile.bankDetails.accountNumber.slice(-4)}`}
                                                 </p>
@@ -260,30 +246,13 @@ export default function StaffDrawer({ member, open, onClose, onEdit, onDelete })
                                 </div>
                             )}
 
-                            {/* Future sections — placeholders so the owner knows what's coming */}
-                            <div>
-                                <SectionLabel>Activity</SectionLabel>
-                                <div className="space-y-2">
-                                    <PlaceholderSection
-                                        icon={CheckSquare}
-                                        label="Daily checklists"
-                                        description="Completed tasks will appear here once the activity feed is connected."
-                                    />
-                                    <PlaceholderSection
-                                        icon={Wrench}
-                                        label="Maintenance tasks"
-                                        description="Assigned and resolved maintenance jobs will show here."
-                                    />
-                                </div>
-                            </div>
-
                             {/* Admin notes */}
                             {profile?.notes && (
                                 <div>
                                     <SectionLabel>Internal notes</SectionLabel>
-                                    <div className="bg-surface-alt border border-border rounded-2xl p-4 flex gap-3">
-                                        <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-                                        <p className="text-sm text-destructive">{profile.notes}</p>
+                                    <div className="bg-muted/40 border border-border rounded-2xl p-4 flex gap-3">
+                                        <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                                        <p className="text-sm text-foreground">{profile.notes}</p>
                                     </div>
                                 </div>
                             )}

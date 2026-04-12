@@ -31,7 +31,7 @@ export default function StaffAvatar({ src, name, size = 'md' }) {
 
   return (
     <div
-      className={`${sz} rounded-full bg-gradient-to-br from-muted to-accent flex items-center justify-center font-bold text-muted-foreground ring-2 ring-ring ring-offset-0 flex-shrink-0`}
+      className={`${sz} rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary ring-2 ring-primary/20 ring-offset-0 flex-shrink-0`}
     >
       {getInitials(name)}
     </div>
