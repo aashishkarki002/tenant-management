@@ -158,34 +158,35 @@ export function usePushNotifications(user) {
 
   // ── Effect ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user) {
-      setIsReady(false);
-      return;
-    }
-    if (!VAPID_PUBLIC_KEY) {
-      if (import.meta.env.DEV)
-        console.warn("[push] VITE_VAPID_PUBLIC_KEY not set");
-      setIsReady(false);
-      return;
-    }
-    if (!browserSupportsPush) {
+    if (!user || !VAPID_PUBLIC_KEY || !browserSupportsPush) {
       setIsReady(false);
       return;
     }
 
     setPermissionState(Notification.permission);
     setIsReady(true);
-    checkSubscription();
-    silentRenew().then((result) => {
-      // If the server DB record was deleted (push subscription expired/rotated),
-      // auto-resubscribe when the user is logged in and permission is already granted.
-      // This fixes the silent failure where the browser still holds a subscription
-      // object but the server has no record to push to.
-      if (result === "unknown_endpoint" && Notification.permission === "granted") {
-        requestPermissionAndSubscribe();
+
+    (async () => {
+      const result = await silentRenew();
+      if (
+        result === "unknown_endpoint" &&
+        Notification.permission === "granted"
+      ) {
+        await requestPermissionAndSubscribe();
+      } else if (result === "no_subscription") {
+        setIsSubscribed(false);
+      } else {
+        // "ok" — server confirmed the endpoint exists
+        await checkSubscription(); // safe to trust browser now
       }
-    });
-  }, [user, browserSupportsPush, checkSubscription, silentRenew, requestPermissionAndSubscribe]);
+    })();
+  }, [
+    user,
+    browserSupportsPush,
+    checkSubscription,
+    silentRenew,
+    requestPermissionAndSubscribe,
+  ]);
 
   return {
     permissionState,
