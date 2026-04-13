@@ -28,6 +28,8 @@ import {
   recordLoanPayment,
   getLoanAmortizationSchedule,
   getLoansByEntity,
+  getLoanPayments,
+  updateLoan,
 } from "./Loan.service.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,6 +166,42 @@ export async function getAmortizationController(req, res) {
   try {
     const data = await getLoanAmortizationSchedule(loanId);
     return res.status(200).json({ success: true, data });
+  } catch (err) {
+    const status = isClientError(err) ? 400 : 500;
+    return res.status(status).json({ success: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getPaymentsController
+// GET /api/loan/:loanId/payments
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getPaymentsController(req, res) {
+  const { loanId } = req.params;
+  if (!isValidObjectId(loanId)) {
+    return res.status(400).json({ success: false, message: `Invalid loanId: "${loanId}"` });
+  }
+  try {
+    const payments = await getLoanPayments(loanId);
+    return res.status(200).json({ success: true, data: payments });
+  } catch (err) {
+    const status = isClientError(err) ? 400 : 500;
+    return res.status(status).json({ success: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateLoanController
+// PATCH /api/loan/:loanId
+// ─────────────────────────────────────────────────────────────────────────────
+export async function updateLoanController(req, res) {
+  const { loanId } = req.params;
+  if (!isValidObjectId(loanId)) {
+    return res.status(400).json({ success: false, message: `Invalid loanId: "${loanId}"` });
+  }
+  try {
+    const updated = await updateLoan(loanId, req.body);
+    return res.status(200).json({ success: true, data: updated });
   } catch (err) {
     const status = isClientError(err) ? 400 : 500;
     return res.status(status).json({ success: false, message: err.message });

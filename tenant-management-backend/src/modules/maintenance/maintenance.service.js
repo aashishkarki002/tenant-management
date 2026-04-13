@@ -10,6 +10,7 @@ import { createAndEmitNotification } from "../notifications/notification.service
 import { Block } from "../blocks/Block.Model.js";
 import InnerBlock from "../blocks/innerBlocks/InnerBlock.Model.js";
 import { Unit } from "../units/unit.model.js";
+import { getIO } from "../../config/socket.js";
 
 // ─── Notification helpers ─────────────────────────────────────────────────────
 
@@ -81,9 +82,7 @@ async function resolveEntityFromHierarchy({
   if (unitId) {
     const unit = await Unit.findById(unitId).select("innerBlock block").lean();
     innerBlockId = unit?.innerBlock ?? null;
-    console.log("innerBlockId", innerBlockId);
     directBlockId = unit?.block ?? blockId ?? null;
-    console.log("directBlockId", directBlockId);
   }
 
   if (innerBlockId) {
@@ -109,15 +108,6 @@ async function resolveEntityFromHierarchy({
     }
   }
 
-  if (blockId) {
-    const block = await Block.findById(blockId)
-      .select("ownershipEntityId")
-      .lean();
-    if (block?.ownershipEntityId) {
-      return { entityId: block.ownershipEntityId, blockId };
-    }
-  }
-
   return { entityId: null, blockId: null };
 }
 // ─── Role constants ───────────────────────────────────────────────────────────
@@ -140,7 +130,6 @@ const ALLOWED_TRANSITIONS = {
 
 export async function createMaintenance(maintenanceData) {
   try {
-    console.log("maintenanceData", maintenanceData);
     if (
       maintenanceData.amountPaisa === undefined &&
       maintenanceData.amount !== undefined
@@ -171,8 +160,6 @@ export async function createMaintenance(maintenanceData) {
           blockId: maintenanceData.block,
           maintenanceData: maintenanceData,
         });
-      console.log("resolvedEntityId", resolvedEntityId);
-      console.log("resolvedBlockId", resolvedBlockId);
       if (resolvedEntityId) maintenanceData.entityId = resolvedEntityId;
       if (resolvedBlockId && !maintenanceData.block)
         maintenanceData.block = resolvedBlockId;
@@ -198,6 +185,12 @@ export async function createMaintenance(maintenanceData) {
         priority: maintenance.priority,
       },
     });
+
+    try {
+      getIO().emit("maintenance:created", maintenance);
+    } catch (_) {
+      // socket not initialized — silently skip
+    }
 
     return {
       success: true,
@@ -305,7 +298,7 @@ export async function getMaintenanceById(id) {
 export async function updateMaintenanceStatus(
   id,
   status,
-  { callerId, callerRole } = {},
+  { callerId, callerRole, completionNotes } = {},
 ) {
   const existing = await Maintenance.findById(id);
   if (!existing) {
@@ -373,11 +366,21 @@ export async function updateMaintenanceStatus(
   }
 
   // ── Apply update ──────────────────────────────────────────────────────────
+  const updateFields = { status };
+  if (completionNotes) updateFields.completionNotes = completionNotes;
+
   const updatedTask = await Maintenance.findByIdAndUpdate(
     id,
-    { $set: { status } },
+    { $set: updateFields },
     { returnDocument: "after" },
   );
+
+  // ── Real-time update via socket ───────────────────────────────────────────
+  try {
+    getIO().emit("maintenance:updated", updatedTask);
+  } catch (_) {
+    // socket not initialized (e.g. in tests) — silently skip
+  }
 
   // ── Notifications ─────────────────────────────────────────────────────────
   if (status === "PENDING_SETTLEMENT") {
@@ -628,6 +631,47 @@ export async function settlePayment(
       paidAmountPaisa: updatedTask.paidAmountPaisa,
     },
   });
+
+  // ── Spawn next recurring task ─────────────────────────────────────────────
+  // Only for tasks where admin set recurring=true at creation.
+  // Guard against cascades: RECURRING-sourced tasks never re-spawn.
+  if (
+    existing.recurring === true &&
+    existing.recurringIntervalDays > 0 &&
+    existing.sourceType !== "RECURRING"
+  ) {
+    const nextScheduledDate = new Date(now);
+    nextScheduledDate.setDate(
+      nextScheduledDate.getDate() + existing.recurringIntervalDays,
+    );
+
+    createMaintenance({
+      title: existing.title,
+      description: existing.description,
+      type: existing.type,
+      priority: existing.priority,
+      scope: existing.scope,
+      unit: existing.unit,
+      block: existing.block,
+      property: existing.property,
+      tenant: existing.tenant,
+      entityId: resolvedEntityId,
+      assignedTo: existing.assignedTo,
+      amountPaisa: existing.amountPaisa,
+      scheduledDate: nextScheduledDate,
+      recurring: true,
+      recurringIntervalDays: existing.recurringIntervalDays,
+      sourceType: "RECURRING",
+      sourceRef: existing._id,
+      sourceRefModel: "Maintenance",
+      createdBy: adminId || existing.createdBy,
+    }).catch((err) =>
+      console.error(
+        `[maintenance] failed to spawn recurring task for ${existing._id}:`,
+        err.message,
+      ),
+    );
+  }
 
   return {
     success: true,

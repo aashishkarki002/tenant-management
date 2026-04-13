@@ -1,5 +1,6 @@
 import * as tenantService from "./tenant.service.js";
 import { getTenantBalance } from "../tenantBalance/tenantBalance.service.js";
+import { TenantBalance } from "../tenantBalance/tenantBalance.model.js";
 export const createTenant = async (req, res) => {
   const adminId = req.admin_id ?? req.admin?.id;
   const result = await tenantService.createTenant(req.body, req.files, adminId);
@@ -309,6 +310,82 @@ export const getTenantBalanceController = async (req, res) => {
     return res.status(200).json({ success: true, balance, fresh: false });
   } catch (error) {
     console.error("[getTenantBalanceController]", error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * GET /api/tenant/arrears
+ *
+ * Returns all tenants with a non-zero TenantBalance, sorted by
+ * totalDuePaisa descending (worst first). Each record includes:
+ *   tenant { _id, name, phone }
+ *   property { _id, name }
+ *   units []
+ *   rentDuePaisa, camDuePaisa, lateFeeDuePaisa, totalDuePaisa
+ *   oldestOverdueNepaliYear, oldestOverdueNepaliMonth
+ *   consecutiveUnpaidMonths
+ *
+ * Used by the dashboard Needs-Attention panel to show the complete
+ * arrears list rather than the top-3 snapshot in dashboard-stats.
+ */
+export const getTenantsWithArrears = async (req, res) => {
+  try {
+    const arrears = await TenantBalance.aggregate([
+      { $match: { totalDuePaisa: { $gt: 0 } } },
+      { $sort: { totalDuePaisa: -1 } },
+      {
+        $lookup: {
+          from: "tenants",
+          localField: "tenant",
+          foreignField: "_id",
+          as: "tenant",
+          pipeline: [
+            { $project: { name: 1, phone: 1 } },
+          ],
+        },
+      },
+      { $unwind: { path: "$tenant", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "properties",
+          localField: "property",
+          foreignField: "_id",
+          as: "property",
+          pipeline: [{ $project: { name: 1 } }],
+        },
+      },
+      { $unwind: { path: "$property", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "tenants",
+          localField: "tenant._id",
+          foreignField: "_id",
+          as: "_tenantDoc",
+          pipeline: [{ $project: { units: 1 } }],
+        },
+      },
+      { $unwind: { path: "$_tenantDoc", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "units",
+          localField: "_tenantDoc.units",
+          foreignField: "_id",
+          as: "units",
+          pipeline: [{ $project: { name: 1, unitNumber: 1 } }],
+        },
+      },
+      {
+        $project: {
+          _tenantDoc: 0,
+          __v: 0,
+        },
+      },
+    ]);
+
+    return res.status(200).json({ success: true, arrears });
+  } catch (error) {
+    console.error("[getTenantsWithArrears]", error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 };

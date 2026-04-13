@@ -14,7 +14,9 @@ import {
   getTenantElectricitySummary,
   updateElectricityReading,
   deleteElectricityReading,
+  generateElectricityBill,
 } from "./electricity.controller.js";
+import { uploadNeaBill, getNeaBills } from "./neaBill.controller.js";
 import {
   getElectricityRate,
   setElectricityRate,
@@ -57,6 +59,13 @@ router.post(
   upload.single("receiptImage"),
   recordElectricityPayment,
 );
+
+// ── Bill generation (tenant-facing PDF → FTP) ─────────────────────────────────
+router.post("/generate-bill/:id", protect, generateElectricityBill);
+
+// ── NEA bill upload (property owner's utility bill → FTP) ────────────────────
+router.post("/nea-bill/:propertyId", protect, upload.single("neaBillPdf"), uploadNeaBill);
+router.get("/nea-bill/:propertyId", protect, getNeaBills);
 
 // ── History / summaries ───────────────────────────────────────────────────────
 router.get("/unit-history/:unitId", getUnitConsumptionHistory);

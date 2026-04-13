@@ -619,3 +619,22 @@ export async function getLoansByEntity(entityId, filters = {}) {
       : "0.0",
   }));
 }
+
+export async function getLoanPayments(loanId) {
+  return LoanPayment.find({ loan: loanId })
+    .sort({ installmentNumber: 1 })
+    .lean();
+}
+
+export async function updateLoan(loanId, updates) {
+  const loan = await Loan.findById(loanId);
+  if (!loan) throw new Error("Loan not found");
+
+  const safeFields = ["lender", "loanAccountNumber", "loanType", "notes", "firstEmiDate"];
+  for (const field of safeFields) {
+    if (updates[field] !== undefined) loan[field] = updates[field];
+  }
+
+  await loan.save();
+  return loan.toObject();
+}

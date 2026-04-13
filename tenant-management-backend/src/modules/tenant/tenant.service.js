@@ -870,6 +870,30 @@ export async function searchTenants(query) {
       },
     },
 
+    // Join TenantBalance for overdue breakdown (rent + CAM + late fees)
+    {
+      $lookup: {
+        from: "tenantbalances",
+        localField: "_id",
+        foreignField: "tenant",
+        pipeline: [
+          {
+            $project: {
+              rentDuePaisa: 1,
+              camDuePaisa: 1,
+              lateFeeDuePaisa: 1,
+              totalDuePaisa: 1,
+              oldestOverdueNepaliYear: 1,
+              oldestOverdueNepaliMonth: 1,
+              consecutiveUnpaidMonths: 1,
+            },
+          },
+        ],
+        as: "tenantBalance",
+      },
+    },
+    { $unwind: { path: "$tenantBalance", preserveNullAndEmptyArrays: true } },
+
     // Remove temporary fields
     {
       $project: {
@@ -898,6 +922,14 @@ export async function searchTenants(query) {
     ...tenant,
     // Convert outstanding amount from paisa to rupees
     outstandingAmount: paisaToRupees(tenant.outstandingAmount || 0),
+    // TenantBalance denormalized overdue snapshot (rent + CAM + late fees)
+    overdueBalance: paisaToRupees(tenant.tenantBalance?.totalDuePaisa || 0),
+    rentDue: paisaToRupees(tenant.tenantBalance?.rentDuePaisa || 0),
+    camDue: paisaToRupees(tenant.tenantBalance?.camDuePaisa || 0),
+    lateFeeDue: paisaToRupees(tenant.tenantBalance?.lateFeeDuePaisa || 0),
+    oldestOverdueNepaliYear: tenant.tenantBalance?.oldestOverdueNepaliYear ?? null,
+    oldestOverdueNepaliMonth: tenant.tenantBalance?.oldestOverdueNepaliMonth ?? null,
+    consecutiveUnpaidMonths: tenant.tenantBalance?.consecutiveUnpaidMonths ?? 0,
     // Keep payment status for frontend
     paymentStatus: tenant.computedPaymentStatus,
     // Convert all financial fields

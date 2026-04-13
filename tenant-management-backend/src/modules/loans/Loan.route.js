@@ -6,6 +6,8 @@ import {
   recordPaymentController,
   getAmortizationController,
   getLoansController,
+  getPaymentsController,
+  updateLoanController,
 } from "./Loan.controller.js";
 
 const router = Router();
@@ -35,6 +37,22 @@ router.get(
   protect,
   authorize("admin", "super_admin", "staff"),
   getAmortizationController,
+);
+
+// GET  /loans/:loanId/payments    — list all EMI payments recorded
+router.get(
+  "/:loanId/payments",
+  protect,
+  authorize("admin", "super_admin", "staff"),
+  getPaymentsController,
+);
+
+// PATCH /loans/:loanId            — update non-financial loan fields
+router.patch(
+  "/:loanId",
+  protect,
+  authorize("admin", "super_admin"),
+  updateLoanController,
 );
 
 export default router;

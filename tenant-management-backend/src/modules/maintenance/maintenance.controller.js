@@ -97,7 +97,7 @@ export async function updateMaintenanceStatusController(req, res) {
     const { id } = req.params;
     const callerId = req.admin.id;
     const callerRole = resolveCallerRole(req.admin.role);
-    const { status } = req.body;
+    const { status, completionNotes } = req.body;
 
     const validStatuses = [
       "OPEN",
@@ -115,6 +115,7 @@ export async function updateMaintenanceStatusController(req, res) {
     const result = await updateMaintenanceStatus(id, status, {
       callerId,
       callerRole,
+      completionNotes: completionNotes || undefined,
     });
     return sendResult(res, result);
   } catch (error) {

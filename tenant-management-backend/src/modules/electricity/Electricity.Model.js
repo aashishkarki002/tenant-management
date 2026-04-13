@@ -144,6 +144,12 @@ const electricitySchema = new mongoose.Schema(
       default: null,
     },
 
+    // ── Generated bill (tenant-facing PDF stored on FTP) ─────────────────────
+    bill: {
+      ftpPath: { type: String, default: null },   // e.g. /bills/{tenantId}/electricity-2082-8.pdf
+      generatedAt: { type: Date, default: null },
+    },
+
     // ── Misc ──────────────────────────────────────────────────────────────────
     notes: { type: String, default: "", trim: true },
     createdBy: {

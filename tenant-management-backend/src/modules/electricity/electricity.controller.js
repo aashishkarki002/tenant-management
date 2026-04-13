@@ -12,6 +12,7 @@
 
 import { electricityService } from "./electricity.service.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { createAndEmitNotification } from "../notifications/notification.service.js";
 import mongoose from "mongoose";
 
 const VALID_METER_TYPES = [
@@ -147,6 +148,14 @@ export const createElectricityReading = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    // Notify admins (fire-and-forget — must not fail the response)
+    createAndEmitNotification({
+      type:    "ELECTRICITY_READING_CREATED",
+      title:   "Electricity Reading Added",
+      message: `New electricity reading recorded (${result.data.consumption?.toFixed(1) ?? 0} kWh, ${result.data.nepaliDate ?? ""}).`,
+      data:    { electricityId: result.data._id, meterType: result.data.meterType },
+    }).catch((err) => console.error("Notify (reading created) failed:", err.message));
 
     res
       .status(201)
@@ -338,6 +347,14 @@ export const recordElectricityPayment = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    // Notify admins (fire-and-forget)
+    createAndEmitNotification({
+      type:    "ELECTRICITY_PAYMENT_RECEIVED",
+      title:   "Electricity Payment Received",
+      message: `Payment of Rs ${parseFloat(amount).toLocaleString("en-NP")} recorded for electricity bill.`,
+      data:    { electricityId, amount: parseFloat(amount) },
+    }).catch((err) => console.error("Notify (electricity payment) failed:", err.message));
+
     res.status(200).json(result);
   } catch (error) {
     await session.abortTransaction();
@@ -346,6 +363,52 @@ export const recordElectricityPayment = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to record electricity payment",
+    });
+  }
+};
+
+/**
+ * Generate electricity bill PDF and upload to FTP.
+ * POST /api/electricity/generate-bill/:id
+ */
+export const generateElectricityBill = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { Electricity } = await import("./Electricity.Model.js");
+    const reading = await Electricity.findById(id)
+      .populate("tenant", "name email phone")
+      .populate({ path: "unit", select: "name unitName", populate: { path: "block", select: "name" } })
+      .populate("property", "name address");
+
+    if (!reading) {
+      return res.status(404).json({ success: false, message: "Electricity reading not found" });
+    }
+
+    if (!reading.tenant) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot generate bill: this reading has no tenant (sub-meter or vacant unit)",
+      });
+    }
+
+    const { generateAndUploadElectricityBill } = await import("../../utils/electricityBillGenerator.js");
+    const { ftpPath, generatedAt } = await generateAndUploadElectricityBill(reading);
+
+    // Persist FTP path on the reading
+    reading.bill = { ftpPath, generatedAt };
+    await reading.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Electricity bill generated and uploaded to FTP",
+      data:    { ftpPath, generatedAt },
+    });
+  } catch (error) {
+    console.error("Error generating electricity bill:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to generate electricity bill",
     });
   }
 };

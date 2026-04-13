@@ -242,7 +242,9 @@ export async function recordRentPaymentController(req, res) {
     const status = result.statusCode ?? (result.success ? 200 : 500);
 
     // Handle TDS marking after successful payment
-    if (result.success && tdsPaidToGovt === "true" && result.rent) {
+    // tdsPaidToGovt may arrive as boolean true (JSON body) or string "true" (form data)
+    const tdsPaidToGovtFlag = tdsPaidToGovt === true || tdsPaidToGovt === "true";
+    if (result.success && tdsPaidToGovtFlag && result.rent) {
       try {
         const { buildEntityMapForBlocks } = await import(
           "../../helper/resolveEntity.js"
