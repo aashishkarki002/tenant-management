@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, Ban, ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import { CheckCircle, XCircle, Ban, ArrowUpRight, ArrowDownLeft, FileText } from "lucide-react";
 import { C, fmtRupees, toBSDate } from "../../Loans/loan.constants";
 
 const STATUS_STYLE = {
@@ -34,7 +34,9 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
   if (!drafts.length) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-2">
-
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: C.surface }}>
+          <FileText size={18} style={{ color: C.textMuted }} />
+        </div>
         <p className="text-[13px]" style={{ color: C.textMuted }}>No cheque drafts found</p>
       </div>
     );
@@ -48,7 +50,7 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
             {["Cheque #", "Date", "Party", "Direction", "Amount", "Status", "Actions"].map((h) => (
               <th
                 key={h}
-                className="px-4 py-3 text-left font-semibold uppercase tracking-wider text-[10px]"
+                className={`px-4 py-2.5 font-semibold uppercase tracking-wider text-[10px] ${h === "Amount" ? "text-right" : "text-left"}`}
                 style={{ color: C.textMuted }}
               >
                 {h}
@@ -63,7 +65,7 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
               style={{
                 borderBottom: i < drafts.length - 1 ? `1px solid ${C.border}` : "none",
               }}
-              className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors duration-150"
             >
               <td className="px-4 py-3 font-mono font-semibold" style={{ color: C.text }}>
                 {d.chequeNumber}
@@ -85,13 +87,13 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
                   }
                 </span>
               </td>
-              <td className="px-4 py-3 font-semibold font-sans" style={{ color: C.text }}>
+              <td className="px-4 py-3 font-semibold font-sans text-right tabular-nums" style={{ color: C.text }}>
                 {fmtRupees(d.amountPaisa)}
               </td>
               <td className="px-4 py-3">
                 <Badge value={d.status} map={STATUS_STYLE} />
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3 whitespace-nowrap">
                 {d.status === "PENDING" && (
                   <div className="flex items-center gap-1.5">
                     <button
@@ -114,9 +116,9 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
                       onClick={() => onCancel(d)}
                       className="h-7 px-2.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border"
                       style={{ borderColor: C.border, color: C.textMid }}
-                      title="Cancel"
+                      title="Cancel cheque"
                     >
-                      <Ban size={11} />
+                      <Ban size={11} /> Cancel
                     </button>
                   </div>
                 )}

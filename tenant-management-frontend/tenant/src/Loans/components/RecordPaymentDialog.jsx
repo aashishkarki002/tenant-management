@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../../plugins/axios";
 import { toast } from "sonner";
-import { Banknote } from "lucide-react";
+import { Banknote, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 import { C, fmtRupees } from "../loan.constants";
@@ -13,7 +13,7 @@ import {
 } from "@/constants/paymentMethods.js";
 
 export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
-  const { banks } = useBankAccounts(open);
+  const { banks } = useBankAccounts(open, loan?.entityId);
 
   const [form, setForm] = useState({
     bankAccountCode: "",
@@ -35,6 +35,10 @@ export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
   const handleSubmit = async () => {
     if (!form.bankAccountCode) {
       toast.error("Select a bank account");
+      return;
+    }
+    if (form.paymentMethod === PAYMENT_METHODS.CHEQUE && !form.chequeNumber?.trim()) {
+      toast.error("Cheque number is required");
       return;
     }
 
@@ -224,7 +228,7 @@ export function RecordPaymentDialog({ loan, open, onOpenChange, onSuccess }) {
             className="flex-1 h-9 rounded-lg text-[13px] font-bold text-white flex items-center justify-center gap-1.5"
             style={{ background: C.accent, opacity: saving ? 0.7 : 1 }}
           >
-            <Banknote size={13} />
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
             {saving ? "Recording…" : "Record payment"}
           </button>
         </DialogFooter>

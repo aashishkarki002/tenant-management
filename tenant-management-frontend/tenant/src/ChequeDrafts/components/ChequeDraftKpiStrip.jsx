@@ -1,4 +1,4 @@
-import { ArrowUpRight, ArrowDownLeft, Clock } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, Clock, TrendingUp } from "lucide-react";
 import { C, fmtRupees } from "../../Loans/loan.constants";
 
 function KpiCard({ label, value, sub, color, bgColor, icon: Icon }) {
@@ -30,13 +30,24 @@ function KpiCard({ label, value, sub, color, bgColor, icon: Icon }) {
   );
 }
 
-export function ChequeDraftKpiStrip({ summary, loading }) {
-  if (loading || !summary) {
+export function ChequeDraftKpiStrip({ summary, loading, entitySelected }) {
+  if (loading) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-2xl h-24 animate-pulse" style={{ background: C.surface }} />
+          <div key={i} className="rounded-2xl h-[88px] animate-pulse" style={{ background: C.surface }} />
         ))}
+      </div>
+    );
+  }
+
+  if (!entitySelected || !summary) {
+    return (
+      <div
+        className="rounded-2xl border px-4 py-3 text-[12px]"
+        style={{ borderColor: C.border, color: C.textMuted, background: C.surface }}
+      >
+        Select an entity to view cheque summary.
       </div>
     );
   }
@@ -44,7 +55,7 @@ export function ChequeDraftKpiStrip({ summary, loading }) {
   const { pendingIssued, pendingReceived } = summary;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
       <KpiCard
         label="Issued Pending"
         value={fmtRupees(pendingIssued.totalAmountPaisa)}
@@ -75,7 +86,7 @@ export function ChequeDraftKpiStrip({ summary, loading }) {
         sub={pendingReceived.totalAmountPaisa >= pendingIssued.totalAmountPaisa ? "net receivable" : "net payable"}
         color={C.info}
         bgColor={C.infoBg}
-        icon={Clock}
+        icon={TrendingUp}
       />
     </div>
   );

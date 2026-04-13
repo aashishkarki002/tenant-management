@@ -31,15 +31,13 @@ export const useRentData = () => {
   // ── Data ──────────────────────────────────────────────────────────────────
   const [rents, setRents] = useState([]);
   const [payments, setPayments] = useState([]);
-  const [units, setUnits] = useState([]);
   const [properties, setProperties] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [cams, setCams] = useState([]);
-  const [totalCollected, setTotalCollected] = useState(0);
-  const [totalDue, setTotalDue] = useState(0);
 
   // ── Loading / error ───────────────────────────────────────────────────────
-  const [loading, setLoading] = useState(false);
+  const [initLoading, setInitLoading] = useState(true);
+  const [rentsLoading, setRentsLoading] = useState(false);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -57,7 +55,7 @@ export const useRentData = () => {
   // ── Fetch: rents ──────────────────────────────────────────────────────────
   const getRents = useCallback(async () => {
     try {
-      setLoading(true);
+      setRentsLoading(true);
       setError(null);
 
       const params = new URLSearchParams();
@@ -81,7 +79,7 @@ export const useRentData = () => {
       setError(err);
       toast.error("Failed to fetch rents. Please try again.");
     } finally {
-      setLoading(false);
+      setRentsLoading(false);
     }
   }, [filterRentMonth, filterRentYear, filterStatus, filterPropertyId]);
 
@@ -138,19 +136,6 @@ export const useRentData = () => {
   }, [filterStartDate, filterEndDate, filterPaymentMethod]);
 
   // ── Fetch: supporting data ────────────────────────────────────────────────
-  const fetchRentSummary = useCallback(async () => {
-    try {
-      const response = await api.get("/api/payment/get-rent-summary");
-      if (response.data.success && response.data.data) {
-        setTotalCollected(response.data.data.totalCollected || 0);
-        setTotalDue(response.data.data.totalDue || 0);
-      }
-    } catch (err) {
-      console.error("Error fetching rent summary:", err);
-      toast.error("Failed to fetch rent summary");
-    }
-  }, []);
-
   const getBankAccounts = useCallback(async () => {
     try {
       const response = await api.get("/api/bank/get-bank-accounts");
@@ -158,16 +143,6 @@ export const useRentData = () => {
     } catch (err) {
       console.error("Error fetching bank accounts:", err);
       toast.error("Failed to fetch bank accounts");
-    }
-  }, []);
-
-  const getUnits = useCallback(async () => {
-    try {
-      const response = await api.get("/api/unit/get-units");
-      setUnits(response.data.units || []);
-    } catch (err) {
-      console.error("Error fetching units:", err);
-      toast.error("Failed to fetch units");
     }
   }, []);
 
@@ -188,18 +163,12 @@ export const useRentData = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        setLoading(true);
-        await Promise.all([
-          getBankAccounts(),
-          getUnits(),
-          getProperties(),
-          fetchRentSummary(),
-        ]);
+        await Promise.all([getBankAccounts(), getProperties()]);
       } catch (err) {
         console.error("Init load failed:", err);
         setError(err);
       } finally {
-        setLoading(false);
+        setInitLoading(false);
       }
     };
     init();
@@ -219,13 +188,11 @@ export const useRentData = () => {
   return {
     rents,
     payments,
-    units,
     properties,
     bankAccounts,
     cams,
-    totalCollected,
-    totalDue,
-    loading,
+    // loading = true until both init reference data AND first rents fetch complete
+    loading: initLoading || rentsLoading,
     paymentsLoading,
     error,
     // Rent filters
@@ -247,9 +214,7 @@ export const useRentData = () => {
     // Stable actions
     getRents,
     getPayments,
-    fetchRentSummary,
     getBankAccounts,
-    getUnits,
     getProperties,
     getCams,
     // Reset targets

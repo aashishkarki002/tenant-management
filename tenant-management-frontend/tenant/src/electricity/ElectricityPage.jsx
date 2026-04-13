@@ -10,6 +10,7 @@ import { ElectricitySummaryCards } from "./components/ElectricitySummaryCards";
 import { ElectricityInsights } from "./components/ElectricityInsights";
 import { ElectricityTable } from "./components/ElectricityTable";
 import ElectricityReadingDialog from "./components/ElectricityReadingDialog";
+import NeaBillUploadDialog from "./components/NeaBillUploadDialog";
 import {
   getConsumption,
   formatConsumption,
@@ -23,7 +24,7 @@ import {
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PlusIcon, Download, Settings, Search, X } from "lucide-react";
+import { PlusIcon, Download, Settings, Search, X, FileUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 function buildDefaultFilterValues() {
@@ -40,6 +41,8 @@ export default function ElectricityPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingReading, setEditingReading] = useState(null); // null = add mode
+  const [neaBillDialogOpen, setNeaBillDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   // ── Derived property data ────────────────────────────────────────────────
@@ -221,9 +224,13 @@ export default function ElectricityPage() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}>
-          <Button type="button" size="sm" onClick={() => setDialogOpen(true)}>
+          <Button type="button" size="sm" onClick={handleOpenAddReading}>
             <PlusIcon style={{ width: "12px", height: "12px" }} />
             <span className="hidden sm:inline" style={{ marginLeft: "6px" }}>Add Reading</span>
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setNeaBillDialogOpen(true)}>
+            <FileUp style={{ width: "12px", height: "12px" }} />
+            <span className="hidden sm:inline" style={{ marginLeft: "6px" }}>NEA Bill</span>
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={handleExportReport}>
             <Download style={{ width: "12px", height: "12px" }} />
@@ -239,7 +246,21 @@ export default function ElectricityPage() {
     [searchQuery, handleExportReport, navigate]
   );
 
-  const handleOpenAddReading = useCallback(() => setDialogOpen(true), []);
+  const handleOpenAddReading = useCallback(() => {
+    setEditingReading(null);
+    setDialogOpen(true);
+  }, []);
+
+  const handleEditReading = useCallback((record) => {
+    setEditingReading(record);
+    setDialogOpen(true);
+  }, []);
+
+  // First property id — used for NEA bill upload
+  const firstPropertyId = useMemo(() => {
+    if (!Array.isArray(property) || property.length === 0) return null;
+    return property[0]?._id ?? null;
+  }, [property]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   //
@@ -261,10 +282,17 @@ export default function ElectricityPage() {
     >
       <ElectricityReadingDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingReading(null); }}
         allBlocks={allBlocks}
         property={property}
+        editingReading={editingReading}
         onSaved={refetch}
+      />
+
+      <NeaBillUploadDialog
+        open={neaBillDialogOpen}
+        onOpenChange={setNeaBillDialogOpen}
+        propertyId={firstPropertyId}
       />
 
       {/* ── Fixed upper section ──────────────────────────────────────────────── */}
@@ -410,6 +438,7 @@ export default function ElectricityPage() {
           onUpdateNewRow={updateNewRow}
           onRemoveNewRow={removeNewRow}
           onPaymentRecorded={refetch}
+          onEditReading={handleEditReading}
           countsByType={countsByType}
           onAddReading={handleOpenAddReading}
         />

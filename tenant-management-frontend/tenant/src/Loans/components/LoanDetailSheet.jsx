@@ -7,17 +7,46 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Banknote, X, TrendingDown, Calendar, Hash, Building2, StickyNote } from "lucide-react";
+import {
+  Banknote,
+  Pencil,
+  TrendingDown,
+  Calendar,
+  Hash,
+  Building2,
+  StickyNote,
+  CheckCircle2,
+  Clock,
+} from "lucide-react";
 
-import { fmtRupees, LOAN_TYPE_LABELS, toBSDate } from "../loan.constants";
+import { fmtRupees, LOAN_TYPE_LABELS, toBSDate, C } from "../loan.constants";
 import { ArcProgress, AmortizationRow, StatusBadge } from "./loan.ui";
 import { useLoanSchedule } from "../hooks/useLoanSchedule";
+import { useLoanPayments } from "../hooks/useLoanPayments";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
+import { EditLoanDialog } from "./EditLoanDialog";
 
-export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
+const TABS = [
+  { id: "schedule", label: "Schedule" },
+  { id: "history", label: "History" },
+];
+
+export function LoanDetailSheet({ loan: initialLoan, open, onClose, onPaymentSuccess }) {
+  const [loan, setLoan] = useState(initialLoan);
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const { scheduleData, loading } = useLoanSchedule(loan?._id, open);
+  const [editOpen, setEditOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("schedule");
+
+  // Sync loan prop changes (e.g. after refetch from parent)
+  if (initialLoan !== loan && !paymentOpen && !editOpen) {
+    setLoan(initialLoan);
+  }
+
+  const { scheduleData, loading: scheduleLoading } = useLoanSchedule(loan?._id, open);
+  const { payments, loading: paymentsLoading } = useLoanPayments(
+    loan?._id,
+    open && activeTab === "history",
+  );
 
   if (!loan) return null;
 
@@ -39,17 +68,12 @@ export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
 
   return (
     <>
-      {/* ────────────────────────────────────────────────────────────
-          SCROLL FIX:
-          SheetContent → overflow-hidden  (clips flex children)
-          ScrollArea   → flex-1 min-h-0   (min-h-0 allows flex shrink)
-      ──────────────────────────────────────────────────────────── */}
       <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
         <SheetContent
           side="right"
           className="w-full max-w-lg p-0 flex flex-col gap-0 overflow-hidden"
         >
-          {/* ── Header (sticky, never scrolls) ── */}
+          {/* ── Header ── */}
           <SheetHeader className="shrink-0 px-6 py-4 border-b border-border">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -66,6 +90,15 @@ export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-[12px] border-border"
+                  onClick={() => setEditOpen(true)}
+                >
+                  <Pencil className="w-3 h-3 mr-1.5" />
+                  Edit
+                </Button>
                 {canPay && (
                   <Button
                     size="sm"
@@ -76,7 +109,6 @@ export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
                     Pay EMI
                   </Button>
                 )}
-
               </div>
             </div>
           </SheetHeader>
@@ -87,7 +119,6 @@ export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
 
               {/* ── Repayment summary card ── */}
               <div className="rounded-2xl border border-border bg-card overflow-hidden">
-                {/* top strip: progress ring + key numbers */}
                 <div className="flex items-center gap-5 p-5">
                   <div className="shrink-0 relative w-[90px] h-[90px]">
                     <ArcProgress
@@ -115,11 +146,8 @@ export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
                   </div>
                 </div>
 
-                {/* bottom strip: EMI progress */}
                 <div className="border-t border-border px-5 py-3 bg-muted/50 flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">
-                    EMI progress
-                  </span>
+                  <span className="text-[11px] text-muted-foreground">EMI progress</span>
                   <span className="text-[12px] font-bold tabular-nums text-foreground">
                     {loan.installmentsPaid ?? 0} / {loan.tenureMonths} paid
                   </span>
@@ -147,36 +175,75 @@ export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
                 </div>
               </Section>
 
-              {/* ── Amortization schedule ── */}
-              <Section
-                title="Amortization Schedule"
-                badge={
-                  (summary.remaining ?? 0) > 0
-                    ? `${summary.remaining} remaining`
-                    : undefined
-                }
-              >
-                <div className="rounded-2xl border border-border bg-card overflow-hidden">
-                  {loading ? (
-                    <div className="py-12 flex flex-col items-center gap-3">
-                      <div className="w-5 h-5 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
-                      <span className="text-[12px] text-muted-foreground">Loading schedule…</span>
-                    </div>
-                  ) : schedule.length === 0 ? (
-                    <p className="text-center text-sm py-10 text-muted-foreground">
-                      Schedule not available
-                    </p>
-                  ) : (
-                    schedule.map((row, idx) => (
-                      <AmortizationRow
-                        key={row.installment}
-                        row={row}
-                        isNext={firstUnpaid >= 0 && idx === firstUnpaid}
-                      />
-                    ))
+              {/* ── Tabs: Schedule / History ── */}
+              <div>
+                {/* Tab bar */}
+                <div className="flex items-center gap-1 mb-3 border-b border-border">
+                  {TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`px-4 py-2 text-[12px] font-semibold border-b-2 -mb-px transition-colors duration-150 ${
+                        activeTab === tab.id
+                          ? "border-[var(--color-accent)] text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                  {activeTab === "schedule" && (summary.remaining ?? 0) > 0 && (
+                    <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                      {summary.remaining} remaining
+                    </span>
                   )}
                 </div>
-              </Section>
+
+                {/* Schedule tab */}
+                {activeTab === "schedule" && (
+                  <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                    {scheduleLoading ? (
+                      <div className="py-12 flex flex-col items-center gap-3">
+                        <div className="w-5 h-5 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-[12px] text-muted-foreground">Loading schedule…</span>
+                      </div>
+                    ) : schedule.length === 0 ? (
+                      <p className="text-center text-sm py-10 text-muted-foreground">
+                        Schedule not available
+                      </p>
+                    ) : (
+                      schedule.map((row, idx) => (
+                        <AmortizationRow
+                          key={row.installment}
+                          row={row}
+                          isNext={firstUnpaid >= 0 && idx === firstUnpaid}
+                        />
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {/* History tab */}
+                {activeTab === "history" && (
+                  <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                    {paymentsLoading ? (
+                      <div className="py-12 flex flex-col items-center gap-3">
+                        <div className="w-5 h-5 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-[12px] text-muted-foreground">Loading history…</span>
+                      </div>
+                    ) : payments.length === 0 ? (
+                      <div className="py-12 text-center">
+                        <Clock size={24} className="mx-auto mb-2 text-muted-foreground/40" />
+                        <p className="text-[13px] text-muted-foreground">No payments recorded yet</p>
+                      </div>
+                    ) : (
+                      payments.map((p) => (
+                        <PaymentHistoryRow key={p._id} payment={p} />
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
 
             </div>
           </ScrollArea>
@@ -193,25 +260,28 @@ export function LoanDetailSheet({ loan, open, onClose, onPaymentSuccess }) {
           onClose();
         }}
       />
+
+      <EditLoanDialog
+        loan={loan}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={(updated) => {
+          if (updated) setLoan((prev) => ({ ...prev, ...updated }));
+          onPaymentSuccess?.();
+        }}
+      />
     </>
   );
 }
 
 /* ─── Sub-components ─────────────────────────────────────────────────────────── */
 
-function Section({ title, badge, children }) {
+function Section({ title, children }) {
   return (
     <div>
-      <div className="flex items-center justify-between mb-2.5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-          {title}
-        </p>
-        {badge && (
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
-            {badge}
-          </span>
-        )}
-      </div>
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground mb-2.5">
+        {title}
+      </p>
       {children}
     </div>
   );
@@ -243,6 +313,46 @@ function DetailRow({ icon: Icon, label, value }) {
       <span className="text-[12px] font-medium text-foreground text-right max-w-[200px] truncate">
         {value}
       </span>
+    </div>
+  );
+}
+
+const PAYMENT_METHOD_LABELS = {
+  cash: "Cash",
+  bank_transfer: "Bank Transfer",
+  cheque: "Cheque",
+  mobile_wallet: "Mobile Wallet",
+};
+
+function PaymentHistoryRow({ payment }) {
+  return (
+    <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-border last:border-0">
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: "var(--color-success-bg)" }}
+        >
+          <CheckCircle2 size={13} style={{ color: "var(--color-success)" }} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[12px] font-semibold text-foreground">
+            EMI #{payment.installmentNumber}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {toBSDate(payment.paymentDate)} · {PAYMENT_METHOD_LABELS[payment.paymentMethod] ?? payment.paymentMethod}
+            {payment.notes && ` · ${payment.notes}`}
+          </p>
+        </div>
+      </div>
+
+      <div className="text-right shrink-0">
+        <p className="text-[12px] font-bold text-foreground tabular-nums">
+          {fmtRupees(payment.totalPaisa)}
+        </p>
+        <p className="text-[10px] text-muted-foreground tabular-nums">
+          P: {fmtRupees(payment.principalPaisa)} · I: {fmtRupees(payment.interestPaisa)}
+        </p>
+      </div>
     </div>
   );
 }

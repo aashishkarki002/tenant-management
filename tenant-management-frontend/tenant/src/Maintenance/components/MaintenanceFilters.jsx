@@ -73,14 +73,14 @@ export const MaintenanceFilters = ({
 
         {/* Popover */}
         {filterPopoverOpen && (
-          <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-80 max-h-[80vh] overflow-y-auto rounded-xl border border-muted-fill bg-white shadow-lg">
+          <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-80 max-w-[calc(100vw-1rem)] max-h-[80vh] overflow-y-auto rounded-xl border border-muted-fill bg-surface-raised shadow-lg">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-muted-fill sticky top-0 bg-surface-raised z-10">
+            <div className="flex items-center justify-between px-3 py-3 border-b border-muted-fill sticky top-0 bg-surface-raised z-10">
               <span className="text-sm font-semibold text-text-strong">Filters</span>
               <button
                 type="button"
                 onClick={() => setFilterPopoverOpen(false)}
-                className="rounded-full p-1 text-text-sub hover:bg-muted-fill transition-colors"
+                className="flex items-center justify-center h-8 w-8 rounded-full text-text-sub hover:bg-muted-fill transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

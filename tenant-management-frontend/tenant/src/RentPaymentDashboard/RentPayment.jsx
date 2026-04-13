@@ -150,7 +150,6 @@ const RentPayment = () => {
     setFilterPaymentMethod,
     getRents,
     getPayments,
-    fetchRentSummary,
     getCams,
   } = useRentData();
 
@@ -180,8 +179,8 @@ const RentPayment = () => {
   }, [frequencyFilteredRents, searchQuery]);
 
   const overdueCount = useMemo(
-    () => rents.filter((r) => (r.status || "").toLowerCase() === "overdue").length,
-    [rents],
+    () => frequencyFilteredRents.filter((r) => (r.status || "").toLowerCase() === "overdue").length,
+    [frequencyFilteredRents],
   );
 
   const { frequencyTotalDue, frequencyTotalCollected } = useMemo(() => {
@@ -231,8 +230,8 @@ const RentPayment = () => {
   ]);
 
   const handlePaymentSuccess = useCallback(async () => {
-    await Promise.all([getRents(), getPayments(), fetchRentSummary(), getCams()]);
-  }, [getRents, getPayments, fetchRentSummary, getCams]);
+    await Promise.all([getRents(), getPayments(), getCams()]);
+  }, [getRents, getPayments, getCams]);
 
   const paymentForm = usePaymentForm({ rents, cams, onSuccess: handlePaymentSuccess });
 

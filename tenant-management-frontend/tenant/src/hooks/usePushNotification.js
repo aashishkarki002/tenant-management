@@ -59,12 +59,8 @@ export function usePushNotifications(user) {
       if (!registration) return "no_subscription";
       const sub = await registration.pushManager.getSubscription();
       if (!sub) return "no_subscription";
-      const res = await fetch("/api/push/renew", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription: sub.toJSON() }),
-      });
-      const data = await res.json();
+      const res = await api.post("/api/push/renew", { subscription: sub.toJSON() });
+      const data = res.data;
       if (!data.success && data.reason === "unknown_endpoint") {
         return "unknown_endpoint";
       }
@@ -92,12 +88,8 @@ export function usePushNotifications(user) {
       const existing = await registration.pushManager.getSubscription();
 
       if (existing) {
-        const renewRes = await fetch("/api/push/renew", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subscription: existing.toJSON() }),
-        });
-        const renewData = await renewRes.json();
+        const renewRes = await api.post("/api/push/renew", { subscription: existing.toJSON() });
+        const renewData = renewRes.data;
         if (renewData.success) {
           setIsSubscribed(true);
           return;
@@ -136,11 +128,7 @@ export function usePushNotifications(user) {
 
       await sub.unsubscribe(); // removes from browser
       // Tell the server to purge the DB record
-      await fetch("/api/push/unsubscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: sub.endpoint }),
-      });
+      await api.post("/api/push/unsubscribe", { endpoint: sub.endpoint });
       setIsSubscribed(false);
     } catch (err) {
       if (import.meta.env.DEV) console.warn("[push] Unsubscribe failed:", err);

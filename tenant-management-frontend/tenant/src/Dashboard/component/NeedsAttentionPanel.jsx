@@ -12,6 +12,7 @@ import {
     SlidersHorizontal,
     Building2,
 } from "lucide-react";
+import { formatOverdueSince } from "../hooks/useArrearsData";
 
 // ─── Severity tokens ──────────────────────────────────────────────────────────
 const SEV = {
@@ -106,21 +107,34 @@ function maintSeverity(priority, createdAt) {
 //                               lowFuelThresholdPercent, criticalFuelThresholdPercent,
 //                               nextServiceDate, property:{name} }
 
-function buildAlerts(stats) {
+function buildAlerts(stats, arrears) {
     if (!stats) return [];
     const alerts = [];
-    const attention = stats.attention ?? {};
 
-    // ── 1. Overdue rent ───────────────────────────────────────────────────────
-    const overdueCount = attention.overdueCount ?? 0;
-    const overdueAmount = attention.overdueAmount ?? 0;
-    const overdueRents = Array.isArray(stats.overdueRents) ? stats.overdueRents : [];
+    // ── 1. Overdue rent — sourced from TenantBalance (complete, not sampled) ──
+    //
+    // arrears[] from GET /api/tenant/arrears:
+    //   tenant { name }, property { name }, units [],
+    //   totalDuePaisa, rentDuePaisa, camDuePaisa, lateFeeDuePaisa,
+    //   oldestOverdueNepaliYear, oldestOverdueNepaliMonth,
+    //   consecutiveUnpaidMonths
+    const arrearsList = Array.isArray(arrears) ? arrears : [];
 
-    overdueRents.slice(0, 3).forEach((r, i) => {
-        const name = r.tenant?.name ?? r.tenantName ?? `Tenant ${i + 1}`;
-        const amt = r.remainingPaisa ? fmtAmt(r.remainingPaisa / 100) : null;
-        const due = r.dueDate ? `Due ${fmtDate(r.dueDate)}` : null;
-        const location = r.unit?.name || null;
+    arrearsList.forEach((a, i) => {
+        const name = a.tenant?.name ?? `Tenant ${i + 1}`;
+        const total = a.totalDuePaisa > 0 ? fmtAmt(a.totalDuePaisa / 100) : null;
+        const overdueSince = formatOverdueSince(
+            a.oldestOverdueNepaliYear,
+            a.oldestOverdueNepaliMonth,
+        );
+        const months = a.consecutiveUnpaidMonths;
+        const unitName = a.units?.[0]?.name ?? a.units?.[0]?.unitNumber ?? null;
+
+        // Sub-line: amount + "since Poush 2081" + months count
+        const subParts = [];
+        if (total) subParts.push(`${total} due`);
+        if (overdueSince) subParts.push(`since ${overdueSince}`);
+        if (months > 1) subParts.push(`${months} months`);
 
         alerts.push({
             id: `overdue-${i}`,
@@ -128,32 +142,13 @@ function buildAlerts(stats) {
             severity: "critical",
             icon: AlertTriangle,
             title: name,
-            sub: [amt ? `${amt} outstanding` : "Rent overdue", due].filter(Boolean).join(" · "),
-            meta: location,
-            badge: "Overdue",
+            sub: subParts.length > 0 ? subParts.join(" · ") : "Rent arrears outstanding",
+            meta: unitName,
+            badge: months > 1 ? `${months} mo` : "Overdue",
             to: "/rent-payment",
             sortKey: 0,
         });
     });
-
-    // Summary row if backend only gave us a sample
-    if (overdueCount > overdueRents.length) {
-        const remaining = overdueCount - overdueRents.length;
-        alerts.push({
-            id: "overdue-more",
-            type: "rent",
-            severity: "critical",
-            icon: AlertTriangle,
-            title: `+${remaining} more overdue tenant${remaining !== 1 ? "s" : ""}`,
-            sub: overdueAmount > 0
-                ? `${fmtAmt(overdueAmount)} total outstanding`
-                : "Review all overdue rents",
-            meta: null,
-            badge: `${overdueCount} total`,
-            to: "/rent-payment",
-            sortKey: 0,
-        });
-    }
 
     // ── 2. Leases ending soon ─────────────────────────────────────────────────
     const leases = Array.isArray(stats.contractsEndingSoon)
@@ -435,10 +430,10 @@ function PanelSkeleton() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function NeedsAttentionPanel({ stats, loading }) {
+export default function NeedsAttentionPanel({ stats, loading, arrears }) {
     const [activeFilter, setActiveFilter] = useState("all");
 
-    const allAlerts = useMemo(() => buildAlerts(stats), [stats]);
+    const allAlerts = useMemo(() => buildAlerts(stats, arrears), [stats, arrears]);
 
     const filtered = useMemo(
         () => activeFilter === "all" ? allAlerts : allAlerts.filter((a) => a.type === activeFilter),

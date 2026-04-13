@@ -33,7 +33,13 @@ export default function LoansPage() {
   const showEntityFilter = loanEntities.length > 1;
 
   const [activeEntityId, setActiveEntityId] = useState(null);
-  const { loans, loading, error, refetch } = useLoans(activeEntityId);
+
+  // When no entity filter is active, fetch loans for ALL entities combined
+  const entityParam = useMemo(
+    () => activeEntityId ?? loanEntities.map((e) => e._id),
+    [activeEntityId, loanEntities],
+  );
+  const { loans, loading, error, refetch } = useLoans(entityParam);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("ALL");

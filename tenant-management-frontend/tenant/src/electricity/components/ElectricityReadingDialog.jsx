@@ -23,7 +23,7 @@ import { toast } from "sonner";
 import { useUnits } from "../../hooks/use-units";
 import { UnitCombobox } from "../../components/UnitComboBox";
 import { useSubMeters, filterSubMeterOptions } from "../hooks/useSubMeters";
-import { createReading, getReadings } from "../utils/electricityApi";
+import { createReading, updateReading, getReadings } from "../utils/electricityApi";
 import { getUnitsForInnerBlocks } from "../../Tenant/addTenant/utils/propertyHelper";
 import DualCalendarTailwind from "../../components/dualDate";
 import {
@@ -77,9 +77,12 @@ export default function ElectricityReadingDialog({
     onOpenChange,
     allBlocks = [],
     property = [],
+    /** When set, the dialog operates in edit mode (pre-fills fields, calls PUT) */
+    editingReading = null,
     /** Called after a reading is saved so the parent can refetch */
     onSaved,
 }) {
+    const isEditMode = Boolean(editingReading);
     // ── Derive propertyId for units + sub-meter fetch ──────────────────────────
     const propertyId = useMemo(() => {
         if (!Array.isArray(property) || property.length === 0) return null;
@@ -139,6 +142,34 @@ export default function ElectricityReadingDialog({
      * The backend handles this gracefully; we just surface it to the user.
      */
     const [tenantTransitionWarning, setTenantTransitionWarning] = useState(false);
+
+    // ── Pre-fill form when editing an existing reading ────────────────────────
+    useEffect(() => {
+        if (!open || !editingReading) return;
+        const mt = editingReading.meterType ?? "unit";
+        setSelectedMeterType(mt);
+        setFormData((prev) => ({
+            ...prev,
+            [mt]: {
+                ...EMPTY_FORM,
+                selected: editingReading.unit?._id ?? editingReading.subMeter?._id ?? "",
+                reading:  String(editingReading.currentReading ?? ""),
+                notes:    editingReading.notes ?? "",
+            },
+        }));
+        // Pre-fill reading date
+        if (editingReading.readingDate) {
+            const d = new Date(editingReading.readingDate);
+            const ad = d.toISOString().slice(0, 10);
+            setReadingDateEnglish(ad);
+        }
+        if (editingReading.nepaliDate) setReadingDateNepali(editingReading.nepaliDate);
+        // Pre-fill billing period
+        if (editingReading.nepaliMonth && editingReading.nepaliYear) {
+            setBillingPeriod({ nepaliMonth: editingReading.nepaliMonth, nepaliYear: editingReading.nepaliYear });
+        }
+        setPreviousReading(editingReading.previousReading ?? null);
+    }, [open, editingReading]);
 
     // ── Single building: set unit tab buildingId from propertyId ───────────────
     useEffect(() => {
@@ -346,7 +377,15 @@ export default function ElectricityReadingDialog({
 
         setSaving(true);
         try {
-            if (selectedMeterType === "unit") {
+            if (isEditMode) {
+                // Edit mode: only currentReading and notes can change.
+                // Backend recalculates consumption, amounts, and reverses/re-posts journals.
+                await updateReading(editingReading._id, {
+                    currentReading,
+                    notes: data.notes || undefined,
+                });
+                toast.success("Reading updated successfully.");
+            } else if (selectedMeterType === "unit") {
                 const selectedUnit = (units ?? []).find((u) => u._id === data.selected);
                 const tenantId =
                     selectedUnit?.currentLease?.tenant ??
@@ -372,6 +411,7 @@ export default function ElectricityReadingDialog({
                     readingDate: readingDateEnglish,
                     notes: data.notes || undefined,
                 });
+                toast.success("Reading saved successfully.");
             } else {
                 await createReading({
                     meterType: selectedMeterType,
@@ -387,9 +427,8 @@ export default function ElectricityReadingDialog({
                     readingDate: readingDateEnglish,
                     notes: data.notes || undefined,
                 });
+                toast.success("Reading saved successfully.");
             }
-
-            toast.success("Reading saved successfully.");
 
             // Reset form but keep billing period — admin likely recording
             // multiple units in the same month sequentially.
@@ -657,12 +696,28 @@ export default function ElectricityReadingDialog({
 
                 {/* ── Fixed header ─────────────────────────────────────────────── */}
                 <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b">
-                    <DialogTitle>Add Electricity Reading</DialogTitle>
+                    <DialogTitle>{isEditMode ? "Edit Electricity Reading" : "Add Electricity Reading"}</DialogTitle>
                     <DialogDescription>
-                        Select a meter type, then choose the specific{" "}
-                        {selectedMeterType.replace("_", " ")} and enter its reading.
+                        {isEditMode
+                            ? `Editing reading for ${editingReading?.unit?.name ?? editingReading?.subMeter?.name ?? "meter"}. Only the current reading and notes can be changed — the system will recalculate the bill amount automatically.`
+                            : `Select a meter type, then choose the specific ${selectedMeterType.replace("_", " ")} and enter its reading.`}
                     </DialogDescription>
                 </DialogHeader>
+                {/* Edit mode: journal reversal warning */}
+                {isEditMode && (
+                    <div style={{
+                        margin: "12px 24px 0",
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        backgroundColor: "var(--color-warning-bg)",
+                        border: "1px solid var(--color-warning-border)",
+                        fontSize: "12px",
+                        color: "var(--color-warning)",
+                        fontWeight: 500,
+                    }}>
+                        Saving will reverse the original accounting journal and post new entries with the updated amount.
+                    </div>
+                )}
 
                 {/* ── Scrollable body ───────────────────────────────────────────
                  *  Shared fields (billing month + reading date) live here, ABOVE
@@ -760,7 +815,7 @@ export default function ElectricityReadingDialog({
                                 Saving…
                             </>
                         ) : (
-                            "Save Reading"
+                            isEditMode ? "Update Reading" : "Save Reading"
                         )}
                     </Button>
                 </DialogFooter>

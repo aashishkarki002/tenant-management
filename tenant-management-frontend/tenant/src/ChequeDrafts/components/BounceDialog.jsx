@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { XCircle, Ban } from "lucide-react";
 import {
@@ -18,6 +18,11 @@ import { bounceCheque, cancelCheque } from "../hooks/useChequeDrafts";
 export function BounceDialog({ draft, mode = "bounce", open, onOpenChange, onSuccess }) {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Reset reason each time dialog opens
+  useEffect(() => {
+    if (open) setReason("");
+  }, [open]);
 
   if (!draft) return null;
 
@@ -66,12 +71,18 @@ export function BounceDialog({ draft, mode = "bounce", open, onOpenChange, onSuc
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder={isBounce ? "e.g. Insufficient funds" : "e.g. Voided by issuer"}
-              className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none"
+              className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]"
               style={{ borderColor: C.border, color: C.text }}
             />
           </div>
 
-          <p className="mt-3 text-[11px] px-3 py-2 rounded-lg" style={{ background: C.negativeBg, color: C.negative }}>
+          <p
+            className="mt-3 text-[11px] px-3 py-2 rounded-lg"
+            style={{
+              background: isBounce ? C.negativeBg : C.amberBg,
+              color: isBounce ? C.negative : C.amber,
+            }}
+          >
             This will post a reversal journal entry to restore the original accounts.
           </p>
         </div>

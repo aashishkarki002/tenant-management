@@ -6,9 +6,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, CreditCard, Eye, Pencil } from "lucide-react";
+import { MoreHorizontal, CreditCard, Eye, Pencil, FileText, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { getConsumption, formatConsumption } from "../utils/electricityCalculations";
 import ElectricityPaymentDialog from "./ElectricityPaymentDialog";
+import { generateBill } from "../utils/electricityApi";
 import { useNavigate } from "react-router-dom";
 
 const STATUS_CONFIG = {
@@ -76,8 +78,10 @@ const TD = ({ children, style = {} }) => (
   </td>
 );
 
-export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
+export function ElectricityTableRow({ record, index, onPaymentRecorded, onEditReading }) {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [generatingBill, setGeneratingBill] = useState(false);
+  const [billPath, setBillPath] = useState(record.bill?.ftpPath ?? null);
   const navigate = useNavigate();
 
   const unitName =
@@ -107,6 +111,19 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
   const handleViewDetails = useCallback(() => {
     if (record.tenant?._id) navigate(`/tenant/viewDetail/${record.tenant._id}`);
   }, [record.tenant?._id, navigate]);
+
+  const handleGenerateBill = useCallback(async () => {
+    setGeneratingBill(true);
+    try {
+      const data = await generateBill(record._id);
+      setBillPath(data.ftpPath);
+      toast.success("Bill generated and uploaded to FTP");
+    } catch (err) {
+      toast.error(err.message || "Failed to generate bill");
+    } finally {
+      setGeneratingBill(false);
+    }
+  }, [record._id]);
 
   return (
     <>
@@ -260,17 +277,42 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded }) {
                   <MoreHorizontal style={{ width: "13px", height: "13px" }} />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuContent align="end" className="w-44">
                 {record.tenant?._id && (
                   <DropdownMenuItem onClick={handleViewDetails} className="text-sm cursor-pointer">
                     <Eye className="w-3.5 h-3.5 mr-2" />
                     View Details
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem className="text-sm cursor-not-allowed opacity-50" disabled>
+                <DropdownMenuItem
+                  onClick={() => onEditReading?.(record)}
+                  className="text-sm cursor-pointer"
+                >
                   <Pencil className="w-3.5 h-3.5 mr-2" />
                   Edit Reading
                 </DropdownMenuItem>
+                {/* Bill PDF — only for tenant-billed readings */}
+                {record.meterType === "unit" && record.tenant && (
+                  billPath ? (
+                    <DropdownMenuItem asChild className="text-sm cursor-pointer">
+                      <a href={billPath} target="_blank" rel="noopener noreferrer">
+                        <FileText className="w-3.5 h-3.5 mr-2" />
+                        Download Bill
+                      </a>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={handleGenerateBill}
+                      disabled={generatingBill}
+                      className="text-sm cursor-pointer"
+                    >
+                      {generatingBill
+                        ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                        : <FileText className="w-3.5 h-3.5 mr-2" />}
+                      {generatingBill ? "Generating…" : "Generate Bill"}
+                    </DropdownMenuItem>
+                  )
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

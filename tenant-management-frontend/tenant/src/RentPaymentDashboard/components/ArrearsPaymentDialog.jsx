@@ -57,7 +57,7 @@ const STATUS_LABEL = {
 };
 
 const fmtRs = (n) =>
-    `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+    `Rs ${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
 // ── Month row ─────────────────────────────────────────────────────────────────
 const MonthRow = ({ record, checked, onToggle }) => (
@@ -294,7 +294,7 @@ export const ArrearsPaymentDialog = ({
                     {/* ── Amount ──────────────────────────────────────────────────────── */}
                     <div>
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                            Amount received (₹)
+                            Amount received (Rs)
                         </p>
                         <div className="flex items-center gap-2">
                             <Input

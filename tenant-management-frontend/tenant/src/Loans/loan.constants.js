@@ -89,5 +89,3 @@ export const LOAN_TYPE_LABELS = {
   BUSINESS: "Business Loan",
 };
 
-// ─── entityId resolution ───────────────────────────────────────────────────────
-export const HARDCODED_ENTITY_ID = "69b11f16ce3a098bb6ba5424"; // TODO: remove when entity context is wired

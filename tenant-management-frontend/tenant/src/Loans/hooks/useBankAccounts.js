@@ -1,43 +1,45 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../../../plugins/axios";
 
-let cache = null;
-let inflight = null;
+const cacheMap = {};
+const inflightMap = {};
 
-export function useBankAccounts(enabled = true) {
-  const [banks, setBanks] = useState(cache ?? []);
+export function useBankAccounts(enabled = true, entityId = null) {
+  const key = entityId ?? "default";
+  const [banks, setBanks] = useState(cacheMap[key] ?? []);
   const [loading, setLoading] = useState(false);
 
   const fetchBanks = useCallback(async () => {
     if (!enabled) return;
-    if (cache) {
-      setBanks(cache);
+    if (cacheMap[key]) {
+      setBanks(cacheMap[key]);
       return;
     }
 
     try {
       setLoading(true);
 
-      if (!inflight) {
-        inflight = api
-          .get("/api/bank/get-bank-accounts")
+      if (!inflightMap[key]) {
+        const params = entityId ? { entityId } : {};
+        inflightMap[key] = api
+          .get("/api/bank/get-bank-accounts", { params })
           .then((r) => r.data?.bankAccounts ?? [])
           .then((accs) => {
-            cache = accs;
+            cacheMap[key] = accs;
             return accs;
           })
           .catch(() => [])
           .finally(() => {
-            inflight = null;
+            delete inflightMap[key];
           });
       }
 
-      const accs = await inflight;
+      const accs = await inflightMap[key];
       setBanks(accs);
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, key, entityId]);
 
   useEffect(() => {
     fetchBanks();
@@ -45,4 +47,3 @@ export function useBankAccounts(enabled = true) {
 
   return { banks, loading, refetch: fetchBanks };
 }
-

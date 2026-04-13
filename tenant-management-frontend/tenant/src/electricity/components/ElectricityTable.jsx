@@ -34,6 +34,7 @@ export function ElectricityTable({
   currentPage,
   onPageChange,
   onPaymentRecorded,
+  onEditReading,
   countsByType = {},
   onAddReading,
 }) {
@@ -272,6 +273,7 @@ export function ElectricityTable({
                   record={record}
                   index={(currentPage - 1) * PAGE_SIZE + index}
                   onPaymentRecorded={onPaymentRecorded}
+                  onEditReading={onEditReading}
                 />
               ))}
             </tbody>

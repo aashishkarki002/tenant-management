@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle } from "lucide-react";
 import {
@@ -17,6 +17,14 @@ export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
   );
   const [depositNotes, setDepositNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Reset fields each time dialog opens
+  useEffect(() => {
+    if (open) {
+      setDepositDate(new Date().toISOString().split("T")[0]);
+      setDepositNotes("");
+    }
+  }, [open]);
 
   if (!draft) return null;
 
@@ -53,7 +61,7 @@ export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
               type="date"
               value={depositDate}
               onChange={(e) => setDepositDate(e.target.value)}
-              className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none"
+              className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]"
               style={{ borderColor: C.border, color: C.text }}
             />
           </div>
@@ -66,8 +74,9 @@ export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
               type="text"
               value={depositNotes}
               onChange={(e) => setDepositNotes(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               placeholder="Bank reference, remarks…"
-              className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none"
+              className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]"
               style={{ borderColor: C.border, color: C.text }}
             />
           </div>

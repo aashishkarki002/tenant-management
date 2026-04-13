@@ -18,6 +18,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useBackfillRent } from "../hooks/useBackfillRent";
 import api from "../../../plugins/axios";
+import { getTodayNepali } from "@/utils/nepaliDate";
 
 // ── Nepali month names (1-based index) ────────────────────────────────────────
 const NEPALI_MONTH_NAMES = [
@@ -31,29 +32,15 @@ const NEPALI_MONTH_NAMES = [
  * Generate the past `count` Nepali months going back from (but not including)
  * the current BS month.
  *
+ * Uses getTodayNepali() — the same canonical BS date source used across the app —
+ * so the month list is always accurate, even at year boundaries.
+ *
  * Returns [{ nepaliYear, nepaliMonth }] sorted oldest → newest.
  */
 function pastNepaliMonths(count = 24) {
-  // Derive current BS year/month from system date using the same +5:45 offset
-  // the backend uses, so there is no off-by-one near midnight.
-  const NPT_OFFSET_MS = (5 * 60 + 45) * 60 * 1000;
-  const nptNow = new Date(Date.now() + NPT_OFFSET_MS);
-
-  // Approximate BS year/month — good enough for a picker (±1 month at boundary)
-  // Full conversion would need a BS calendar library; using the rough formula:
-  //   BS year ≈ AD year + 56 or 57 (switches mid-April)
-  //   We use a lookup via the ad->bs approximation from nepali-datetime logic.
-  //
-  // Since the backend already stores nepaliYear/nepaliMonth on rent records,
-  // we rely on those. Here we generate a plausible range using the known offset.
-  const adYear = nptNow.getUTCFullYear();
-  const adMonth = nptNow.getUTCMonth() + 1; // 1-based
-
-  // AD April 14 is roughly the BS New Year (Baisakh 1).
-  // BS month = ((adMonth + 8) % 12) + 1  (rough, within ±1 of actual)
-  // BS year  = adYear + 56 when AD month < 4, else adYear + 57
-  let bsMonth = ((adMonth + 8) % 12) + 1; // 1-12
-  let bsYear = adMonth < 4 ? adYear + 56 : adYear + 57;
+  const today = getTodayNepali();
+  let bsYear = today.year;
+  let bsMonth = today.month;
 
   const months = [];
   for (let i = 0; i < count; i++) {

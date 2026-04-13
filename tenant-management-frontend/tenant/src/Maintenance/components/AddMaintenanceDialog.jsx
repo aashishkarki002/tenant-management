@@ -137,6 +137,7 @@ function ContractorSection({ formik }) {
 export const AddMaintenanceDialog = ({
   formik,
   units = [],
+  blocks = [],
   staffs = [],
   selectedTenant = null,
   isLoading = false,
@@ -298,6 +299,51 @@ export const AddMaintenanceDialog = ({
                     onChange={(v) => formik.setFieldValue('scope', v)}
                   />
                 </div>
+
+                {/* Block — shown when scope is BLOCK */}
+                {currentScope === 'BLOCK' && (
+                  <div>
+                    <Label>Block</Label>
+                    <Select
+                      value={formik.values.block || ''}
+                      onValueChange={(v) => formik.setFieldValue('block', v)}
+                      disabled={blocks.length === 0}
+                    >
+                      <SelectTrigger className="mt-2 h-10">
+                        <SelectValue placeholder={blocks.length === 0 ? 'No blocks available' : 'Select block'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {blocks.map((b) => (
+                          <SelectItem key={b._id} value={b._id}>
+                            {b.name || 'Unnamed block'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Property — shown when scope is PROPERTY or COMMON_AREA */}
+                {(currentScope === 'PROPERTY' || currentScope === 'COMMON_AREA') && blocks.length > 0 && (
+                  <div>
+                    <Label>Block / Building</Label>
+                    <Select
+                      value={formik.values.block || ''}
+                      onValueChange={(v) => formik.setFieldValue('block', v)}
+                    >
+                      <SelectTrigger className="mt-2 h-10">
+                        <SelectValue placeholder="Select building (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {blocks.map((b) => (
+                          <SelectItem key={b._id} value={b._id}>
+                            {b.name || 'Unnamed block'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {/* Unit — shown for UNIT scope; optional for others */}
                 <div>

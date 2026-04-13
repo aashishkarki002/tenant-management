@@ -36,7 +36,14 @@ export default function ChequeDraftsPage() {
   }, [activeEntityId, statusFilter]);
 
   const { drafts, loading, refetch } = useChequeDrafts(filters);
-  const { summary, loading: summaryLoading, refetch: refetchSummary } = useChequeDraftSummary(activeEntityId);
+  // Single-entity users never set activeEntityId, so auto-resolve it
+  const summaryEntityId = useMemo(() => {
+    if (activeEntityId) return activeEntityId;
+    if ((entities ?? []).length === 1) return entities[0]._id;
+    return null;
+  }, [activeEntityId, entities]);
+
+  const { summary, loading: summaryLoading, refetch: refetchSummary } = useChequeDraftSummary(summaryEntityId);
 
   const handleRefresh = useCallback(() => { refetch(); refetchSummary(); }, [refetch, refetchSummary]);
 
@@ -61,7 +68,7 @@ export default function ChequeDraftsPage() {
   const showEntityFilter = (entities ?? []).length > 1;
 
   return (
-    <div className="flex flex-col gap-6 p-4 sm:p-6 max-w-7xl mx-auto w-full">
+    <div className="flex flex-col gap-8 p-4 sm:p-6 max-w-7xl mx-auto w-full">
       {/* ── Header ── */}
       <div className="flex items-start gap-3">
         <div
@@ -80,83 +87,84 @@ export default function ChequeDraftsPage() {
         </div>
       </div>
 
-      {/* ── Entity filter pills ── */}
-      {showEntityFilter && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveEntityId(null)}
-            className="px-3 py-1 rounded-full text-[12px] font-semibold border transition-colors"
-            style={{
-              background: !activeEntityId ? C.accent : "transparent",
-              color: !activeEntityId ? "#fff" : C.textMid,
-              borderColor: !activeEntityId ? C.accent : C.border,
-            }}
-          >
-            All entities
-          </button>
-          {entities.map((e) => (
+      {/* ── Context zone: entity filter + KPI summary ── */}
+      <div className="flex flex-col gap-3">
+        {showEntityFilter && (
+          <div className="flex flex-wrap gap-2">
             <button
-              key={e._id}
-              onClick={() => setActiveEntityId(e._id === activeEntityId ? null : e._id)}
-              className="px-3 py-1 rounded-full text-[12px] font-semibold border transition-colors"
+              onClick={() => setActiveEntityId(null)}
+              className="px-3 py-1 rounded-full text-[12px] font-semibold border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-accent)]"
               style={{
-                background: activeEntityId === e._id ? C.accent : "transparent",
-                color: activeEntityId === e._id ? "#fff" : C.textMid,
-                borderColor: activeEntityId === e._id ? C.accent : C.border,
+                background: !activeEntityId ? C.accent : "transparent",
+                color: !activeEntityId ? "#fff" : C.textMid,
+                borderColor: !activeEntityId ? C.accent : C.border,
               }}
             >
-              {e.name}
+              All entities
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── KPI Strip ── */}
-      <ChequeDraftKpiStrip summary={summary} loading={summaryLoading} />
-
-      {/* ── Status tabs ── */}
-      <div className="flex gap-1 border-b" style={{ borderColor: C.border }}>
-        {STATUS_TABS.map((tab) => {
-          const active = statusFilter === tab.key;
-          const count = countsByStatus[tab.key];
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setStatusFilter(tab.key)}
-              className="relative px-4 pb-2.5 text-[12px] font-semibold transition-colors flex items-center gap-1.5"
-              style={{ color: active ? C.accent : C.textMuted }}
-            >
-              {tab.label}
-              {count != null && count > 0 && (
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
-                  style={{
-                    background: active ? C.accent + "22" : C.surface,
-                    color: active ? C.accent : C.textMuted,
-                  }}
-                >
-                  {count}
-                </span>
-              )}
-              {active && (
-                <span
-                  className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-                  style={{ background: C.accent }}
-                />
-              )}
-            </button>
-          );
-        })}
+            {entities.map((e) => (
+              <button
+                key={e._id}
+                onClick={() => setActiveEntityId(e._id === activeEntityId ? null : e._id)}
+                className="px-3 py-1 rounded-full text-[12px] font-semibold border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-accent)]"
+                style={{
+                  background: activeEntityId === e._id ? C.accent : "transparent",
+                  color: activeEntityId === e._id ? "#fff" : C.textMid,
+                  borderColor: activeEntityId === e._id ? C.accent : C.border,
+                }}
+              >
+                {e.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <ChequeDraftKpiStrip summary={summary} loading={summaryLoading} entitySelected={!!summaryEntityId} />
       </div>
 
-      {/* ── Table ── */}
-      <ChequeDraftsTable
-        drafts={drafts}
-        loading={loading}
-        onDeposit={(d) => setDepositTarget(d)}
-        onBounce={(d) => { setBounceMode("bounce"); setBounceTarget(d); }}
-        onCancel={(d) => { setBounceMode("cancel"); setBounceTarget(d); }}
-      />
+      {/* ── Data zone: tabs + table (tightly coupled) ── */}
+      <div className="flex flex-col gap-4">
+        <div className="flex gap-1 border-b" style={{ borderColor: C.border }}>
+          {STATUS_TABS.map((tab) => {
+            const active = statusFilter === tab.key;
+            const count = countsByStatus[tab.key];
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setStatusFilter(tab.key)}
+                className="relative px-4 pb-2.5 text-[12px] font-semibold transition-colors duration-150 flex items-center gap-1.5 focus-visible:outline-none focus-visible:rounded"
+                style={{ color: active ? C.accent : C.textMuted }}
+              >
+                {tab.label}
+                {count != null && count > 0 && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
+                    style={{
+                      background: active ? C.accent + "22" : C.surface,
+                      color: active ? C.accent : C.textMuted,
+                    }}
+                  >
+                    {count}
+                  </span>
+                )}
+                {active && (
+                  <span
+                    className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                    style={{ background: C.accent }}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <ChequeDraftsTable
+          drafts={drafts}
+          loading={loading}
+          onDeposit={(d) => setDepositTarget(d)}
+          onBounce={(d) => { setBounceMode("bounce"); setBounceTarget(d); }}
+          onCancel={(d) => { setBounceMode("cancel"); setBounceTarget(d); }}
+        />
+      </div>
 
       {/* ── Dialogs ── */}
       <DepositDialog

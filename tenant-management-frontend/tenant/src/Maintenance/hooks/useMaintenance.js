@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../../plugins/axios';
+import { socket } from '../../../plugins/socket';
 
 export const useMaintenance = () => {
   const [maintenance, setMaintenance] = useState([]);
@@ -115,6 +116,22 @@ export const useMaintenance = () => {
     fetchMaintenance();
     fetchTenants();
   }, [fetchStaffs, fetchMaintenance, fetchTenants]);
+
+  /**
+   * Real-time socket updates.
+   * maintenance:updated — a task's status/fields changed; merge into state.
+   * maintenance:created — a new task was created; re-fetch the full list so
+   *                       pagination and populated refs are correct.
+   */
+  useEffect(() => {
+    socket.on('maintenance:updated', updateMaintenanceItem);
+    socket.on('maintenance:created', fetchMaintenance);
+
+    return () => {
+      socket.off('maintenance:updated', updateMaintenanceItem);
+      socket.off('maintenance:created', fetchMaintenance);
+    };
+  }, [updateMaintenanceItem, fetchMaintenance]);
 
   return {
     maintenance,

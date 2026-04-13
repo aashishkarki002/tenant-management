@@ -138,37 +138,41 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
   // ── Selection helpers ─────────────────────────────────────────────────────────
   const toggleMonth = useCallback((id) => {
     setSelectedIds((prev) => {
+      const prevPaisa = arrears
+        .filter((r) => prev.has(r._id))
+        .reduce((s, r) => s + r.totalRemainingPaisa, 0);
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
       } else {
         next.add(id);
       }
+      const nextPaisa = arrears
+        .filter((r) => next.has(r._id))
+        .reduce((s, r) => s + r.totalRemainingPaisa, 0);
+      // Auto-update amount only when it still matches the previous selection total
+      // (i.e. user hasn't manually overridden it)
+      setAmount((currentAmount) => {
+        const currentPaisa = Math.round((parseFloat(currentAmount) || 0) * 100);
+        if (currentPaisa === prevPaisa || currentAmount === "") {
+          return nextPaisa > 0 ? String(nextPaisa / 100) : "";
+        }
+        return currentAmount;
+      });
       return next;
     });
-  }, []);
+  }, [arrears]);
 
   const selectAll = useCallback(() => {
     setSelectedIds(new Set(arrears.map((r) => r._id)));
+    const totalPaisa = arrears.reduce((s, r) => s + r.totalRemainingPaisa, 0);
+    setAmount(totalPaisa > 0 ? String(totalPaisa / 100) : "");
   }, [arrears]);
 
   const deselectAll = useCallback(() => {
     setSelectedIds(new Set());
+    setAmount("");
   }, []);
-
-  // When selection changes, auto-update the amount to match selected total
-  // (only if the current amount exactly matches the previous selected total —
-  //  i.e. the user hasn't manually overridden it).
-  // This keeps UX smooth without fighting the user's custom amount entry.
-  const syncAmountToSelection = useCallback(
-    (prevSelectedPaisa, newSelectedPaisa) => {
-      const currentPaisa = Math.round((parseFloat(amount) || 0) * 100);
-      if (currentPaisa === prevSelectedPaisa || amount === "") {
-        setAmount(newSelectedPaisa > 0 ? String(newSelectedPaisa / 100) : "");
-      }
-    },
-    [amount],
-  );
 
   // Fill full amount for selected months
   const fillFullAmount = useCallback(() => {
@@ -276,7 +280,6 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
     toggleMonth,
     selectAll,
     deselectAll,
-    syncAmountToSelection,
 
     // Form fields
     amount,

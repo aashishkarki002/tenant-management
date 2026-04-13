@@ -60,18 +60,24 @@ function EventPopover({ event, position, onClose }) {
     const m = event.extendedProps.maintenance;
     const status = (m.status || 'OPEN').toUpperCase();
 
+    const POPOVER_W = 288; // w-72
+    const POPOVER_H = 280;
+    const MARGIN = 8;
+    const top = Math.max(MARGIN, Math.min(position.y + MARGIN, window.innerHeight - POPOVER_H - MARGIN));
+    const left = Math.max(MARGIN, Math.min(position.x + MARGIN, window.innerWidth - POPOVER_W - MARGIN));
+
     return (
         /* Backdrop */
-        <div className="fixed inset-0 z-50 flex items-start justify-center" onClick={onClose}>
+        <div className="fixed inset-0 z-50" onClick={onClose}>
             <div
-                className="absolute z-50 w-72 rounded-xl border border-muted-fill bg-background p-4 shadow-xl"
-                style={{ top: Math.min(position.y, window.innerHeight - 280), left: Math.min(position.x, window.innerWidth - 300) }}
+                className="absolute z-50 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-muted-fill bg-background p-4 shadow-xl"
+                style={{ top, left }}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
                 <div className="mb-3 flex items-start justify-between gap-2">
                     <p className="text-sm font-semibold leading-snug text-text-strong">{m.title}</p>
-                    <button onClick={onClose} className="shrink-0 rounded-md p-0.5 text-text-sub hover:bg-muted-fill">
+                    <button onClick={onClose} aria-label="Close" className="flex items-center justify-center h-8 w-8 shrink-0 rounded-md text-text-sub hover:bg-muted-fill">
                         <X className="h-4 w-4" />
                     </button>
                 </div>

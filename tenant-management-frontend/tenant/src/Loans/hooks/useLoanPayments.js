@@ -2,20 +2,20 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import api from "../../../plugins/axios";
 
-export function useLoanSchedule(loanId, open) {
-  const [scheduleData, setScheduleData] = useState(null);
+export function useLoanPayments(loanId, open) {
+  const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const fetch = useCallback(async () => {
     if (!open || !loanId) return;
-    setScheduleData(null);
+    setPayments([]);
     setLoading(true);
     try {
-      const r = await api.get(`/api/loan/${loanId}/schedule`);
-      setScheduleData(r.data?.data ?? null);
+      const r = await api.get(`/api/loan/${loanId}/payments`);
+      setPayments(r.data?.data ?? []);
     } catch (err) {
-      setScheduleData(null);
-      toast.error(err.response?.data?.message ?? "Failed to load loan schedule");
+      setPayments([]);
+      toast.error(err.response?.data?.message ?? "Failed to load payment history");
     } finally {
       setLoading(false);
     }
@@ -25,6 +25,5 @@ export function useLoanSchedule(loanId, open) {
     fetch();
   }, [fetch]);
 
-  return { scheduleData, loading, refetch: fetch };
+  return { payments, loading, refetch: fetch };
 }
-

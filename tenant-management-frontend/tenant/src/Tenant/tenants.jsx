@@ -1146,9 +1146,16 @@ export default function Tenants() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badge.className}`}>
-                          {badge.label}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border self-start ${badge.className}`}>
+                            {badge.label}
+                          </span>
+                          {(tenant?.overdueBalance ?? 0) > 0 && (
+                            <span className="text-[10px] font-mono font-semibold" style={{ color: "var(--color-danger)" }}>
+                              Rs. {tenant.overdueBalance.toLocaleString("en-IN")} arrears
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <span className="text-xs font-mono" style={{ color: "var(--color-text-sub)" }}>

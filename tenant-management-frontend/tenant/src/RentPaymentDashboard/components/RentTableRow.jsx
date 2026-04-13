@@ -82,7 +82,7 @@ export const RentTableRow = ({
     rent.status === "paid" && hasOutstandingLateFee ? "Pay fee" : "Pay";
 
   // Dropdown has secondary actions only — primary "Pay" is now an inline button
-  const hasDropdownItems = !!tenantId || !!rent.latestPaymentId;
+  const hasDropdownItems = !!tenantId;
 
   return (
     <TableRow
@@ -207,16 +207,6 @@ export const RentTableRow = ({
                     onClick={() => navigate(`/tenant/viewDetail/${tenantId}`)}
                   >
                     View tenant
-                  </DropdownMenuItem>
-                )}
-                {rent.latestPaymentId && (
-                  <DropdownMenuItem
-                    className="text-xs"
-                    onClick={() =>
-                      navigate(`/rent-payment/payments/${rent.latestPaymentId}`)
-                    }
-                  >
-                    View receipt
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>

@@ -17,6 +17,7 @@ export const MaintenanceList = ({
   formatStatus,
   formatDate,
   onUpdate,
+  onViewDetail,
   bankAccounts,
   staffs,
   hasAnyTickets,
@@ -45,6 +46,7 @@ export const MaintenanceList = ({
         formatStatus={formatStatus}
         formatDate={formatDate}
         onUpdate={onUpdate}
+        onViewDetail={onViewDetail}
         bankAccounts={bankAccounts}
         staffs={staffs}
       />

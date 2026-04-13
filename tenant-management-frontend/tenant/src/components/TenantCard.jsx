@@ -6,8 +6,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Phone, Mail, Calendar, MoreVertical, AlertTriangle,
-  Eye, CreditCard, Bell, Pencil, XCircle,
+  Eye, CreditCard, Bell, Pencil, XCircle, TrendingDown,
 } from "lucide-react";
+import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDate.js";
 import { useNavigate } from "react-router-dom";
 import api from "../../plugins/axios";
 import { toast } from "sonner";
@@ -139,6 +140,21 @@ export default function TenantCard({ tenant, onTenantMutated }) {
       : tenant?.rentPaymentFrequency === "quarterly" ? "/ qtr"
         : "";
   const locationLabel = getTenantLocationLabel(tenant);
+
+  // Show arrears regardless of current paymentStatus.
+  // "Paid" means this month's rent is settled — it says nothing about past dues.
+  // A tenant can be current this month and still carry 3 months of arrears.
+  const overdueBalance = tenant?.overdueBalance ?? 0;
+  const overdueMonth = tenant?.oldestOverdueNepaliMonth;
+  const overdueMonthName = overdueMonth != null
+    ? (NEPALI_MONTH_NAMES[overdueMonth - 1] ?? null)   // DB is 1-based, array is 0-based
+    : null;
+  const overdueYear = tenant?.oldestOverdueNepaliYear ?? null;
+  const overdueLabel = overdueMonthName && overdueYear
+    ? `since ${overdueMonthName} ${overdueYear}`
+    : (tenant?.consecutiveUnpaidMonths ?? 0) > 1
+      ? `${tenant.consecutiveUnpaidMonths} months unpaid`
+      : null;
 
   const deleteTenant = async () => {
     try {
@@ -286,6 +302,29 @@ export default function TenantCard({ tenant, onTenantMutated }) {
             {tenant?.leaseEndDateNepali || "—"}
           </span>
         </div>
+
+        {/* ── Overdue balance row ──────────────────────────────────────────── */}
+        {overdueBalance > 0 && (
+          <div
+            className="flex items-center justify-between rounded-lg px-2.5 py-1.5 mb-2.5 border"
+            style={{
+              background: "var(--color-danger-bg)",
+              borderColor: "var(--color-danger-border)",
+            }}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <TrendingDown className="w-3 h-3 shrink-0" style={{ color: "var(--color-danger)" }} />
+              <span className="text-[11px] font-semibold font-mono tabular-nums" style={{ color: "var(--color-danger)" }}>
+                Rs. {overdueBalance.toLocaleString("en-IN")} arrears
+              </span>
+            </div>
+            {overdueLabel && (
+              <span className="text-[10px] shrink-0 ml-2" style={{ color: "var(--color-danger)" }}>
+                {overdueLabel}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* ── Action buttons ────────────────────────────────────────────────── */}
         <div

@@ -255,8 +255,9 @@ export const RentTable = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Send rent reminders</AlertDialogTitle>
             <AlertDialogDescription>
-              This sends reminder emails to all tenants with unpaid or overdue rent
-              (same as Send Reminders in the toolbar). Continue?
+              This sends reminder emails to all tenants with unpaid or overdue rent.
+              Selected rows are used for export and payment only — reminders always
+              go to all tenants with outstanding dues. Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

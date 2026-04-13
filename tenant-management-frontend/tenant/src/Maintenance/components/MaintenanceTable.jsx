@@ -7,7 +7,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { User, Coins } from 'lucide-react';
+import { User, Coins, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api from '../../../plugins/axios';
 import { toast } from 'sonner';
@@ -35,6 +35,7 @@ export default function MaintenanceTable({
   formatStatus,
   formatDate,
   onUpdate,
+  onViewDetail,
   bankAccounts = [],
   staffs = [],
 }) {
@@ -78,8 +79,8 @@ export default function MaintenanceTable({
         onComplete={onUpdate}
       />
 
-      <div className="rounded-xl border border-muted-fill bg-surface-raised shadow-sm overflow-hidden">
-        <Table>
+      <div className="rounded-xl border border-muted-fill bg-surface-raised shadow-sm overflow-x-auto">
+        <Table className="min-w-[760px]">
           <TableHeader>
             <TableRow className="bg-muted-fill/80">
               <TableHead className="text-xs font-semibold text-text-sub uppercase tracking-wide pl-4">Task</TableHead>
@@ -193,7 +194,7 @@ export default function MaintenanceTable({
                       value={assignedId || '__unassigned__'}
                       onValueChange={(val) => handleAssign(item, val)}
                     >
-                      <SelectTrigger className="h-7 w-36 border-0 bg-transparent text-xs hover:bg-muted-fill rounded-md">
+                      <SelectTrigger className="h-9 w-36 border-0 bg-transparent text-xs hover:bg-muted-fill rounded-md">
                         <SelectValue>
                           <span className="flex items-center gap-1.5">
                             <User className="h-3 w-3 text-text-sub" />
@@ -213,13 +214,23 @@ export default function MaintenanceTable({
                   {/* Actions */}
                   <TableCell className="text-right pr-4">
                     <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 px-2.5 text-xs text-text-sub hover:text-text-body"
+                        onClick={() => onViewDetail?.(item)}
+                        title="View details"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+
                       {/* Status dropdown — hidden for COMPLETED (terminal) */}
                       {!isCompleted && (
                         <Select
                           value={item.status}
                           onValueChange={(val) => handleStatusChange(item, val)}
                         >
-                          <SelectTrigger className="h-7 w-auto gap-1 border-muted-fill bg-surface-raised text-xs font-medium px-2.5 rounded-md">
+                          <SelectTrigger className="h-9 w-auto gap-1 border-muted-fill bg-surface-raised text-xs font-medium px-2.5 rounded-md">
                             <SelectValue>Status</SelectValue>
                           </SelectTrigger>
                           <SelectContent>
@@ -235,7 +246,7 @@ export default function MaintenanceTable({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                          className="h-9 px-2.5 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50"
                           onClick={() => setSettlementItem(item)}
                           title="Settle payment"
                         >

@@ -83,3 +83,51 @@ export async function updateReading(id, body) {
   }
   return result;
 }
+
+/**
+ * POST /api/electricity/generate-bill/:id
+ * Generates tenant-facing PDF bill and uploads to FTP.
+ * @param {string} id - Electricity reading id
+ * @returns {Promise<{ ftpPath: string, generatedAt: string }>}
+ */
+export async function generateBill(id) {
+  const response = await api.post(`/api/electricity/generate-bill/${id}`);
+  const result = response.data;
+  if (!result?.success) {
+    throw new Error(result?.message || "Failed to generate bill");
+  }
+  return result.data;
+}
+
+/**
+ * POST /api/electricity/nea-bill/:propertyId
+ * Upload the monthly NEA utility bill PDF.
+ * @param {string} propertyId
+ * @param {FormData} formData - Fields: neaBillPdf, totalAmount, nepaliMonth, nepaliYear, notes?
+ * @returns {Promise<{ neaBill: Object, reconciliation: Object }>}
+ */
+export async function uploadNeaBill(propertyId, formData) {
+  const response = await api.post(`/api/electricity/nea-bill/${propertyId}`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  const result = response.data;
+  if (!result?.success) {
+    throw new Error(result?.message || "Failed to upload NEA bill");
+  }
+  return result.data;
+}
+
+/**
+ * GET /api/electricity/nea-bill/:propertyId
+ * List all NEA bills with reconciliation data for a property.
+ * @param {string} propertyId
+ * @returns {Promise<{ bills: Array, total: number }>}
+ */
+export async function getNeaBills(propertyId) {
+  const response = await api.get(`/api/electricity/nea-bill/${propertyId}`);
+  const result = response.data;
+  if (!result?.success) {
+    throw new Error(result?.message || "Failed to fetch NEA bills");
+  }
+  return result.data;
+}

@@ -75,14 +75,7 @@ function proportionalAllocate(unitBreakdown, totalRupees) {
 
 function SectionLabel({ children }) {
   return (
-    <p style={{
-      color: "var(--color-text-weak)",
-      fontSize: "10px",
-      fontWeight: 600,
-      letterSpacing: "0.08em",
-      textTransform: "uppercase",
-      marginBottom: "10px",
-    }}>
+    <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-2.5 text-muted-foreground">
       {children}
     </p>
   );

@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import {
-  ChevronUp, ChevronDown, Clock, CheckCircle2, UserPlus, Coins,
+  ChevronUp, ChevronDown, Clock, CheckCircle2, UserPlus, Coins, Eye,
 } from 'lucide-react';
 import api from '../../../plugins/axios';
 import { toast } from 'sonner';
@@ -42,6 +42,7 @@ export default function MaintenanceCard({
   formatDate,
   workOrderId,
   onUpdate,
+  onViewDetail,
   bankAccounts = [],
   staffs = [],
 }) {
@@ -251,11 +252,20 @@ export default function MaintenanceCard({
             </div>
 
             <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2.5 text-xs text-text-sub hover:text-text-body"
+                onClick={() => onViewDetail?.(maintenanceItem)}
+              >
+                <Eye className="mr-1 h-3.5 w-3.5" />
+                View
+              </Button>
               {!isTerminal && !showAssignSelect && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-xs text-text-sub hover:text-text-body"
+                  className="h-9 px-2.5 text-xs text-text-sub hover:text-text-body"
                   onClick={() => setShowAssignSelect(true)}
                 >
                   <UserPlus className="mr-1 h-3.5 w-3.5" />
@@ -266,7 +276,7 @@ export default function MaintenanceCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs text-text-sub hover:text-text-body"
+                className="h-9 px-2.5 text-xs text-text-sub hover:text-text-body"
                 onClick={toggleExpand}
               >
                 {isExpanded
@@ -280,7 +290,7 @@ export default function MaintenanceCard({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                  className="h-9 px-2.5 text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50"
                   onClick={() => setIsSettlementOpen(true)}
                 >
                   <Coins className="mr-1 h-3.5 w-3.5" />
@@ -298,7 +308,7 @@ export default function MaintenanceCard({
                 onValueChange={handleAssignStaff}
                 disabled={assigning}
               >
-                <SelectTrigger className="h-8 flex-1 bg-surface-raised border-muted-fill text-sm">
+                <SelectTrigger className="h-9 flex-1 bg-surface-raised border-muted-fill text-sm">
                   <SelectValue placeholder="Select staff">
                     {assignedStaffId ? assignedStaffName ?? 'Assigned' : 'Unassigned'}
                   </SelectValue>
@@ -315,7 +325,7 @@ export default function MaintenanceCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 text-xs"
+                className="h-9 text-xs"
                 onClick={() => setShowAssignSelect(false)}
               >
                 Cancel
