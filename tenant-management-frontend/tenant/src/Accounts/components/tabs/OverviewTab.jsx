@@ -3,11 +3,9 @@ import {
     RevExpChart,
     CompareChart,
     CompareStatStrip,
-    RevenueStreamTable,
     BreakdownPills,
 } from "../AccountingCharts";
 import ChartCard from "../ChartCard";
-import ProgressRow from "../ProgressRow";
 import LedgerFeed from "../LedgerFeed";
 import { fmtK, fmtN } from "../AccountingPage";
 import { cn } from "@/lib/utils";
@@ -262,43 +260,17 @@ export default function OverviewTab({
             </ChartCard>
 
             {/* ══════════════════════════════════════════════════════════════
-                TIER 2b — Revenue Streams (55%) + Expense Breakdown (45%)
+                TIER 2b — Cash Flow Summary (where money moved)
             ══════════════════════════════════════════════════════════════ */}
-            <div className="grid grid-cols-[55%_1fr] gap-4">
-                <ChartCard title="Revenue Streams" subtitle={filterLabel}>
-                    <RevenueStreamTable
-                        breakdown={summary?.incomeStreams?.breakdown ?? []}
-                        loading={loadingSummary}
-                    />
-                </ChartCard>
-
-                <ChartCard title="Expense Breakdown">
-                    {loadingSummary && (
-                        <div className="flex flex-col gap-3">
-                            {[1, 2, 3].map(i => (
-                                <div key={i} className="flex flex-col gap-1.5">
-                                    <div className="h-3 w-full rounded animate-pulse bg-[var(--color-muted)]" />
-                                    <div className="h-1.5 w-full rounded animate-pulse bg-[var(--color-muted)]" />
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    {!loadingSummary && (summary?.expensesBreakdown ?? []).length === 0 && (
-                        <div className="py-6 text-center text-[12px] text-[var(--color-text-sub)]">
-                            No expense data for this period
-                        </div>
-                    )}
-                    {!loadingSummary && (summary?.expensesBreakdown ?? []).map((item, i) => (
-                        <ProgressRow
-                            key={item.name ?? item._id ?? i}
-                            label={item.name ?? item.label ?? "—"}
-                            percent={Math.round(item.pct ?? 0)}
-                            amount={`₹${fmtK(item.amount ?? 0)}`}
-                            color="var(--color-warning)"
-                        />
-                    ))}
-                </ChartCard>
-            </div>
+            <CashFlowSummaryCard
+                inflows={summary?.incomeStreams?.breakdown ?? []}
+                outflows={summary?.expensesBreakdown ?? []}
+                totalIn={totals.totalRevenue}
+                totalOut={totals.totalExpenses}
+                net={totals.netCashFlow}
+                loading={loadingSummary}
+                filterLabel={filterLabel}
+            />
 
             {/* ══════════════════════════════════════════════════════════════
                 TIER 3 — Recent Transactions
@@ -380,6 +352,161 @@ function KpiCard({
                     {footnote}
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─── CashFlowSummaryCard ──────────────────────────────────────────────────────
+/**
+ * Replaces the old Revenue Streams + Expense Breakdown two-column grid.
+ * Shows where money came in and where it went in a single compact card,
+ * without duplicating the detail already visible in the Revenue/Expense tabs.
+ */
+function CashFlowSummaryCard({ inflows, outflows, totalIn, totalOut, net, loading, filterLabel }) {
+    const isDeficit = net < 0;
+    const grandTotal = totalIn + totalOut;
+
+    return (
+        <div
+            className="rounded-2xl border overflow-hidden"
+            style={{
+                background: "var(--color-surface-raised)",
+                borderColor: "var(--color-border)",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+            }}
+        >
+            {/* Header row */}
+            <div
+                className="flex items-center justify-between px-5 py-3 border-b"
+                style={{ borderColor: "var(--color-border)" }}
+            >
+                <div className="text-[10px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--color-text-sub)" }}>
+                    Where Money Moved
+                </div>
+                <div className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full" style={{ background: "var(--color-accent-light)", color: "var(--color-accent)" }}>
+                    {filterLabel}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 divide-x" style={{ borderColor: "var(--color-border)" }}>
+                {/* ── Inflows ─────────────────────────────────── */}
+                <div className="px-5 py-4">
+                    <div className="flex items-baseline gap-2 mb-3">
+                        <div className="text-[9px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--color-text-sub)" }}>IN</div>
+                        {loading ? (
+                            <div className="h-5 w-24 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
+                        ) : (
+                            <div className="text-[18px] font-black tabular-nums leading-none" style={{ color: "var(--color-info)" }}>
+                                ₹{fmtK(totalIn)}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex flex-col gap-2.5">
+                        {loading
+                            ? [1, 2, 3].map(i => (
+                                <div key={i} className="flex flex-col gap-1">
+                                    <div className="h-2.5 w-3/4 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
+                                    <div className="h-1 w-full rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
+                                </div>
+                            ))
+                            : (inflows.slice(0, 4)).map((item, i) => {
+                                const pct = totalIn > 0 ? (item.amount / totalIn) * 100 : 0;
+                                return (
+                                    <div key={item.name ?? i}>
+                                        <div className="flex justify-between items-baseline mb-0.5">
+                                            <span className="text-[11px] font-medium truncate max-w-[70%]" style={{ color: "var(--color-text-body)" }}>
+                                                {item.name ?? item.label ?? "—"}
+                                            </span>
+                                            <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--color-info)" }}>
+                                                ₹{fmtK(item.amount ?? 0)}
+                                            </span>
+                                        </div>
+                                        <ProgBar value={item.amount ?? 0} max={totalIn} color="var(--color-info)" h={2} />
+                                    </div>
+                                );
+                            })}
+                        {!loading && inflows.length === 0 && (
+                            <div className="text-[11px]" style={{ color: "var(--color-text-sub)" }}>No inflows recorded</div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ── Outflows ────────────────────────────────── */}
+                <div className="px-5 py-4" style={{ borderLeftColor: "var(--color-border)" }}>
+                    <div className="flex items-baseline gap-2 mb-3">
+                        <div className="text-[9px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--color-text-sub)" }}>OUT</div>
+                        {loading ? (
+                            <div className="h-5 w-24 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
+                        ) : (
+                            <div className="text-[18px] font-black tabular-nums leading-none" style={{ color: "var(--color-warning)" }}>
+                                ₹{fmtK(totalOut)}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex flex-col gap-2.5">
+                        {loading
+                            ? [1, 2, 3].map(i => (
+                                <div key={i} className="flex flex-col gap-1">
+                                    <div className="h-2.5 w-3/4 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
+                                    <div className="h-1 w-full rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
+                                </div>
+                            ))
+                            : (outflows.slice(0, 4)).map((item, i) => (
+                                <div key={item.name ?? item._id ?? i}>
+                                    <div className="flex justify-between items-baseline mb-0.5">
+                                        <span className="text-[11px] font-medium truncate max-w-[70%]" style={{ color: "var(--color-text-body)" }}>
+                                            {item.name ?? item.label ?? "—"}
+                                        </span>
+                                        <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--color-warning)" }}>
+                                            ₹{fmtK(item.amount ?? 0)}
+                                        </span>
+                                    </div>
+                                    <ProgBar value={item.amount ?? 0} max={totalOut} color="var(--color-warning)" h={2} />
+                                </div>
+                            ))}
+                        {!loading && outflows.length === 0 && (
+                            <div className="text-[11px]" style={{ color: "var(--color-text-sub)" }}>No expenses recorded</div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Net row ─────────────────────────────────────── */}
+            <div
+                className="flex items-center justify-between px-5 py-3 border-t"
+                style={{
+                    borderColor: "var(--color-border)",
+                    background: isDeficit ? "var(--color-danger-bg)" : "var(--color-success-bg)",
+                }}
+            >
+                <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-bold tracking-[0.14em] uppercase" style={{ color: isDeficit ? "var(--color-danger)" : "var(--color-success)" }}>
+                        Net Cash Flow
+                    </span>
+                    <span
+                        className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-widest"
+                        style={{ background: isDeficit ? "var(--color-danger-border)" : "var(--color-success-border)", color: isDeficit ? "var(--color-danger)" : "var(--color-success)" }}
+                    >
+                        {isDeficit ? "Deficit" : "Surplus"}
+                    </span>
+                </div>
+                {loading ? (
+                    <div className="h-6 w-28 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
+                ) : (
+                    <div className="flex items-baseline gap-1.5">
+                        <span className="text-[20px] font-black tabular-nums leading-none" style={{ color: isDeficit ? "var(--color-danger)" : "var(--color-success)" }}>
+                            {net >= 0 ? "+" : "−"}₹{fmtK(Math.abs(net))}
+                        </span>
+                        {grandTotal > 0 && (
+                            <span className="text-[10px] font-semibold" style={{ color: isDeficit ? "var(--color-danger)" : "var(--color-success)", opacity: 0.7 }}>
+                                {Math.round(Math.abs(net) / grandTotal * 100)}% of volume
+                            </span>
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

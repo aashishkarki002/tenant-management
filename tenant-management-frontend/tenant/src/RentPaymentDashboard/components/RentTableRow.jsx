@@ -8,6 +8,7 @@ import { ArrearsPaymentDialog } from "./ArrearsPaymentDialog";
 import { cn } from "@/lib/utils";
 import { formatNepaliDueDate } from "../utils/dateUtils";
 import { getPaymentAmounts, normalizeStatus } from "../utils/paymentUtil";
+import { getTodayNepali } from "@/utils/nepaliDate";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,9 +70,27 @@ export const RentTableRow = ({
 
   const tenantId = rent.tenant?._id;
 
-  // Single pay handler — routes arrears vs normal payment
+  // Only show the arrears badge when the oldest unpaid balance is from a
+  // PREVIOUS Nepali month. If oldestOverdueNepaliYear/Month equals the current
+  // month the tenant simply hasn't paid yet this cycle — the due date may not
+  // have arrived, so labelling it "overdue" is misleading.
+  const todayNp = getTodayNepali();
+  const pb = rent.prevBalance;
+  const pbYear = pb?.oldestOverdueNepaliYear;
+  const pbMonth = pb?.oldestOverdueNepaliMonth;
+  const prevBalanceIsFromPastCycle =
+    pb != null &&
+    pbYear != null &&
+    pbMonth != null &&
+    (pbYear < todayNp.year ||
+      (pbYear === todayNp.year && pbMonth < todayNp.month));
+  // Show arrears badge only when confirmed to be from a previous cycle
+  const showPrevBalance = prevBalanceIsFromPastCycle;
+
+  // Single pay handler — routes to arrears dialog only for genuine past-cycle
+  // arrears; current-month pending rents go through the normal payment dialog.
   const handlePay = () => {
-    if (rent.prevBalance) {
+    if (showPrevBalance) {
       setArrearsOpen(true);
     } else {
       onOpenPaymentDialog(rent);
@@ -110,20 +129,17 @@ export const RentTableRow = ({
         <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">
           {subtitle}
         </p>
-        {rent.prevBalance && (
+        {showPrevBalance && (
           <div className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-orange-200/80 bg-orange-50/80 px-2 py-0.5 dark:bg-orange-950/40 dark:border-orange-800/50">
             <AlertTriangle className="size-3 shrink-0 text-orange-600" />
             <span className="text-[10px] font-semibold text-orange-800 tabular-nums dark:text-orange-200">
-              +{rent.prevBalance.formatted.prevBalance} overdue
+              +{pb.formatted.prevBalance} arrears
             </span>
-            {rent.prevBalance.oldestOverdueNepaliYear != null && (
-              <span className="text-[10px] text-orange-700 dark:text-orange-300">
-                since {rent.prevBalance.oldestOverdueNepaliYear}
-                {rent.prevBalance.oldestOverdueNepaliMonth != null
-                  ? `/${String(rent.prevBalance.oldestOverdueNepaliMonth).padStart(2, "0")}`
-                  : ""}
-              </span>
-            )}
+            <span className="text-[10px] text-orange-700 dark:text-orange-300">
+              since {pbMonth != null
+                ? `${pbYear}/${String(pbMonth).padStart(2, "0")}`
+                : pbYear}
+            </span>
           </div>
         )}
       </TableCell>
@@ -214,7 +230,7 @@ export const RentTableRow = ({
           )}
         </div>
 
-        {rent.prevBalance && (
+        {showPrevBalance && (
           <ArrearsPaymentDialog
             open={arrearsOpen}
             onClose={() => setArrearsOpen(false)}

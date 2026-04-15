@@ -13,6 +13,7 @@ import {
     Building2,
 } from "lucide-react";
 import { formatOverdueSince } from "../hooks/useArrearsData";
+import { getTodayNepali } from "@/utils/nepaliDate";
 
 // ─── Severity tokens ──────────────────────────────────────────────────────────
 const SEV = {
@@ -120,15 +121,46 @@ function buildAlerts(stats, arrears) {
     //   consecutiveUnpaidMonths
     const arrearsList = Array.isArray(arrears) ? arrears : [];
 
+    // Use collectionPhase from stats to avoid false overdue alerts early in
+    // the billing cycle (e.g. day 1 when due date is 31 days away).
+    const collectionPhase = stats?.kpi?.collectionPhase ?? "pending";
+    const todayNp = getTodayNepali(); // { year, month, day } in Nepali calendar
+
     arrearsList.forEach((a, i) => {
+        const odYear = a.oldestOverdueNepaliYear;
+        const odMonth = a.oldestOverdueNepaliMonth;
+        const months = a.consecutiveUnpaidMonths ?? 0;
+
+        // "From a past Nepali cycle" means the unpaid balance predates the
+        // current month — genuinely overdue regardless of this month's due date.
+        const isFromPastCycle =
+            odYear != null &&
+            odMonth != null &&
+            (odYear < todayNp.year ||
+                (odYear === todayNp.year && odMonth < todayNp.month));
+
+        // Only surface in the attention panel when the rent is actually overdue:
+        //   • collectionPhase "overdue"  → due date passed, real defaulters
+        //   • collectionPhase "due_soon" → within 2 days of due date (warn)
+        //   • isFromPastCycle            → owes from a previous Nepali month
+        //   • months > 1                 → multiple consecutive unpaid months
+        // Skip when phase is "pending" and debt is only from the current month
+        // (due date still in the future — not yet concerning).
+        const isGenuinelyOverdue =
+            collectionPhase === "overdue" ||
+            collectionPhase === "due_soon" ||
+            isFromPastCycle ||
+            months > 1;
+
+        if (!isGenuinelyOverdue) return;
+
         const name = a.tenant?.name ?? `Tenant ${i + 1}`;
         const total = a.totalDuePaisa > 0 ? fmtAmt(a.totalDuePaisa / 100) : null;
-        const overdueSince = formatOverdueSince(
-            a.oldestOverdueNepaliYear,
-            a.oldestOverdueNepaliMonth,
-        );
-        const months = a.consecutiveUnpaidMonths;
+        const overdueSince = formatOverdueSince(odYear, odMonth);
         const unitName = a.units?.[0]?.name ?? a.units?.[0]?.unitNumber ?? null;
+
+        // "due_soon" cases are not yet past due — use "high" severity + "Due Soon" badge
+        const isDueSoon = collectionPhase === "due_soon" && !isFromPastCycle && months <= 1;
 
         // Sub-line: amount + "since Poush 2081" + months count
         const subParts = [];
@@ -139,14 +171,14 @@ function buildAlerts(stats, arrears) {
         alerts.push({
             id: `overdue-${i}`,
             type: "rent",
-            severity: "critical",
+            severity: isDueSoon ? "high" : "critical",
             icon: AlertTriangle,
             title: name,
-            sub: subParts.length > 0 ? subParts.join(" · ") : "Rent arrears outstanding",
+            sub: subParts.length > 0 ? subParts.join(" · ") : (isDueSoon ? "Rent due soon" : "Rent arrears outstanding"),
             meta: unitName,
-            badge: months > 1 ? `${months} mo` : "Overdue",
+            badge: isDueSoon ? "Due Soon" : (months > 1 ? `${months} mo` : "Overdue"),
             to: "/rent-payment",
-            sortKey: 0,
+            sortKey: isDueSoon ? 1 : 0,
         });
     });
 

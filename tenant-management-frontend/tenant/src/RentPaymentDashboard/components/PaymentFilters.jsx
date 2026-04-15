@@ -1,9 +1,3 @@
-// src/pages/rent/components/PaymentFilters.jsx
-//
-// Pill + popover filter bar — matches redesigned RentFilter visual language.
-// All props/callbacks identical — zero functionality changes.
-// Pure Tailwind + shadcn, zero inline styles.
-
 import React from "react";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Check } from "lucide-react";
@@ -32,8 +26,8 @@ const FilterPill = ({ label, isActive, children }) => (
           "transition-all select-none whitespace-nowrap focus-visible:outline-none",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
           isActive
-            ? "bg-foreground border-foreground text-background"
-            : "bg-card border-border text-foreground hover:bg-accent hover:border-foreground/20",
+            ? "bg-primary border-primary text-background"
+            : "bg-card border-border text-foreground hover:bg-accent hover:border-primary/20",
         )}
       >
         {label}
@@ -123,7 +117,7 @@ export const PaymentFilters = ({
                   "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium",
                   "transition-colors text-left",
                   activeMethod === value
-                    ? "bg-accent text-foreground"
+                    ? "bg-primary text-background"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
@@ -168,7 +162,7 @@ export const PaymentFilters = ({
                 "h-7 inline-flex items-center rounded-full border px-3.5 text-xs font-medium",
                 "transition-colors shrink-0 whitespace-nowrap select-none",
                 isActive
-                  ? "bg-foreground border-foreground text-background"
+                  ? "bg-primary border-primary text-background"
                   : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-accent",
               )}
             >

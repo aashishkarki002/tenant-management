@@ -5,7 +5,6 @@ import { useFormik } from 'formik';
 import { toast } from 'sonner';
 import api from '../../plugins/axios';
 import { useUnits } from '../hooks/use-units';
-import { useBlocks } from '../hooks/use-blocks';
 import { useBankAccounts } from '../Accounts/hooks/useAccounting';
 import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import MaintenanceCard from './components/MaintenanceCard';
@@ -16,7 +15,6 @@ import { MaintenanceStats } from './components/MaintenanceStats';
 import { MaintenanceFilters } from './components/MaintenanceFilters';
 import { MaintenanceList } from './components/MaintenanceList';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
-import { MaintenanceDetailSheet } from './components/MaintenanceDetailSheet';
 import { useMaintenance } from './hooks/useMaintenance';
 import { useMaintenanceFilters } from './hooks/useMaintenanceFilters';
 import {
@@ -34,7 +32,6 @@ import {
 
 export default function MaintenancePage() {
   const { units = [] } = useUnits();
-  const { blocks = [] } = useBlocks();
   const { bankAccounts = [] } = useBankAccounts();
 
   const {
@@ -64,7 +61,6 @@ export default function MaintenancePage() {
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [activeTab, setActiveTab] = useState('list');
   const [viewMode, setViewMode] = useState('table');
-  const [detailItem, setDetailItem] = useState(null);
 
   const stats = useMemo(() => calculateMaintenanceStats(maintenance), [maintenance]);
 
@@ -75,9 +71,8 @@ export default function MaintenancePage() {
       category: '',
       priority: '',
       status: '',
-      scope: 'UNIT',
+      scope: 'UNIT',   // new field
       unit: '',
-      block: '',
       tenant: '',
       assignTo: '',
       estimatedCost: '',
@@ -105,7 +100,6 @@ export default function MaintenancePage() {
           status: values.status || 'OPEN',
           scope: values.scope || 'UNIT',
           unit: values.unit || undefined,
-          block: values.block || undefined,
           tenant: values.tenant || undefined,
           assignedTo: values.assignTo || undefined,
           amount: values.estimatedCost ? parseFloat(values.estimatedCost) : 0,
@@ -198,7 +192,6 @@ export default function MaintenancePage() {
           formatDate={formatDate}
           workOrderId={workOrderId}
           onUpdate={updateMaintenanceItem}
-          onViewDetail={setDetailItem}
           bankAccounts={bankAccounts}
           staffs={staffs}
         />
@@ -213,7 +206,7 @@ export default function MaintenancePage() {
   return (
     <div className="min-h-screen px-4 sm:px-6 font-sans">
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full  p-2">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full   p-2">
         <div className="border-b border-muted-fill ">
           <TabsList className=" h-auto  gap-2">
             {[
@@ -243,7 +236,6 @@ export default function MaintenancePage() {
               <AddMaintenanceDialog
                 formik={formik}
                 units={units}
-                blocks={blocks}
                 staffs={staffs}
                 selectedTenant={selectedTenant}
                 isLoading={isLoading}
@@ -273,7 +265,6 @@ export default function MaintenancePage() {
             formatStatus={formatStatus}
             formatDate={formatDate}
             onUpdate={updateMaintenanceItem}
-            onViewDetail={setDetailItem}
             bankAccounts={bankAccounts}
             staffs={staffs}
             hasAnyTickets={hasAnyTickets}
@@ -282,7 +273,6 @@ export default function MaintenancePage() {
               <AddMaintenanceDialog
                 formik={formik}
                 units={units}
-                blocks={blocks}
                 staffs={staffs}
                 selectedTenant={selectedTenant}
                 isLoading={isLoading}
@@ -300,11 +290,6 @@ export default function MaintenancePage() {
 
       {/* Generator Tab */}
       {activeTab === 'generator' && <GeneratorPanel />}
-
-      <MaintenanceDetailSheet
-        item={detailItem}
-        onClose={() => setDetailItem(null)}
-      />
     </div>
   );
 }

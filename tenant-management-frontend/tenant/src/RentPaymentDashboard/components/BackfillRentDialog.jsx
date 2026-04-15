@@ -18,15 +18,9 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useBackfillRent } from "../hooks/useBackfillRent";
 import api from "../../../plugins/axios";
-import { getTodayNepali } from "@/utils/nepaliDate";
+import { getTodayNepali, NEPALI_MONTH_NAMES } from "@/utils/nepaliDate";
 
-// ── Nepali month names (1-based index) ────────────────────────────────────────
-const NEPALI_MONTH_NAMES = [
-  "", // pad so index 1 = Baisakh
-  "Baisakh", "Jestha", "Ashadh", "Shrawan",
-  "Bhadra", "Ashwin", "Kartik", "Mangsir",
-  "Poush", "Magh", "Falgun", "Chaitra",
-];
+
 
 /**
  * Generate the past `count` Nepali months going back from (but not including)
@@ -208,8 +202,8 @@ export const BackfillRentDialog = ({ open, onOpenChange, onSuccess }) => {
                       alreadyExists
                         ? "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-50"
                         : isSelected
-                        ? "border-primary bg-primary/10 text-primary font-semibold"
-                        : "border-border bg-background hover:bg-accent hover:text-accent-foreground",
+                          ? "border-primary bg-primary/10 text-primary font-semibold"
+                          : "border-border bg-background hover:bg-accent hover:text-accent-foreground",
                     ].join(" ")}
                   >
                     <span className="block font-medium">

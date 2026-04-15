@@ -1,26 +1,18 @@
 /**
- * FilterControlBar.jsx  (rewrite)
+ * FilterControlBar.jsx  (rewrite — v3)
  *
- * Desktop layout — three clear zones, no decorative dividers:
- *   [Scope zone] | [Period zone — granularity seg + value chip] | [Compare zone]
- *
- * Mobile — slim top bar with current label + bottom-sheet trigger (unchanged UX,
- * polished styles).
- *
- * What changed vs. the original:
- *   • "SCOPE" label + LayersIcon removed — pills are self-explanatory
- *   • Entity sub-type badges removed from pill text (type shown via dot color only)
- *   • Redundant filterLabel summary span at far-right removed
- *   • Vertical <div> divider elements replaced by border-r on zone wrappers
- *   • SegmentControl + ValueChip unified into one <PeriodControl> group
- *   • Compare zone lives in its own right-anchored section
- *   • Bar height bumped to h-12 (48 px) for more breathing room
+ * Changes in this version:
+ *   • Month picker now uses NEPALI_MONTHS_FY_ORDER (Shrawan-first) — both
+ *     desktop dropdown and mobile sheet
+ *   • Removed CURRENT_FISCAL_YEAR / CURRENT_BS_MONTH_NAME stale constant
+ *     imports — no constants from this file were used anyway
+ *   • Desktop: added `sticky top-0 z-20` so the bar pins on scroll
  *   • All props identical — zero breaking changes
  */
 
 import { useState, useMemo, useRef, forwardRef } from "react";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ChevronDownIcon, GitCompareArrows } from "lucide-react";
+import { CalendarIcon, ChevronDownIcon } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -37,9 +29,12 @@ import {
 } from "@/components/ui/sheet";
 
 import {
-    NEPALI_MONTH_NAMES,
+    NEPALI_MONTH_NAMES,       // still needed for periodValueLabel display
+    NEPALI_MONTHS_FY_ORDER,   // ✅ FY-ordered list for pickers
     QUARTER_LABELS,
     toBSShort,
+    getCurrentBSMonth,
+    getCurrentFiscalYear,
 } from "../utils/nepaliCalendar";
 
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -64,10 +59,6 @@ const GRANULARITIES = [
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
-/**
- * EntityPill — dot + name, no sub-type badge.
- * The dot color already encodes private (green) vs company (accent).
- */
 function EntityPill({ label, dot, isActive, onClick }) {
     return (
         <button
@@ -92,10 +83,6 @@ function EntityPill({ label, dot, isActive, onClick }) {
     );
 }
 
-/**
- * GranularitySegment — pill-style segment control embedded in the period zone.
- * Sits flush inside PeriodZone with no outer border (the zone itself provides context).
- */
 function GranularitySegment({ value, onChange }) {
     return (
         <div className="flex items-center rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-[3px] gap-[2px] shrink-0">
@@ -118,12 +105,6 @@ function GranularitySegment({ value, onChange }) {
     );
 }
 
-/**
- * PeriodChip — the dropdown trigger that shows the current period value.
- * Uses forwardRef so Radix DropdownMenuTrigger asChild can inject its ref
- * and onClick handler correctly. All extra props (including Radix's injected
- * aria-* and data-* attributes) are spread onto the underlying button.
- */
 const PeriodChip = forwardRef(function PeriodChip({ label, onClick, ...rest }, ref) {
     return (
         <button
@@ -143,6 +124,8 @@ const PeriodChip = forwardRef(function PeriodChip({ label, onClick, ...rest }, r
     );
 });
 
+
+
 // ─── Mobile bar ───────────────────────────────────────────────────────────────
 
 function MobileFilterBar({
@@ -154,12 +137,10 @@ function MobileFilterBar({
 }) {
     const [open, setOpen] = useState(false);
     const FISCAL_YEARS = [selectedFiscalYear, selectedFiscalYear - 1, selectedFiscalYear - 2];
-
     const hasNonDefaultFilter = filterGranularity !== "year";
 
     return (
         <div className="no-print flex items-center justify-between px-4 h-11 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-            {/* Current period summary */}
             <span className="text-[12px] font-medium text-[var(--color-text-sub)] truncate">
                 {filterLabel}
             </span>
@@ -185,9 +166,7 @@ function MobileFilterBar({
 
                 <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-auto">
                     <SheetHeader className="pb-1">
-                        <SheetTitle className="text-[var(--color-accent)]">
-                            Filter Period
-                        </SheetTitle>
+                        <SheetTitle className="text-[var(--color-accent)]">Filter Period</SheetTitle>
                     </SheetHeader>
 
                     <div className="mt-5 flex flex-col gap-5 pb-2">
@@ -283,23 +262,28 @@ function MobileFilterBar({
                             </div>
                         )}
 
-                        {/* Month picker */}
+                        {/* Month picker — FY order ✅ */}
                         {filterGranularity === "month" && (
-                            <div className="grid grid-cols-3 gap-2">
-                                {NEPALI_MONTH_NAMES.map((m, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={() => onMonthChange(i + 1)}
-                                        className={cn(
-                                            "py-2.5 rounded-xl border text-[13px] font-semibold cursor-pointer transition-colors",
-                                            selectedMonth === i + 1
-                                                ? "bg-[var(--color-accent)] border-[var(--color-accent)] text-white"
-                                                : "border-[var(--color-border)] text-[var(--color-text-body)] hover:border-[var(--color-accent-mid)]",
-                                        )}
-                                    >
-                                        {m.slice(0, 3)}
-                                    </button>
-                                ))}
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--color-text-sub)] mb-3">
+                                    Month
+                                </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {NEPALI_MONTHS_FY_ORDER.map(({ month, name }) => (
+                                        <button
+                                            key={month}
+                                            onClick={() => onMonthChange(month)}
+                                            className={cn(
+                                                "py-2.5 rounded-xl border text-[13px] font-semibold cursor-pointer transition-colors",
+                                                selectedMonth === month
+                                                    ? "bg-[var(--color-accent)] border-[var(--color-accent)] text-white"
+                                                    : "border-[var(--color-border)] text-[var(--color-text-body)] hover:border-[var(--color-accent-mid)]",
+                                            )}
+                                        >
+                                            {name.slice(0, 3)}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
@@ -364,14 +348,23 @@ export default function FilterControlBar({
         [selectedFiscalYear],
     );
 
-    // Reset sub-selections when granularity changes so stale values don't leak
     const handleGranularity = (g) => {
         onGranularityChange(g);
         if (g !== "custom") { onCustomStartChange(""); onCustomEndChange(""); }
-        if (g !== "month") onMonthChange(null);
+        if (g === "month") {
+            // Auto-select current BS month and ensure FY matches
+            onMonthChange(getCurrentBSMonth());
+            onFiscalYearChange(getCurrentFiscalYear());
+        } else {
+            onMonthChange(null);
+        }
         if (g !== "quarter") onQuarterChange(null);
     };
 
+    // periodValueLabel uses NEPALI_MONTH_NAMES[selectedMonth - 1] which is correct
+    // because selectedMonth is always a 1-indexed Nepali month number, and
+    // NEPALI_MONTH_NAMES is indexed 0–11 (Baisakh=0). This is a display-only
+    // lookup — the picker is what previously had the ordering bug.
     const periodValueLabel = useMemo(() => {
         if (filterGranularity === "year")
             return `FY ${selectedFiscalYear}/${String(selectedFiscalYear + 1).slice(2)}`;
@@ -408,20 +401,18 @@ export default function FilterControlBar({
     }
 
     return (
-        <div className="no-print flex-shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur-sm">
+        <div className="no-print sticky top-0 z-20 flex-shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur-sm">
             <div className="flex items-center h-12 min-w-0">
 
                 {/* ── ZONE A: Entity scope ─────────────────────────────────── */}
                 {showEntities && (
                     <div className="flex items-center gap-1.5 shrink-0 h-full px-4 sm:px-6 border-r border-[var(--color-border)]">
-                        {/* "All" pill */}
                         <EntityPill
                             label="All"
                             dot="var(--color-accent)"
                             isActive={activeEntityId === null}
                             onClick={() => onEntitySelect(null)}
                         />
-                        {/* Individual entity pills */}
                         {entities
                             .filter(e => e.type !== "head_office")
                             .map(entity => (
@@ -440,22 +431,17 @@ export default function FilterControlBar({
                 {/* ── ZONE B: Period controls ──────────────────────────────── */}
                 <div className="flex items-center gap-2.5 h-full flex-1 min-w-0 px-4 sm:px-5">
 
-                    {/* Granularity segment */}
-                    <GranularitySegment
-                        value={filterGranularity}
-                        onChange={handleGranularity}
-                    />
+                    <GranularitySegment value={filterGranularity} onChange={handleGranularity} />
 
-                    {/* Period value — dropdown or custom inline picker */}
                     {filterGranularity !== "custom" ? (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <PeriodChip label={periodValueLabel} />
                             </DropdownMenuTrigger>
 
-                            <DropdownMenuContent align="start" className="rounded-2xl p-3 min-w-[200px]">
+                            <DropdownMenuContent align="start" className="rounded-2xl p-3 min-w-[220px]">
 
-                                {/* ── Year dropdown ── */}
+                                {/* ── Year ── */}
                                 {filterGranularity === "year" && (
                                     <>
                                         <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-text-sub)] mb-2 px-1">
@@ -476,7 +462,7 @@ export default function FilterControlBar({
                                     </>
                                 )}
 
-                                {/* ── Quarter dropdown ── */}
+                                {/* ── Quarter ── */}
                                 {filterGranularity === "quarter" && (
                                     <>
                                         <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-text-sub)] mb-2 px-1">
@@ -512,23 +498,23 @@ export default function FilterControlBar({
                                     </>
                                 )}
 
-                                {/* ── Month dropdown ── */}
+
                                 {filterGranularity === "month" && (
                                     <>
                                         <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-text-sub)] mb-2 px-1">
                                             Month · FY {selectedFiscalYear}
                                         </p>
                                         <div className="grid grid-cols-3 gap-1">
-                                            {NEPALI_MONTH_NAMES.map((m, i) => (
+                                            {NEPALI_MONTHS_FY_ORDER.map(({ month, name }) => (
                                                 <DropdownMenuItem
-                                                    key={i}
-                                                    onClick={() => onMonthChange(i + 1)}
+                                                    key={month}
+                                                    onClick={() => onMonthChange(month)}
                                                     className={cn(
                                                         "cursor-pointer rounded-lg text-center justify-center text-[12px]",
-                                                        selectedMonth === i + 1 && "font-bold text-[var(--color-accent)] bg-[var(--color-accent-light)]",
+                                                        selectedMonth === month && "font-bold text-[var(--color-accent)] bg-[var(--color-accent-light)]",
                                                     )}
                                                 >
-                                                    {m.slice(0, 3)}
+                                                    {name.slice(0, 3)}
                                                 </DropdownMenuItem>
                                             ))}
                                         </div>
@@ -551,7 +537,7 @@ export default function FilterControlBar({
                         </DropdownMenu>
 
                     ) : (
-                        /* Custom date range — inline popover */
+                        /* Custom date range */
                         <div className="relative shrink-0" ref={customRef}>
                             {customStart && customEnd ? (
                                 <PeriodChip

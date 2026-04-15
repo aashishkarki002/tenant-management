@@ -94,6 +94,19 @@
   --color-info-bg: #dbeafe;
   --color-info-border: #bfdbfe;
 
+  /* ── Ownership Identity ── */
+  --color-private: #3d3b8e;
+  --color-private-bg: #ededfa;
+  --color-private-border: #c8c6f0;
+
+  --color-sallyan: #b54b2a;
+  --color-sallyan-bg: #fbede8;
+  --color-sallyan-border: #f2c3b2;
+
+  --color-headoffice: #1a6644;
+  --color-headoffice-bg: #e6f4ed;
+  --color-headoffice-border: #b6dccc;
+
   /* ── Shadows ── */
   --shadow-card:
     0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
@@ -211,6 +224,18 @@
   --color-info: #60a5fa;
   --color-info-bg: #0d1b2e;
   --color-info-border: #1e3a5f;
+  /* ── Ownership Identity ── */
+  --color-private: #3d3b8e;
+  --color-private-bg: #ededfa;
+  --color-private-border: #c8c6f0;
+
+  --color-sallyan: #b54b2a;
+  --color-sallyan-bg: #fbede8;
+  --color-sallyan-border: #f2c3b2;
+
+  --color-headoffice: #1a6644;
+  --color-headoffice-bg: #e6f4ed;
+  --color-headoffice-border: #b6dccc;
 
   /* ── Shadows ── */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -399,7 +424,11 @@
 }
 .sd-status-card[data-sd-status="refunded"],
 .sd-status-card[data-sd-status="adjusted"] {
-  background: color-mix(in srgb, var(--color-text-sub) 12%, var(--color-surface));
+  background: color-mix(
+    in srgb,
+    var(--color-text-sub) 12%,
+    var(--color-surface)
+  );
   border-color: var(--color-border);
   --sd-ink: var(--color-text-sub);
 }
@@ -449,7 +478,9 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    transform 0.1s;
   flex-shrink: 0;
 }
 .sd-settle-btn:hover {
@@ -667,7 +698,11 @@
   white-space: nowrap;
 }
 .sdrh-status[data-sdrh-status="DRAFT"] {
-  background: color-mix(in srgb, var(--color-text-sub) 16%, var(--color-surface));
+  background: color-mix(
+    in srgb,
+    var(--color-text-sub) 16%,
+    var(--color-surface)
+  );
   color: var(--color-text-sub);
 }
 .sdrh-status[data-sdrh-status="CONFIRMED"] {

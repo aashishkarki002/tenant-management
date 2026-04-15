@@ -26,7 +26,7 @@ import { GitCompareArrowsIcon, XIcon, ArrowRightIcon } from "lucide-react";
 
 // ── Single import — no local BS_MONTHS or QUARTER_MONTHS duplicates ──────────
 import {
-    NEPALI_MONTH_NAMES,
+    NEPALI_MONTHS_FY_ORDER,
     QUARTER_LABELS,
 } from "../utils/nepaliCalendar";
 
@@ -96,14 +96,14 @@ function PeriodBPicker({ granularity, fiscalYears, draft, onChange }) {
                         Month
                     </p>
                     <div className="grid grid-cols-4 gap-1.5">
-                        {/* ✅ NEPALI_MONTH_NAMES from nepaliCalendar — not a local BS_MONTHS array */}
-                        {NEPALI_MONTH_NAMES.map((m, i) => (
+                        {/* ✅ NEPALI_MONTHS_FY_ORDER — Shrawan-first, matches fiscal year */}
+                        {NEPALI_MONTHS_FY_ORDER.map(({ month, name }) => (
                             <button
-                                key={i}
-                                onClick={() => onChange({ ...draft, month: i + 1 })}
-                                className={cn(btnCls(draft.month === i + 1), "text-center px-1 py-2")}
+                                key={month}
+                                onClick={() => onChange({ ...draft, month })}
+                                className={cn(btnCls(draft.month === month), "text-center px-1 py-2")}
                             >
-                                {m.slice(0, 3)}
+                                {name.slice(0, 3)}
                             </button>
                         ))}
                     </div>

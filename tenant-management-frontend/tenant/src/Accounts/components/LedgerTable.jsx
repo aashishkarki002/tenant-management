@@ -8,6 +8,7 @@
  * runningBalance computed server-side — no client sorting.
  */
 
+import { useState } from "react";
 import { usePagination } from "../hooks/usePagination";
 import { toBSDate } from "../utils/nepaliCalendar";   // ← replaces raw Date API
 import { cn } from "@/lib/utils";
@@ -23,20 +24,68 @@ import {
     ChevronLeftIcon, ChevronRightIcon, MoreHorizontalIcon,
 } from "lucide-react";
 
+const LEDGER_FILTERS = [
+    { value: "all",    label: "All" },
+    { value: "credit", label: "Credits" },
+    { value: "debit",  label: "Debits" },
+];
+
 export default function LedgerTable({
     entries,
     loading = false,
     itemsPerPage = 10,
 }) {
+    const [typeFilter, setTypeFilter] = useState("all");
+
+    const filteredEntries = typeFilter === "all"
+        ? entries
+        : typeFilter === "credit"
+            ? entries.filter(e => e.credit > 0)
+            : entries.filter(e => e.debit > 0);
+
     const {
         currentPage, totalPages,
         startIndex, endIndex,
         paginatedItems,
         nextPage, prevPage, goToPage,
-    } = usePagination(entries, itemsPerPage);
+    } = usePagination(filteredEntries, itemsPerPage);
 
     return (
         <>
+            {/* ── Type filter pills ───────────────────────────────────────────── */}
+            <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-[var(--color-border)]">
+                {LEDGER_FILTERS.map(opt => {
+                    const isActive = typeFilter === opt.value;
+                    return (
+                        <button
+                            key={opt.value}
+                            onClick={() => { setTypeFilter(opt.value); goToPage(1); }}
+                            className="inline-flex items-center h-6 px-2.5 rounded-md text-[11px] font-semibold cursor-pointer transition-colors border"
+                            style={{
+                                background: isActive
+                                    ? opt.value === "credit" ? "var(--color-success)"
+                                    : opt.value === "debit"  ? "var(--color-danger)"
+                                    : "var(--color-accent)"
+                                    : "transparent",
+                                borderColor: isActive
+                                    ? opt.value === "credit" ? "var(--color-success)"
+                                    : opt.value === "debit"  ? "var(--color-danger)"
+                                    : "var(--color-accent)"
+                                    : "var(--color-border)",
+                                color: isActive ? "#fff" : "var(--color-text-sub)",
+                            }}
+                        >
+                            {opt.label}
+                        </button>
+                    );
+                })}
+                {typeFilter !== "all" && (
+                    <span className="text-[10px] ml-1" style={{ color: "var(--color-text-sub)" }}>
+                        {filteredEntries.length} of {entries.length} entries
+                    </span>
+                )}
+            </div>
+
             <div className="overflow-x-auto">
                 <Table>
                     <TableHeader>
@@ -53,9 +102,11 @@ export default function LedgerTable({
                             <TableRow>
                                 <TableCell colSpan={5} className="text-center text-[var(--color-text-sub)]">Loading…</TableCell>
                             </TableRow>
-                        ) : entries.length === 0 ? (
+                        ) : filteredEntries.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="text-center text-[var(--color-text-sub)]">No ledger entries</TableCell>
+                                <TableCell colSpan={5} className="text-center text-[var(--color-text-sub)]">
+                                    {typeFilter === "all" ? "No ledger entries" : `No ${typeFilter} entries for this period`}
+                                </TableCell>
                             </TableRow>
                         ) : (
                             paginatedItems.map((entry, index) => (
@@ -90,10 +141,10 @@ export default function LedgerTable({
                 </Table>
             </div>
 
-            {entries.length > itemsPerPage && (
+            {filteredEntries.length > itemsPerPage && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-4 pt-4 border-t px-4 pb-4">
                     <div className="text-sm text-muted-foreground text-center sm:text-left">
-                        Showing {startIndex + 1}–{Math.min(endIndex, entries.length)} of {entries.length} entries
+                        Showing {startIndex + 1}–{Math.min(endIndex, filteredEntries.length)} of {filteredEntries.length} entries
                     </div>
                     <Pagination>
                         <PaginationContent>

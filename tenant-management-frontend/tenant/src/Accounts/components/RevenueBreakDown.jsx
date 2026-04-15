@@ -1,23 +1,22 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
-    AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+    AreaChart, Area,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { Plus, Download, RefreshCw, ArrowUpRight, ArrowDownRight, BarChart2 } from "lucide-react";
-import SectionToggle from "./SectionToggle";
 import { AddRevenueDialog } from "./AddRevenueDialog";
 import { usePagination } from "../hooks/usePagination";
 import { useRevenueSummary, useBankAccounts } from "../hooks/useAccounting";
 import { useIsMobile } from "@/hooks/use-mobile";
 import api from "../../../plugins/axios";
 import { NEPALI_MONTH_NAMES, QUARTER_LABELS, toBSDate } from "../utils/nepaliCalendar";
+import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ORDER } from "@/constants/paymentMethods";
 
-// ─── Design tokens (petrol system aliases) ────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
     bg:          "var(--color-bg)",
     surface:     "var(--color-surface)",
-    raised:      "var(--color-surface-raised)",
     alt:         "var(--color-muted)",
     border:      "var(--color-border)",
     text:        "var(--color-text-strong)",
@@ -25,12 +24,10 @@ const T = {
     sub:         "var(--color-text-sub)",
     weak:        "var(--color-text-weak)",
     accent:      "var(--color-accent)",
-    // Semantic
-    revenue:     "var(--color-info)",          // blue — matches OverviewTab
+    revenue:     "var(--color-info)",
     revenueBg:   "var(--color-info-bg)",
     green:       "var(--color-success)",
     greenBg:     "var(--color-success-bg)",
-    greenBorder: "var(--color-success-border)",
     amber:       "var(--color-warning)",
     amberBg:     "var(--color-warning-bg)",
     amberBorder: "var(--color-warning-border)",
@@ -40,20 +37,6 @@ const T = {
     blueBg:      "var(--color-info-bg)",
 };
 
-// Multi-category palette — intentional distinct colors for pie/distribution charts
-// First two use system tokens; rest are intentional categorical colors
-const PALETTE = [
-    "var(--color-info)",    // blue
-    "var(--color-accent)",  // petrol
-    "#6D28D9",              // violet
-    "var(--color-warning)", // amber
-    "#0E7490",              // teal
-    "#BE185D",              // pink
-    "var(--color-success)", // green
-    "var(--color-danger)",  // red
-];
-
-// Reference type badge config (intentional categorical colors per revenue type)
 const REF_CFG = {
     RENT:        { bg: T.blueBg,    color: T.blue },
     PARKING:     { bg: "#DBEAFE",   color: "#1D4ED8" },
@@ -72,77 +55,41 @@ const fmtK = (v) => {
          : String(a);
 };
 
-// ─── Primitives ───────────────────────────────────────────────────────────────
-
-function Panel({ children, style = {}, delay = 0, noPad = false }) {
+// ─── Mini SVG Sparkline (no recharts overhead) ────────────────────────────────
+function MiniSparkline({ data, color = "var(--color-info)", width = 96, height = 32, highlightIdx = -1 }) {
+    if (!data || data.length < 2) return null;
+    const vals = data.map(d => d.revenue);
+    const min  = Math.min(...vals);
+    const max  = Math.max(...vals);
+    const rng  = max - min || 1;
+    const pad  = 3;
+    const pts  = vals.map((v, i) => [
+        (i / (vals.length - 1)) * (width - pad * 2) + pad,
+        height - pad - ((v - min) / rng) * (height - pad * 2),
+    ]);
+    const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+    const hi   = highlightIdx >= 0 && highlightIdx < pts.length ? pts[highlightIdx] : null;
     return (
-        <div
-            className="ap-card rounded-xl border"
-            style={{
-                background:    T.surface,
-                borderColor:   T.border,
-                padding:       noPad ? 0 : "18px 20px",
-                animationDelay: `${Math.min(delay, 4) * 0.05}s`,
-                ...style,
-            }}
-        >
-            {children}
-        </div>
+        <svg width={width} height={height} style={{ overflow: "visible", flexShrink: 0 }}>
+            <path d={path} fill="none" stroke={color} strokeWidth="1.5"
+                strokeLinecap="round" strokeLinejoin="round" opacity="0.5" />
+            {hi && (
+                <circle cx={hi[0]} cy={hi[1]} r="3" fill={color} stroke="white" strokeWidth="1.5" />
+            )}
+        </svg>
     );
 }
 
-// Hero "ink" panel — dark petrol, consistent with DarkCard in AccountingPrimitives
-function InkPanel({ children, style = {}, delay = 0 }) {
-    return (
-        <div
-            className="ap-card rounded-xl overflow-hidden"
-            style={{
-                background:    "#0d2535",
-                boxShadow:     "inset 0 1px 0 rgba(255,255,255,0.08)",
-                padding:       "18px 20px",
-                animationDelay: `${Math.min(delay, 4) * 0.05}s`,
-                ...style,
-            }}
-        >
-            {children}
-        </div>
-    );
-}
-
-function Label({ children, inverted, className = "", style = {} }) {
-    return (
-        <div
-            className={`text-[10px] font-bold tracking-[0.09em] uppercase mb-2 ${className}`}
-            style={{ color: inverted ? "rgba(255,255,255,.4)" : T.sub, ...style }}
-        >
-            {children}
-        </div>
-    );
-}
-
-// Numbers use DM Sans font-black (matching AccountingPrimitives KpiNumber)
-function BigNum({ v, size = 36, inverted = false }) {
-    return (
-        <div
-            className="font-black leading-none tabular-nums"
-            style={{ fontSize: size, color: inverted ? "#fff" : T.text }}
-        >
-            ₹{Number(Math.abs(v)).toLocaleString("en-IN")}
-        </div>
-    );
-}
-
+// ─── Chip ─────────────────────────────────────────────────────────────────────
 function Chip({ up, label, size = "sm" }) {
-    const pad = size === "sm" ? "1px 7px" : "3px 10px";
-    const fs  = size === "sm" ? 10 : 12;
     return (
         <span
             className="inline-flex items-center gap-[3px] rounded font-bold"
             style={{
-                padding:    pad,
-                fontSize:   fs,
-                background: up ? T.greenBg  : T.redBg,
-                color:      up ? T.green    : T.red,
+                padding:    size === "sm" ? "1px 7px" : "3px 10px",
+                fontSize:   size === "sm" ? 10 : 12,
+                background: up ? T.greenBg : T.redBg,
+                color:      up ? T.green   : T.red,
             }}
         >
             {up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
@@ -151,95 +98,86 @@ function Chip({ up, label, size = "sm" }) {
     );
 }
 
-function MiniBar({ value, max, color = T.revenue, h = 4 }) {
-    const w = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function Skeleton({ h = 14, w = "100%" }) {
     return (
-        <div className="w-full overflow-hidden" style={{ height: h, borderRadius: 2, background: T.border }}>
-            <div style={{ height: "100%", width: `${w}%`, background: color, borderRadius: 2, transition: "width .5s ease" }} />
-        </div>
+        <div className="rounded animate-pulse mb-1.5"
+            style={{ height: h, width: w, background: T.alt }} />
     );
 }
 
-function Skeleton({ h = 14 }) {
-    return (
-        <div
-            className="rounded mb-1.5 animate-pulse"
-            style={{ height: h, background: T.alt }}
-        />
-    );
-}
-
+// ─── Empty ────────────────────────────────────────────────────────────────────
 function Empty({ msg = "No data for this period" }) {
     return (
-        <div className="py-10 text-center" style={{ color: T.sub }}>
-            <BarChart2 size={20} className="mx-auto mb-2 opacity-30" />
+        <div className="py-8 text-center" style={{ color: T.sub }}>
+            <BarChart2 size={18} className="mx-auto mb-2 opacity-30" />
             <div className="text-xs">{msg}</div>
         </div>
     );
 }
 
-// Chart tooltip — fixed dark petrol background, works in both light and dark mode
+// ─── Chart Tooltip ────────────────────────────────────────────────────────────
 function ChartTip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     return (
-        <div
-            className="rounded-lg px-3.5 py-2.5"
-            style={{
-                background: "linear-gradient(140deg, #0a2f46 0%, #1a5276 100%)",
-                boxShadow:  "0 8px 24px rgba(0,0,0,.22)",
-                minWidth:   140,
-                border:     "1px solid rgba(255,255,255,0.08)",
-            }}
-        >
-            <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-2" style={{ color: "rgba(255,255,255,.38)" }}>{label}</div>
+        <div className="rounded-lg px-3.5 py-2.5" style={{
+            background: "linear-gradient(140deg, #0a2f46 0%, #1a5276 100%)",
+            boxShadow:  "0 8px 24px rgba(0,0,0,.22)",
+            minWidth:   140,
+            border:     "1px solid rgba(255,255,255,0.08)",
+        }}>
+            <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-2"
+                style={{ color: "rgba(255,255,255,.38)" }}>{label}</div>
             {payload.map(p => (
                 <div key={p.dataKey} className="flex items-center justify-between gap-4 text-xs text-white">
                     <span style={{ opacity: 0.6 }}>{p.name}</span>
-                    <span className="font-bold tabular-nums">₹{Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}</span>
+                    <span className="font-bold tabular-nums">
+                        ₹{Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}
+                    </span>
                 </div>
             ))}
         </div>
     );
 }
 
+// ─── Badges ───────────────────────────────────────────────────────────────────
 function StatusBadge({ s }) {
     const cfgs = {
-        RECORDED: { bg: T.amberBg,  color: T.amber },
-        SYNCED:   { bg: T.greenBg,  color: T.green },
-        REVERSED: { bg: T.redBg,    color: T.red },
+        RECORDED: { bg: T.amberBg, color: T.amber },
+        SYNCED:   { bg: T.greenBg, color: T.green },
+        REVERSED: { bg: T.redBg,   color: T.red },
     };
     const { bg, color } = cfgs[s] ?? { bg: T.alt, color: T.sub };
     return (
-        <span className="rounded text-[9px] font-bold px-1.5 py-0.5" style={{ background: bg, color }}>
-            {s}
-        </span>
+        <span className="rounded text-[9px] font-bold px-1.5 py-0.5" style={{ background: bg, color }}>{s}</span>
     );
 }
 
 function RefBadge({ t }) {
     const c = REF_CFG[t] ?? { bg: T.alt, color: T.sub };
     return (
-        <span className="rounded text-[9px] font-bold px-1.5 py-0.5" style={{ background: c.bg, color: c.color }}>
-            {t}
-        </span>
+        <span className="rounded text-[9px] font-bold px-1.5 py-0.5" style={{ background: c.bg, color: c.color }}>{t}</span>
     );
 }
 
-function TypeBadge({ t }) {
+// ─── Hairline separator ───────────────────────────────────────────────────────
+function Sep({ my = 32 }) {
+    return <div style={{ height: 1, background: T.border, marginTop: my, marginBottom: my }} />;
+}
+
+// ─── Section label ────────────────────────────────────────────────────────────
+function SectionLabel({ children, right }) {
     return (
-        <span
-            className="rounded text-[9px] font-bold px-1.5 py-0.5"
-            style={{
-                background: t === "TENANT" ? T.blueBg  : T.amberBg,
-                color:      t === "TENANT" ? T.blue    : T.amber,
-            }}
-        >
-            {t}
-        </span>
+        <div className="flex items-center justify-between mb-4">
+            <div className="text-[10px] font-bold tracking-[0.1em] uppercase" style={{ color: T.sub }}>
+                {children}
+            </div>
+            {right && <div className="text-[10px]" style={{ color: T.weak }}>{right}</div>}
+        </div>
     );
 }
 
-// ─── Main ────────────────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function RevenueBreakDown({
     onRevenueAdded,
     selectedQuarter  = null,
@@ -254,10 +192,10 @@ export default function RevenueBreakDown({
     entityId         = null,
 }) {
     const isMobile = useIsMobile();
-    const [tab, setTab] = useState("overview");
     const [dialogOpen, setDialogOpen] = useState(false);
     const [tenants, setTenants] = useState([]);
     const [sources, setSources] = useState([]);
+    const [payMethodFilter, setPayMethodFilter] = useState(null);
     const { bankAccounts } = useBankAccounts();
 
     const { data: D, loading, error, refetch } = useRevenueSummary(
@@ -272,10 +210,12 @@ export default function RevenueBreakDown({
     }, [openDialog]); // eslint-disable-line
 
     useEffect(() => {
-        api.get("/api/tenant/get-tenants").then(({ data }) => setTenants(data?.tenants ?? [])).catch(() => { });
+        api.get("/api/tenant/get-tenants")
+            .then(({ data }) => setTenants(data?.tenants ?? []))
+            .catch(() => {});
         api.get("/api/revenue/get-revenue-source")
             .then(({ data }) => setSources(data?.revenueSource ?? []))
-            .catch(() => { });
+            .catch(() => {});
     }, []);
 
     const onSuccess = () => { refetch(); onRevenueAdded?.(); };
@@ -301,35 +241,98 @@ export default function RevenueBreakDown({
             ...D.transactions.map(t => [t.payer, t.source, t.refType, t.payerType, t.amount, t.bsDate, t.status]),
         ];
         const blob = new Blob([rows.map(r => r.join(",")).join("\n")], { type: "text/csv" });
-        Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `revenue_${Date.now()}.csv` }).click();
+        Object.assign(document.createElement("a"), {
+            href: URL.createObjectURL(blob),
+            download: `revenue_${Date.now()}.csv`,
+        }).click();
     };
 
-    const TABS = ["overview", "transactions", "analysis"];
-    const totals      = D?.totals       ?? { total: 0, count: 0, avg: 0, momPct: null };
-    const streams     = D?.streams      ?? [];
-    const trend       = D?.trend        ?? [];
-    const tenantSplit = D?.tenantSplit  ?? [];
-    const refTypes    = D?.refTypes     ?? [];
-    const statusMap   = D?.statusMap    ?? {};
-    const transactions = D?.transactions ?? [];
+    const totals         = D?.totals            ?? { total: 0, count: 0, avg: 0, momPct: null };
+    const streams        = D?.streams           ?? [];
+    const trend          = D?.trend             ?? [];
+    const payMethodSplit = D?.paymentMethodSplit ?? [];
+    const payerSplit    = D?.payerSplit   ?? [];
+    const refTypes      = D?.refTypes     ?? [];
+    const topTenants    = D?.topTenants   ?? [];
+    const transactions   = D?.transactions      ?? [];
+
+    const filteredTxns = payMethodFilter
+        ? transactions.filter(t => t.paymentMethod === payMethodFilter)
+        : transactions;
     const TXN_PAGE_SIZE = 20;
-    const { paginatedItems: pageTxns, currentPage, totalPages, nextPage, prevPage, startIndex } = usePagination(transactions, TXN_PAGE_SIZE);
+    const {
+        paginatedItems: pageTxns,
+        currentPage, totalPages,
+        nextPage, prevPage, startIndex,
+    } = usePagination(filteredTxns, TXN_PAGE_SIZE);
+
+    // Derived hero insight
+    const insight = useMemo(() => {
+        if (!trend || trend.length < 2) return null;
+        const vals = trend.map(d => d.revenue).filter(v => v > 0);
+        if (!vals.length) return null;
+        const avg  = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const peak = trend.reduce((a, b) => b.revenue > a.revenue ? b : a);
+        const peakIdx  = trend.indexOf(peak);
+        const topStream = streams[0]?.name ?? "rent collection";
+        if (peak.revenue > avg * 1.3) {
+            return {
+                text:      `Revenue peaked in ${peak.label} — driven by ${topStream.toLowerCase()}`,
+                peakIdx,
+                peakLabel: peak.label,
+                peakValue: peak.revenue,
+                isPeak:    true,
+            };
+        }
+        return {
+            text:    `${totals.count} collection${totals.count !== 1 ? "s" : ""} across ${streams.length} stream${streams.length !== 1 ? "s" : ""} · ${periodLabel}`,
+            peakIdx: trend.length - 1,
+            isPeak:  false,
+        };
+    }, [trend, streams, totals, periodLabel]);
 
     return (
         <div style={{ color: T.text }}>
 
-            {/* ── Header ───────────────────────────────────────────────────────── */}
-            <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
+            {/* ── 1. Header (Notion-style, pure typography) ─────────────────── */}
+            <div className="flex items-start justify-between flex-wrap gap-4 mb-8">
                 <div>
-                    <div className="text-[10px] font-bold tracking-[0.1em] uppercase mb-0.5" style={{ color: T.sub }}>
-                        {periodLabel}
+                    <div className="text-[11px] font-bold tracking-[0.1em] uppercase mb-3"
+                        style={{ color: T.sub }}>
+                        Revenue · {periodLabel}
                     </div>
-                    <div className="text-xs" style={{ color: T.body }}>
-                        {loading ? "Loading…" : `${totals.count} transactions · ${fmt(totals.total)}`}
-                    </div>
+
+                    {loading ? (
+                        <Skeleton h={48} w={220} />
+                    ) : (
+                        <div
+                            className="font-black leading-none tabular-nums"
+                            style={{
+                                fontSize:      isMobile ? 40 : 52,
+                                color:         T.text,
+                                letterSpacing: "-0.02em",
+                            }}
+                        >
+                            ₹{Number(Math.abs(totals.total)).toLocaleString("en-IN")}
+                        </div>
+                    )}
+
+                    {!loading && (
+                        <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+                            {totals.momPct !== null && (
+                                <Chip
+                                    up={(totals.momPct ?? 0) >= 0}
+                                    label={`${(totals.momPct ?? 0) >= 0 ? "+" : ""}${Math.abs(totals.momPct ?? 0).toFixed(1)}% from last month`}
+                                />
+                            )}
+                            <span className="text-[12px]" style={{ color: T.sub }}>
+                                {totals.count} transaction{totals.count !== 1 ? "s" : ""}
+                            </span>
+                        </div>
+                    )}
                 </div>
 
-                <div className={`flex gap-2 ${isMobile ? "flex-wrap w-full" : ""}`}>
+                <div className={`flex items-center gap-2 ${isMobile ? "w-full" : ""}`}>
                     <button
                         onClick={refetch}
                         title="Refresh"
@@ -338,19 +341,17 @@ export default function RevenueBreakDown({
                     >
                         <RefreshCw size={13} color={T.body} className={loading ? "animate-spin" : ""} />
                     </button>
-
                     <button
                         onClick={exportCSV}
-                        className="flex items-center gap-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors"
-                        style={{ padding: "7px 14px", borderColor: T.border, background: T.surface, color: T.body }}
+                        className="flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs font-semibold cursor-pointer transition-colors"
+                        style={{ borderColor: T.border, background: T.surface, color: T.body }}
                     >
                         <Download size={12} />
-                        {isMobile ? "" : "Export"}
+                        {!isMobile && "Export"}
                     </button>
-
                     <button
                         onClick={() => setDialogOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-bold text-white cursor-pointer transition-colors"
+                        className="flex items-center gap-1.5 px-3.5 h-8 rounded-lg text-[13px] font-bold text-white cursor-pointer transition-colors"
                         style={{ background: T.accent }}
                     >
                         <Plus size={13} />
@@ -359,33 +360,42 @@ export default function RevenueBreakDown({
                 </div>
             </div>
 
-            {/* ── Error ────────────────────────────────────────────────────────── */}
+            {/* ── Error ─────────────────────────────────────────────────────── */}
             {error && (
-                <div className="rounded-lg px-4 py-3 text-xs mb-4 flex items-center gap-2"
-                    style={{ background: T.redBg, border: `1px solid var(--color-danger-border)`, color: T.red }}>
+                <div className="rounded-lg px-4 py-3 text-xs mb-6 flex items-center gap-2"
+                    style={{ background: T.redBg, border: "1px solid var(--color-danger-border)", color: T.red }}>
                     <span>⚠ {error}</span>
-                    <button onClick={refetch} className="ml-auto font-bold underline bg-transparent border-none cursor-pointer" style={{ color: T.red }}>
-                        Retry
-                    </button>
+                    <button onClick={refetch} className="ml-auto font-bold underline bg-transparent border-none cursor-pointer"
+                        style={{ color: T.red }}>Retry</button>
                 </div>
             )}
 
-            {/* ── Compare banner — amber to match system compare palette ───────── */}
+            {/* ── Compare banner ────────────────────────────────────────────── */}
             {compareMode && !loading && !loadingB && DB && (
-                <div className="rounded-xl px-5 py-4 flex items-center justify-between flex-wrap gap-4 mb-5"
+                <div className="rounded-xl px-5 py-4 flex items-center justify-between flex-wrap gap-4 mb-6"
                     style={{ background: T.amberBg, border: `1px solid ${T.amberBorder}` }}>
                     <div>
-                        <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-1" style={{ color: T.amber }}>Compare Mode</div>
+                        <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-1"
+                            style={{ color: T.amber }}>Compare Mode</div>
                         <div className="text-xs" style={{ color: T.body }}>Period vs period revenue analysis</div>
                     </div>
                     <div className="flex items-center gap-6 flex-wrap">
                         {[
                             { lbl: periodLabel, val: totals.total, color: T.amber },
-                            { lbl: compareQuarter && QUARTER_LABELS[compareQuarter] ? `Q${compareQuarter} · ${QUARTER_LABELS[compareQuarter]}` : "Compare", val: DB.totals.total, color: T.blue },
+                            {
+                                lbl: compareQuarter && QUARTER_LABELS[compareQuarter]
+                                    ? `Q${compareQuarter} · ${QUARTER_LABELS[compareQuarter]}`
+                                    : "Compare",
+                                val: DB.totals.total,
+                                color: T.blue,
+                            },
                         ].map(x => (
                             <div key={x.lbl} className="text-right">
-                                <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-0.5" style={{ color: T.sub }}>{x.lbl}</div>
-                                <div className="font-black tabular-nums text-xl" style={{ color: x.color }}>{fmt(x.val)}</div>
+                                <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-0.5"
+                                    style={{ color: T.sub }}>{x.lbl}</div>
+                                <div className="font-black tabular-nums text-xl" style={{ color: x.color }}>
+                                    {fmt(x.val)}
+                                </div>
                             </div>
                         ))}
                         {totals.total > 0 && (
@@ -399,494 +409,482 @@ export default function RevenueBreakDown({
                 </div>
             )}
 
-            {/* ── Hero KPI strip ───────────────────────────────────────────────── */}
-            <div className={`grid gap-3 mb-5 ${isMobile ? "grid-cols-1" : "grid-cols-[200px_repeat(4,1fr)]"}`}>
-                <InkPanel delay={0}>
-                    <Label inverted>Total Revenue</Label>
-                    <BigNum v={totals.total} size={34} inverted />
-                    <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                        {totals.momPct !== null && (
-                            <Chip
-                                up={(totals.momPct ?? 0) >= 0}
-                                label={`${Math.abs(totals.momPct ?? 0).toFixed(1)}% MoM`}
-                            />
+            {/* ── 2. Hero Insight Block (Stripe-style) ──────────────────────── */}
+            {loading ? (
+                <div className="rounded-xl mb-8"
+                    style={{ background: T.surface, border: `1px solid ${T.border}`, padding: "18px 22px" }}>
+                    <Skeleton h={9} w={72} />
+                    <Skeleton h={16} w={300} />
+                </div>
+            ) : insight ? (
+                <div
+                    className="rounded-xl flex items-center justify-between gap-6 mb-8"
+                    style={{
+                        background: T.surface,
+                        border:     `1px solid ${T.border}`,
+                        padding:    "18px 22px",
+                    }}
+                >
+                    <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-bold tracking-[0.1em] uppercase mb-1.5"
+                            style={{ color: T.sub }}>
+                            {insight.isPeak ? "Key Insight" : "Period Summary"}
+                        </div>
+                        <div className="text-[14px] font-medium leading-snug" style={{ color: T.text }}>
+                            {insight.text}
+                        </div>
+                        {insight.isPeak && (
+                            <div className="mt-1.5 text-[11px]" style={{ color: T.sub }}>
+                                Peak: {fmt(insight.peakValue)} in {insight.peakLabel}
+                            </div>
                         )}
                     </div>
-                    <div className="mt-4 pt-3.5 border-t border-white/10 grid grid-cols-2 gap-y-3">
-                        {[
-                            { l: "Transactions", v: totals.count },
-                            { l: "Streams", v: streams.length },
-                        ].map(x => (
-                            <div key={x.l}>
-                                <div className="text-[9px] mb-0.5" style={{ color: "rgba(255,255,255,.32)" }}>{x.l}</div>
-                                <div className="text-sm font-bold text-white">{x.v}</div>
-                            </div>
-                        ))}
-                    </div>
-                </InkPanel>
-
-                {[
-                    {
-                        label: "Avg per Transaction",
-                        value: fmt(totals.avg),
-                        sub: `across ${totals.count} txns`,
-                    },
-                    {
-                        label: "Top Revenue Stream",
-                        value: streams[0]?.name ?? "—",
-                        sub: streams[0] ? `${fmt(streams[0].amount)} · ${streams[0].pct}% share` : "No data",
-                    },
-                    {
-                        label: "Rent Revenue",
-                        value: fmt(streams.find(s => s.code === "RENT")?.amount ?? 0),
-                        sub: "Primary collection stream",
-                    },
-                    {
-                        label: "Other Streams",
-                        value: fmt(streams.filter(s => s.code !== "RENT").reduce((a, s) => a + s.amount, 0)),
-                        sub: "Parking · CAM · Electricity · etc",
-                    },
-                ].map((k, i) => (
-                    <Panel key={k.label} delay={i + 1} noPad>
-                        <div />
-                        <div className="px-4 py-3.5">
-                            <Label>{k.label}</Label>
-                            <div className="font-black tabular-nums text-[22px] leading-tight mb-1" style={{ color: T.text }}>{k.value}</div>
-                            <div className="text-[10px]" style={{ color: T.sub }}>{k.sub}</div>
-                        </div>
-                    </Panel>
-                ))}
-            </div>
-
-            {/* ── Section toggle ────────────────────────────────────────────── */}
-            <div className="mb-5">
-                <SectionToggle
-                    options={["Overview", "Transactions", "Analysis"]}
-                    value={tab}
-                    onChange={setTab}
-                />
-            </div>
-
-            {/* ═══════════════════ OVERVIEW ════════════════════════════════════ */}
-            {tab === "overview" && (
-                <div className="flex flex-col gap-4">
-
-                    {/* Area chart + Pie */}
-                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[1fr_260px]"}`}>
-                        <Panel delay={0}>
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <Label style={{ marginBottom: 2 }}>Revenue Trend</Label>
-                                    <div className="text-[10px]" style={{ color: T.weak }}>{periodLabel} · Nepali calendar</div>
-                                </div>
-                                {totals.momPct !== null && (
-                                    <Chip
-                                        up={(totals.momPct ?? 0) >= 0}
-                                        label={`${Math.abs(totals.momPct ?? 0).toFixed(1)}% last mo`}
-                                    />
-                                )}
-                            </div>
-                            {loading ? <Skeleton h={200} /> : trend.length === 0
-                                ? <Empty msg="No monthly data — add revenue with Nepali dates" />
-                                : (
-                                    <ResponsiveContainer width="100%" height={200}>
-                                        <AreaChart data={trend} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-                                            <defs>
-                                                <linearGradient id="rb-rv-fill" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor={T.revenue} stopOpacity={0.13} />
-                                                    <stop offset="100%" stopColor={T.revenue} stopOpacity={0} />
-                                                </linearGradient>
-                                            </defs>
-                                            <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={T.border} />
-                                            <XAxis dataKey="label" tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} />
-                                            <YAxis tickFormatter={fmtK} tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} width={34} />
-                                            <Tooltip content={<ChartTip />} />
-                                            <Area
-                                                type="monotone"
-                                                dataKey="revenue"
-                                                name="Revenue"
-                                                stroke={T.revenue}
-                                                strokeWidth={2}
-                                                fill="url(#rb-rv-fill)"
-                                                dot={{ r: 2.5, fill: T.revenue, strokeWidth: 0 }}
-                                                activeDot={{ r: 4, strokeWidth: 0 }}
-                                            />
-                                        </AreaChart>
-                                    </ResponsiveContainer>
-                                )}
-                        </Panel>
-
-                        <Panel delay={1}>
-                            <Label>By Stream</Label>
-                            {loading ? <Skeleton h={130} /> : streams.length === 0 ? <Empty /> : (
-                                <>
-                                    <ResponsiveContainer width="100%" height={120}>
-                                        <PieChart>
-                                            <Pie
-                                                data={streams}
-                                                dataKey="pct"
-                                                cx="50%" cy="50%"
-                                                innerRadius={34} outerRadius={52}
-                                                paddingAngle={2}
-                                                strokeWidth={0}
-                                            >
-                                                {streams.map((_, i) => (
-                                                    <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip
-                                                formatter={v => `${v}%`}
-                                                contentStyle={{
-                                                    borderRadius: 8,
-                                                    border: `1px solid ${T.border}`,
-                                                    fontSize: 11,
-                                                    background: T.surface,
-                                                }}
-                                            />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-
-                                    <div className="flex flex-col gap-1.5 mt-1">
-                                        {streams.map((s, i) => (
-                                            <div key={s.code ?? i} className="flex items-center gap-2">
-                                                <span
-                                                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                                    style={{ background: PALETTE[i % PALETTE.length] }}
-                                                />
-                                                <span className="text-[11px] flex-1 truncate" style={{ color: T.body }}>{s.name}</span>
-                                                <span className="text-[10px] font-bold" style={{ color: T.text }}>{s.pct}%</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-                        </Panel>
-                    </div>
-
-                    {/* Tenant split + Ref types + Stats */}
-                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-[2fr_1fr_1fr]"}`}>
-
-                        <Panel delay={2}>
-                            <Label>Tenant Distribution</Label>
-                            {loading ? <><Skeleton /><Skeleton /></> : tenantSplit.length === 0 ? <Empty /> : (
-                                <>
-                                    <div
-                                        className="grid pb-2 mb-2 border-b"
-                                        style={{ gridTemplateColumns: "1fr 1fr 60px", gap: "0 10px", borderColor: T.border }}
-                                    >
-                                        {["Payer", "Share", "Amount"].map(h => (
-                                            <span key={h} className="text-[9px] font-bold tracking-[0.08em] uppercase" style={{ color: T.weak }}>{h}</span>
-                                        ))}
-                                    </div>
-                                    {tenantSplit.map((p, i) => (
-                                        <div
-                                            key={p.name}
-                                            className="grid items-center py-2.5 border-b"
-                                            style={{ gridTemplateColumns: "1fr 1fr 60px", gap: "0 10px", borderColor: `${T.border}55` }}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                                    style={{ background: PALETTE[i % PALETTE.length] }} />
-                                                <span className="text-[12px] font-semibold truncate" style={{ color: T.text }}>{p.name}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <MiniBar value={p.amount} max={totals.total} color={PALETTE[i % PALETTE.length]} />
-                                                <span className="text-[10px] flex-shrink-0" style={{ color: T.sub }}>{p.pct}%</span>
-                                            </div>
-                                            <div className="text-[12px] font-bold text-right" style={{ color: T.text }}>
-                                                ₹{fmtK(p.amount)}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </>
-                            )}
-                        </Panel>
-
-                        <Panel delay={3}>
-                            <Label>By Reference</Label>
-                            {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : refTypes.length === 0 ? <Empty /> : (
-                                <div className="flex flex-col gap-3.5">
-                                    {refTypes.map(r => (
-                                        <div key={r.type}>
-                                            <div className="flex justify-between items-center mb-1.5">
-                                                <RefBadge t={r.type} />
-                                                <div className="text-right">
-                                                    <div className="text-[12px] font-bold" style={{ color: T.text }}>{fmt(r.amount)}</div>
-                                                    <div className="text-[9px]" style={{ color: T.weak }}>{r.count} txns · {r.pct}%</div>
-                                                </div>
-                                            </div>
-                                            <MiniBar value={r.amount} max={totals.total} color={REF_CFG[r.type]?.color ?? T.blue} />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </Panel>
-
-                        <Panel delay={4}>
-                            <Label>Quick Stats</Label>
-                            {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : (
-                                <>
-                                    {[
-                                        { l: "Transactions",  v: totals.count },
-                                        { l: "Avg / Txn",     v: fmt(totals.avg) },
-                                        { l: "Streams",       v: streams.length },
-                                        { l: "Top Stream %",  v: streams[0] ? `${streams[0].pct}%` : "—" },
-                                        { l: "Tenant Payers", v: tenantSplit.length },
-                                    ].map(s => (
-                                        <div key={s.l} className="flex justify-between items-center py-2 border-b"
-                                            style={{ borderColor: `${T.border}66` }}>
-                                            <span className="text-[11px]" style={{ color: T.sub }}>{s.l}</span>
-                                            <span className="text-[12px] font-bold" style={{ color: T.text }}>{s.v}</span>
-                                        </div>
-                                    ))}
-
-                                    <div className="mt-4">
-                                        <Label style={{ marginBottom: 8 }}>By Status</Label>
-                                        <div className="flex flex-col gap-1.5">
-                                            {Object.entries(statusMap).map(([s, n]) => (
-                                                <div key={s} className="flex justify-between items-center">
-                                                    <StatusBadge s={s} />
-                                                    <span className="text-[12px] font-bold" style={{ color: T.text }}>{n}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </Panel>
-                    </div>
+                    {trend.length >= 2 && (
+                        <MiniSparkline
+                            data={trend}
+                            color={T.revenue}
+                            width={isMobile ? 56 : 96}
+                            height={32}
+                            highlightIdx={insight.peakIdx}
+                        />
+                    )}
                 </div>
-            )}
+            ) : null}
 
-            {/* ═══════════════════ TRANSACTIONS ════════════════════════════════ */}
-            {tab === "transactions" && (
-                <Panel delay={0} noPad>
-                    <div
-                        className="px-5 py-3.5 flex justify-between items-center border-b"
-                        style={{ borderColor: T.border }}
-                    >
-                        <div>
-                            <div className="text-[13px] font-bold" style={{ color: T.text }}>All Transactions</div>
-                            <div className="text-[10px] mt-0.5" style={{ color: T.sub }}>
-                                {transactions.length} total · {periodLabel}
-                            </div>
-                        </div>
-                        <button
-                            onClick={exportCSV}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors"
-                            style={{ borderColor: T.border, background: T.surface, color: T.body }}
-                        >
-                            <Download size={11} /> Export CSV
-                        </button>
-                    </div>
+            {/* ── 3. Trend Section ──────────────────────────────────────────── */}
+            <div className="mb-0">
+                <SectionLabel right={`${periodLabel} · Nepali calendar`}>
+                    Revenue Trend
+                </SectionLabel>
 
-                    {loading
-                        ? <div className="p-5"><Skeleton /><Skeleton /><Skeleton /></div>
-                        : transactions.length === 0
-                            ? <Empty msg="No transactions for this period" />
-                            : (
-                                <>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse">
-                                            <thead>
-                                                <tr style={{ background: T.bg }}>
-                                                    {["#", "Payer", "Source", "Ref", "Type", "Amount", "Date", "Status"].map(h => (
-                                                        <th key={h} className="text-left px-3.5 py-2.5 text-[9px] font-bold tracking-[0.08em] uppercase border-b"
-                                                            style={{ color: T.weak, borderColor: T.border }}>
-                                                            {h}
-                                                        </th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {pageTxns.map((t, i) => (
-                                                    <tr
-                                                        key={t.id}
-                                                        className="transition-colors hover:bg-[var(--color-muted)]"
-                                                        style={{ borderBottom: `1px solid ${T.border}44` }}
-                                                    >
-                                                        <td className="px-3.5 py-2.5 text-[10px]" style={{ color: T.weak }}>{startIndex + i + 1}</td>
-                                                        <td className="px-3.5 py-2.5 text-[12px] font-semibold" style={{ color: T.text }}>{t.payer}</td>
-                                                        <td className="px-3.5 py-2.5 text-[12px]" style={{ color: T.body }}>{t.source}</td>
-                                                        <td className="px-3.5 py-2.5"><RefBadge t={t.refType} /></td>
-                                                        <td className="px-3.5 py-2.5"><TypeBadge t={t.payerType} /></td>
-                                                        <td className="px-3.5 py-2.5 text-[12px] font-bold tabular-nums" style={{ color: T.revenue }}>
-                                                            {fmt(t.amount)}
-                                                        </td>
-                                                        <td className="px-3.5 py-2.5 text-[10px] tabular-nums" style={{ color: T.sub }}>{t.bsDate}</td>
-                                                        <td className="px-3.5 py-2.5"><StatusBadge s={t.status} /></td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                {loading ? (
+                    <Skeleton h={180} />
+                ) : trend.length === 0 ? (
+                    <Empty msg="No monthly data — add revenue with Nepali dates" />
+                ) : (
+                    <ResponsiveContainer width="100%" height={180}>
+                        <AreaChart data={trend} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
+                            <defs>
+                                <linearGradient id="rb-rv-fill-v2" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%"   stopColor={T.revenue} stopOpacity={0.07} />
+                                    <stop offset="100%" stopColor={T.revenue} stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="2 5" vertical={false} stroke={T.border} />
+                            <XAxis dataKey="label"
+                                tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} />
+                            <YAxis tickFormatter={fmtK}
+                                tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} width={34} />
+                            <Tooltip content={<ChartTip />} />
+                            <Area
+                                type="monotone"
+                                dataKey="revenue"
+                                name="Revenue"
+                                stroke={T.revenue}
+                                strokeWidth={1.5}
+                                fill="url(#rb-rv-fill-v2)"
+                                dot={false}
+                                activeDot={{ r: 3.5, fill: T.revenue, strokeWidth: 0 }}
+                            />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                )}
+            </div>
 
-                                    {totalPages > 1 && (
-                                        <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: T.border }}>
-                                            <span className="text-[10px]" style={{ color: T.sub }}>
-                                                {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, transactions.length)} of {transactions.length}
-                                            </span>
-                                            <div className="flex gap-1">
-                                                {[["← Prev", prevPage, currentPage === 1], ["Next →", nextPage, currentPage === totalPages]].map(([label, fn, disabled]) => (
-                                                    <button
-                                                        key={label}
-                                                        onClick={fn}
-                                                        disabled={disabled}
-                                                        className="px-3 py-1 rounded-md border text-[11px] font-semibold"
-                                                        style={{
-                                                            borderColor: T.border,
-                                                            background: T.surface,
-                                                            color: disabled ? T.weak : T.text,
-                                                            cursor: disabled ? "default" : "pointer",
-                                                            opacity: disabled ? 0.45 : 1,
-                                                        }}
-                                                    >
-                                                        {label}
-                                                    </button>
-                                                ))}
+            <Sep my={28} />
+
+            {/* ── 4. Revenue Streams + Side Insights ───────────────────────── */}
+            <div className={`flex gap-10 ${isMobile ? "flex-col" : ""}`}>
+
+                {/* Streams bar list */}
+                <div className="flex-1 min-w-0">
+                    <SectionLabel>Revenue Streams</SectionLabel>
+
+                    {loading ? (
+                        <><Skeleton /><Skeleton /><Skeleton /></>
+                    ) : streams.length === 0 ? (
+                        <Empty />
+                    ) : (
+                        <div className="flex flex-col gap-4">
+                            {streams.map((s, i) => {
+                                const barW = streams[0].amount > 0
+                                    ? (s.amount / streams[0].amount) * 100
+                                    : 0;
+                                return (
+                                    <div key={s.code ?? i}>
+                                        <div className="flex items-baseline justify-between mb-1.5">
+                                            <span className="text-[13px] font-medium"
+                                                style={{ color: T.text }}>{s.name}</span>
+                                            <div className="flex items-baseline gap-3 flex-shrink-0">
+                                                <span className="text-[11px] font-semibold tabular-nums"
+                                                    style={{ color: T.sub }}>{s.pct}%</span>
+                                                <span className="text-[13px] font-bold tabular-nums"
+                                                    style={{ color: T.text }}>{fmt(s.amount)}</span>
                                             </div>
                                         </div>
-                                    )}
-                                </>
-                            )}
-                </Panel>
-            )}
-
-            {/* ═══════════════════ ANALYSIS ════════════════════════════════════ */}
-            {tab === "analysis" && (
-                <div className="flex flex-col gap-4">
-                    <div className={`grid gap-4 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
-
-                        {/* Concentration Risk */}
-                        <Panel delay={0}>
-                            <Label>Revenue Concentration Risk</Label>
-                            {loading ? <><Skeleton /><Skeleton /></> : streams.length === 0 ? <Empty /> : (
-                                <>
-                                    <div className="flex h-5 rounded overflow-hidden gap-px mb-3">
-                                        {streams.map((s, i) => (
-                                            <div
-                                                key={s.code ?? i}
-                                                title={`${s.name}: ${s.pct}%`}
-                                                style={{
-                                                    width: `${s.pct}%`,
-                                                    background: PALETTE[i % PALETTE.length],
-                                                    display: s.pct < 1 ? "none" : "block",
-                                                }}
-                                            />
-                                        ))}
+                                        <div style={{
+                                            height: 3, borderRadius: 2,
+                                            background: T.border, overflow: "hidden",
+                                        }}>
+                                            <div style={{
+                                                height: "100%",
+                                                width: `${barW}%`,
+                                                borderRadius: 2,
+                                                background: i === 0 ? T.revenue : `color-mix(in srgb, ${T.revenue} 45%, transparent)`,
+                                                transition: "width 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
+                                            }} />
+                                        </div>
                                     </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
 
-                                    <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-4">
-                                        {streams.map((s, i) => (
-                                            <div key={s.code ?? i} className="flex items-center gap-1.5">
-                                                <span className="w-1.5 h-1.5 rounded-sm inline-block"
-                                                    style={{ background: PALETTE[i % PALETTE.length] }} />
-                                                <span className="text-[9px]" style={{ color: T.sub }}>
-                                                    {s.name} <b style={{ color: T.text }}>{s.pct}%</b>
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
+                {/* Vertical divider */}
+                {!isMobile && (
+                    <div style={{ width: 1, background: T.border, flexShrink: 0 }} />
+                )}
 
+                {/* 6. Side Insights */}
+                <div style={{ width: isMobile ? "100%" : 188, flexShrink: 0 }}>
+                    <SectionLabel>At a Glance</SectionLabel>
+
+                    {loading ? (
+                        <><Skeleton /><Skeleton /><Skeleton /></>
+                    ) : (
+                        <div>
+                            {[
+                                { label: "Avg per transaction", value: fmt(totals.avg), large: true },
+                                { label: "Revenue streams",     value: streams.length },
+                                { label: "Total transactions",  value: totals.count },
+                                ...(streams[0]
+                                    ? [{ label: "Top stream", value: streams[0].name }]
+                                    : []),
+                            ].map((s, i) => (
+                                <div
+                                    key={s.label}
+                                    className="py-3 border-b"
+                                    style={{ borderColor: `${T.border}99` }}
+                                >
+                                    <div className="text-[10px] mb-0.5" style={{ color: T.sub }}>{s.label}</div>
                                     <div
-                                        className="rounded-lg px-3.5 py-2.5"
+                                        className="font-bold tabular-nums leading-snug"
                                         style={{
-                                            background:
-                                                (streams[0]?.pct ?? 0) > 60 ? T.redBg
-                                                    : (streams[0]?.pct ?? 0) > 40 ? T.amberBg
-                                                        : T.greenBg,
+                                            fontSize:      s.large ? 17 : 14,
+                                            color:         T.text,
+                                            letterSpacing: "-0.01em",
                                         }}
                                     >
-                                        <div
-                                            className="text-[10px] font-bold uppercase tracking-[0.07em]"
-                                            style={{
-                                                color:
-                                                    (streams[0]?.pct ?? 0) > 60 ? T.red
-                                                        : (streams[0]?.pct ?? 0) > 40 ? T.amber
-                                                            : T.green,
-                                            }}
-                                        >
-                                            {(streams[0]?.pct ?? 0) > 60 ? "High concentration risk"
-                                                : (streams[0]?.pct ?? 0) > 40 ? "Moderate concentration"
-                                                    : "Well diversified"}
+                                        {s.value}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ── 5a. Intel: Payer Split · Ref Types · Payment Methods ─────── */}
+            <div className={`grid gap-10 mb-8 ${isMobile ? "grid-cols-1" : "grid-cols-3"}`}>
+
+                {/* Payer Split */}
+                <div>
+                    <SectionLabel>Payer Split</SectionLabel>
+                    {loading ? <><Skeleton /><Skeleton /></> : payerSplit.length === 0 ? <Empty msg="No payer data" /> : (
+                        <div className="flex flex-col gap-4">
+                            {payerSplit.map((p, i) => {
+                                const barW = totals.total > 0 ? (p.amount / totals.total) * 100 : 0;
+                                const color = i === 0 ? T.revenue : T.amber;
+                                return (
+                                    <div key={p.name}>
+                                        <div className="flex items-baseline justify-between mb-1.5">
+                                            <span className="text-[13px] font-medium" style={{ color: T.text }}>{p.name}</span>
+                                            <div className="flex items-baseline gap-2 flex-shrink-0">
+                                                <span className="text-[11px] font-semibold tabular-nums" style={{ color: T.sub }}>{p.pct}%</span>
+                                                <span className="text-[13px] font-bold tabular-nums" style={{ color: T.text }}>{fmt(p.amount)}</span>
+                                            </div>
                                         </div>
-                                        <div className="text-[10px] mt-0.5" style={{ color: T.body }}>
-                                            Top source accounts for {streams[0]?.pct ?? 0}% of revenue
+                                        <div style={{ height: 3, borderRadius: 2, background: T.border, overflow: "hidden" }}>
+                                            <div style={{ height: "100%", width: `${barW}%`, borderRadius: 2, background: color, transition: "width 0.6s cubic-bezier(0.16,1,0.3,1)" }} />
                                         </div>
                                     </div>
-                                </>
-                            )}
-                        </Panel>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
 
-                        {/* MoM Bar */}
-                        <Panel delay={1}>
-                            <div className="flex justify-between items-start mb-3.5">
-                                <Label style={{ marginBottom: 0 }}>Month-over-Month Revenue</Label>
-                                {totals.momPct !== null && (
-                                    <Chip
-                                        up={(totals.momPct ?? 0) >= 0}
-                                        label={`${(totals.momPct ?? 0) >= 0 ? "+" : ""}${(totals.momPct ?? 0).toFixed(1)}%`}
-                                    />
-                                )}
-                            </div>
-                            {loading ? <Skeleton h={180} /> : trend.length === 0 ? <Empty /> : (
-                                <ResponsiveContainer width="100%" height={180}>
-                                    <BarChart data={trend} margin={{ top: 4, right: 0, left: -18, bottom: 0 }} barCategoryGap="32%">
-                                        <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={T.border} />
-                                        <XAxis dataKey="label" tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} />
-                                        <YAxis tickFormatter={fmtK} tick={{ fontSize: 9, fill: T.weak }} tickLine={false} axisLine={false} width={34} />
-                                        <Tooltip content={<ChartTip />} />
-                                        <Bar dataKey="revenue" name="Revenue" radius={[3, 3, 0, 0]} maxBarSize={36}>
-                                            {trend.map((_, i) => (
-                                                <Cell
-                                                    key={i}
-                                                    fill={i === trend.length - 1 ? T.revenue : `${T.revenue}55`}
-                                                />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            )}
-                        </Panel>
-                    </div>
+                {/* Ref Types */}
+                <div>
+                    <SectionLabel>By Reference</SectionLabel>
+                    {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : refTypes.length === 0 ? <Empty msg="No ref data" /> : (
+                        <div className="flex flex-col gap-3.5">
+                            {refTypes.map(r => {
+                                const cfg = REF_CFG[r.type] ?? { bg: T.alt, color: T.sub };
+                                return (
+                                    <div key={r.type}>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <RefBadge t={r.type} />
+                                            <div className="text-right">
+                                                <div className="text-[12px] font-bold tabular-nums" style={{ color: T.text }}>{fmt(r.amount)}</div>
+                                                <div className="text-[9px]" style={{ color: T.weak }}>{r.count} txns · {r.pct}%</div>
+                                            </div>
+                                        </div>
+                                        <div style={{ height: 3, borderRadius: 2, background: T.border, overflow: "hidden" }}>
+                                            <div style={{ height: "100%", width: `${totals.total > 0 ? (r.amount / totals.total) * 100 : 0}%`, borderRadius: 2, background: cfg.color, transition: "width 0.5s ease" }} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
 
-                    {/* Top Revenue Streams Ranked */}
-                    <Panel delay={2}>
-                        <Label>Top Revenue Streams — Ranked</Label>
-                        {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : streams.length === 0 ? <Empty /> : (
-                            <div className={`grid gap-2 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}>
-                                {streams.slice(0, 8).map((s, i) => (
+                {/* Payment Methods */}
+                <div>
+                    <SectionLabel>Payment Methods</SectionLabel>
+                    {loading ? <><Skeleton /><Skeleton /></> : payMethodSplit.length === 0 ? <Empty msg="No payment data" /> : (
+                        <div className="flex flex-col gap-4">
+                            {payMethodSplit.map((m, i) => {
+                                const barW = totals.total > 0 ? (m.amount / totals.total) * 100 : 0;
+                                return (
+                                    <div key={m.method}>
+                                        <div className="flex items-baseline justify-between mb-1.5">
+                                            <span className="text-[13px] font-medium" style={{ color: T.text }}>
+                                                {PAYMENT_METHOD_LABELS[m.method] ?? m.method}
+                                            </span>
+                                            <div className="flex items-baseline gap-2 flex-shrink-0">
+                                                <span className="text-[11px]" style={{ color: T.sub }}>{m.pct}%</span>
+                                                <span className="text-[13px] font-bold tabular-nums" style={{ color: T.text }}>{fmt(m.amount)}</span>
+                                            </div>
+                                        </div>
+                                        <div style={{ height: 3, borderRadius: 2, background: T.border, overflow: "hidden" }}>
+                                            <div style={{ height: "100%", width: `${barW}%`, borderRadius: 2, background: i === 0 ? T.revenue : `color-mix(in srgb, ${T.revenue} 45%, transparent)`, transition: "width 0.6s cubic-bezier(0.16,1,0.3,1)" }} />
+                                        </div>
+                                        <div className="mt-1 text-[9px]" style={{ color: T.weak }}>{m.count} transaction{m.count !== 1 ? "s" : ""}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ── 5b. Top Tenants ───────────────────────────────────────────────── */}
+            {(loading || topTenants.length > 0) && (
+                <>
+                    <Sep my={28} />
+                    <div className="mb-8">
+                        <SectionLabel right={loading ? "" : `${topTenants.length} payer${topTenants.length !== 1 ? "s" : ""}`}>
+                            Top Tenants by Revenue
+                        </SectionLabel>
+                        {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : (
+                            <div>
+                                {topTenants.map((t, i) => (
                                     <div
-                                        key={s.code ?? i}
-                                        className="flex items-center gap-3 px-3 py-2 rounded-lg"
-                                        style={{ background: T.bg }}
+                                        key={t.id}
+                                        className="flex items-center gap-4 py-3.5 border-b transition-colors hover:bg-[var(--color-muted)]"
+                                        style={{ borderColor: `${T.border}55` }}
                                     >
                                         <div
-                                            className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-extrabold flex-shrink-0"
-                                            style={{
-                                                background: `${PALETTE[i % PALETTE.length]}18`,
-                                                color: PALETTE[i % PALETTE.length],
-                                            }}
+                                            className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-extrabold flex-shrink-0"
+                                            style={{ background: `color-mix(in srgb, ${T.revenue} 15%, transparent)`, color: T.revenue }}
                                         >
                                             {i + 1}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex justify-between mb-1">
-                                                <span className="text-[12px] font-semibold truncate" style={{ color: T.text }}>{s.name}</span>
-                                                <span className="text-[12px] font-bold tabular-nums ml-2 flex-shrink-0" style={{ color: T.text }}>{fmt(s.amount)}</span>
+                                            <div className="flex items-baseline justify-between gap-4">
+                                                <span className="text-[13px] font-semibold truncate" style={{ color: T.text }}>{t.name}</span>
+                                                <span className="text-[14px] font-bold tabular-nums flex-shrink-0" style={{ color: T.revenue }}>{fmt(t.amount)}</span>
                                             </div>
-                                            <MiniBar value={s.amount} max={streams[0].amount} color={PALETTE[i % PALETTE.length]} h={3} />
-                                            <div className="text-[9px] mt-0.5" style={{ color: T.weak }}>
-                                                {s.count} txns · {s.pct}% of total
+                                            <div className="flex items-center gap-3 mt-1.5">
+                                                <div style={{ flex: 1, height: 2, borderRadius: 1, background: T.border, overflow: "hidden" }}>
+                                                    <div style={{ height: "100%", width: `${t.pctOfTotal}%`, background: T.revenue, opacity: 0.5, transition: "width 0.6s" }} />
+                                                </div>
+                                                <span className="text-[9px] flex-shrink-0" style={{ color: T.weak }}>
+                                                    {t.count} txn{t.count !== 1 ? "s" : ""} · {t.pctOfTotal}%
+                                                </span>
+                                                {t.sources && (
+                                                    <span className="text-[9px] truncate max-w-[120px] flex-shrink-0" style={{ color: T.sub }}>
+                                                        {t.sources}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         )}
-                    </Panel>
-                </div>
+                    </div>
+                </>
             )}
+
+            <Sep my={32} />
+
+            {/* ── 5. Transactions (Notion database style) ───────────────────── */}
+            <div>
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+                    <div>
+                        <SectionLabel>Transactions</SectionLabel>
+                        <div className="text-[11px] -mt-2" style={{ color: T.weak }}>
+                            {payMethodFilter
+                                ? `${filteredTxns.length} of ${transactions.length} · ${PAYMENT_METHOD_LABELS[payMethodFilter]}`
+                                : `${transactions.length} entries · ${periodLabel}`}
+                        </div>
+                    </div>
+                    <button
+                        onClick={exportCSV}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors"
+                        style={{ borderColor: T.border, background: T.surface, color: T.body }}
+                    >
+                        <Download size={11} /> Export CSV
+                    </button>
+                </div>
+
+                {/* Payment method filter — inline pills */}
+                <div className="flex items-center gap-1.5 flex-wrap mb-5">
+                    <span className="text-[9px] font-bold tracking-[0.1em] uppercase mr-1"
+                        style={{ color: T.weak }}>Method</span>
+                    {[
+                        { value: null, label: "All" },
+                        ...PAYMENT_METHOD_ORDER.map(v => ({ value: v, label: PAYMENT_METHOD_LABELS[v] })),
+                    ].map(opt => {
+                        const isActive = payMethodFilter === opt.value;
+                        const split    = opt.value ? payMethodSplit.find(s => s.method === opt.value) : null;
+                        const isEmpty  = opt.value && (!split || split.count === 0);
+                        return (
+                            <button
+                                key={opt.value ?? "all"}
+                                onClick={() => setPayMethodFilter(isActive && opt.value ? null : opt.value)}
+                                disabled={isEmpty}
+                                className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-md text-[11px] font-semibold transition-colors border"
+                                style={{
+                                    cursor:      isEmpty ? "default" : "pointer",
+                                    background:  isActive ? T.revenue : "transparent",
+                                    borderColor: isActive ? T.revenue : T.border,
+                                    color:       isActive ? "#fff" : isEmpty ? T.weak : T.sub,
+                                    opacity:     isEmpty ? 0.4 : 1,
+                                }}
+                            >
+                                {opt.label}
+                                {split && split.count > 0 && (
+                                    <span
+                                        className="rounded px-1 tabular-nums text-[9px]"
+                                        style={{
+                                            background: isActive ? "rgba(255,255,255,0.2)" : T.alt,
+                                            color:      isActive ? "#fff" : T.sub,
+                                        }}
+                                    >
+                                        {split.count}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* Table */}
+                {loading ? (
+                    <><Skeleton /><Skeleton /><Skeleton /></>
+                ) : filteredTxns.length === 0 ? (
+                    <Empty msg="No transactions for this period" />
+                ) : (
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full border-collapse">
+                                <thead>
+                                    <tr>
+                                        {[
+                                            { key: "Date",   align: "left"  },
+                                            { key: "Payer",  align: "left"  },
+                                            { key: "Ref",    align: "left"  },
+                                            { key: "Amount", align: "right" },
+                                            { key: "Status", align: "left"  },
+                                        ].map(h => (
+                                            <th
+                                                key={h.key}
+                                                className="py-2.5 text-[9px] font-bold tracking-[0.08em] uppercase border-b"
+                                                style={{
+                                                    color:      T.weak,
+                                                    borderColor: T.border,
+                                                    textAlign:  h.align,
+                                                    paddingLeft:  h.key === "Date" ? 0 : 14,
+                                                    paddingRight: h.key === "Status" ? 0 : 14,
+                                                }}
+                                            >
+                                                {h.key}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pageTxns.map((t) => (
+                                        <tr
+                                            key={t.id}
+                                            className="transition-colors hover:bg-[var(--color-muted)]"
+                                            style={{ borderBottom: `1px solid ${T.border}55` }}
+                                        >
+                                            <td className="py-4 pr-4" style={{ color: T.weak, fontSize: 11, whiteSpace: "nowrap" }}>
+                                                {t.bsDate}
+                                            </td>
+                                            <td className="py-4 px-4">
+                                                <div className="text-[13px] font-semibold" style={{ color: T.text }}>{t.payer}</div>
+                                                {t.source && (
+                                                    <div className="text-[10px] mt-0.5" style={{ color: T.sub }}>{t.source}</div>
+                                                )}
+                                            </td>
+                                            <td className="py-4 px-4">
+                                                <RefBadge t={t.refType} />
+                                            </td>
+                                            <td className="py-4 px-4 text-right">
+                                                <div className="text-[14px] font-bold tabular-nums"
+                                                    style={{ color: T.revenue, letterSpacing: "-0.01em" }}>
+                                                    {fmt(t.amount)}
+                                                </div>
+                                            </td>
+                                            <td className="py-4 pl-4 pr-0">
+                                                <StatusBadge s={t.status} />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-between pt-4 mt-1 border-t"
+                                style={{ borderColor: T.border }}>
+                                <span className="text-[10px]" style={{ color: T.sub }}>
+                                    {startIndex + 1}–{Math.min(startIndex + TXN_PAGE_SIZE, filteredTxns.length)} of {filteredTxns.length}
+                                </span>
+                                <div className="flex gap-1">
+                                    {[
+                                        ["← Prev", prevPage, currentPage === 1],
+                                        ["Next →", nextPage, currentPage === totalPages],
+                                    ].map(([label, fn, disabled]) => (
+                                        <button
+                                            key={label}
+                                            onClick={fn}
+                                            disabled={disabled}
+                                            className="px-3 py-1 rounded-md border text-[11px] font-semibold"
+                                            style={{
+                                                borderColor: T.border,
+                                                background:  T.surface,
+                                                color:       disabled ? T.weak : T.text,
+                                                cursor:      disabled ? "default" : "pointer",
+                                                opacity:     disabled ? 0.45 : 1,
+                                            }}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
 
             <AddRevenueDialog
                 open={dialogOpen}

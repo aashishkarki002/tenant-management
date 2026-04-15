@@ -136,32 +136,37 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
   const isValid = validationErrors.length === 0;
 
   // ── Selection helpers ─────────────────────────────────────────────────────────
-  const toggleMonth = useCallback((id) => {
-    setSelectedIds((prev) => {
-      const prevPaisa = arrears
-        .filter((r) => prev.has(r._id))
-        .reduce((s, r) => s + r.totalRemainingPaisa, 0);
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      const nextPaisa = arrears
-        .filter((r) => next.has(r._id))
-        .reduce((s, r) => s + r.totalRemainingPaisa, 0);
-      // Auto-update amount only when it still matches the previous selection total
-      // (i.e. user hasn't manually overridden it)
-      setAmount((currentAmount) => {
-        const currentPaisa = Math.round((parseFloat(currentAmount) || 0) * 100);
-        if (currentPaisa === prevPaisa || currentAmount === "") {
-          return nextPaisa > 0 ? String(nextPaisa / 100) : "";
+  const toggleMonth = useCallback(
+    (id) => {
+      setSelectedIds((prev) => {
+        const prevPaisa = arrears
+          .filter((r) => prev.has(r._id))
+          .reduce((s, r) => s + r.totalRemainingPaisa, 0);
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
         }
-        return currentAmount;
+        const nextPaisa = arrears
+          .filter((r) => next.has(r._id))
+          .reduce((s, r) => s + r.totalRemainingPaisa, 0);
+        // Auto-update amount only when it still matches the previous selection total
+        // (i.e. user hasn't manually overridden it)
+        setAmount((currentAmount) => {
+          const currentPaisa = Math.round(
+            (parseFloat(currentAmount) || 0) * 100,
+          );
+          if (currentPaisa === prevPaisa || currentAmount === "") {
+            return nextPaisa > 0 ? String(nextPaisa / 100) : "";
+          }
+          return currentAmount;
+        });
+        return next;
       });
-      return next;
-    });
-  }, [arrears]);
+    },
+    [arrears],
+  );
 
   const selectAll = useCallback(() => {
     setSelectedIds(new Set(arrears.map((r) => r._id)));

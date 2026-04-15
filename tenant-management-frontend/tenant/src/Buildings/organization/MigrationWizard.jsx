@@ -113,6 +113,7 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
                 const res = await api.post("/api/migration/start", {
                     blockId: block._id,
                     targetEntityId: targetId,
+                    acknowledgedWarnings: true,
                 });
                 const snap = res.data?.data?.snapshotId ?? res.data?.snapshotId;
                 if (snap) setSnapshotId(snap);

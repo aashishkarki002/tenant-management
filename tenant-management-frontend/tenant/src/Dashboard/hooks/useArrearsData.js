@@ -34,8 +34,8 @@ export function useArrearsData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchArrears = useCallback(async () => {
-    setLoading(true);
+  const fetchArrears = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const response = await api.get("/api/tenant/arrears");
@@ -47,12 +47,16 @@ export function useArrearsData() {
       setArrears([]);
       console.error("[useArrearsData]", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchArrears();
+    // Re-fetch every 2 minutes so recently collected rents are reflected
+    // without requiring a full page reload.
+    const interval = setInterval(() => fetchArrears(true), 2 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [fetchArrears]);
 
   return { arrears, loading, error, refetch: fetchArrears };

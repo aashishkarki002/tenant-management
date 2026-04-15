@@ -25,15 +25,15 @@ import { cn } from "@/lib/utils";
 import {
     NEPALI_MONTH_NAMES,
     QUARTER_LABELS,
-    CURRENT_FISCAL_YEAR,
-    CURRENT_BS_MONTH_NAME,
+    getCurrentFiscalYear,
+    getCurrentBSMonthName,
     toBSDate,
 } from "../utils/nepaliCalendar";
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
 import { useMonthlyChart } from "../hooks/useMonthlyChart";
-import useOwnership from "../../hooks/use-ownership";
+import { useEntity } from "../../context/EntityContext";
 
 // ── Sub-components (extracted from this file) ─────────────────────────────────
 import FilterControlBar from "./FilterControlBar";
@@ -43,15 +43,11 @@ import OverviewTab from "./tabs/OverviewTab";
 import RevenueTab from "./tabs/RevenueTab"
 import LiabilitiesTab from "./tabs/LiabiltiesTab";
 import ExpensesTab from "./tabs/ExpenseTab";
+import CashFlowTab from "./tabs/CashFlowTab";
 import LedgerTab from "./tabs/LedgerTab";
 import BankingTab from "./tabs/BankingTab";
 import BalanceSheetTab from "./tabs/BalanceSheetTab";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const QUARTERS = [
-    { label: "Q1", value: 1 }, { label: "Q2", value: 2 },
-    { label: "Q3", value: 3 }, { label: "Q4", value: 4 },
-];
 
 // Now uses QUARTER_LABELS from nepaliCalendar — not a local duplicate
 // QUARTER_LABELS[1] === "Shrawan–Ashwin" etc.
@@ -67,6 +63,7 @@ const TABS = [
     { id: "overview", label: "Overview" },
     { id: "revenue", label: "Revenue" },
     { id: "expenses", label: "Expenses" },
+    { id: "cash-flow", label: "Cash Flow" },
     { id: "liabilities", label: "Liabilities" },
     { id: "banking", label: "Banking" },
     { id: "ledger", label: "Ledger" },
@@ -83,11 +80,7 @@ export const fmtK = (v) => {
     return `${s}${a}`;
 };
 
-// ─── Shared label builders (used by FilterControlBar + ComparisonStats) ──────
-/**
- * Build a human-readable label for a compare period config.
- * Uses NEPALI_MONTH_NAMES + QUARTER_LABELS from nepaliCalendar — no local arrays.
- */
+
 export function buildCompareLabel(granularity, { year, quarter, month } = {}) {
     if (granularity === "year" && year)
         return `FY ${year}/${String(year + 1).slice(2)}`;
@@ -113,7 +106,7 @@ export default function AccountingPage() {
     const [filterGranularity, setFilterGranularity] = useState("year");
     const [selectedQuarter, setSelectedQuarter] = useState(null);
     const [selectedMonth, setSelectedMonth] = useState(null);
-    const [selectedFiscalYear, setSelectedFiscalYear] = useState(CURRENT_FISCAL_YEAR);
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState(getCurrentFiscalYear());
     const [customStart, setCustomStart] = useState("");
     const [customEnd, setCustomEnd] = useState("");
 
@@ -138,9 +131,8 @@ export default function AccountingPage() {
         setCompareMonth(null);
     }, []);
 
-    // ── Entity scope ─────────────────────────────────────────────────────────
-    const [activeEntityId, setActiveEntityId] = useState(null);
-    const { entities } = useOwnership();
+    // ── Entity scope — shared via EntityContext so filter persists across navigation
+    const { entities, activeEntityId, setActiveEntityId } = useEntity();
     const resolvedEntityId = activeEntityId ?? null;
 
     // ── Resolved filter params (fed into every hook) ─────────────────────────
@@ -294,7 +286,7 @@ export default function AccountingPage() {
                                 ledgerEntries={ledgerEntries}
                                 loadingLedger={loadingLedger}
                                 onViewLedger={() => setActiveTab("ledger")}
-                                currentBSMonth={CURRENT_BS_MONTH_NAME}
+                                currentBSMonth={getCurrentBSMonthName()}
                             />
                         )}
 
@@ -317,6 +309,17 @@ export default function AccountingPage() {
                                 pendingAction={pendingAction}
                                 onDialogOpenHandled={() => setPendingAction(null)}
                                 onExpenseAdded={refetch}
+                            />
+                        )}
+
+                        {activeTab === "cash-flow" && (
+                            <CashFlowTab
+                                summary={summary}
+                                totals={totals}
+                                filterLabel={filterLabel}
+                                loadingSummary={loadingSummary}
+                                chartData={chartData}
+                                loadingChart={loadingChart}
                             />
                         )}
 

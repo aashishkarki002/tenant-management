@@ -44,18 +44,7 @@ import { adIsoToBsIso } from "@/utils/nepaliDate";
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function getEntityBadgeColor(type) {
-  switch (type) {
-    case "private":
-      return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800";
-    case "company":
-      return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800";
-    case "head_office":
-      return "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800";
-    default:
-      return "bg-muted text-muted-foreground border-border";
-  }
-}
+
 
 function ownershipEntityIdFromBlock(block) {
   if (!block) return "";
@@ -73,25 +62,25 @@ function blocksForOwnershipEntity(blocks, entityId) {
 const getInitialValues = () => {
   const date = new Date().toISOString().split("T")[0];
   return {
-  payerType: "tenant",
-  tenantId: "",
-  externalPayerName: "",
-  externalPayerType: "PERSON",
-  sourceId: "",
-  amount: "",
-  date,
-  nepaliDate: adIsoToBsIso(date),
-  notes: "",
-  paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
-  bankAccountId: "",
-  chequeNumber: "",
-  // Ownership fields
-  entityId: "",
-  blockId: "",
-  transactionScope: "building",
-  // Manual override flag
-  entityOverridden: false,
-};
+    payerType: "tenant",
+    tenantId: "",
+    externalPayerName: "",
+    externalPayerType: "PERSON",
+    sourceId: "",
+    amount: "",
+    date,
+    nepaliDate: adIsoToBsIso(date),
+    notes: "",
+    paymentMethod: PAYMENT_METHODS.BANK_TRANSFER,
+    bankAccountId: "",
+    chequeNumber: "",
+    // Ownership fields
+    entityId: "",
+    blockId: "",
+    transactionScope: "building",
+    // Manual override flag
+    entityOverridden: false,
+  };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,7 +229,12 @@ function EntityResolutionBanner({
 
             {/* Entity node — highlighted */}
             <div
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border font-semibold text-xs ${getEntityBadgeColor(resolvedEntity.type)}`}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border font-semibold text-xs"
+              style={{
+                backgroundColor: `var(--color-${resolvedEntity.type === "company" ? "sallyan" : resolvedEntity.type}-bg)`,
+                color: `var(--color-${resolvedEntity.type === "company" ? "sallyan" : resolvedEntity.type})`,
+                borderColor: `var(--color-${resolvedEntity.type === "company" ? "sallyan" : resolvedEntity.type}-border)`
+              }}
             >
               <CheckCircle2 className="w-3 h-3" />
               <span>{resolvedEntity.name || getOwnershipTypeLabel(resolvedEntity.type)}</span>
@@ -289,11 +283,11 @@ export function AddRevenueDialog({
   const [submitting, setSubmitting] = useState(false);
 
   // Fetch all ownership entities and blocks via hook
-  const { 
-    entities: entitiesProp, 
-    blocks, 
-    loading: entitiesLoading, 
-    getBlocksForEntity 
+  const {
+    entities: entitiesProp,
+    blocks,
+    loading: entitiesLoading,
+    getBlocksForEntity
   } = useOwnership();
 
   // Entity resolution state
@@ -770,7 +764,12 @@ export function AddRevenueDialog({
                         <SelectItem key={e._id} value={e._id}>
                           <div className="flex items-center gap-2">
                             <span
-                              className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
+                              className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border"
+                              style={{
+                                backgroundColor: `var(--color-${e.type === "company" ? "sallyan" : e.type}-bg)`,
+                                color: `var(--color-${e.type === "company" ? "sallyan" : e.type})`,
+                                borderColor: `var(--color-${e.type === "company" ? "sallyan" : e.type}-border)`
+                              }}
                             >
                               {getOwnershipTypeLabel(e.type)}
                             </span>
@@ -898,7 +897,7 @@ export function AddRevenueDialog({
               <Select
                 value={
                   formik.values.paymentMethod &&
-                  VALID_PAYMENT_METHOD_VALUES.includes(formik.values.paymentMethod)
+                    VALID_PAYMENT_METHOD_VALUES.includes(formik.values.paymentMethod)
                     ? formik.values.paymentMethod
                     : PAYMENT_METHODS.BANK_TRANSFER
                 }
