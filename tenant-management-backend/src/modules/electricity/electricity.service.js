@@ -480,11 +480,15 @@ class ElectricityService {
     if (electricity.totalAmountPaisa <= 0)
       return { success: true, skipped: true };
 
+    // Resolve entity from the block that owns this electricity record
+    const entityId = electricity.unit?.block?.ownershipEntityId ?? null;
+
     // Entry 1: Tenant charge → Revenue
     const chargePayload = buildElectricityChargeJournal(electricity);
     const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
       chargePayload,
       session,
+      entityId,
     );
 
     // Entry 2: NEA cost → Liability (only when NEA rate was configured at read time)
@@ -494,7 +498,7 @@ class ElectricityService {
     // The dashboard must NOT count ELECTRICITY_NEA_COST transactions as actual expenses.
     if (electricity.neaCostPaisa != null && electricity.neaCostPaisa > 0) {
       const neaExpensePayload = buildElectricityNeaCostJournal(electricity);
-      await ledgerService.postJournalEntry(neaExpensePayload, session);
+      await ledgerService.postJournalEntry(neaExpensePayload, session, entityId);
     }
 
     // Entry 3: Create Revenue record for the MARGIN only (at charge time, not payment time).
@@ -571,6 +575,7 @@ class ElectricityService {
     const electricity = await Electricity.findById(paymentData.electricityId)
       .populate("tenant", "name")
       .populate("property", "name")
+      .populate({ path: "unit", populate: { path: "block", select: "ownershipEntityId" } })
       .session(session);
 
     if (!electricity) throw new Error("Electricity record not found");
@@ -611,9 +616,11 @@ class ElectricityService {
       paymentData,
       electricity,
     );
+    const paymentEntityId = electricity.unit?.block?.ownershipEntityId ?? null;
     const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
       journalPayload,
       session,
+      paymentEntityId,
     );
 
     // NOTE: Revenue record is intentionally NOT created here.

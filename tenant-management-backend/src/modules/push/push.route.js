@@ -1,10 +1,12 @@
 import { Router } from "express";
-import { protect } from "../../middleware/protect.js";
 import {
   savePushSubscription,
   renewPushSubscription,
   deletePushSubscription,
+  sendTestNotification,
 } from "./push.controller.js";
+import { protect } from "../../middleware/protect.js";
+import { authorize } from "../../middleware/authorize.js";
 
 const router = Router();
 
@@ -17,5 +19,13 @@ router.post("/renew", renewPushSubscription);
 
 // No auth — endpoint URL is treated as proof-of-possession, same model as /renew
 router.post("/unsubscribe", deletePushSubscription);
+
+// Dev/admin test — protected + admin only so it's never accidentally triggered in prod
+router.post(
+  "/send-test",
+  protect,
+  authorize("admin", "super_admin"),
+  sendTestNotification,
+);
 
 export default router;

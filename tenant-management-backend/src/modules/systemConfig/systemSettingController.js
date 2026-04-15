@@ -72,3 +72,40 @@ export const saveLateFee = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ── OWNERSHIP CONFIG ──────────────────────────────────────────────────────────
+
+import { SystemConfig } from "./SystemConfig.Model.js";
+
+// GET /api/settings/ownership-config
+export const getOwnershipConfig = async (req, res) => {
+  try {
+    const config = await SystemConfig.findOne({ key: "ownershipConfig" })
+      .populate("defaultEntityId", "name type chartOfAccountsPrefix")
+      .lean();
+    return res.status(200).json({
+      success: true,
+      data: config ?? { systemMode: "private", defaultEntityId: null },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// PATCH /api/settings/system-mode
+export const updateSystemMode = async (req, res) => {
+  try {
+    const { systemMode } = req.body;
+    if (!["private", "company", "merged"].includes(systemMode)) {
+      return res.status(400).json({ success: false, message: "Invalid systemMode" });
+    }
+    const config = await SystemConfig.findOneAndUpdate(
+      { key: "ownershipConfig" },
+      { $set: { systemMode, updatedBy: req.admin?.id } },
+      { new: true, upsert: true },
+    ).lean();
+    return res.status(200).json({ success: true, data: config });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

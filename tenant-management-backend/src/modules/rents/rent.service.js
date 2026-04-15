@@ -10,7 +10,9 @@ import {
   buildRentChargeJournal,
   buildTdsWithheldJournal,
   buildTdsPaidToGovernmentJournal,
+  buildCamChargeJournal,
 } from "../ledger/journal-builders/index.js";
+import { Unit } from "../units/unit.model.js";
 import Notification from "../notifications/notification.model.js";
 import NepaliDate from "nepali-datetime";
 import { getIO } from "../../config/socket.js";
@@ -781,7 +783,46 @@ export async function backfillTenantRents(tenantId, monthsToCreate, adminId) {
     const entityByBlock = await buildEntityMapForBlocks([tenant.block]);
     const entityId = entityByBlock.get(tenant.block?.toString()) ?? null;
 
-    // 4. Build rent documents
+    // 4. Fetch per-unit lease data to build unit breakdown
+    const unitDocs =
+      tenant.units?.length > 0
+        ? await Unit.find({ _id: { $in: tenant.units } }).lean()
+        : [];
+
+    const tdsPercentage = tenant.tdsPercentage || 10;
+
+    // Build the per-unit breakdown using each unit's currentLease data.
+    // Uses the same reverse-TDS formula as calculateUnitLease().
+    const unitBreakdownBase = unitDocs
+      .filter(
+        (u) =>
+          u.currentLease?.leaseSquareFeet > 0 &&
+          u.currentLease?.pricePerSqft > 0,
+      )
+      .map((u) => {
+        const pricePerSqft = u.currentLease.pricePerSqft;
+        const sqft = u.currentLease.leaseSquareFeet;
+        const camRate = u.currentLease.camRatePerSqft || 0;
+        const unitTdsRate =
+          (u.currentLease.tdsPercentage || tdsPercentage) / 100;
+        // Reverse TDS: gross already includes TDS, so TDS = gross - net
+        const tdsPerSqft = pricePerSqft - pricePerSqft / (1 + unitTdsRate);
+        return {
+          unit: u._id,
+          grossRentAmountPaisa: rupeesToPaisa(pricePerSqft * sqft),
+          tdsAmountPaisa: rupeesToPaisa(tdsPerSqft * sqft),
+          pricePerSqft,
+          sqft,
+          camRate,
+        };
+      });
+
+    // Only use unit breakdown if ALL units have valid currentLease data
+    const useUnitBreakdown =
+      unitBreakdownBase.length > 0 &&
+      unitBreakdownBase.length === (tenant.units?.length ?? 0);
+
+    // 5. Build rent documents
     const grossPaisa = tenant.grossAmountPaisa || 0;
     const netPaisa =
       tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0);
@@ -799,7 +840,7 @@ export async function backfillTenantRents(tenantId, monthsToCreate, adminId) {
         englishYear,
       } = getNepaliMonthDates(nepaliYear, nepaliMonth - 1);
 
-      return {
+      const doc = {
         tenant: tenant._id,
         innerBlock: tenant.innerBlock,
         block: tenant.block,
@@ -820,14 +861,30 @@ export async function backfillTenantRents(tenantId, monthsToCreate, adminId) {
         status: "overdue", // past months are immediately overdue
         rentFrequency: tenant.rentPaymentFrequency || "monthly",
         createdBy: adminId,
+        useUnitBreakdown,
       };
+
+      if (useUnitBreakdown) {
+        doc.unitBreakdown = unitBreakdownBase.map((ub) => ({
+          unit: ub.unit,
+          grossRentAmountPaisa: ub.grossRentAmountPaisa,
+          tdsAmountPaisa: ub.tdsAmountPaisa,
+          paidAmountPaisa: 0,
+          status: "overdue",
+          pricePerSqft: ub.pricePerSqft,
+          sqft: ub.sqft,
+          camRate: ub.camRate,
+        }));
+      }
+
+      return doc;
     });
 
-    // 5. Bulk insert
+    // 6. Bulk insert rents
     const insertedRents = await Rent.insertMany(rentsToInsert);
 
-    // 6. Post journals per rent
-    const journalLog = { success: 0, failed: 0, errors: [] };
+    // 7. Post rent + TDS journals per rent
+    const rentJournalLog = { success: 0, failed: 0, errors: [] };
 
     for (const rent of insertedRents) {
       const session = await mongoose.startSession();
@@ -840,17 +897,103 @@ export async function backfillTenantRents(tenantId, monthsToCreate, adminId) {
         await recordTdsLedgerEntry(rent, session, entityId);
 
         await session.commitTransaction();
-        journalLog.success++;
+        rentJournalLog.success++;
       } catch (err) {
         await session.abortTransaction();
-        journalLog.failed++;
-        journalLog.errors.push({ rentId: rent._id, error: err.message });
+        rentJournalLog.failed++;
+        rentJournalLog.errors.push({ rentId: rent._id, error: err.message });
         console.error(
-          `[backfillTenantRents] journal failed for ${rent._id}:`,
+          `[backfillTenantRents] rent journal failed for ${rent._id}:`,
           err.message,
         );
       } finally {
         session.endSession();
+      }
+    }
+
+    // 8. Create CAM records for each backfilled month
+    const camAmountPaisa =
+      tenant.camChargesPaisa || rupeesToPaisa(tenant.camCharges || 0);
+    const camLog = { created: 0, skippedExisting: 0, failed: 0, errors: [] };
+
+    if (camAmountPaisa > 0) {
+      // Idempotency — skip months that already have a CAM
+      const existingCams = await Cam.find({
+        tenant: tenant._id,
+        $or: toCreate.map((m) => ({
+          nepaliYear: m.nepaliYear,
+          nepaliMonth: m.nepaliMonth,
+        })),
+      }).select("nepaliYear nepaliMonth");
+
+      const existingCamSet = new Set(
+        existingCams.map((c) => `${c.nepaliYear}-${c.nepaliMonth}`),
+      );
+
+      for (const { nepaliYear, nepaliMonth } of toCreate) {
+        if (existingCamSet.has(`${nepaliYear}-${nepaliMonth}`)) {
+          camLog.skippedExisting++;
+          continue;
+        }
+
+        const {
+          firstDayNepali: nepaliDate,
+          lastDayNepali: nepaliDueDate,
+          englishDueDate,
+          englishMonth,
+          englishYear,
+        } = getNepaliMonthDates(nepaliYear, nepaliMonth - 1);
+
+        try {
+          const [cam] = await Cam.create([
+            {
+              tenant: tenant._id,
+              property: tenant.property,
+              block: tenant.block,
+              innerBlock: tenant.innerBlock,
+              nepaliMonth,
+              nepaliYear,
+              nepaliDate,
+              amountPaisa: camAmountPaisa,
+              amount: paisaToRupees(camAmountPaisa),
+              paidAmountPaisa: 0,
+              paidAmount: 0,
+              year: englishYear,
+              month: englishMonth,
+              nepaliDueDate,
+              englishDueDate,
+              status: "overdue",
+            },
+          ]);
+
+          try {
+            const camPayload = buildCamChargeJournal(cam, {
+              createdBy: adminId,
+            });
+            await ledgerService.postJournalEntry(camPayload, null, entityId);
+          } catch (journalErr) {
+            console.error(
+              `[backfillTenantRents] CAM journal failed for ${cam._id}:`,
+              journalErr.message,
+            );
+            camLog.errors.push({
+              camId: cam._id,
+              error: journalErr.message,
+            });
+          }
+
+          camLog.created++;
+        } catch (err) {
+          camLog.failed++;
+          camLog.errors.push({
+            month: `${nepaliYear}-${nepaliMonth}`,
+            error: err.message,
+          });
+          console.error(
+            `[backfillTenantRents] CAM create failed for ${nepaliYear}-${nepaliMonth}:`,
+            err.message,
+          );
+        }
       }
     }
 
@@ -860,10 +1003,14 @@ export async function backfillTenantRents(tenantId, monthsToCreate, adminId) {
 
     return {
       success: true,
-      message: `${insertedRents.length} rent record(s) created, ${journalLog.failed} journal error(s)`,
+      message: `${insertedRents.length} rent record(s) created, ${camLog.created} CAM(s) created, ${rentJournalLog.failed} rent journal error(s)`,
       created,
       skipped,
-      journalErrors: journalLog.errors.length ? journalLog.errors : undefined,
+      unitBreakdownApplied: useUnitBreakdown,
+      journalErrors: rentJournalLog.errors.length
+        ? rentJournalLog.errors
+        : undefined,
+      camErrors: camLog.errors.length ? camLog.errors : undefined,
     };
   } catch (error) {
     console.error("[backfillTenantRents]", error.message);

@@ -33,6 +33,7 @@ import pushRoute from "./modules/push/push.route.js";
 import { sendTestNotification } from "./modules/push/push.controller.js"; // ✅ added
 import transactionRoute from "./modules/ledger/transactions/transaction.route.js";
 import ownershipRoute from "./modules/ownership/ownership.route.js";
+import migrationRoute from "./modules/migration/migration.route.js";
 import { vendorRouter } from "./modules/vendors/vendor.route.js";
 import dailyChecksRoute from "./modules/dailyChecks/dailyChecksList.route.js";
 import loanRoute from "./modules/loans/Loan.route.js";
@@ -115,6 +116,7 @@ app.use("/api/settings", systemSettingRoute);
 app.use("/api/push", pushRoute);
 app.use("/api/transactions", transactionRoute);
 app.use("/api/ownership", ownershipRoute);
+app.use("/api/migration", migrationRoute);
 app.use("/api/vendor", vendorRouter);
 app.use("/api/checklists", dailyChecksRoute);
 app.use("/api/loan", loanRoute);

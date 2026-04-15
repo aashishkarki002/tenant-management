@@ -625,7 +625,7 @@ export async function deleteRevenue(revenueId, reason, adminId) {
       reason,
       originalTransactionId: revenue.transactionId,
     });
-    await ledgerService.postJournalEntry(reversePayload, session);
+    await ledgerService.postJournalEntry(reversePayload, session, revenue.entityId ?? null);
 
     revenue.status = "REVERSED";
     revenue.reversalReason = reason;

@@ -4,6 +4,7 @@ import {
   getMonthlyChartController,
   getRevenueBreakdownController,
   getExpenseBreakdownController,
+  getConsolidatedController,
 } from "./accounting.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -51,5 +52,9 @@ router.get("/revenue-summary", ...guard, getRevenueBreakdownController);
 
 // Full expense breakdown for ExpenseBreakDown page
 router.get("/expense-summary", ...guard, getExpenseBreakdownController);
+
+// Consolidated P&L across all entities — only in merged/company mode
+// Returns per-entity summary + combined totals
+router.get("/consolidated", ...guard, getConsolidatedController);
 
 export default router;

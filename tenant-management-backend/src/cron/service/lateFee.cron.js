@@ -330,7 +330,8 @@ async function processOneRent(rent, policy, adminId) {
     }
 
     await rent.save({ session });
-    await ledgerService.postJournalEntry(journalPayload, session);
+    const entityId = rent.block?.ownershipEntityId ?? null;
+    await ledgerService.postJournalEntry(journalPayload, session, entityId);
     await session.commitTransaction();
 
     return { skipped: false, deltaFeePaisa, newTotalFeePaisa };
@@ -400,7 +401,8 @@ export async function applyLateFees(adminId) {
 
   const overdueRents = await Rent.find(query)
     .populate("tenant", "name email")
-    .populate("property", "name");
+    .populate("property", "name")
+    .populate("block", "ownershipEntityId");
 
   if (!overdueRents.length) {
     console.log("       → No eligible overdue rents");

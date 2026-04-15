@@ -796,6 +796,7 @@ export async function getRevenueBreakdownSummary({
       amount: paisaToRupees(r.amountPaisa || 0),
       bsDate,
       status: r.status ?? "RECORDED",
+      paymentMethod: r.paymentMethod ?? null,
     };
   });
 
@@ -1102,6 +1103,7 @@ export async function getExpenseBreakdownSummary({
           })(),
     status: e.status ?? "RECORDED",
     notes: e.notes ?? "",
+    paymentMethod: e.paymentMethod ?? null,
   }));
 
   return {

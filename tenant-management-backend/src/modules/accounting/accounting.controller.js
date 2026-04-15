@@ -4,6 +4,8 @@ import {
   getRevenueBreakdownSummary,
   getExpenseBreakdownSummary,
 } from "./accounting.service.js";
+import { OwnershipEntity } from "../ownership/OwnershipEntity.Model.js";
+import { SystemConfig } from "../systemConfig/SystemConfig.Model.js";
 
 // ─── Shared query extractor ────────────────────────────────────────────────────
 /**
@@ -129,5 +131,85 @@ export async function getExpenseBreakdownController(req, res) {
     res
       .status(500)
       .json({ success: false, message: "Failed to fetch expense breakdown" });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSOLIDATED VIEW
+// Returns per-entity P&L + combined totals. Only available when systemMode
+// is 'merged' or 'company'.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getConsolidatedController(req, res) {
+  try {
+    const config = await SystemConfig.findOne({ key: "ownershipConfig" }).lean();
+    if (!config || config.systemMode === "private") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Consolidated view requires merged or company mode" });
+    }
+
+    const { quarter, month, startDate, endDate, fiscalYear, paymentMethod } =
+      extractFilters(req.query);
+
+    const sharedFilters = { quarter, month, startDate, endDate, fiscalYear, paymentMethod };
+
+    // Fetch all active entities (excluding head_office — it has no direct charges)
+    const entities = await OwnershipEntity.find({
+      isActive: true,
+      type: { $ne: "head_office" },
+    }).lean();
+
+    // Run per-entity summaries in parallel
+    const perEntityData = await Promise.all(
+      entities.map(async (entity) => {
+        const summary = await getAccountingSummary({
+          ...sharedFilters,
+          entityId: entity._id.toString(),
+        });
+        return {
+          entity: {
+            _id: entity._id,
+            name: entity.name,
+            type: entity.type,
+            chartOfAccountsPrefix: entity.chartOfAccountsPrefix,
+          },
+          summary,
+        };
+      }),
+    );
+
+    // Also include legacy null-entity entries under private
+    const privateEntitySummary = await getAccountingSummary({
+      ...sharedFilters,
+      entityId: "private",
+    });
+
+    // Calculate combined totals across all entities
+    const allSummaries = [...perEntityData.map((e) => e.summary), privateEntitySummary];
+    const combined = {
+      totalRevenuePaisa: allSummaries.reduce(
+        (sum, s) => sum + (s.totalRevenuePaisa ?? 0),
+        0,
+      ),
+      totalExpensePaisa: allSummaries.reduce(
+        (sum, s) => sum + (s.totalExpensePaisa ?? 0),
+        0,
+      ),
+      netProfitPaisa: 0,
+    };
+    combined.netProfitPaisa = combined.totalRevenuePaisa - combined.totalExpensePaisa;
+
+    res.json({
+      success: true,
+      data: {
+        entities: perEntityData,
+        combined,
+        systemMode: config.systemMode,
+      },
+    });
+  } catch (err) {
+    console.error("[accounting] consolidated error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch consolidated data" });
   }
 }

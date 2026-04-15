@@ -80,6 +80,18 @@ const tenantBalanceSchema = new Schema(
     // How many months the tenant has had a non-zero balance consecutively.
     consecutiveUnpaidMonths: { type: Number, default: 0 },
 
+    // ── Cross-entity breakdown (read-model, recomputed by nightly cron) ──────
+    // Only populated when the tenant has outstanding balances across >1 entity
+    // (e.g. after a block migration with unpaid pre-migration charges).
+    // Used by the tenant profile "Legacy Balance" indicator.
+    entityBreakdown: [
+      {
+        entityId: { type: Types.ObjectId, ref: "OwnershipEntity" },
+        outstandingPaisa: { type: Number, default: 0 },
+        oldestUnpaidDate: { type: String }, // BS date string "2081-09-01"
+      },
+    ],
+
     // ── Sync tracking ─────────────────────────────────────────────────────
     lastSyncedAt: { type: Date, default: null },
   },
