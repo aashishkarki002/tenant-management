@@ -3,17 +3,40 @@
  *
  * Form for editing an existing bank account. Same fields as AddBankAccount
  * except: no opening balance; shows current balance as read-only.
- * Backend does not allow editing balance via this form.
+ * Includes entity selector so legacy accounts without entityId can be fixed.
  *
  * Usage: <EditBankAccount formik={editBankFormik} balanceDisplay="Rs 1,234.00" onCancel={() => close()} />
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { useOwnership } from "../hooks/useOwnership";
+
+function entityOptionLabel(entity) {
+    if (!entity || typeof entity !== "object") return "Entity";
+    if (entity.name) return entity.name;
+    if (entity.type === "head_office") return "Head office";
+    if (entity.type === "company") return "Company";
+    if (entity.type === "private") return "Private";
+    return "Entity";
+}
 
 export default function EditBankAccount({ formik, balanceDisplay, onCancel }) {
+    const { entities, loading, error } = useOwnership();
+    const activeEntities = useMemo(
+        () => entities.filter((e) => e.isActive !== false),
+        [entities],
+    );
+
     return (
         <form onSubmit={formik.handleSubmit} className="space-y-4">
             {balanceDisplay != null && balanceDisplay !== "" && (
@@ -32,6 +55,41 @@ export default function EditBankAccount({ formik, balanceDisplay, onCancel }) {
                     </p>
                 </div>
             )}
+
+            {/* Ownership entity */}
+            <div className="space-y-1.5">
+                <Label htmlFor="edit-entityId">Ownership entity *</Label>
+                {error && <p className="text-xs text-destructive">{error}</p>}
+                <Select
+                    value={formik.values.entityId || undefined}
+                    onValueChange={(v) => formik.setFieldValue("entityId", v)}
+                    disabled={loading || activeEntities.length === 0}
+                >
+                    <SelectTrigger id="edit-entityId" className="w-full">
+                        <SelectValue
+                            placeholder={
+                                loading
+                                    ? "Loading entities…"
+                                    : activeEntities.length === 0
+                                      ? "No entities available"
+                                      : "Select entity"
+                            }
+                        />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {activeEntities.map((ent) => (
+                            <SelectItem key={String(ent._id)} value={String(ent._id)}>
+                                {entityOptionLabel(ent)}
+                                {ent.type ? (
+                                    <span className="text-muted-foreground text-xs ml-1">
+                                        ({ent.type.replace(/_/g, " ")})
+                                    </span>
+                                ) : null}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
 
             <div className="space-y-1.5">
                 <Label htmlFor="edit-bankName">Bank Name *</Label>

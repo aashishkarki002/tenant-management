@@ -217,31 +217,41 @@ export default function OverviewTab({
                 COMPARE MODE — period A vs B
             ══════════════════════════════════════════════════════════════ */}
             {compareMode && (
-                <Card>
-                    <CompareBanner labelA={labelA} labelB={labelB} />
-                    <CompareChart
-                        data={compareData}
-                        loading={loadingChart}
+                <>
+                    <Card>
+                        <CompareBanner labelA={labelA} labelB={labelB} />
+                        {!loadingChart && compareData.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center gap-2 h-[200px] border border-dashed border-[var(--color-border)] rounded-xl">
+                                <span className="text-[13px] font-semibold text-[var(--color-text-body)]">No comparison data</span>
+                                <span className="text-[11px] text-[var(--color-text-sub)]">
+                                    Select a period B using the Compare button above
+                                </span>
+                            </div>
+                        ) : (
+                            <CompareChart
+                                data={compareData}
+                                loading={loadingChart}
+                                labelA={labelA}
+                                labelB={labelB}
+                            />
+                        )}
+                    </Card>
+                    <CompareStatStrip
+                        stats={comparisonStats}
                         labelA={labelA}
                         labelB={labelB}
+                        loading={loadingChart}
                     />
-                </Card>
-            )}
-            {compareMode && comparisonStats && (
-                <CompareStatStrip
-                    stats={comparisonStats}
-                    labelA={labelA}
-                    labelB={labelB}
-                    loading={loadingChart}
-                />
+                </>
             )}
 
             {/* ══════════════════════════════════════════════════════════════
                 TIER 2 — Cash Flow Trend chart (full width)
+                In compare mode shows period A data so the chart is never blank.
             ══════════════════════════════════════════════════════════════ */}
             <ChartCard
-                title={compareMode ? "Primary Period · Cash Flow" : "Cash Flow Trend"}
-                subtitle={filterLabel}
+                title={compareMode ? `Period A · ${labelA}` : "Cash Flow Trend"}
+                subtitle={compareMode ? "Primary period breakdown" : filterLabel}
                 actions={
                     <div className="flex gap-3.5">
                         {[
@@ -528,19 +538,18 @@ function CompareBanner({ labelA, labelB }) {
             </div>
             <div className="flex gap-3.5 flex-wrap">
                 {[
-                    { c: "var(--color-info)", l: "Rev A" },
-                    { c: "var(--color-info)", l: "Rev B", op: "0.4" },
-                    { c: "var(--color-warning)", l: "Exp A" },
-                    { c: "var(--color-warning)", l: "Exp B", op: "0.4" },
+                    { c: "var(--color-info)", l: "Rev A", swatchOp: 1 },
+                    { c: "var(--color-info)", l: "Rev B", swatchOp: 0.35 },
+                    { c: "var(--color-warning)", l: "Exp A", swatchOp: 1 },
+                    { c: "var(--color-warning)", l: "Exp B", swatchOp: 0.35 },
                 ].map((x) => (
                     <div
                         key={x.l}
                         className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]"
-                        style={{ opacity: x.op ?? 1 }}
                     >
                         <span
                             className="w-2.5 h-2.5 rounded-sm shrink-0"
-                            style={{ background: x.c }}
+                            style={{ background: x.c, opacity: x.swatchOp }}
                         />
                         {x.l}
                     </div>

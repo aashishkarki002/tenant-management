@@ -163,6 +163,7 @@ export default function AccountingPage() {
     const { chartData, compareData, comparisonStats, loadingChart } = useMonthlyChart(
         chartQuarter, activeCompareQtr,
         selectedFiscalYear, chartAllYear, resolvedEntityId,
+        compareMode ? compareYear : null,
     );
 
     // ── Derived totals ────────────────────────────────────────────────────────

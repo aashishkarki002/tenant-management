@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Loader2, PlusIcon, ReceiptTextIcon, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,6 @@ import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { GlobalSearch } from "../components/header";
 import { getFYLabel, getFYStartYear, getTodayNepali } from "@/utils/nepaliDate";
 
-const todayBs = getTodayNepali();
-const currentFY = getFYStartYear(todayBs);
-const FY_LABELS = {
-  thisYear: getFYLabel(currentFY),
-  lastYear: getFYLabel(currentFY - 1),
-};
-
 export default function Dashboard() {
   const { user } = useAuth();
   const { greeting } = useTime();
@@ -29,6 +22,15 @@ export default function Dashboard() {
   const { arrears, loading: arrearsLoading } = useArrearsData();
   const [period, setPeriod] = useState("thisYear");
   const [fyOpen, setFyOpen] = useState(false);
+
+  const FY_LABELS = useMemo(() => {
+    const todayBs = getTodayNepali();
+    const currentFY = getFYStartYear(todayBs);
+    return {
+      thisYear: getFYLabel(currentFY),
+      lastYear: getFYLabel(currentFY - 1),
+    };
+  }, []);
 
   useHeaderSlot(() => (
     <div className="flex items-center gap-2 w-full">
@@ -62,7 +64,7 @@ export default function Dashboard() {
       <div>
         <p
           className="text-sm font-medium text-muted-foreground mb-1.5"
-          style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}
+
         >
           {greeting}, {user?.name}
         </p>

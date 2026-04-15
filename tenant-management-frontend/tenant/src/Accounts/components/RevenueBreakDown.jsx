@@ -47,6 +47,18 @@ const REF_CFG = {
     MANUAL:      { bg: T.alt,       color: T.sub },
 };
 
+// ─── Animation constants ──────────────────────────────────────────────────────
+const EO = "cubic-bezier(0.22, 1, 0.36, 1)";   // ease-out-quint
+const EX = "cubic-bezier(0.16, 1, 0.3, 1)";    // ease-out-expo (bars)
+
+const ANIM_CSS = `
+@keyframes rb-up   { from { opacity:0; transform:translateY(7px) } to { opacity:1; transform:translateY(0) } }
+@keyframes rb-in   { from { opacity:0; transform:scale(0.97)     } to { opacity:1; transform:scale(1)     } }
+@keyframes rb-draw { to   { stroke-dashoffset:0 } }
+@media (prefers-reduced-motion:reduce) {
+  [data-rb] * { animation-duration:0.01ms !important; transition-duration:0.01ms !important; }
+}`;
+
 const fmt  = (n) => `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
 const fmtK = (v) => {
     const a = Math.abs(v);
@@ -72,9 +84,17 @@ function MiniSparkline({ data, color = "var(--color-info)", width = 96, height =
     return (
         <svg width={width} height={height} style={{ overflow: "visible", flexShrink: 0 }}>
             <path d={path} fill="none" stroke={color} strokeWidth="1.5"
-                strokeLinecap="round" strokeLinejoin="round" opacity="0.5" />
+                strokeLinecap="round" strokeLinejoin="round"
+                pathLength="1"
+                style={{
+                    strokeDasharray:  1,
+                    strokeDashoffset: 1,
+                    opacity:          0.6,
+                    animation:        `rb-draw 0.9s ${EX} 0.15s both`,
+                }} />
             {hi && (
-                <circle cx={hi[0]} cy={hi[1]} r="3" fill={color} stroke="white" strokeWidth="1.5" />
+                <circle cx={hi[0]} cy={hi[1]} r="3" fill={color} stroke="white" strokeWidth="1.5"
+                    style={{ animation: `rb-in 0.3s ${EO} 0.9s both` }} />
             )}
         </svg>
     );
@@ -196,6 +216,7 @@ export default function RevenueBreakDown({
     const [tenants, setTenants] = useState([]);
     const [sources, setSources] = useState([]);
     const [payMethodFilter, setPayMethodFilter] = useState(null);
+    const [animated, setAnimated] = useState(false);
     const { bankAccounts } = useBankAccounts();
 
     const { data: D, loading, error, refetch } = useRevenueSummary(
@@ -208,6 +229,15 @@ export default function RevenueBreakDown({
     useEffect(() => {
         if (openDialog) { setDialogOpen(true); onDialogOpenHandled?.(); }
     }, [openDialog]); // eslint-disable-line
+
+    // Drive bar + row entrance animations: bars start at 0, expand when data arrives
+    useEffect(() => {
+        if (loading) { setAnimated(false); return; }
+        const id = requestAnimationFrame(() =>
+            requestAnimationFrame(() => setAnimated(true))
+        );
+        return () => cancelAnimationFrame(id);
+    }, [loading]);
 
     useEffect(() => {
         api.get("/api/tenant/get-tenants")
@@ -292,7 +322,8 @@ export default function RevenueBreakDown({
     }, [trend, streams, totals, periodLabel]);
 
     return (
-        <div style={{ color: T.text }}>
+        <div data-rb style={{ color: T.text }}>
+            <style>{ANIM_CSS}</style>
 
             {/* ── 1. Header (Notion-style, pure typography) ─────────────────── */}
             <div className="flex items-start justify-between flex-wrap gap-4 mb-8">
@@ -311,6 +342,7 @@ export default function RevenueBreakDown({
                                 fontSize:      isMobile ? 40 : 52,
                                 color:         T.text,
                                 letterSpacing: "-0.02em",
+                                animation:     `rb-up 0.5s ${EO} both`,
                             }}
                         >
                             ₹{Number(Math.abs(totals.total)).toLocaleString("en-IN")}
@@ -318,7 +350,8 @@ export default function RevenueBreakDown({
                     )}
 
                     {!loading && (
-                        <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+                        <div className="flex items-center gap-2.5 mt-3 flex-wrap"
+                            style={{ animation: `rb-up 0.4s ${EO} 0.1s both` }}>
                             {totals.momPct !== null && (
                                 <Chip
                                     up={(totals.momPct ?? 0) >= 0}
@@ -351,7 +384,7 @@ export default function RevenueBreakDown({
                     </button>
                     <button
                         onClick={() => setDialogOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 h-8 rounded-lg text-[13px] font-bold text-white cursor-pointer transition-colors"
+                        className="flex items-center gap-1.5 px-3.5 h-8 rounded-lg text-[13px] font-bold text-white cursor-pointer transition-opacity hover:opacity-90 active:opacity-75"
                         style={{ background: T.accent }}
                     >
                         <Plus size={13} />
@@ -423,6 +456,7 @@ export default function RevenueBreakDown({
                         background: T.surface,
                         border:     `1px solid ${T.border}`,
                         padding:    "18px 22px",
+                        animation:  `rb-in 0.35s ${EO} both`,
                     }}
                 >
                     <div className="flex-1 min-w-0">
@@ -511,7 +545,8 @@ export default function RevenueBreakDown({
                                     ? (s.amount / streams[0].amount) * 100
                                     : 0;
                                 return (
-                                    <div key={s.code ?? i}>
+                                    <div key={s.code ?? i}
+                                        style={{ animation: `rb-up 0.4s ${EO} ${i * 55}ms both` }}>
                                         <div className="flex items-baseline justify-between mb-1.5">
                                             <span className="text-[13px] font-medium"
                                                 style={{ color: T.text }}>{s.name}</span>
@@ -528,10 +563,10 @@ export default function RevenueBreakDown({
                                         }}>
                                             <div style={{
                                                 height: "100%",
-                                                width: `${barW}%`,
+                                                width: animated ? `${barW}%` : "0%",
                                                 borderRadius: 2,
                                                 background: i === 0 ? T.revenue : `color-mix(in srgb, ${T.revenue} 45%, transparent)`,
-                                                transition: "width 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
+                                                transition: `width 0.7s ${EX} ${i * 55}ms`,
                                             }} />
                                         </div>
                                     </div>
@@ -564,8 +599,11 @@ export default function RevenueBreakDown({
                             ].map((s, i) => (
                                 <div
                                     key={s.label}
-                                    className="py-3 border-b"
-                                    style={{ borderColor: `${T.border}99` }}
+                                    className="py-3 border-b last:border-b-0"
+                                    style={{
+                                        borderColor: `${T.border}99`,
+                                        animation:   `rb-up 0.35s ${EO} ${i * 45}ms both`,
+                                    }}
                                 >
                                     <div className="text-[10px] mb-0.5" style={{ color: T.sub }}>{s.label}</div>
                                     <div
@@ -585,6 +623,8 @@ export default function RevenueBreakDown({
                 </div>
             </div>
 
+            <Sep my={28} />
+
             {/* ── 5a. Intel: Payer Split · Ref Types · Payment Methods ─────── */}
             <div className={`grid gap-10 mb-8 ${isMobile ? "grid-cols-1" : "grid-cols-3"}`}>
 
@@ -597,7 +637,8 @@ export default function RevenueBreakDown({
                                 const barW = totals.total > 0 ? (p.amount / totals.total) * 100 : 0;
                                 const color = i === 0 ? T.revenue : T.amber;
                                 return (
-                                    <div key={p.name}>
+                                    <div key={p.name}
+                                        style={{ animation: `rb-up 0.35s ${EO} ${i * 55}ms both` }}>
                                         <div className="flex items-baseline justify-between mb-1.5">
                                             <span className="text-[13px] font-medium" style={{ color: T.text }}>{p.name}</span>
                                             <div className="flex items-baseline gap-2 flex-shrink-0">
@@ -606,7 +647,7 @@ export default function RevenueBreakDown({
                                             </div>
                                         </div>
                                         <div style={{ height: 3, borderRadius: 2, background: T.border, overflow: "hidden" }}>
-                                            <div style={{ height: "100%", width: `${barW}%`, borderRadius: 2, background: color, transition: "width 0.6s cubic-bezier(0.16,1,0.3,1)" }} />
+                                            <div style={{ height: "100%", width: animated ? `${barW}%` : "0%", borderRadius: 2, background: color, transition: `width 0.7s ${EX} ${i * 55}ms` }} />
                                         </div>
                                     </div>
                                 );
@@ -620,10 +661,11 @@ export default function RevenueBreakDown({
                     <SectionLabel>By Reference</SectionLabel>
                     {loading ? <><Skeleton /><Skeleton /><Skeleton /></> : refTypes.length === 0 ? <Empty msg="No ref data" /> : (
                         <div className="flex flex-col gap-3.5">
-                            {refTypes.map(r => {
+                            {refTypes.map((r, i) => {
                                 const cfg = REF_CFG[r.type] ?? { bg: T.alt, color: T.sub };
                                 return (
-                                    <div key={r.type}>
+                                    <div key={r.type}
+                                        style={{ animation: `rb-up 0.35s ${EO} ${i * 55}ms both` }}>
                                         <div className="flex items-center justify-between mb-1.5">
                                             <RefBadge t={r.type} />
                                             <div className="text-right">
@@ -632,7 +674,7 @@ export default function RevenueBreakDown({
                                             </div>
                                         </div>
                                         <div style={{ height: 3, borderRadius: 2, background: T.border, overflow: "hidden" }}>
-                                            <div style={{ height: "100%", width: `${totals.total > 0 ? (r.amount / totals.total) * 100 : 0}%`, borderRadius: 2, background: cfg.color, transition: "width 0.5s ease" }} />
+                                            <div style={{ height: "100%", width: animated ? `${totals.total > 0 ? (r.amount / totals.total) * 100 : 0}%` : "0%", borderRadius: 2, background: cfg.color, transition: `width 0.7s ${EX} ${i * 55}ms` }} />
                                         </div>
                                     </div>
                                 );
@@ -649,7 +691,8 @@ export default function RevenueBreakDown({
                             {payMethodSplit.map((m, i) => {
                                 const barW = totals.total > 0 ? (m.amount / totals.total) * 100 : 0;
                                 return (
-                                    <div key={m.method}>
+                                    <div key={m.method}
+                                        style={{ animation: `rb-up 0.35s ${EO} ${i * 55}ms both` }}>
                                         <div className="flex items-baseline justify-between mb-1.5">
                                             <span className="text-[13px] font-medium" style={{ color: T.text }}>
                                                 {PAYMENT_METHOD_LABELS[m.method] ?? m.method}
@@ -660,7 +703,7 @@ export default function RevenueBreakDown({
                                             </div>
                                         </div>
                                         <div style={{ height: 3, borderRadius: 2, background: T.border, overflow: "hidden" }}>
-                                            <div style={{ height: "100%", width: `${barW}%`, borderRadius: 2, background: i === 0 ? T.revenue : `color-mix(in srgb, ${T.revenue} 45%, transparent)`, transition: "width 0.6s cubic-bezier(0.16,1,0.3,1)" }} />
+                                            <div style={{ height: "100%", width: animated ? `${barW}%` : "0%", borderRadius: 2, background: i === 0 ? T.revenue : `color-mix(in srgb, ${T.revenue} 45%, transparent)`, transition: `width 0.7s ${EX} ${i * 55}ms` }} />
                                         </div>
                                         <div className="mt-1 text-[9px]" style={{ color: T.weak }}>{m.count} transaction{m.count !== 1 ? "s" : ""}</div>
                                     </div>
@@ -685,7 +728,7 @@ export default function RevenueBreakDown({
                                     <div
                                         key={t.id}
                                         className="flex items-center gap-4 py-3.5 border-b transition-colors hover:bg-[var(--color-muted)]"
-                                        style={{ borderColor: `${T.border}55` }}
+                                        style={{ borderColor: `${T.border}55`, animation: `rb-up 0.3s ${EO} ${i * 40}ms both` }}
                                     >
                                         <div
                                             className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-extrabold flex-shrink-0"
@@ -700,7 +743,7 @@ export default function RevenueBreakDown({
                                             </div>
                                             <div className="flex items-center gap-3 mt-1.5">
                                                 <div style={{ flex: 1, height: 2, borderRadius: 1, background: T.border, overflow: "hidden" }}>
-                                                    <div style={{ height: "100%", width: `${t.pctOfTotal}%`, background: T.revenue, opacity: 0.5, transition: "width 0.6s" }} />
+                                                    <div style={{ height: "100%", width: animated ? `${t.pctOfTotal}%` : "0%", background: T.revenue, opacity: 0.5, transition: `width 0.7s ${EX} ${i * 40}ms` }} />
                                                 </div>
                                                 <span className="text-[9px] flex-shrink-0" style={{ color: T.weak }}>
                                                     {t.count} txn{t.count !== 1 ? "s" : ""} · {t.pctOfTotal}%
@@ -724,22 +767,14 @@ export default function RevenueBreakDown({
 
             {/* ── 5. Transactions (Notion database style) ───────────────────── */}
             <div>
-                <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-                    <div>
-                        <SectionLabel>Transactions</SectionLabel>
-                        <div className="text-[11px] -mt-2" style={{ color: T.weak }}>
-                            {payMethodFilter
-                                ? `${filteredTxns.length} of ${transactions.length} · ${PAYMENT_METHOD_LABELS[payMethodFilter]}`
-                                : `${transactions.length} entries · ${periodLabel}`}
-                        </div>
-                    </div>
-                    <button
-                        onClick={exportCSV}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors"
-                        style={{ borderColor: T.border, background: T.surface, color: T.body }}
+                <div className="mb-4">
+                    <SectionLabel
+                        right={payMethodFilter
+                            ? `${filteredTxns.length} of ${transactions.length} · ${PAYMENT_METHOD_LABELS[payMethodFilter]}`
+                            : `${transactions.length} entries · ${periodLabel}`}
                     >
-                        <Download size={11} /> Export CSV
-                    </button>
+                        Transactions
+                    </SectionLabel>
                 </div>
 
                 {/* Payment method filter — inline pills */}
@@ -819,11 +854,11 @@ export default function RevenueBreakDown({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {pageTxns.map((t) => (
+                                    {pageTxns.map((t, i) => (
                                         <tr
-                                            key={t.id}
+                                            key={`${currentPage}-${t.id}`}
                                             className="transition-colors hover:bg-[var(--color-muted)]"
-                                            style={{ borderBottom: `1px solid ${T.border}55` }}
+                                            style={{ borderBottom: `1px solid ${T.border}55`, animation: `rb-up 0.25s ${EO} ${i * 22}ms both` }}
                                         >
                                             <td className="py-4 pr-4" style={{ color: T.weak, fontSize: 11, whiteSpace: "nowrap" }}>
                                                 {t.bsDate}
@@ -867,7 +902,7 @@ export default function RevenueBreakDown({
                                             key={label}
                                             onClick={fn}
                                             disabled={disabled}
-                                            className="px-3 py-1 rounded-md border text-[11px] font-semibold"
+                                            className="px-3 py-1 rounded-md border text-[11px] font-semibold transition-colors"
                                             style={{
                                                 borderColor: T.border,
                                                 background:  T.surface,

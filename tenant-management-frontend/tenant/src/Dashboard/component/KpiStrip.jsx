@@ -167,7 +167,7 @@ function Tile({
                         : (
                             <p
                                 className="text-xl sm:text-2xl xl:text-3xl font-bold tabular-nums leading-none truncate"
-                                style={{ ...valueStyle, fontFamily: "var(--font-serif)" }}
+                                style={{ ...valueStyle }}
                             >
                                 {value}
                             </p>

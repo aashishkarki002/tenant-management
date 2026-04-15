@@ -15,6 +15,7 @@ import { MaintenanceStats } from './components/MaintenanceStats';
 import { MaintenanceFilters } from './components/MaintenanceFilters';
 import { MaintenanceList } from './components/MaintenanceList';
 import { AddMaintenanceDialog } from './components/AddMaintenanceDialog';
+import { MaintenanceDetailSheet } from './components/MaintenanceDetailSheet';
 import { useMaintenance } from './hooks/useMaintenance';
 import { useMaintenanceFilters } from './hooks/useMaintenanceFilters';
 import {
@@ -61,6 +62,7 @@ export default function MaintenancePage() {
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [activeTab, setActiveTab] = useState('list');
   const [viewMode, setViewMode] = useState('table');
+  const [detailItem, setDetailItem] = useState(null);
 
   const stats = useMemo(() => calculateMaintenanceStats(maintenance), [maintenance]);
 
@@ -205,6 +207,10 @@ export default function MaintenancePage() {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen px-4 sm:px-6 font-sans">
+      <MaintenanceDetailSheet
+        item={detailItem}
+        onClose={() => setDetailItem(null)}
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full   p-2">
         <div className="border-b border-muted-fill ">
@@ -265,6 +271,7 @@ export default function MaintenancePage() {
             formatStatus={formatStatus}
             formatDate={formatDate}
             onUpdate={updateMaintenanceItem}
+            onViewDetail={setDetailItem}
             bankAccounts={bankAccounts}
             staffs={staffs}
             hasAnyTickets={hasAnyTickets}

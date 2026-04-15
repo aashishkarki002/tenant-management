@@ -1,10 +1,5 @@
-// src/pages/component/BarDiagram.jsx
-// Revenue Trend chart — compact layout, all data preserved.
-// VerdictBadge + CurrentMonthCallout collapsed into header row.
-// SummaryStrip inlined below chart with minimal padding.
 
-import React, { useMemo } from 'react';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import React, { useMemo } from 'react'; import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import {
     ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
     ResponsiveContainer, Cell, LabelList, ReferenceArea,
@@ -75,11 +70,19 @@ function rollingAvg(data, window = 3) {
 
 function buildChartData(items, fyMonths, currentMonth, highlightCurrent) {
     if (!Array.isArray(fyMonths) || fyMonths.length === 0) return [];
+    const arr = Array.isArray(items) ? items : [];
+    // Use composite key when items carry a year field (revenueByMonth shape),
+    // otherwise fall back to month-only (revenueThisYear/LastYear shape has no year).
+    const hasYear = arr.some((it) => it.year != null);
     const lookup = new Map(
-        (Array.isArray(items) ? items : []).map((it) => [Number(it.month), it])
+        arr.map((it) => [
+            hasYear ? `${it.year}-${Number(it.month)}` : String(Number(it.month)),
+            it,
+        ])
     );
     const base = fyMonths.map((fm) => {
-        const item = lookup.get(fm.month);
+        const key = hasYear ? `${fm.bsYear}-${fm.month}` : String(fm.month);
+        const item = lookup.get(key);
         const revenue = Number(item?.total ?? item?.revenue ?? 0) || 0;
         return {
             name: fm.short, month: fm.month, bsYear: fm.bsYear,
@@ -393,9 +396,14 @@ export default function BarDiagram({ stats, loading, error, period = 'thisYear' 
         return months;
     }, [period, targetFY, todayBs.months]);
 
-    const rawData = period === 'thisYear'
-        ? (stats?.revenueThisYear ?? stats?.revenueByMonth ?? [])
-        : (stats?.revenueLastYear ?? stats?.revenueByMonth ?? []);
+    // revenueByMonth has {year, month, total} — year is required for correct FY
+    // mapping (months 1-3 span two BS years within a single FY). Fall back to
+    // the year-less arrays only when revenueByMonth is absent.
+    const rawData = stats?.revenueByMonth?.length
+        ? stats.revenueByMonth
+        : period === 'thisYear'
+            ? (stats?.revenueThisYear ?? [])
+            : (stats?.revenueLastYear ?? []);
 
     const monthlyData = useMemo(
         () => buildChartData(rawData, fyMonths, currentMonth, period === 'thisYear'),

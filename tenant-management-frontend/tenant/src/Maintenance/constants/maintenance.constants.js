@@ -150,3 +150,14 @@ export const STATUS_SELECT_COLORS = {
   COMPLETED: "bg-emerald-100 text-emerald-700",
   CANCELLED: "bg-gray-100 text-gray-500",
 };
+// constants/maintenance.constants.ts — add this
+export const SCHEDULE_PRESETS = [
+  { label: "Today", days: 0, color: "text-green-700" },
+  { label: "Tomorrow", days: 1, color: "text-blue-700" },
+  { label: "2 days", days: 2, color: "text-blue-700" },
+  { label: "3 days", days: 3, color: "text-blue-700" },
+  { label: "1 week", days: 7, color: "text-violet-700" },
+  { label: "2 weeks", days: 14, color: "text-violet-700" },
+  { label: "1 month", days: 30, color: "text-amber-700" },
+  { label: "3 months", days: 90, color: "text-amber-700" },
+];

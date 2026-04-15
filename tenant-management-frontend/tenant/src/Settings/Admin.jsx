@@ -216,9 +216,10 @@ function GeneralTab({ user, bankAccounts, getBankAccounts, isAdmin }) {
   });
 
   const editBankFormik = useFormik({
-    initialValues: { accountNumber: "", accountName: "", bankName: "", accountCode: "" },
+    initialValues: { entityId: "", accountNumber: "", accountName: "", bankName: "", accountCode: "" },
     enableReinitialize: true,
     onSubmit: async (vals, { setSubmitting }) => {
+      if (!vals.entityId?.trim()) { toast.error("Select an ownership entity"); setSubmitting(false); return; }
       try {
         const res = await api.patch(`/api/bank/update-bank-account/${toEdit?._id}`, {
           ...vals, accountCode: vals.accountCode.toUpperCase().trim(),
@@ -231,7 +232,13 @@ function GeneralTab({ user, bankAccounts, getBankAccounts, isAdmin }) {
 
   const openEdit = (acc) => {
     setToEdit(acc);
-    editBankFormik.setValues({ accountNumber: acc.accountNumber || "", accountName: acc.accountName || "", bankName: acc.bankName || "", accountCode: acc.accountCode || "" });
+    editBankFormik.setValues({
+      entityId: acc.entityId?._id ? String(acc.entityId._id) : acc.entityId ? String(acc.entityId) : "",
+      accountNumber: acc.accountNumber || "",
+      accountName: acc.accountName || "",
+      bankName: acc.bankName || "",
+      accountCode: acc.accountCode || "",
+    });
     setEditOpen(true);
   };
 

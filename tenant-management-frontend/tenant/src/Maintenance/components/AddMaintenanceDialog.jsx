@@ -29,10 +29,12 @@ import {
   STATUS_OPTIONS,
   SCOPE_OPTIONS,
   CONTRACTOR_TYPE_OPTIONS,
+  SCHEDULE_PRESETS,
 } from '../constants/maintenance.constants';
 
 import { transformUnitsToOptions } from '../utils/maintenance.utils';
 import { cn } from '@/lib/utils';
+import { addDays, format } from 'date-fns';
 
 // ── Scope pill selector ───────────────────────────────────────────────────────
 function ScopePills({ value, onChange }) {
@@ -57,7 +59,8 @@ function ScopePills({ value, onChange }) {
     </div>
   );
 }
-
+const resolvePresetDate = (days) =>
+  format(addDays(new Date(), days), "yyyy-MM-dd");
 // ── Collapsible contractor section ────────────────────────────────────────────
 function ContractorSection({ formik }) {
   const [open, setOpen] = useState(false);
@@ -431,24 +434,53 @@ export const AddMaintenanceDialog = ({
                 {/* Scheduled Date */}
                 <div>
                   <Label>Scheduled Date</Label>
-                  <div className="mt-2">
-                    <DualCalendarTailwind
-                      value={formik.values.scheduledDate || ''}
-                      onChange={(eng, nep) => {
-                        formik.setFieldValue('scheduledDate', eng);
-                        if (nep) {
-                          const { nepaliMonth, nepaliYear } = parseNepaliFields(eng);
-                          formik.setFieldValue('scheduledNepaliDate', nep);
-                          formik.setFieldValue('scheduledNepaliMonth', nepaliMonth);
-                          formik.setFieldValue('scheduledNepaliYear', nepaliYear);
-                        }
-                      }}
-                    />
+                  <div className="flex flex-wrap gap-1.5 mt-2 mb-3">
+                    {SCHEDULE_PRESETS.map(({ label, days, color }) => {
+                      const iso = resolvePresetDate(days);
+                      const isActive = formik.values.scheduledDate === iso;
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => {
+                            const { nepaliMonth, nepaliYear } = parseNepaliFields(iso);
+                            formik.setFieldValue('scheduledDate', iso);
+                            // scheduledNepaliDate needs DualCalendar's nep string — set only what you can derive
+                            formik.setFieldValue('scheduledNepaliMonth', nepaliMonth);
+                            formik.setFieldValue('scheduledNepaliYear', nepaliYear);
+                          }}
+                          className={cn(
+                            'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                            isActive
+                              ? 'bg-primary text-white border-primary'
+                              : 'bg-white border-muted-fill hover:bg-muted-fill text-text-body',
+                          )}
+                        >
+                          <span className={cn('h-1.5 w-1.5 rounded-full', isActive ? 'bg-white' : color.replace('text-', 'bg-'))} />
+                          {label}
+                        </button>
+                      );
+                    })}
                   </div>
+
+                  {/* Manual date picker (still fully functional) */}
+                  <DualCalendarTailwind
+                    value={formik.values.scheduledDate || ''}
+                    onChange={(eng, nep) => {
+                      // clear any preset highlight when user picks manually
+                      formik.setFieldValue('scheduledDate', eng);
+                      if (nep) {
+                        const { nepaliMonth, nepaliYear } = parseNepaliFields(eng);
+                        formik.setFieldValue('scheduledNepaliDate', nep);
+                        formik.setFieldValue('scheduledNepaliMonth', nepaliMonth);
+                        formik.setFieldValue('scheduledNepaliYear', nepaliYear);
+                      }
+                    }}
+                  />
                 </div>
               </div>
-
             </div>
+
           </div>
 
           {/* Sticky Footer */}
@@ -472,6 +504,6 @@ export const AddMaintenanceDialog = ({
           </div>
         </form>
       </DialogContent>
-    </Dialog>
+    </Dialog >
   );
 };

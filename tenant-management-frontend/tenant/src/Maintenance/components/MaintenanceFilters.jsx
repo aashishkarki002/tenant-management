@@ -58,14 +58,14 @@ export const MaintenanceFilters = ({
           className={cn(
             'flex items-center gap-2 h-10 px-4 rounded-lg border text-sm font-medium transition-colors',
             hasActiveFilters
-              ? 'border-white text-white bg-primary/10 hover:bg-primary/20'
+              ? 'border-white text-white bg-primary hover:bg-primary/20'
               : 'border-muted-fill bg-surface-raised text-text-body hover:bg-muted-fill'
           )}
         >
           <SlidersHorizontal className="h-4 w-4" />
           Filter
           {hasActiveFilters && (
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] font-semibold text-primary">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full  text-[10px] font-semibold text-primary">
               {(statusFilter !== 'All' ? 1 : 0) + (priorityFilter !== 'All' ? 1 : 0)}
             </span>
           )}
@@ -73,9 +73,9 @@ export const MaintenanceFilters = ({
 
         {/* Popover */}
         {filterPopoverOpen && (
-          <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-80 max-w-[calc(100vw-1rem)] max-h-[80vh] overflow-y-auto rounded-xl border border-muted-fill bg-surface-raised shadow-lg">
+          <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-80 max-w-[calc(100vw-1rem)] max-h-[80vh] overflow-y-auto rounded-xl border border-muted-fill bg-background shadow-lg">
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-3 border-b border-muted-fill sticky top-0 bg-surface-raised z-10">
+            <div className="flex items-center justify-between px-3 py-3 border-b border-muted-fill sticky top-0 bg-background z-10">
               <span className="text-sm font-semibold text-text-strong">Filters</span>
               <button
                 type="button"

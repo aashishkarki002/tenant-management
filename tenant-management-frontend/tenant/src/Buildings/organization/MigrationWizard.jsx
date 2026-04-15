@@ -55,6 +55,7 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
     const [preflight, setPreflight] = useState(null);   // { canMigrate, blockers, warnings }
     const [preflightLoading, setPreflightLoading] = useState(false);
     const [ack, setAck] = useState(false);
+    const [ackBlockers, setAckBlockers] = useState(false);
     const [confirmName, setConfirmName] = useState("");
     const [snapshotId, setSnapshotId] = useState(null);
     const [progressPct, setProgressPct] = useState(0);
@@ -83,7 +84,7 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
             const data = res.data?.data ?? res.data;
             setPreflight({
                 canMigrate: data.canMigrate ?? true,
-                blockers: data.blockers ?? [],
+                blockers: data.issues ?? data.blockers ?? [],
                 warnings: data.warnings ?? [],
             });
         } catch (err) {
@@ -162,7 +163,9 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
         }
     };
 
-    const canProceed = preflight?.canMigrate && (preflight.warnings.length === 0 || ack);
+    const canProceed =
+        (preflight?.blockers?.length === 0 || ackBlockers) &&
+        (preflight?.warnings?.length === 0 || ack);
 
     return (
         <div
@@ -281,11 +284,26 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
                                 </div>
                             )}
 
-                            {preflight.blockers.map((b, i) => (
-                                <div key={i} className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-3 text-xs text-destructive">
-                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />{b}
+                            {preflight.blockers.length > 0 && (
+                                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 space-y-3">
+                                    {preflight.blockers.map((b, i) => (
+                                        <div key={i} className="flex items-start gap-2 text-xs text-destructive">
+                                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />{b}
+                                        </div>
+                                    ))}
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={ackBlockers}
+                                            onChange={(e) => setAckBlockers(e.target.checked)}
+                                            className="accent-destructive w-3.5 h-3.5"
+                                        />
+                                        <span className="text-xs font-semibold text-destructive">
+                                            I understand the risks, force proceed anyway
+                                        </span>
+                                    </label>
                                 </div>
-                            ))}
+                            )}
 
                             {preflight.warnings.length > 0 && (
                                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-3">

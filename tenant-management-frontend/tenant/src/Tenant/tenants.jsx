@@ -389,7 +389,7 @@ function MobileFilterDrawer({ isOpen, onClose, filters, allBlocks, onBlockChange
       >
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--color-border)" }}>
           <div>
-            <h3 className="text-base font-bold font-sans" style={{ color: "var(--color-text-strong)" }}>Filters</h3>
+            <h3 className="text-base font-bold " style={{ color: "var(--color-text-strong)" }}>Filters</h3>
             {activeFilterCount > 0 && (
               <p className="text-[11px] mt-0.5" style={{ color: "var(--color-text-sub)" }}>
                 {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""} applied
