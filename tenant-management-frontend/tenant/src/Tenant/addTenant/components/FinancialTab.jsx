@@ -307,6 +307,7 @@ export const FinancialTab = ({
                             <Label>Bank Guarantee Document *</Label>
                             <input
                                 type="file"
+                                className="border-2 p-2 rounded-2xl w-1/4 font-medium  cursor-pointer bg-gray-100 "
                                 accept="image/*,application/pdf"
                                 onChange={(e) => formik.setFieldValue("bankGuaranteePhoto", e.target.files?.[0])}
                             />

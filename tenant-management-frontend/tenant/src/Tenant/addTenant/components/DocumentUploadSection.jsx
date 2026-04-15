@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { XIcon, UploadCloudIcon, FileTextIcon, ImageIcon, BuildingIcon, ReceiptIcon, ShieldIcon } from "lucide-react";
 import { DOCUMENT_TYPES } from "../constants/tenant.constant";
 
@@ -10,7 +9,6 @@ const DOCUMENT_ZONES = [
         description: "ID card, passport, or citizenship certificate",
         accept: "image/*,application/pdf",
         icon: ShieldIcon,
-        color: "blue",
     },
     {
         type: DOCUMENT_TYPES.AGREEMENT,
@@ -18,7 +16,6 @@ const DOCUMENT_ZONES = [
         description: "Signed lease or rental agreement document",
         accept: "application/pdf,image/*",
         icon: FileTextIcon,
-        color: "purple",
     },
     {
         type: DOCUMENT_TYPES.PHOTO,
@@ -26,7 +23,6 @@ const DOCUMENT_ZONES = [
         description: "Tenant's recent passport-size or profile photo",
         accept: "image/*",
         icon: ImageIcon,
-        color: "green",
     },
     {
         type: DOCUMENT_TYPES.COMPANY_DOCUMENT,
@@ -34,7 +30,6 @@ const DOCUMENT_ZONES = [
         description: "PAN certificate, company registration, or MOA",
         accept: "application/pdf,image/*",
         icon: BuildingIcon,
-        color: "orange",
     },
     {
         type: DOCUMENT_TYPES.TDS,
@@ -42,23 +37,14 @@ const DOCUMENT_ZONES = [
         description: "Tax deduction at source certificate",
         accept: "application/pdf,image/*",
         icon: ReceiptIcon,
-        color: "red",
     },
 ];
-
-const COLOR_MAP = {
-    blue: { border: "border-blue-200", bg: "bg-blue-50", icon: "text-blue-500", badge: "bg-blue-100 text-blue-700", hover: "hover:border-blue-400 hover:bg-blue-100", drag: "border-blue-400 bg-blue-100" },
-    purple: { border: "border-purple-200", bg: "bg-purple-50", icon: "text-purple-500", badge: "bg-purple-100 text-purple-700", hover: "hover:border-purple-400 hover:bg-purple-100", drag: "border-purple-400 bg-purple-100" },
-    green: { border: "border-green-200", bg: "bg-green-50", icon: "text-green-500", badge: "bg-green-100 text-green-700", hover: "hover:border-green-400 hover:bg-green-100", drag: "border-green-400 bg-green-100" },
-    orange: { border: "border-orange-200", bg: "bg-orange-50", icon: "text-orange-500", badge: "bg-orange-100 text-orange-700", hover: "hover:border-orange-400 hover:bg-orange-100", drag: "border-orange-400 bg-orange-100" },
-    red: { border: "border-red-200", bg: "bg-red-50", icon: "text-red-500", badge: "bg-red-100 text-red-700", hover: "hover:border-red-400 hover:bg-red-100", drag: "border-red-400 bg-red-100" },
-};
 
 function UploadZone({ zone, files = [], onAdd, onRemove, isRequired }) {
     const inputRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
-    const colors = COLOR_MAP[zone.color];
     const Icon = zone.icon;
+    const hasFiles = files.length > 0;
 
     const processFiles = (newFiles) => {
         if (!newFiles.length) return;
@@ -71,90 +57,177 @@ function UploadZone({ zone, files = [], onAdd, onRemove, isRequired }) {
         processFiles(Array.from(e.dataTransfer.files));
     };
 
-    const hasFiles = files.length > 0;
-
     return (
-        <div className="space-y-2">
+        <div style={{ borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+            {/* Drop trigger row */}
             <div
-                className={[
-                    "relative border-2 border-dashed rounded-xl transition-all duration-200 cursor-pointer",
-                    colors.border,
-                    isDragging ? colors.drag : `${colors.bg} ${colors.hover}`,
-                ].join(" ")}
                 onClick={() => inputRef.current?.click()}
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
+                style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    padding: "11px 14px",
+                    background: isDragging ? "var(--color-accent-light)" : "var(--color-surface-raised)",
+                    border: `1px solid ${isDragging ? "var(--color-accent)" : "var(--color-border)"}`,
+                    borderStyle: isDragging ? "dashed" : "solid",
+                    borderRadius: hasFiles ? "var(--radius-md) var(--radius-md) 0 0" : "var(--radius-md)",
+                    cursor: "pointer",
+                    transition: "border-color 0.15s, background 0.15s",
+                    userSelect: "none",
+                }}
+                onMouseOver={(e) => {
+                    if (!isDragging) e.currentTarget.style.borderColor = "var(--color-muted-fill)";
+                }}
+                onMouseOut={(e) => {
+                    if (!isDragging) e.currentTarget.style.borderColor = "var(--color-border)";
+                }}
             >
                 <input
                     ref={inputRef}
                     type="file"
                     multiple
                     accept={zone.accept}
-                    className="hidden"
+                    style={{ display: "none" }}
                     onChange={(e) => {
                         processFiles(Array.from(e.target.files || []));
                         e.target.value = "";
                     }}
                 />
 
-                <div className="flex items-center gap-3 px-4 py-3">
-                    <div className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${colors.bg} border ${colors.border}`}>
-                        <Icon className={`w-4 h-4 ${colors.icon}`} />
-                    </div>
+                {/* Icon pill */}
+                <div style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "8px",
+                    background: "var(--color-surface)",
+                    border: "1px solid var(--color-border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                }}>
+                    <Icon size={14} color="var(--color-text-sub)" />
+                </div>
 
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-gray-800">{zone.label}</span>
+                {/* Labels */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "1px" }}>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-text-strong)" }}>
+                            {zone.label}
+                        </span>
 
-                            {/* Required / Optional badge */}
-                            <span className={[
-                                "text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide",
-                                isRequired
-                                    ? "bg-red-100 text-red-600"
-                                    : "bg-gray-100 text-gray-500",
-                            ].join(" ")}>
-                                {isRequired ? "Required" : "Optional"}
+                        {/* Required / Optional badge */}
+                        <span style={{
+                            fontSize: "9px",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            padding: "1px 5px",
+                            borderRadius: "4px",
+                            color: isRequired ? "var(--color-danger)" : "var(--color-text-weak)",
+                            background: isRequired ? "var(--color-danger-bg)" : "var(--color-surface)",
+                            border: `1px solid ${isRequired ? "var(--color-danger-border)" : "var(--color-border)"}`,
+                        }}>
+                            {isRequired ? "Required" : "Optional"}
+                        </span>
+
+                        {/* File count pill */}
+                        {hasFiles && (
+                            <span style={{
+                                fontSize: "10px",
+                                fontWeight: 600,
+                                color: "var(--color-accent)",
+                                background: "var(--color-accent-light)",
+                                border: "1px solid var(--color-accent-mid)",
+                                padding: "1px 7px",
+                                borderRadius: "20px",
+                            }}>
+                                {files.length} {files.length > 1 ? "files" : "file"}
                             </span>
-
-                            {hasFiles && (
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors.badge}`}>
-                                    {files.length} file{files.length > 1 ? "s" : ""}
-                                </span>
-                            )}
-                        </div>
-                        <p className="text-xs text-gray-500 truncate">{zone.description}</p>
+                        )}
                     </div>
 
-                    <div className={`shrink-0 flex items-center gap-1.5 text-xs font-medium ${colors.icon} opacity-70`}>
-                        <UploadCloudIcon className="w-4 h-4" />
-                        <span className="hidden sm:inline">{hasFiles ? "Add more" : "Upload"}</span>
+                    <div style={{ fontSize: "11px", color: "var(--color-text-weak)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {zone.description}
                     </div>
+                </div>
+
+                {/* Upload action hint */}
+                <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "11px",
+                    fontWeight: 500,
+                    color: "var(--color-text-weak)",
+                    flexShrink: 0,
+                }}>
+                    <UploadCloudIcon size={12} />
+                    <span>{hasFiles ? "Add more" : "Upload"}</span>
                 </div>
             </div>
 
+            {/* File list — expands beneath trigger */}
             {hasFiles && (
-                <ul className="space-y-1 pl-1">
+                <div>
                     {files.map((file, i) => (
-                        <li
+                        <div
                             key={i}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-100 rounded-lg shadow-sm group"
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                padding: "8px 14px",
+                                background: "var(--color-surface)",
+                                border: "1px solid var(--color-border)",
+                                borderTop: "none",
+                                borderRadius: i === files.length - 1 ? "0 0 var(--radius-md) var(--radius-md)" : "0",
+                                fontSize: "12px",
+                                color: "var(--color-text-body)",
+                            }}
+                            className="file-item-row"
                         >
-                            <FileTextIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                            <span className="flex-1 text-xs text-gray-700 truncate">{file.name}</span>
-                            <span className="text-xs text-gray-400 shrink-0">
+                            <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--color-muted-fill)", flexShrink: 0 }} />
+                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {file.name}
+                            </span>
+                            <span style={{ fontSize: "11px", color: "var(--color-text-weak)", flexShrink: 0 }}>
                                 {(file.size / 1024).toFixed(0)} KB
                             </span>
                             <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); onRemove(zone.type, i); }}
-                                className="shrink-0 w-5 h-5 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                                style={{
+                                    width: "18px",
+                                    height: "18px",
+                                    borderRadius: "4px",
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    color: "var(--color-text-weak)",
+                                    flexShrink: 0,
+                                    padding: 0,
+                                }}
+                                onMouseOver={(e) => {
+                                    e.currentTarget.style.background = "var(--color-danger-bg)";
+                                    e.currentTarget.style.color = "var(--color-danger)";
+                                }}
+                                onMouseOut={(e) => {
+                                    e.currentTarget.style.background = "none";
+                                    e.currentTarget.style.color = "var(--color-text-weak)";
+                                }}
                             >
-                                <XIcon className="w-3 h-3" />
+                                <XIcon size={10} />
                             </button>
-                        </li>
+                        </div>
                     ))}
-                </ul>
+                </div>
             )}
         </div>
     );
@@ -173,7 +246,6 @@ export const DocumentUploadSection = ({ formik, requiredTypes = new Set() }) => 
     const handleRemove = (type, index) => {
         const files = formik.values.documents?.[type] || [];
         const updated = files.filter((_, i) => i !== index);
-
         if (updated.length === 0) {
             const next = { ...formik.values.documents };
             delete next[type];
@@ -187,33 +259,93 @@ export const DocumentUploadSection = ({ formik, requiredTypes = new Set() }) => 
     };
 
     const total = Object.values(formik.values.documents || {}).reduce((s, f) => s + f.length, 0);
+    const allRequiredMet = DOCUMENT_ZONES
+        .filter((z) => requiredTypes.has(z.type))
+        .every((z) => (formik.values.documents?.[z.type] || []).length > 0);
 
     return (
-        <div className="space-y-3">
-            <div className="flex items-center justify-between mb-1">
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+
+            {/* Status bar */}
+            <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 14px",
+                borderRadius: "var(--radius-md)",
+                background: allRequiredMet ? "var(--color-success-bg)" : "var(--color-surface)",
+                border: `1px solid ${allRequiredMet ? "var(--color-success-border)" : "var(--color-border)"}`,
+                transition: "background 0.3s, border-color 0.3s",
+            }}>
+                <div style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background: allRequiredMet ? "var(--color-success)" : "var(--color-muted-fill)",
+                    transition: "background 0.3s",
+                }} />
+                <span style={{
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    color: allRequiredMet ? "var(--color-success)" : "var(--color-text-sub)",
+                    transition: "color 0.3s",
+                }}>
+                    {allRequiredMet
+                        ? "All required documents uploaded"
+                        : `${DOCUMENT_ZONES.filter((z) => requiredTypes.has(z.type) && !(formik.values.documents?.[z.type] || []).length).length} required document(s) needed`}
+                </span>
+                {allRequiredMet && (
+                    <span style={{
+                        marginLeft: "auto",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        color: "var(--color-success)",
+                    }}>
+                        Ready
+                    </span>
+                )}
+            </div>
+
+            {/* Header row */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div>
-                    <p className="text-sm font-semibold text-gray-800">Upload Documents</p>
-                    <p className="text-xs text-gray-500">
+                    <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-text-strong)", margin: 0 }}>
+                        Upload Documents
+                    </p>
+                    <p style={{ fontSize: "11px", color: "var(--color-text-weak)", margin: "2px 0 0" }}>
                         Click or drag files into any section · Max 10 MB per file · PDF or image
                     </p>
                 </div>
                 {total > 0 && (
-                    <span className="text-xs bg-gray-900 text-white px-2.5 py-1 rounded-full font-medium">
+                    <span style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        background: "var(--color-text-strong)",
+                        color: "var(--color-bg)",
+                        padding: "3px 10px",
+                        borderRadius: "20px",
+                    }}>
                         {total} total
                     </span>
                 )}
             </div>
 
-            {DOCUMENT_ZONES.map((zone) => (
-                <UploadZone
-                    key={zone.type}
-                    zone={zone}
-                    files={formik.values.documents?.[zone.type] || []}
-                    onAdd={handleAdd}
-                    onRemove={handleRemove}
-                    isRequired={requiredTypes.has(zone.type)}
-                />
-            ))}
+            {/* Zone list */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                {DOCUMENT_ZONES.map((zone) => (
+                    <UploadZone
+                        key={zone.type}
+                        zone={zone}
+                        files={formik.values.documents?.[zone.type] || []}
+                        onAdd={handleAdd}
+                        onRemove={handleRemove}
+                        isRequired={requiredTypes.has(zone.type)}
+                    />
+                ))}
+            </div>
         </div>
     );
 };
