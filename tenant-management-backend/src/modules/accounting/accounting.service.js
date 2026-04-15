@@ -154,7 +154,10 @@ function getFiscalYearMonths(fiscalYear) {
 
 function resolveMonthToDateRange(month, fiscalYear) {
   const month0 = month - 1;
-  const year = fiscalYear ?? new NepaliDate().getYear();
+  const fy = fiscalYear ?? new NepaliDate().getYear();
+  // Baisakh(0), Jestha(1), Ashadh(2) are the last quarter of the FY and fall
+  // in the *next* calendar year (e.g. FY 2081 → Baisakh 2082, not 2081).
+  const year = month0 <= 2 ? fy + 1 : fy;
   return bsMonthToDateRange(year, month0);
 }
 
@@ -250,8 +253,18 @@ export async function getAccountingSummary({
   ]);
 
   // ── Liability aggregation ─────────────────────────────────────────────────
+  // LOAN liabilities are created at disbursement but remain outstanding until
+  // fully repaid. Filtering by englishDate (disbursement date) excludes loans
+  // taken out before the queried period even though they're still active.
+  // Fix: when a date filter is active, include docs that EITHER fall within the
+  // date range OR are active loans (loanStatus = "ACTIVE").
   const liabilityMatch = { ...entityFilter };
-  if (dateFilter) liabilityMatch.englishDate = dateFilter;
+  if (dateFilter) {
+    liabilityMatch.$or = [
+      { englishDate: dateFilter },
+      { referenceType: "LOAN", loanStatus: "ACTIVE" },
+    ];
+  }
   if (paymentMethod) liabilityMatch.paymentMethod = paymentMethod;
 
   const liabilityAggregation = await Liability.aggregate([

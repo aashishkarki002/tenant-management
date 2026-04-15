@@ -191,11 +191,16 @@ export async function createSd(
       amountPaisa: amountPaisa,
       amount: amountPaisa / 100, // Backward compatibility
       date: sd.paidDate,
+      nepaliDate: sd.nepaliDate,
+      nepaliYear: sd.nepaliYear,
+      nepaliMonth: sd.nepaliMonth,
       payeeType: "TENANT",
       tenant: sd.tenant,
       referenceType: "SECURITY_DEPOSIT",
       referenceId: sd._id,
       createdBy: createdBy,
+      entityId,
+      blockId: sd.block,
       session,
     });
     if (!liabilityResult.success) {

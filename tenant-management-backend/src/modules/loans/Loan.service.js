@@ -238,6 +238,7 @@ export async function createLoan(data, session = null) {
             status: "RECORDED",
             notes: notes ?? `${loanType} from ${lender}`,
             createdBy,
+            entityId,
           },
         ],
         { session: sess },

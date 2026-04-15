@@ -225,7 +225,7 @@ export const getBankAccounts = async (req, res) => {
 
 export const updateBankAccount = async (req, res) => {
   const { id } = req.params;
-  const { accountNumber, accountName, bankName, accountCode } = req.body;
+  const { accountNumber, accountName, bankName, accountCode, entityId } = req.body;
 
   const session = await mongoose.startSession();
   try {
@@ -246,18 +246,20 @@ export const updateBankAccount = async (req, res) => {
     if (accountName) bankAccount.accountName = accountName;
     if (bankName) bankAccount.bankName = bankName;
     if (newCode !== oldCode) bankAccount.accountCode = newCode;
+    if (entityId) bankAccount.entityId = entityId;
 
     await bankAccount.save({ session });
 
-    // Keep Account.code in sync when the code changes.
+    // Keep Account.code and entityId in sync when they change.
     // LedgerEntry rows use Account._id (ObjectId), not code string,
     // so historical entries are unaffected.
-    if (newCode !== oldCode) {
-      await Account.findOneAndUpdate(
-        { code: oldCode },
-        { code: newCode },
-        { session },
-      );
+    const accountFilter = { code: newCode !== oldCode ? oldCode : newCode };
+    const accountUpdate = {};
+    if (newCode !== oldCode) accountUpdate.code = newCode;
+    if (entityId) accountUpdate.entityId = entityId;
+
+    if (Object.keys(accountUpdate).length > 0) {
+      await Account.findOneAndUpdate(accountFilter, accountUpdate, { session });
     }
 
     await session.commitTransaction();
