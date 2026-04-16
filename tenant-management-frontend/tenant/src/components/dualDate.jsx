@@ -16,11 +16,8 @@ const DualCalendarTailwind = ({ onChange, value }) => {
   const [englishDate, setEnglishDate] = useState(value || "");
   const [showCalendar, setShowCalendar] = useState(false);
 
-  // nepaliPickerReadyRef: true after the mount-burst window has passed.
-  // openNepaliValueRef: snapshot of nepaliDate at the moment the calendar opened —
-  // used to distinguish the library's auto-fire (same value as open) from a real tap.
+  // true after the mount-burst window has passed; blocks library's auto-fire onChange
   const nepaliPickerReadyRef = useRef(false);
-  const openNepaliValueRef = useRef("");
   const calendarRef = useRef(null);
 
   /* ─── Sync controlled value ─────────────────────────────────── */
@@ -68,13 +65,12 @@ const DualCalendarTailwind = ({ onChange, value }) => {
   /* ─── Open handler ───────────────────────────────────────────── */
   const openCalendar = useCallback(() => {
     nepaliPickerReadyRef.current = false;
-    openNepaliValueRef.current = nepaliDate; // snapshot for auto-fire detection
     setShowCalendar(true);
     // Give the NepaliDatePicker enough time to finish mounting before we
-    // trust its onChange events. 400 ms covers slower Android WebViews.
+    // trust its onChange events. 500 ms covers slower Android WebViews.
     setTimeout(() => {
       nepaliPickerReadyRef.current = true;
-    }, 400);
+    }, 500);
   }, [nepaliDate]);
 
   /* ─── BS → AD ────────────────────────────────────────────────── */
@@ -83,14 +79,10 @@ const DualCalendarTailwind = ({ onChange, value }) => {
       if (!bsDate) return;
       const cleaned = bsDate.split(" ")[0];
 
-      // MOBILE AUTO-FIRE FIX: the library fires onChange on mount with the
-      // currently-selected value. Signature: fires before ready AND the value
-      // equals exactly what nepaliDate was when we opened the calendar.
-      // If the user taps a *different* date very fast we let it through.
-      if (!nepaliPickerReadyRef.current) {
-        if (cleaned === openNepaliValueRef.current) return;
-        // different value before ready → user was fast, allow it
-      }
+      // MOBILE AUTO-FIRE FIX: the library fires onChange on mount regardless
+      // of what value is set. Block ALL events until the mount window passes.
+      // 500 ms covers slow Android WebViews where the burst fires later.
+      if (!nepaliPickerReadyRef.current) return;
 
       // Same date re-selected: just close without re-firing onChange.
       // This also fixes the "can't select today" bug — previously this guard
