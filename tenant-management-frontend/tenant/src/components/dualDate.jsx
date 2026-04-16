@@ -10,39 +10,17 @@ import { adIsoToBsIso, formatNepaliISO } from "@/utils/nepaliDate";
  * Props:
  *   value     - controlled AD date string "YYYY-MM-DD" (optional)
  *   onChange  - (englishDate: string, nepaliDate: string) => void
- *
- * Bugs fixed:
- *
- * 1. MOBILE AUTO-SELECT
- *    NepaliDatePicker fires onChange on mount/open on touch devices.
- *    Fix: track `isNepaliPickerReady` — ignore the first onChange call
- *    that fires within 300 ms of opening the calendar (library mount side-effect).
- *    We also block onChange when the incoming value equals what we already have.
- *
- * 2. OUTSIDE-CLICK ON MOBILE
- *    `mousedown` doesn't fire reliably on mobile. Added `touchstart` listener
- *    so tapping outside the popup correctly closes it.
- *
- * 3. SCROLL-LOCK
- *    On small screens the hidden calendar can cause page shift. Added
- *    `overflow-hidden` to body while calendar is open.
- *
- * 4. Z-INDEX / PORTAL
- *    NepaliDatePicker renders its own dropdown inside our container which can
- *    clip on overflow:hidden parents. Switched container to `overflow-visible`
- *    and added a high z-index so the picker floats above everything.
  */
-
 const DualCalendarTailwind = ({ onChange, value }) => {
   const [nepaliDate, setNepaliDate] = useState("");
   const [englishDate, setEnglishDate] = useState(value || "");
   const [showCalendar, setShowCalendar] = useState(false);
 
-  // Tracks whether the NepaliDatePicker has fully mounted and is ready
-  // for real user interaction. Without this, the library fires onChange
-  // immediately on render (mobile touch bug).
+  // nepaliPickerReadyRef: true after the mount-burst window has passed.
+  // openNepaliValueRef: snapshot of nepaliDate at the moment the calendar opened —
+  // used to distinguish the library's auto-fire (same value as open) from a real tap.
   const nepaliPickerReadyRef = useRef(false);
-  const openTimestampRef = useRef(0);
+  const openNepaliValueRef = useRef("");
   const calendarRef = useRef(null);
 
   /* ─── Sync controlled value ─────────────────────────────────── */
@@ -69,7 +47,6 @@ const DualCalendarTailwind = ({ onChange, value }) => {
       }
     };
 
-    // Use both mousedown (desktop) and touchstart (mobile)
     document.addEventListener("mousedown", close);
     document.addEventListener("touchstart", close, { passive: true });
     return () => {
@@ -78,43 +55,50 @@ const DualCalendarTailwind = ({ onChange, value }) => {
     };
   }, [showCalendar]);
 
-  /* ─── Scroll lock while calendar is open ─────────────────────── */
+  /* ─── Escape key ─────────────────────────────────────────────── */
   useEffect(() => {
-    if (showCalendar) {
-      // Small screens: prevent body scroll behind the floating calendar
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
+    if (!showCalendar) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setShowCalendar(false);
     };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, [showCalendar]);
 
   /* ─── Open handler ───────────────────────────────────────────── */
   const openCalendar = useCallback(() => {
-    nepaliPickerReadyRef.current = false; // reset ready flag on every open
-    openTimestampRef.current = Date.now();
+    nepaliPickerReadyRef.current = false;
+    openNepaliValueRef.current = nepaliDate; // snapshot for auto-fire detection
     setShowCalendar(true);
-    // Allow a short window for the NepaliDatePicker to mount before we
-    // start trusting its onChange events (prevents the mobile auto-fire).
+    // Give the NepaliDatePicker enough time to finish mounting before we
+    // trust its onChange events. 400 ms covers slower Android WebViews.
     setTimeout(() => {
       nepaliPickerReadyRef.current = true;
-    }, 300);
-  }, []);
+    }, 400);
+  }, [nepaliDate]);
 
   /* ─── BS → AD ────────────────────────────────────────────────── */
   const handleNepaliChange = useCallback(
     (bsDate) => {
-      // MOBILE FIX: ignore onChange calls that fire before the picker is ready
-      // (library fires on mount/open — not a real user selection)
-      if (!nepaliPickerReadyRef.current) return;
       if (!bsDate) return;
+      const cleaned = bsDate.split(" ")[0];
 
-      const cleaned = bsDate.split(" ")[0]; // strip any trailing time/garbage
+      // MOBILE AUTO-FIRE FIX: the library fires onChange on mount with the
+      // currently-selected value. Signature: fires before ready AND the value
+      // equals exactly what nepaliDate was when we opened the calendar.
+      // If the user taps a *different* date very fast we let it through.
+      if (!nepaliPickerReadyRef.current) {
+        if (cleaned === openNepaliValueRef.current) return;
+        // different value before ready → user was fast, allow it
+      }
 
-      // Also ignore if the value hasn't actually changed
-      if (cleaned === nepaliDate) return;
+      // Same date re-selected: just close without re-firing onChange.
+      // This also fixes the "can't select today" bug — previously this guard
+      // returned early without closing, leaving the calendar stuck open.
+      if (cleaned === nepaliDate) {
+        setShowCalendar(false);
+        return;
+      }
 
       try {
         const [bsYear, bsMonthHuman, bsDay] = cleaned.split("-").map(Number);
@@ -160,75 +144,117 @@ const DualCalendarTailwind = ({ onChange, value }) => {
     [onChange],
   );
 
+  /* ─── Today shortcut ─────────────────────────────────────────── */
+  const handleToday = useCallback(() => {
+    const todayAD = new Date().toISOString().slice(0, 10);
+    const todayBS = adIsoToBsIso(todayAD);
+    if (!todayBS) return;
+    setEnglishDate(todayAD);
+    setNepaliDate(todayBS);
+    onChange?.(todayAD, todayBS);
+    setShowCalendar(false);
+  }, [onChange]);
+
+  /* ─── Clear ──────────────────────────────────────────────────── */
+  const handleClear = useCallback(
+    (e) => {
+      e.stopPropagation();
+      setEnglishDate("");
+      setNepaliDate("");
+      onChange?.("", "");
+    },
+    [onChange],
+  );
+
+  const displayValue =
+    englishDate && nepaliDate ? `${nepaliDate}  ·  ${englishDate}` : "";
+
   /* ─── UI ─────────────────────────────────────────────────────── */
   return (
     <div className="relative w-full">
-      {/* Read-only display input */}
-      <input
-        type="text"
-        readOnly
-        value={
-          englishDate && nepaliDate ? `${englishDate} / ${nepaliDate}` : ""
-        }
-        placeholder="Select Date"
-        onClick={openCalendar}
-        // Also handle touch so the picker opens immediately on mobile
-        // without needing a second tap (prevents ghost-click delay)
-        onTouchEnd={(e) => {
-          e.preventDefault();
-          openCalendar();
-        }}
-        className="w-full cursor-pointer rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-      />
+      {/* Trigger — shows BS date first since that's the primary calendar */}
+      <div className="relative flex items-center">
+        <input
+          type="text"
+          readOnly
+          value={displayValue}
+          placeholder="Select date"
+          onClick={openCalendar}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            openCalendar();
+          }}
+          className="w-full cursor-pointer rounded-md border px-3 py-2 pr-7 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+        {displayValue && (
+          <button
+            type="button"
+            onClick={handleClear}
+            aria-label="Clear date"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-base leading-none"
+          >
+            ×
+          </button>
+        )}
+      </div>
 
       {showCalendar && (
         <div
           ref={calendarRef}
-          // Stop any touch/click inside the panel from bubbling to the
-          // document listener (which would immediately close the calendar)
           onMouseDown={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
-          className="
-            absolute z-[9999] mt-2 rounded-md border bg-white p-4 shadow-lg
-            left-0
-            flex flex-col gap-4
-            w-full
-            sm:flex-row sm:w-max sm:min-w-full
-          "
+          className="absolute z-[9999] mt-1 rounded-md border bg-white shadow-lg left-0 w-full sm:w-max sm:min-w-full"
         >
-          {/* English (AD) */}
-          <div className="flex flex-col w-full sm:w-auto">
-            <label className="mb-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
-              English (AD)
-            </label>
-            <input
-              type="date"
-              value={englishDate}
-              onChange={handleEnglishChange}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-          </div>
+          <div className="flex flex-col sm:flex-row">
+            {/* Nepali (BS) — primary, shown first */}
+            <div className="flex flex-col p-4 w-full sm:w-auto">
+              <label className="mb-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Nepali (BS)
+              </label>
+              {/* overflow-visible is critical: NepaliDatePicker renders its own
+                  floating dropdown and gets clipped by overflow:hidden parents */}
+              <div className="overflow-visible">
+                <NepaliDatePicker
+                  value={nepaliDate}
+                  onChange={handleNepaliChange}
+                  inputClassName="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  options={{ calendarLocale: "en", valueLocale: "en" }}
+                />
+              </div>
+            </div>
 
-          {/* Divider */}
-          <div className="border-t border-gray-100 sm:border-t-0 sm:border-l sm:self-stretch" />
+            <div className="border-t border-gray-100 sm:border-t-0 sm:border-l sm:self-stretch" />
 
-          {/* Nepali (BS) */}
-          <div className="flex flex-col w-full sm:w-auto">
-            <label className="mb-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
-              Nepali (BS)
-            </label>
-            {/*
-              overflow-visible is critical: NepaliDatePicker renders its own
-              floating dropdown; clipping it with overflow:hidden cuts it off.
-            */}
-            <div className="overflow-visible">
-              <NepaliDatePicker
-                value={nepaliDate}
-                onChange={handleNepaliChange}
-                inputClassName="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                options={{ calendarLocale: "en", valueLocale: "en" }}
+            {/* English (AD) */}
+            <div className="flex flex-col p-4 w-full sm:w-auto">
+              <label className="mb-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                English (AD)
+              </label>
+              <input
+                type="date"
+                value={englishDate}
+                onChange={handleEnglishChange}
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
             </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-gray-100 px-4 py-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleToday}
+              className="text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCalendar(false)}
+              className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
