@@ -5,16 +5,129 @@ import NepaliDate from "nepali-datetime";
 import { toast } from "sonner";
 import TodayBoard from "./components/TodayBoard";
 import { Button } from "@/components/ui/button";
-import { Settings2, CalendarDays } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Settings2, CalendarDays, Loader2 } from "lucide-react";
 import TemplateEditor from "./components/TemplateEditor";
 import api from "../../plugins/axios";
 
+const CATEGORIES = [
+  { value: "CCTV", label: "CCTV" },
+  { value: "ELECTRICAL", label: "Electrical" },
+  { value: "SANITARY", label: "Sanitary" },
+  { value: "COMMON_AREA", label: "Common Area" },
+  { value: "PARKING", label: "Parking" },
+  { value: "FIRE", label: "Fire Safety" },
+  { value: "WATER_TANK", label: "Water Tank" },
+];
 
 function toNepaliISO(nd) {
   const y = nd.getYear();
   const m = String(nd.getMonth() + 1).padStart(2, "0");
   const d = String(nd.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+// ─── Create Template Dialog ───────────────────────────────────────────────────
+
+function CreateTemplateDialog({ open, onOpenChange, propertyId, onCreated }) {
+  const [category, setCategory] = useState("");
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate() {
+    if (!category) return;
+    setSaving(true);
+    try {
+      const res = await api.post("/api/checklists/templates", {
+        propertyId,
+        category,
+        name: name.trim() || undefined,
+      });
+      if (res.data?.success) {
+        toast.success("Template created");
+        onCreated(res.data.data._id);
+        setCategory("");
+        setName("");
+        onOpenChange(false);
+      } else {
+        toast.error(res.data?.message ?? "Failed to create template");
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.message ?? e.message ?? "Failed to create template");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-sm font-semibold">Create Checklist Template</DialogTitle>
+          <DialogDescription className="text-xs">
+            No templates found for this property. Create one to start tracking daily checks.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-1">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Category</Label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setCategory(c.value)}
+                  className={`text-xs px-3 py-2 rounded-md border text-left transition-colors ${
+                    category === c.value
+                      ? "border-primary bg-primary/5 text-primary font-medium"
+                      : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Name <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Block A Daily"
+              className="h-8 text-xs"
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-xs">
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleCreate}
+            disabled={!category || saving}
+            className="h-8 text-xs"
+          >
+            {saving && <Loader2 className="h-3 w-3 animate-spin mr-1.5" />}
+            Create template
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -35,6 +148,7 @@ function DailyChecksPage({ propertyId }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [todayRefreshKey, setTodayRefreshKey] = useState(0);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   /** Opens the editor using the first active template for this property (Settings button). */
   const handleOpenTemplateSettings = useCallback(async () => {
@@ -44,7 +158,7 @@ function DailyChecksPage({ propertyId }) {
       });
       const list = res.data?.data ?? [];
       if (!list.length) {
-        toast.error("No active checklist templates for this property.");
+        setCreateDialogOpen(true);
         return;
       }
       setEditingTemplateId(list[0]._id);
@@ -57,6 +171,11 @@ function DailyChecksPage({ propertyId }) {
   const handleEditorOpenChange = useCallback((open) => {
     setEditorOpen(open);
     if (!open) setEditingTemplateId(null);
+  }, []);
+
+  const handleTemplateCreated = useCallback((newTemplateId) => {
+    setEditingTemplateId(newTemplateId);
+    setEditorOpen(true);
   }, []);
 
   const todayNepaliDate = toNepaliISO(new NepaliDate(new Date()));
@@ -117,6 +236,12 @@ function DailyChecksPage({ propertyId }) {
           onSaved={() => setTodayRefreshKey((k) => k + 1)}
         />
       )}
+      <CreateTemplateDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        propertyId={effectivePropertyId}
+        onCreated={handleTemplateCreated}
+      />
     </div>
   );
 }
