@@ -8,25 +8,30 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../../plugins/axios';
 import { socket } from '../../../plugins/socket';
+import { useAuth } from '../../context/AuthContext';
 
 export const useMaintenance = () => {
+  const { user } = useAuth();
   const [maintenance, setMaintenance] = useState([]);
   const [staffs, setStaffs] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const isStaff = user?.role === 'staff';
+
   /**
-   * Fetch all maintenance items
+   * Fetch maintenance items — staff only see their assigned tasks.
    */
   const fetchMaintenance = useCallback(async () => {
     try {
-      const response = await api.get('/api/maintenance/all');
+      const endpoint = isStaff ? '/api/maintenance/my-tasks' : '/api/maintenance/all';
+      const response = await api.get(endpoint);
       setMaintenance(response.data?.maintenance || []);
     } catch (error) {
       console.error('Failed to fetch maintenance:', error);
       setMaintenance([]);
     }
-  }, []);
+  }, [isStaff]);
 
   /**
    * Fetch staff members
