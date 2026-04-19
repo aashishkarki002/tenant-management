@@ -35,6 +35,7 @@ import Staff from "./staff/staff";
 import CheckListResultDetails from "./adminDailyChecks/checkListResultDetails/checkListResultDetails";
 import VendorsPage from "./Vendors/VendorsPage";
 import VendorDetailPage from "./Vendors/VendorDetailPage";
+import ForgetPassword from "./Auth/forgetPassword";
 
 // Roles that can access admin-level features
 const ADMIN_ROLES = ["admin", "super_admin"];
@@ -82,6 +83,9 @@ export default function App() {
       {/* ── Public (guest-only) routes ── */}
       <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
       <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+      <Route path="/forget-password"
+        element={<GuestRoute><ForgetPassword /></GuestRoute>}
+      />
 
       {/* ── Shared routes: all authenticated roles ── */}
       <Route path="/"
@@ -116,9 +120,7 @@ export default function App() {
       <Route path="/tenant/viewDetail/:id"
         element={<ProtectedRoutes><ViewDetail /></ProtectedRoutes>}
       />
-      <Route path="/verify-email"
-        element={<ProtectedRoutes><VerifyEmail /></ProtectedRoutes>}
-      />
+      <Route path="/verify-email" element={<VerifyEmail />} />
 
       {/* ── Admin-only routes — staff gets redirected to "/" ── */}
       <Route path="/accounting"
@@ -177,7 +179,9 @@ export default function App() {
       <Route path="/vendors/:id"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><VendorDetailPage /></RoleRoute></ProtectedRoutes>}
       />
+
     </Routes>
+
   );
 
   return (

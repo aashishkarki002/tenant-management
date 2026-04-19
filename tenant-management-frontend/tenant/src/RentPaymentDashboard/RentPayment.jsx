@@ -11,7 +11,9 @@ import { AdminRentAction } from "./components/AdminRentAction";
 import { useAdminRentActions } from "./hooks/AdminRentAction";
 import { RentMetricsStrip } from "./components/RentMetricsStrip";
 import { exportRentsToCsv } from "./utils/rentExport";
+import api from "../../plugins/axios";
 import { NEPALI_MONTH_NAMES } from "@/utils/nepaliDate";
+import { NEPALI_QUARTERS, getQuarterForMonth } from "./utils/quarterUtils";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { cn } from "@/lib/utils";
 import { SlidersHorizontal, Search } from "lucide-react";
@@ -140,6 +142,11 @@ const RentPayment = () => {
     setFilterRentYear,
     setFilterStatus,
     setFilterPropertyId,
+    frequencyView,
+    setFrequencyView,
+    filterQuarter,
+    setFilterQuarter,
+    defaultQuarter,
     defaultRentMonth,
     defaultRentYear,
     filterStartDate,
@@ -157,7 +164,6 @@ const RentPayment = () => {
 
   const [activeTab, setActiveTab] = useState("rent");
   const [datePickerResetKey, setDatePickerResetKey] = useState(0);
-  const [frequencyView, setFrequencyView] = useState("monthly");
   const [searchQuery, setSearchQuery] = useState("");
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
 
@@ -217,15 +223,22 @@ const RentPayment = () => {
     let c = 0;
     if (filterStatus !== "all") c++;
     if (filterPropertyId) c++;
-    if (defaultRentMonth != null && filterRentMonth !== defaultRentMonth) c++;
+    if (frequencyView === "monthly") {
+      if (defaultRentMonth != null && filterRentMonth !== defaultRentMonth) c++;
+    } else {
+      if (filterQuarter !== defaultQuarter) c++;
+    }
     if (defaultRentYear != null && filterRentYear !== defaultRentYear) c++;
     return c;
   }, [
     filterStatus,
     filterPropertyId,
+    frequencyView,
     filterRentMonth,
+    filterQuarter,
     filterRentYear,
     defaultRentMonth,
+    defaultQuarter,
     defaultRentYear,
   ]);
 
@@ -250,6 +263,7 @@ const RentPayment = () => {
   const handleClearRentFilters = () => {
     setFilterRentMonth(defaultRentMonth);
     setFilterRentYear(defaultRentYear);
+    setFilterQuarter(defaultQuarter);
     setFilterStatus("all");
     setFilterPropertyId("");
     setSearchQuery("");
@@ -259,8 +273,34 @@ const RentPayment = () => {
     exportRentsToCsv(displayRents, cams);
   }, [displayRents, cams]);
 
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const handleExportPdf = useCallback(async () => {
+    try {
+      setExportingPdf(true);
+      const params = { nepaliYear: filterRentYear };
+      if (filterRentMonth != null) params.nepaliMonth = filterRentMonth;
+      const response = await api.get("/api/rent/export/pdf", { params, responseType: "blob" });
+      const month = filterRentMonth ? `-Month${filterRentMonth}` : "";
+      const filename = `Rent-Roll-${filterRentYear}${month}.pdf`;
+      const url = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [filterRentYear, filterRentMonth]);
+
   const currentMonthName =
     filterRentMonth != null ? NEPALI_MONTH_NAMES[filterRentMonth - 1] : "";
+  const currentPeriodLabel =
+    frequencyView === "quarterly"
+      ? `${NEPALI_QUARTERS[filterQuarter]?.label ?? ""} ${filterRentYear}`
+      : `${currentMonthName} ${filterRentYear}`;
 
   useHeaderSlot(
     () => (
@@ -347,7 +387,7 @@ const RentPayment = () => {
                 Rent Collection
               </h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {currentMonthName} {filterRentYear}
+                {currentPeriodLabel}
               </p>
             </div>
             <AdminRentAction
@@ -357,13 +397,15 @@ const RentPayment = () => {
               processingRents={adminRent.processingRents}
               sendingEmails={adminRent.sendingEmails}
               onExport={handleExportVisibleRents}
+              onExportPdf={handleExportPdf}
+              exportingPdf={exportingPdf}
             />
           </header>
 
           {overdueCount > 0 && filterStatus !== "overdue" && (
             <OverdueBanner
               count={overdueCount}
-              monthName={currentMonthName}
+              monthName={frequencyView === "quarterly" ? NEPALI_QUARTERS[filterQuarter]?.label : currentMonthName}
               year={filterRentYear}
               onShowOverdue={() => setFilterStatus("overdue")}
             />
@@ -394,6 +436,9 @@ const RentPayment = () => {
               onReset={handleClearRentFilters}
               frequencyView={frequencyView}
               onFrequencyChange={setFrequencyView}
+              quarter={filterQuarter}
+              defaultQuarter={defaultQuarter}
+              onQuarterChange={setFilterQuarter}
             />
           </div>
 

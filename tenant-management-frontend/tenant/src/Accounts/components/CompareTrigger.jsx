@@ -227,7 +227,7 @@ export default function CompareTrigger({
 
             {/* ── Popover ── */}
             {open && (
-                <div className="absolute top-full right-0 mt-2 z-50 w-[340px] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] shadow-xl p-4 flex flex-col gap-4">
+                <div className="absolute top-full right-0 mt-2 z-50 w-[340px] max-w-[calc(100vw-1rem)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] shadow-xl p-4 flex flex-col gap-4">
 
                     {/* Header row */}
                     <div className="flex items-start justify-between gap-3">

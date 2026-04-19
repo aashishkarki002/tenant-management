@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { useFormik } from "formik";
+import * as Yup from "yup";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +21,54 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const validationSchema = Yup.object({
+  name: Yup.string().required("Vendor name is required"),
+  vendor_type: Yup.string().required("Vendor type is required"),
+  serviceType: Yup.string().required("Service type is required"),
+  phone: Yup.string().required("Phone is required"),
+  email: Yup.string().email("Invalid email address"),
+  contactPerson: Yup.string(),
+  address: Yup.string(),
+  panNumber: Yup.string(),
+  vatRegistered: Yup.boolean(),
+  bankDetails: Yup.object({
+    bankName: Yup.string(),
+    accountNumber: Yup.string(),
+    branchName: Yup.string(),
+  }),
+  notes: Yup.string(),
+});
+
+const initialValues = {
+  name: "",
+  vendor_type: "service",
+  serviceType: "security",
+  contact: "",
+  phone: "",
+  email: "",
+  contactPerson: "",
+  address: "",
+  panNumber: "",
+  vatRegistered: false,
+  bankDetails: {
+    bankName: "",
+    accountNumber: "",
+    branchName: "",
+  },
+  notes: "",
+};
+
+const SERVICE_TYPES = [
+  { value: "security", label: "Security" },
+  { value: "cleaning", label: "Cleaning" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "electrical", label: "Electrical" },
+  { value: "plumbing", label: "Plumbing" },
+  { value: "it", label: "IT Services" },
+  { value: "courtyard_vendor", label: "Courtyard Vendor" },
+  { value: "other", label: "Other" },
+];
+
 export default function VendorForm({
   open,
   onClose,
@@ -26,103 +76,51 @@ export default function VendorForm({
   vendor,
   submeters = [],
 }) {
-  const [formData, setFormData] = useState({
-    name: "",
-    vendor_type: "service",
-    serviceType: "security",
-    contact: "",
-    phone: "",
-    email: "",
-    contactPerson: "",
-    address: "",
-    panNumber: "",
-    vatRegistered: false,
-    bankDetails: {
-      bankName: "",
-      accountNumber: "",
-      branchName: "",
+  const formik = useFormik({
+    initialValues,
+    validationSchema,
+    onSubmit: (values) => {
+      onSubmit(values);
     },
-    notes: "",
   });
 
   useEffect(() => {
-    if (vendor) {
-      setFormData({
-        name: vendor.name || "",
-        vendor_type: vendor.vendor_type || "service",
-        serviceType: vendor.serviceType || "security",
-        contact: vendor.contact || vendor.phone || "",
-        phone: vendor.phone || "",
-        email: vendor.email || "",
-        contactPerson: vendor.contactPerson || "",
-        address: vendor.address || "",
-        panNumber: vendor.panNumber || "",
-        vatRegistered: vendor.vatRegistered || false,
-        bankDetails: vendor.bankDetails || {
-          bankName: "",
-          accountNumber: "",
-          branchName: "",
-        },
-        notes: vendor.notes || "",
-      });
-    } else {
-      setFormData({
-        name: "",
-        vendor_type: "service",
-        serviceType: "security",
-        contact: "",
-        phone: "",
-        email: "",
-        contactPerson: "",
-        address: "",
-        panNumber: "",
-        vatRegistered: false,
-        bankDetails: {
-          bankName: "",
-          accountNumber: "",
-          branchName: "",
-        },
-        notes: "",
-      });
+    if (open) {
+      if (vendor) {
+        formik.resetForm({
+          values: {
+            name: vendor.name || "",
+            vendor_type: vendor.vendor_type || "service",
+            serviceType: vendor.serviceType || "security",
+            contact: vendor.contact || vendor.phone || "",
+            phone: vendor.phone || "",
+            email: vendor.email || "",
+            contactPerson: vendor.contactPerson || "",
+            address: vendor.address || "",
+            panNumber: vendor.panNumber || "",
+            vatRegistered: vendor.vatRegistered || false,
+            bankDetails: vendor.bankDetails || {
+              bankName: "",
+              accountNumber: "",
+              branchName: "",
+            },
+            notes: vendor.notes || "",
+          },
+        });
+      } else {
+        formik.resetForm({ values: initialValues });
+      }
     }
   }, [vendor, open]);
 
-  const handleChange = (field, value) => {
-    if (field.startsWith("bankDetails.")) {
-      const bankField = field.split(".")[1];
-      setFormData((prev) => ({
-        ...prev,
-        bankDetails: {
-          ...prev.bankDetails,
-          [bankField]: value,
-        },
-      }));
-    } else {
-      setFormData((prev) => ({ ...prev, [field]: value }));
-    }
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(formData);
-  };
-
-  const isStallVendor = formData.vendor_type === "stall";
-  
-  const serviceTypes = [
-    { value: "security", label: "Security" },
-    { value: "cleaning", label: "Cleaning" },
-    { value: "maintenance", label: "Maintenance" },
-    { value: "electrical", label: "Electrical" },
-    { value: "plumbing", label: "Plumbing" },
-    { value: "it", label: "IT Services" },
-    { value: "courtyard_vendor", label: "Courtyard Vendor" },
-    { value: "other", label: "Other" },
-  ];
+  const fieldError = (field) =>
+    formik.touched[field] && formik.errors[field] ? (
+      <p className="text-xs text-destructive">{formik.errors[field]}</p>
+    ) : null;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="w-full max-w-lg sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>
             {vendor ? "Edit Vendor" : "Add New Vendor"}
@@ -134,30 +132,34 @@ export default function VendorForm({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+        <form onSubmit={formik.handleSubmit} className="space-y-4">
+
+          {/* GRID */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            {/* Name */}
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="name">
                 Vendor Name <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="name"
-                value={formData.name}
-                onChange={(e) => handleChange("name", e.target.value)}
+                {...formik.getFieldProps("name")}
                 placeholder="Enter vendor name"
-                required
               />
+              {fieldError("name")}
             </div>
 
+            {/* Vendor Type */}
             <div className="space-y-2">
-              <Label htmlFor="vendor_type">
-                Vendor Type <span className="text-destructive">*</span>
-              </Label>
+              <Label>Vendor Type *</Label>
               <Select
-                value={formData.vendor_type}
-                onValueChange={(value) => handleChange("vendor_type", value)}
+                value={formik.values.vendor_type}
+                onValueChange={(value) =>
+                  formik.setFieldValue("vendor_type", value)
+                }
               >
-                <SelectTrigger id="vendor_type">
+                <SelectTrigger>
                   <SelectValue placeholder="Select vendor type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -165,149 +167,137 @@ export default function VendorForm({
                   <SelectItem value="stall">Stall Vendor</SelectItem>
                 </SelectContent>
               </Select>
+              {fieldError("vendor_type")}
             </div>
 
+            {/* Service Type */}
             <div className="space-y-2">
-              <Label htmlFor="serviceType">
-                Service Type <span className="text-destructive">*</span>
-              </Label>
+              <Label>Service Type *</Label>
               <Select
-                value={formData.serviceType}
-                onValueChange={(value) => handleChange("serviceType", value)}
+                value={formik.values.serviceType}
+                onValueChange={(value) =>
+                  formik.setFieldValue("serviceType", value)
+                }
               >
-                <SelectTrigger id="serviceType">
+                <SelectTrigger>
                   <SelectValue placeholder="Select service type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {serviceTypes.map((type) => (
+                  {SERVICE_TYPES.map((type) => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {fieldError("serviceType")}
             </div>
 
+            {/* Phone */}
             <div className="space-y-2">
-              <Label htmlFor="phone">
-                Phone <span className="text-destructive">*</span>
-              </Label>
+              <Label>Phone *</Label>
               <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => handleChange("phone", e.target.value)}
+                {...formik.getFieldProps("phone")}
                 placeholder="+977-9XXXXXXXXX"
-                required
               />
+              {fieldError("phone")}
             </div>
 
+            {/* Email */}
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label>Email</Label>
               <Input
-                id="email"
                 type="email"
-                value={formData.email}
-                onChange={(e) => handleChange("email", e.target.value)}
+                {...formik.getFieldProps("email")}
                 placeholder="vendor@example.com"
               />
+              {fieldError("email")}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="contactPerson">Contact Person</Label>
+            {/* Contact */}
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Contact Person</Label>
               <Input
-                id="contactPerson"
-                value={formData.contactPerson}
-                onChange={(e) => handleChange("contactPerson", e.target.value)}
+                {...formik.getFieldProps("contactPerson")}
                 placeholder="Primary contact person"
               />
             </div>
 
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="address">Address</Label>
+            {/* Address */}
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Address</Label>
               <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => handleChange("address", e.target.value)}
+                {...formik.getFieldProps("address")}
                 placeholder="Vendor address"
               />
             </div>
 
+            {/* PAN */}
             <div className="space-y-2">
-              <Label htmlFor="panNumber">PAN Number</Label>
+              <Label>PAN Number</Label>
               <Input
-                id="panNumber"
-                value={formData.panNumber}
-                onChange={(e) => handleChange("panNumber", e.target.value)}
+                {...formik.getFieldProps("panNumber")}
                 placeholder="PAN/Tax ID"
               />
             </div>
 
-            <div className="flex items-center space-x-2 pt-7">
+            {/* VAT */}
+            <div className="flex items-center space-x-2 pt-6">
               <input
                 type="checkbox"
-                id="vatRegistered"
-                checked={formData.vatRegistered}
-                onChange={(e) => handleChange("vatRegistered", e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300"
+                checked={formik.values.vatRegistered}
+                onChange={(e) =>
+                  formik.setFieldValue("vatRegistered", e.target.checked)
+                }
+                className="h-4 w-4"
               />
-              <Label htmlFor="vatRegistered" className="font-normal">
-                VAT Registered
-              </Label>
+              <Label className="font-normal">VAT Registered</Label>
             </div>
           </div>
 
+          {/* BANK DETAILS */}
           <div className="space-y-4 rounded-lg border p-4">
-            <h3 className="font-semibold">Bank Details (Optional)</h3>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="bankName">Bank Name</Label>
-                <Input
-                  id="bankName"
-                  value={formData.bankDetails.bankName}
-                  onChange={(e) => handleChange("bankDetails.bankName", e.target.value)}
-                  placeholder="Bank name"
-                />
-              </div>
+            <h3 className="font-semibold text-sm sm:text-base">
+              Bank Details (Optional)
+            </h3>
 
-              <div className="space-y-2">
-                <Label htmlFor="accountNumber">Account Number</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                {...formik.getFieldProps("bankDetails.bankName")}
+                placeholder="Bank name"
+              />
+              <Input
+                {...formik.getFieldProps("bankDetails.accountNumber")}
+                placeholder="Account number"
+              />
+              <div className="sm:col-span-2">
                 <Input
-                  id="accountNumber"
-                  value={formData.bankDetails.accountNumber}
-                  onChange={(e) => handleChange("bankDetails.accountNumber", e.target.value)}
-                  placeholder="Account number"
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="branchName">Branch Name</Label>
-                <Input
-                  id="branchName"
-                  value={formData.bankDetails.branchName}
-                  onChange={(e) => handleChange("bankDetails.branchName", e.target.value)}
+                  {...formik.getFieldProps("bankDetails.branchName")}
                   placeholder="Branch name"
                 />
               </div>
             </div>
           </div>
 
+          {/* NOTES */}
           <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
+            <Label>Notes</Label>
             <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => handleChange("notes", e.target.value)}
-              placeholder="Additional information..."
+              {...formik.getFieldProps("notes")}
+              placeholder="Additional info..."
               rows={3}
             />
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+          {/* FOOTER */}
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 sticky bottom-0 bg-background">
+            <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button type="submit">{vendor ? "Update" : "Add"} Vendor</Button>
-          </DialogFooter>
+            <Button type="submit" className="w-full sm:w-auto">
+              {vendor ? "Update" : "Add"} Vendor
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

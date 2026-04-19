@@ -1,18 +1,17 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, FileText } from "lucide-react";
+import { Edit } from "lucide-react";
+import PersonnelList from "./PersonnelList";
 
-export default function ContractsList({ contracts, onEdit, onViewDetails }) {
+export default function ContractsList({ contracts, vendorId, onEdit }) {
   const formatCurrency = (paisa) => {
     if (!paisa) return "रू 0";
-    const rupees = paisa / 100;
-    return `रू ${rupees.toLocaleString()}`;
+    return `रू ${(paisa / 100).toLocaleString()}`;
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-GB");
+    return new Date(dateString).toLocaleDateString("en-GB");
   };
 
   const getBillingCycleBadge = (cycle) => {
@@ -36,17 +35,11 @@ export default function ContractsList({ contracts, onEdit, onViewDetails }) {
         label: "One Time",
       },
     };
-
     const c = config[cycle] || config.monthly;
-
     return (
       <Badge
         className="text-xs"
-        style={{
-          backgroundColor: c.bg,
-          color: c.text,
-          border: `1px solid ${c.border}`,
-        }}
+        style={{ backgroundColor: c.bg, color: c.text, border: `1px solid ${c.border}` }}
       >
         {c.label}
       </Badge>
@@ -54,7 +47,6 @@ export default function ContractsList({ contracts, onEdit, onViewDetails }) {
   };
 
   const getStatusBadge = (contract) => {
-    const now = new Date();
     const endDate = contract.endDate ? new Date(contract.endDate) : null;
     const isActive = contract.isActive !== false;
 
@@ -72,8 +64,7 @@ export default function ContractsList({ contracts, onEdit, onViewDetails }) {
         </Badge>
       );
     }
-
-    if (endDate && endDate < now) {
+    if (endDate && endDate < new Date()) {
       return (
         <Badge
           className="text-xs"
@@ -87,7 +78,6 @@ export default function ContractsList({ contracts, onEdit, onViewDetails }) {
         </Badge>
       );
     }
-
     return (
       <Badge
         className="text-xs"
@@ -102,19 +92,42 @@ export default function ContractsList({ contracts, onEdit, onViewDetails }) {
     );
   };
 
+  const getTypeBadge = (contractType) => {
+    if (contractType === "stall_lease") {
+      return (
+        <Badge
+          className="text-xs"
+          style={{
+            backgroundColor: "var(--color-success-bg)",
+            color: "var(--color-success)",
+            border: "1px solid var(--color-success-border)",
+          }}
+        >
+          Stall Lease
+        </Badge>
+      );
+    }
+    return (
+      <Badge
+        className="text-xs"
+        style={{
+          backgroundColor: "var(--color-info-bg)",
+          color: "var(--color-info)",
+          border: "1px solid var(--color-info-border)",
+        }}
+      >
+        Service
+      </Badge>
+    );
+  };
+
   if (!contracts || contracts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <div
-          className="mb-2 text-3xl opacity-40"
-          style={{ color: "var(--color-text-sub)" }}
-        >
+        <div className="mb-2 text-3xl opacity-40" style={{ color: "var(--color-text-sub)" }}>
           📄
         </div>
-        <p
-          className="text-sm font-medium"
-          style={{ color: "var(--color-text-body)" }}
-        >
+        <p className="text-sm font-medium" style={{ color: "var(--color-text-body)" }}>
           No contracts found
         </p>
         <p className="text-xs" style={{ color: "var(--color-text-sub)" }}>
@@ -126,128 +139,121 @@ export default function ContractsList({ contracts, onEdit, onViewDetails }) {
 
   return (
     <div className="space-y-4">
-      {contracts.map((contract) => (
-        <div
-          key={contract._id}
-          className="rounded-lg border p-4"
-          style={{
-            backgroundColor: "var(--color-surface)",
-            borderColor: "var(--color-border)",
-          }}
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center gap-2">
-                <h3
-                  className="font-semibold"
-                  style={{ color: "var(--color-text-strong)" }}
-                >
-                  {contract.property?.name || "Property"}
-                </h3>
-                {getStatusBadge(contract)}
-                {getBillingCycleBadge(contract.billingCycle)}
+      {contracts.map((contract) => {
+        const isStallLease = contract.contractType === "stall_lease";
+        return (
+          <div
+            key={contract._id}
+            className="rounded-lg border p-4"
+            style={{
+              backgroundColor: "var(--color-surface)",
+              borderColor: "var(--color-border)",
+            }}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-1 space-y-2">
+                {/* Header row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-semibold" style={{ color: "var(--color-text-strong)" }}>
+                    {contract.property?.name || "Property"}
+                  </h3>
+                  {getTypeBadge(contract.contractType)}
+                  {getStatusBadge(contract)}
+                  {getBillingCycleBadge(contract.billingCycle)}
+                </div>
+
+                {contract.description && (
+                  <p className="text-sm" style={{ color: "var(--color-text-body)" }}>
+                    {contract.description}
+                  </p>
+                )}
+
+                {/* Stall-specific details */}
+                {isStallLease && (contract.stallDescription || contract.eventName) && (
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    {contract.stallDescription && (
+                      <span style={{ color: "var(--color-text-body)" }}>
+                        <span className="font-medium" style={{ color: "var(--color-text-sub)" }}>Stall: </span>
+                        {contract.stallDescription}
+                      </span>
+                    )}
+                    {contract.eventName && (
+                      <span style={{ color: "var(--color-text-body)" }}>
+                        <span className="font-medium" style={{ color: "var(--color-text-sub)" }}>Event: </span>
+                        {contract.eventName}
+                      </span>
+                    )}
+                    {contract.leaseDays && (
+                      <span style={{ color: "var(--color-text-body)" }}>
+                        <span className="font-medium" style={{ color: "var(--color-text-sub)" }}>Days: </span>
+                        {contract.leaseDays}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Metrics grid */}
+                <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+                  <div>
+                    <p className="text-xs font-medium" style={{ color: "var(--color-text-sub)" }}>
+                      {isStallLease ? "Lease Amount" : "Amount"}
+                    </p>
+                    <p className="font-semibold" style={{ color: "var(--color-text-strong)" }}>
+                      {formatCurrency(contract.contractAmountPaisa)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium" style={{ color: "var(--color-text-sub)" }}>
+                      Start Date
+                    </p>
+                    <p style={{ color: "var(--color-text-body)" }}>{formatDate(contract.startDate)}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium" style={{ color: "var(--color-text-sub)" }}>
+                      End Date
+                    </p>
+                    <p style={{ color: "var(--color-text-body)" }}>
+                      {contract.endDate ? formatDate(contract.endDate) : "Open-ended"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium" style={{ color: "var(--color-text-sub)" }}>
+                      Account Code
+                    </p>
+                    <p className="font-mono text-xs" style={{ color: "var(--color-text-body)" }}>
+                      {isStallLease
+                        ? contract.revenueAccountCode
+                        : contract.expenseAccountCode}
+                    </p>
+                  </div>
+                </div>
+
+                {contract.autoRenew && (
+                  <p className="text-xs italic" style={{ color: "var(--color-text-sub)" }}>
+                    🔄 Auto-renew enabled
+                  </p>
+                )}
               </div>
 
-              {contract.description && (
-                <p
-                  className="text-sm"
-                  style={{ color: "var(--color-text-body)" }}
-                >
-                  {contract.description}
-                </p>
-              )}
-
-              <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-                <div>
-                  <p
-                    className="text-xs font-medium"
-                    style={{ color: "var(--color-text-sub)" }}
-                  >
-                    Amount
-                  </p>
-                  <p
-                    className="font-semibold"
-                    style={{ color: "var(--color-text-strong)" }}
-                  >
-                    {formatCurrency(contract.contractAmountPaisa)}
-                  </p>
-                </div>
-
-                <div>
-                  <p
-                    className="text-xs font-medium"
-                    style={{ color: "var(--color-text-sub)" }}
-                  >
-                    Start Date
-                  </p>
-                  <p style={{ color: "var(--color-text-body)" }}>
-                    {formatDate(contract.startDate)}
-                  </p>
-                </div>
-
-                <div>
-                  <p
-                    className="text-xs font-medium"
-                    style={{ color: "var(--color-text-sub)" }}
-                  >
-                    End Date
-                  </p>
-                  <p style={{ color: "var(--color-text-body)" }}>
-                    {contract.endDate
-                      ? formatDate(contract.endDate)
-                      : "Open-ended"}
-                  </p>
-                </div>
-
-                <div>
-                  <p
-                    className="text-xs font-medium"
-                    style={{ color: "var(--color-text-sub)" }}
-                  >
-                    Account Code
-                  </p>
-                  <p
-                    className="font-mono text-xs"
-                    style={{ color: "var(--color-text-body)" }}
-                  >
-                    {contract.expenseAccountCode}
-                  </p>
-                </div>
+              <div className="ml-4 shrink-0">
+                {onEdit && (
+                  <Button variant="ghost" size="sm" onClick={() => onEdit(contract)}>
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-
-              {contract.autoRenew && (
-                <p
-                  className="text-xs italic"
-                  style={{ color: "var(--color-text-sub)" }}
-                >
-                  🔄 Auto-renew enabled
-                </p>
-              )}
             </div>
 
-            <div className="ml-4 flex gap-2">
-              {onEdit && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onEdit(contract)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-              )}
-              {onViewDetails && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onViewDetails(contract)}
-                >
-                  <FileText className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+            {/* Personnel list — only for service contracts */}
+            {!isStallLease && vendorId && (
+              <PersonnelList contract={contract} vendorId={vendorId} />
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

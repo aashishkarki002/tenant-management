@@ -406,7 +406,7 @@ export default function FilterControlBar({
 
                 {/* ── ZONE A: Entity scope ─────────────────────────────────── */}
                 {showEntities && (
-                    <div className="flex items-center gap-1.5 shrink-0 h-full px-4 sm:px-6 border-r border-[var(--color-border)]">
+                    <div className="flex items-center gap-1.5 shrink-0 h-full px-4 lg:px-6 border-r border-[var(--color-border)]">
                         <EntityPill
                             label="All"
                             dot="var(--color-accent)"
@@ -429,7 +429,7 @@ export default function FilterControlBar({
                 )}
 
                 {/* ── ZONE B: Period controls ──────────────────────────────── */}
-                <div className="flex items-center gap-2.5 h-full flex-1 min-w-0 px-4 sm:px-5">
+                <div className="flex items-center gap-2.5 h-full flex-1 min-w-0 px-4 lg:px-5">
 
                     <GranularitySegment value={filterGranularity} onChange={handleGranularity} />
 
@@ -561,7 +561,7 @@ export default function FilterControlBar({
                             )}
 
                             {showCustom && (
-                                <div className="absolute top-full left-0 mt-2 z-50 rounded-2xl border border-[var(--color-border)] shadow-xl p-5 min-w-[320px] bg-[var(--color-surface-raised)]">
+                                <div className="absolute top-full left-0 mt-2 z-50 rounded-2xl border border-[var(--color-border)] shadow-xl p-5 w-[320px] max-w-[calc(100vw-1rem)] bg-[var(--color-surface-raised)]">
                                     <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-text-sub)] mb-4">
                                         Custom Date Range
                                     </p>
@@ -602,8 +602,8 @@ export default function FilterControlBar({
                     )}
                 </div>
 
-                {/* ── ZONE C: Compare ──────────────────────────────────────── */}
-                <div className="flex items-center h-full px-4 sm:px-5 border-l border-[var(--color-border)] shrink-0">
+                {/* ── ZONE C: Compare — hidden on iPad/narrow screens ─────── */}
+                <div className="hidden lg:flex items-center h-full px-4 lg:px-5 border-l border-[var(--color-border)] shrink-0">
                     <CompareTrigger
                         filterGranularity={filterGranularity}
                         selectedFiscalYear={selectedFiscalYear}

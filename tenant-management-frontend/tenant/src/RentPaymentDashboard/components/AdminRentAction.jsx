@@ -12,7 +12,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useAdminRentActions } from "../hooks/AdminRentAction";
-import { RefreshCcwIcon, MailIcon, HistoryIcon, Download } from "lucide-react";
+import { RefreshCcwIcon, MailIcon, HistoryIcon, Download, FileText } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { BackfillRentDialog } from "./BackfillRentDialog";
 
@@ -27,6 +27,8 @@ export const AdminRentAction = ({
     processingRents: processingRentsProp,
     sendingEmails: sendingEmailsProp,
     onExport,
+    onExportPdf,
+    exportingPdf,
 }) => {
     const internal = useAdminRentActions({ onProcessSuccess });
     const processMonthlyRents = processMonthlyRentsProp ?? internal.processMonthlyRents;
@@ -131,7 +133,28 @@ export const AdminRentAction = ({
                         className="h-8 w-8 sm:w-auto px-0 sm:px-3 border-border text-muted-foreground hover:text-foreground hover:bg-accent text-xs font-semibold flex items-center justify-center"
                     >
                         <Download className="h-3.5 w-3.5 shrink-0" />
-                        <span className="hidden sm:inline ml-1.5 whitespace-nowrap">Export</span>
+                        <span className="hidden sm:inline ml-1.5 whitespace-nowrap">Export CSV</span>
+                    </Button>
+                )}
+
+                {typeof onExportPdf === "function" && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={onExportPdf}
+                        disabled={exportingPdf}
+                        title="Download rent roll as PDF"
+                        className="h-8 w-8 sm:w-auto px-0 sm:px-3 border-border text-muted-foreground hover:text-foreground hover:bg-accent text-xs font-semibold flex items-center justify-center"
+                    >
+                        {exportingPdf ? (
+                            <Spinner />
+                        ) : (
+                            <FileText className="h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span className="hidden sm:inline ml-1.5 whitespace-nowrap">
+                            {exportingPdf ? "Generating…" : "PDF Report"}
+                        </span>
                     </Button>
                 )}
 

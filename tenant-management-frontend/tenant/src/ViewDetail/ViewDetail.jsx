@@ -171,9 +171,9 @@ function ViewDetail({ tabs: tabsProp }) {
             {/* Left: avatar + identity */}
             <div className="flex items-start gap-3 sm:gap-4">
               <div className="relative shrink-0">
-                <Avatar className="w-12 h-12 sm:w-14 sm:h-14 ring-2 ring-blue-100 ring-offset-2">
+                <Avatar className="w-12 h-12 sm:w-14 sm:h-14 ring-2 ring-primary ring-offset-2">
                   <AvatarImage src="https://github.com/shadcn.png" alt={tenant?.name} />
-                  <AvatarFallback className="text-sm font-bold bg-blue-50 text-blue-700">
+                  <AvatarFallback className="text-sm font-bold bg-primary-50 text-blue-700">
                     {initials}
                   </AvatarFallback>
                 </Avatar>

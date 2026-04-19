@@ -5,6 +5,10 @@ import { toast } from "sonner";
 // nepaliDate.js (client mirror of the server helper). getTodayNepali() gives
 // a plain object: { year, month (1-based), day, monthName, … }
 import { getTodayNepali } from "@/utils/nepaliDate";
+import {
+  getQuarterForMonth,
+  getQuarterMonthRange,
+} from "../utils/quarterUtils";
 
 /**
  * useRentData
@@ -47,6 +51,11 @@ export const useRentData = () => {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPropertyId, setFilterPropertyId] = useState("");
 
+  // ── Frequency + quarter ───────────────────────────────────────────────────
+  const defaultQuarter = getQuarterForMonth(today.month);
+  const [frequencyView, setFrequencyView] = useState("monthly");
+  const [filterQuarter, setFilterQuarter] = useState(defaultQuarter);
+
   // ── Payment tab filters ───────────────────────────────────────────────────
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
@@ -59,8 +68,15 @@ export const useRentData = () => {
       setError(null);
 
       const params = new URLSearchParams();
-      // Always scope to the selected period — never fetch all-time by default
-      params.append("nepaliMonth", filterRentMonth);
+      // Scope to the selected period — monthly sends a single month, quarterly
+      // sends a month range covering all 3 months of the selected quarter.
+      if (frequencyView === "quarterly") {
+        const { start, end } = getQuarterMonthRange(filterQuarter);
+        params.append("nepaliMonthStart", start);
+        params.append("nepaliMonthEnd", end);
+      } else {
+        params.append("nepaliMonth", filterRentMonth);
+      }
       params.append("nepaliYear", filterRentYear);
       if (filterStatus && filterStatus !== "all")
         params.append("status", filterStatus);
@@ -81,7 +97,7 @@ export const useRentData = () => {
     } finally {
       setRentsLoading(false);
     }
-  }, [filterRentMonth, filterRentYear, filterStatus, filterPropertyId]);
+  }, [frequencyView, filterQuarter, filterRentMonth, filterRentYear, filterStatus, filterPropertyId]);
 
   // ── Fetch: CAMs ───────────────────────────────────────────────────────────
   // Reads month/year from closure — no args needed when called post-payment.
@@ -204,6 +220,12 @@ export const useRentData = () => {
     setFilterRentYear,
     setFilterStatus,
     setFilterPropertyId,
+    // Frequency + quarter
+    frequencyView,
+    setFrequencyView,
+    filterQuarter,
+    setFilterQuarter,
+    defaultQuarter,
     // Payment filters
     filterStartDate,
     filterEndDate,

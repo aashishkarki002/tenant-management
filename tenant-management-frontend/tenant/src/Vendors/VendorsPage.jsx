@@ -14,6 +14,7 @@ import VendorStats from "./components/VendorStats";
 import VendorTable from "./components/VendorTable";
 import VendorForm from "./components/VendorForm";
 import TransactionForm from "./components/TransactionForm";
+
 import { toast } from "sonner";
 import {
   getAllVendors,
@@ -55,7 +56,7 @@ export default function VendorsPage() {
     try {
       setLoading(true);
       const response = await getAllVendors();
-      
+
       if (response.success) {
         // Transform backend vendors to frontend format
         const transformedVendors = response.vendors.map(transformVendorForFrontend);
@@ -77,7 +78,7 @@ export default function VendorsPage() {
       // TODO: Replace with actual API call
       // const response = await api.get('/api/submeters');
       // setSubmeters(response.data);
-      
+
       // Mock data
       const mockSubmeters = [
         { _id: "SM-001", name: "Submeter 1", location: "Courtyard A" },
@@ -144,13 +145,13 @@ export default function VendorsPage() {
   };
 
   const handleDeleteVendor = async (vendor) => {
-    if (!confirm(`Are you sure you want to delete ${vendor.name}?`)) {
+    if ((`Are you sure you want to delete ${vendor.name}?`)) {
       return;
     }
 
     try {
       const response = await deleteVendor(vendor._id);
-      
+
       if (response.success) {
         setVendors((prev) =>
           prev.filter((v) => v._id !== vendor._id)
@@ -174,7 +175,7 @@ export default function VendorsPage() {
     try {
       // TODO: Replace with actual API call
       // await api.post(`/api/vendors/${selectedVendorForTransaction._id}/transactions`, transactionData);
-      
+
       toast.success("Transaction added successfully");
       setIsTransactionFormOpen(false);
       setSelectedVendorForTransaction(null);
@@ -188,10 +189,10 @@ export default function VendorsPage() {
   const handleSubmitForm = async (formData) => {
     try {
       const backendData = transformVendorForBackend(formData);
-      
+
       if (selectedVendor) {
         const response = await updateVendor(selectedVendor._id, backendData);
-        
+
         if (response.success) {
           const updatedVendor = transformVendorForFrontend(response.vendor);
           setVendors((prev) =>
@@ -205,7 +206,7 @@ export default function VendorsPage() {
         }
       } else {
         const response = await createVendor(backendData);
-        
+
         if (response.success) {
           const newVendor = transformVendorForFrontend(response.vendor);
           setVendors((prev) => [...prev, newVendor]);

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Wallet, Building2, AlertCircle, CheckCircle2, ChevronRight,
-    Users, Receipt,
+    Wallet, Building2, AlertCircle, CheckCircle2,
+    Users, Receipt, Info,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -19,6 +19,39 @@ function fmt(val) {
 function fmtFull(val) {
     if (val == null) return "—";
     return `₹${Number(val).toLocaleString()}`;
+}
+
+// ─── Info tooltip ─────────────────────────────────────────────────────────────
+
+function InfoTooltip({ text }) {
+    const [visible, setVisible] = useState(false);
+    return (
+        <span className="relative inline-flex items-center ml-1" style={{ verticalAlign: "middle" }}>
+            <Info
+                className="w-3 h-3 cursor-help shrink-0"
+                style={{ color: "var(--color-text-sub)", opacity: 0.7 }}
+                onMouseEnter={() => setVisible(true)}
+                onMouseLeave={() => setVisible(false)}
+            />
+            {visible && (
+                <span
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50
+                               whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-medium
+                               shadow-lg pointer-events-none leading-snug"
+                    style={{
+                        backgroundColor: "var(--color-surface)",
+                        color: "var(--color-text-strong)",
+                        border: "1px solid var(--color-border)",
+                        boxShadow: "0 4px 12px 0 rgb(0 0 0 / 0.15)",
+                        maxWidth: "220px",
+                        whiteSpace: "normal",
+                    }}
+                >
+                    {text}
+                </span>
+            )}
+        </span>
+    );
 }
 
 // ─── Stacked animated bar ─────────────────────────────────────────────────────
@@ -130,6 +163,7 @@ function Tile({
     dots,
     to,
     loading,
+    info,
 }) {
     return (
         <Link
@@ -150,10 +184,11 @@ function Tile({
 
                     {/* Label */}
                     <p
-                        className="text-[11px] font-semibold tracking-[0.14em] uppercase mb-2"
+                        className="text-[11px] font-semibold tracking-[0.14em] uppercase mb-2 flex items-center"
                         style={{ color: "var(--color-text-sub)" }}
                     >
                         {label}
+                        {info && <InfoTooltip text={info} />}
                     </p>
 
                     {/* Hero value */}
@@ -253,7 +288,9 @@ export default function KpiStrip({ stats, loading }) {
     // Only show the split when both types coexist — one type alone is noise
     function freqTag(monthly, quarterly) {
         if (monthly > 0 && quarterly > 0) {
-            return ` · ${monthly} monthly · ${quarterly} quarterly`;
+            const mo = `${monthly} monthly payment${monthly !== 1 ? "s" : ""}`;
+            const qt = `${quarterly} quarterly payment${quarterly !== 1 ? "s" : ""}`;
+            return ` · ${mo} · ${qt}`;
         }
         return "";
     }
@@ -292,6 +329,7 @@ export default function KpiStrip({ stats, loading }) {
                         ? { color: "var(--color-success)" }
                         : { color: "var(--color-text-strong)" },
                     borderColor: "var(--color-border)",
+                    info: "How many active tenants have made at least one payment this billing cycle",
                 };
 
             case "pending":
@@ -311,6 +349,7 @@ export default function KpiStrip({ stats, loading }) {
                     iconBgStyle: { backgroundColor: "var(--color-muted)" },
                     iconColorStyle: { color: "var(--color-text-sub)" },
                     borderColor: "var(--color-border)",
+                    info: "Amount expected from all tenants this billing cycle — not yet overdue",
                 };
 
             case "due_soon":
@@ -330,6 +369,7 @@ export default function KpiStrip({ stats, loading }) {
                     iconBgStyle: { backgroundColor: "var(--color-warning-bg)" },
                     iconColorStyle: { color: "var(--color-warning)" },
                     borderColor: "var(--color-warning-border)",
+                    info: "Payments due within 7 days — follow up now to avoid late fees",
                 };
 
             case "overdue":
@@ -352,6 +392,7 @@ export default function KpiStrip({ stats, loading }) {
                     iconBgStyle: { backgroundColor: "var(--color-danger-bg)" },
                     iconColorStyle: { color: "var(--color-danger)" },
                     borderColor: "var(--color-danger-border)",
+                    info: "Past-due rent and CAM not yet collected — immediate action needed",
                 };
         }
     })();
@@ -377,6 +418,7 @@ export default function KpiStrip({ stats, loading }) {
             iconBgStyle: { backgroundColor: "var(--color-success-bg)" },
             iconColorStyle: { color: "var(--color-success)" },
             borderColor: "var(--color-border)",
+            info: "Units with an active lease agreement as of today",
             to: "/dashboard/units",
         }
         : {
@@ -399,6 +441,7 @@ export default function KpiStrip({ stats, loading }) {
                 ? { color: "var(--color-text-strong)" }
                 : { color: "var(--color-warning)" },
             borderColor: occupancyRate < 80 ? "var(--color-warning-border)" : "var(--color-border)",
+            info: "Units without an active tenant — potential lost revenue per month shown",
             to: "/dashboard/units",
         };
 
@@ -429,6 +472,7 @@ export default function KpiStrip({ stats, loading }) {
             iconBgStyle: { backgroundColor: "var(--color-danger-bg)" },
             iconColorStyle: { color: "var(--color-danger)" },
             borderColor: "var(--color-danger-border)",
+            info: "Penalty fees applied to overdue rent — bar shows how much has been collected",
         }
         : {
             label: "Late Fees",
@@ -440,6 +484,7 @@ export default function KpiStrip({ stats, loading }) {
             iconBgStyle: { backgroundColor: "var(--color-success-bg)" },
             iconColorStyle: { color: "var(--color-success)" },
             borderColor: "var(--color-border)",
+            info: "Penalty fees applied to overdue rent — none active this month",
         };
 
     return (
@@ -447,13 +492,14 @@ export default function KpiStrip({ stats, loading }) {
             {/* 1 — Collected */}
             <Tile
                 loading={loading}
-                label="Collected"
+                label="Collected · This Month"
                 value={fmtFull(kpi.totalReceived)}
                 sub={collectedSub}
                 bar={{ type: "stacked", rentPct, camPct }}
                 icon={Wallet}
                 iconBgStyle={{ backgroundColor: "var(--color-muted)" }}
                 iconColorStyle={{ color: "var(--color-text-strong)" }}
+                info="Total rent + CAM collected so far this billing month"
                 to="/rent-payment"
             />
 
@@ -465,6 +511,7 @@ export default function KpiStrip({ stats, loading }) {
 
             {/* 4 — Late Fees */}
             <Tile loading={loading} to="/rent-payment" {...lateFeeTileProps} />
+
         </div>
     );
 }

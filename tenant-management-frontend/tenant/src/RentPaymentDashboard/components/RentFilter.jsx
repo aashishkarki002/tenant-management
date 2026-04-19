@@ -9,6 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NEPALI_MONTH_NAMES, getNepaliYearOptions } from "@/utils/nepaliDate";
+import { NEPALI_QUARTERS } from "../utils/quarterUtils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
@@ -85,6 +86,9 @@ export const RentFilter = ({
     onYearChange,
     frequencyView = "monthly",
     onFrequencyChange,
+    quarter = 0,
+    defaultQuarter = 0,
+    onQuarterChange,
     propertyId = "",
     properties = [],
     onPropertyChange,
@@ -95,12 +99,16 @@ export const RentFilter = ({
     const monthOptions = NEPALI_MONTH_NAMES.map((name, i) => ({ value: i + 1, label: name }));
     const yearOptions = getNepaliYearOptions(2078).reverse();
 
-    const isPeriodActive =
-        (defaultMonth != null && month !== defaultMonth) ||
-        (defaultYear != null && year !== defaultYear);
+    const isMonthly = frequencyView === "monthly";
+
+    const isPeriodActive = isMonthly
+        ? (defaultMonth != null && month !== defaultMonth) || (defaultYear != null && year !== defaultYear)
+        : quarter !== defaultQuarter || (defaultYear != null && year !== defaultYear);
 
     const currentMonthName = month != null ? NEPALI_MONTH_NAMES[month - 1] : "Month";
-    const periodLabel = `${currentMonthName} ${year ?? ""}`.trim();
+    const periodLabel = isMonthly
+        ? `${currentMonthName} ${year ?? ""}`.trim()
+        : `${NEPALI_QUARTERS[quarter]?.short ?? "Q1"} ${year ?? ""}`.trim();
 
     const selectedProperty = properties.find((p) => p._id === propertyId);
     const propertyLabel = selectedProperty?.name ?? "All Properties";
@@ -132,20 +140,37 @@ export const RentFilter = ({
                                     ))}
                                 </div>
                             </div>
-                            <div>
-                                <PopLabel>Month</PopLabel>
-                                <div className="grid grid-cols-3 gap-1">
-                                    {monthOptions.map((m) => (
-                                        <OptionBtn
-                                            key={m.value}
-                                            active={month === m.value}
-                                            onClick={() => onMonthChange?.(m.value)}
-                                        >
-                                            {m.label}
-                                        </OptionBtn>
-                                    ))}
+                            {isMonthly ? (
+                                <div>
+                                    <PopLabel>Month</PopLabel>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {monthOptions.map((m) => (
+                                            <OptionBtn
+                                                key={m.value}
+                                                active={month === m.value}
+                                                onClick={() => onMonthChange?.(m.value)}
+                                            >
+                                                {m.label}
+                                            </OptionBtn>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div>
+                                    <PopLabel>Quarter</PopLabel>
+                                    <div className="grid grid-cols-2 gap-1">
+                                        {NEPALI_QUARTERS.map((q, i) => (
+                                            <OptionBtn
+                                                key={i}
+                                                active={quarter === i}
+                                                onClick={() => onQuarterChange?.(i)}
+                                            >
+                                                {q.label}
+                                            </OptionBtn>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </FilterPill>
 

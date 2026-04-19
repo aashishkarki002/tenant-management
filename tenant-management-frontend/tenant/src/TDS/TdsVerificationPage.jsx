@@ -197,16 +197,57 @@ export const TdsVerificationPage = () => {
 
   const currentYear = new Date().getFullYear() + 57; // Approximate Nepali year
 
+  const [downloading, setDownloading] = React.useState(false);
+
+  const handleDownloadCertificate = async () => {
+    if (!filterTenant) {
+      toast.error("Select a tenant to download their TDS certificate");
+      return;
+    }
+    const year = filterYear || String(currentYear);
+    try {
+      setDownloading(true);
+      const response = await api.get(
+        `/api/rent/tds/certificate/${filterTenant}`,
+        { params: { nepaliYear: year }, responseType: "blob" }
+      );
+      const tenantName = tenants.find((t) => t._id === filterTenant)?.name || "Tenant";
+      const url = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `TDS-Certificate-${tenantName}-${year}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("TDS certificate downloaded");
+    } catch (err) {
+      const msg = err.response?.data?.message || "Failed to generate certificate";
+      toast.error(msg);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">
-          TDS Verification
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Verify TDS payments made to government by tenants
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">
+            TDS Verification
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Verify TDS payments made to government by tenants
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleDownloadCertificate}
+          disabled={downloading || !filterTenant}
+          className="gap-2"
+        >
+          <Download className="w-4 h-4" />
+          {downloading ? "Generating…" : "Download TDS Certificate"}
+        </Button>
       </div>
 
       {/* Filters */}

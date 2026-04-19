@@ -52,6 +52,10 @@ export default function MaintenancePage() {
     setStatusFilter,
     priorityFilter,
     setPriorityFilter,
+    nepaliMonthFilter,
+    setNepaliMonthFilter,
+    nepaliYearFilter,
+    setNepaliYearFilter,
     filteredMaintenance,
     groupedTickets,
     hasActiveFilters,
@@ -258,6 +262,10 @@ export default function MaintenancePage() {
             setStatusFilter={setStatusFilter}
             priorityFilter={priorityFilter}
             setPriorityFilter={setPriorityFilter}
+            nepaliMonthFilter={nepaliMonthFilter}
+            setNepaliMonthFilter={setNepaliMonthFilter}
+            nepaliYearFilter={nepaliYearFilter}
+            setNepaliYearFilter={setNepaliYearFilter}
             hasActiveFilters={hasActiveFilters}
             clearFilters={clearFilters}
             filteredCount={filteredMaintenance.length}

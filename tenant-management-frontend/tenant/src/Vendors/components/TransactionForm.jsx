@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { useFormik } from "formik";
+import * as Yup from "yup";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +21,42 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const validationSchema = Yup.object({
+  transaction_type: Yup.string().required("Transaction type is required"),
+  date: Yup.string().required("Date is required"),
+  amount: Yup.number()
+    .typeError("Amount must be a number")
+    .positive("Amount must be greater than 0")
+    .required("Amount is required"),
+  description: Yup.string().required("Description is required"),
+});
+
+const getDefaultType = (vendor) =>
+  vendor?.vendor_type === "stall" ? "rent" : "expense";
+
+const buildInitialValues = (transaction, vendor) => ({
+  transaction_type: transaction?.transaction_type ?? getDefaultType(vendor),
+  amount: transaction?.amount ?? "",
+  description: transaction?.description ?? "",
+  date: transaction?.date
+    ? new Date(transaction.date).toISOString().split("T")[0]
+    : new Date().toISOString().split("T")[0],
+});
+
+const getTransactionTypes = (vendor) => {
+  if (vendor?.vendor_type === "stall") {
+    return [
+      { value: "rent", label: "Rent Payment" },
+      { value: "electricity", label: "Electricity" },
+      { value: "payment", label: "Other Payment" },
+    ];
+  }
+  return [
+    { value: "expense", label: "Service Expense" },
+    { value: "payment", label: "Payment Made" },
+  ];
+};
+
 export default function TransactionForm({
   open,
   onClose,
@@ -26,64 +64,30 @@ export default function TransactionForm({
   vendor,
   transaction,
 }) {
-  const [formData, setFormData] = useState({
-    transaction_type: "payment",
-    amount: "",
-    description: "",
-    date: new Date().toISOString().split("T")[0],
+  const formik = useFormik({
+    initialValues: buildInitialValues(transaction, vendor),
+    validationSchema,
+    onSubmit: (values) => {
+      onSubmit({ ...values, amount: parseFloat(values.amount) });
+    },
   });
 
   useEffect(() => {
-    if (transaction) {
-      setFormData({
-        transaction_type: transaction.transaction_type || "payment",
-        amount: transaction.amount || "",
-        description: transaction.description || "",
-        date: transaction.date
-          ? new Date(transaction.date).toISOString().split("T")[0]
-          : new Date().toISOString().split("T")[0],
-      });
-    } else {
-      // Set default transaction type based on vendor type
-      const defaultType =
-        vendor?.vendor_type === "stall" ? "rent" : "expense";
-      setFormData({
-        transaction_type: defaultType,
-        amount: "",
-        description: "",
-        date: new Date().toISOString().split("T")[0],
+    if (open) {
+      formik.resetForm({
+        values: buildInitialValues(transaction, vendor),
       });
     }
   }, [transaction, vendor, open]);
 
-  const handleChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  const fieldError = (field) =>
+    formik.touched[field] && formik.errors[field] ? (
+      <p className="text-xs text-destructive">{formik.errors[field]}</p>
+    ) : null;
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit({
-      ...formData,
-      amount: parseFloat(formData.amount),
-    });
-  };
-
-  const isStallVendor = vendor?.vendor_type === "stall";
-
-  const getTransactionTypes = () => {
-    if (isStallVendor) {
-      return [
-        { value: "rent", label: "Rent Payment" },
-        { value: "electricity", label: "Electricity" },
-        { value: "payment", label: "Other Payment" },
-      ];
-    } else {
-      return [
-        { value: "expense", label: "Service Expense" },
-        { value: "payment", label: "Payment Made" },
-      ];
-    }
-  };
+  const isOutflow =
+    formik.values.transaction_type === "expense" ||
+    formik.values.transaction_type === "payment";
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -99,29 +103,30 @@ export default function TransactionForm({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={formik.handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="transaction_type">
                 Transaction Type <span className="text-destructive">*</span>
               </Label>
               <Select
-                value={formData.transaction_type}
+                value={formik.values.transaction_type}
                 onValueChange={(value) =>
-                  handleChange("transaction_type", value)
+                  formik.setFieldValue("transaction_type", value)
                 }
               >
                 <SelectTrigger id="transaction_type">
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {getTransactionTypes().map((type) => (
+                  {getTransactionTypes(vendor).map((type) => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {fieldError("transaction_type")}
             </div>
 
             <div className="space-y-2">
@@ -131,10 +136,9 @@ export default function TransactionForm({
               <Input
                 id="date"
                 type="date"
-                value={formData.date}
-                onChange={(e) => handleChange("date", e.target.value)}
-                required
+                {...formik.getFieldProps("date")}
               />
+              {fieldError("date")}
             </div>
 
             <div className="space-y-2 sm:col-span-2">
@@ -144,22 +148,15 @@ export default function TransactionForm({
               <Input
                 id="amount"
                 type="number"
-                value={formData.amount}
-                onChange={(e) => handleChange("amount", e.target.value)}
+                {...formik.getFieldProps("amount")}
                 placeholder="0"
                 min="0"
                 step="0.01"
-                required
               />
-              <p
-                className="text-xs"
-                style={{ color: "var(--color-text-sub)" }}
-              >
-                {formData.transaction_type === "expense" ||
-                formData.transaction_type === "payment"
-                  ? "Amount paid out"
-                  : "Amount received"}
+              <p className="text-xs" style={{ color: "var(--color-text-sub)" }}>
+                {isOutflow ? "Amount paid out" : "Amount received"}
               </p>
+              {fieldError("amount")}
             </div>
           </div>
 
@@ -169,19 +166,18 @@ export default function TransactionForm({
             </Label>
             <Textarea
               id="description"
-              value={formData.description}
-              onChange={(e) => handleChange("description", e.target.value)}
+              {...formik.getFieldProps("description")}
               placeholder="Enter transaction details..."
               rows={3}
-              required
             />
+            {fieldError("description")}
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit">
+            <Button type="submit" disabled={formik.isSubmitting}>
               {transaction ? "Update" : "Add"} Transaction
             </Button>
           </DialogFooter>

@@ -5,7 +5,7 @@ import {
 } from "@/components/ui/command";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
-  Bell, Search, X, CheckCheck, ChevronRight,
+  Bell, Search, X, CheckCheck, ChevronRight, Trash2,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
@@ -278,7 +278,7 @@ export function GlobalSearch() {
 }
 
 // ─── Notification Item ────────────────────────────────────────────────────────
-function NotificationItem({ notification: n, onMarkRead }) {
+function NotificationItem({ notification: n, onMarkRead, onDismiss }) {
   const config = NOTIFICATION_CONFIG[n.type] ?? DEFAULT_NOTIFICATION_CONFIG;
   const Icon = config.icon;
   const dotColor = STATUS_DOT_COLOR[n.status];
@@ -304,12 +304,22 @@ function NotificationItem({ notification: n, onMarkRead }) {
           <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--color-text-strong)" }}>
             {n.title}
           </p>
-          {!n.isRead && (
-            <span
-              className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
-              style={{ background: "var(--color-accent)" }}
-            />
-          )}
+          <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+            {!n.isRead && (
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: "var(--color-accent)" }}
+              />
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onDismiss(n._id || n.id); }}
+              className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--color-danger-light)]"
+              style={{ color: "var(--color-text-weak)" }}
+              aria-label="Dismiss notification"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
         </div>
 
         {n.message && (
@@ -376,6 +386,12 @@ export default function Header() {
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     try { await api.patch("/api/notification/mark-all-notifications-as-read"); }
     catch { fetchNotifications(); }
+  }, [fetchNotifications]);
+
+  const dismissNotification = useCallback(async (id) => {
+    setNotifications(prev => prev.filter(n => (n._id || n.id) !== id));
+    try { await api.delete(`/api/notification/${id}`); }
+    catch (err) { console.error(err); fetchNotifications(); }
   }, [fetchNotifications]);
 
   useEffect(() => {
@@ -529,11 +545,13 @@ export default function Header() {
                 </div>
               ) : (
                 notifications.map(n => (
-                  <NotificationItem
-                    key={n._id || n.id}
-                    notification={n}
-                    onMarkRead={markAsRead}
-                  />
+                  <div key={n._id || n.id} className="group">
+                    <NotificationItem
+                      notification={n}
+                      onMarkRead={markAsRead}
+                      onDismiss={dismissNotification}
+                    />
+                  </div>
                 ))
               )}
             </div>

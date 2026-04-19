@@ -18,10 +18,14 @@ import {
   CheckCircle2Icon,
   AlertTriangleIcon,
   RefreshCwIcon,
+  DownloadIcon,
+  Loader2Icon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, Lbl, Skeleton } from "../AccountingPrimitives";
 import { useBalanceSheet } from "../../hooks/useBalanceSheet";
+import { exportBalanceSheetPDF } from "../../utils/exportUtils";
+import { useEntity } from "../../../context/EntityContext";
 
 // ─── Money formatter ──────────────────────────────────────────────────────────
 function fmtPaisa(paisa = 0) {
@@ -354,8 +358,11 @@ function SkeletonLayout() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN TAB COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function BalanceSheetTab({ entityId }) {
-  const { balanceSheet, loading, error, refetch } = useBalanceSheet(entityId);
+export default function BalanceSheetTab({ entityId, filterProps = {}, filterLabel }) {
+  const { balanceSheet, loading, error, refetch } = useBalanceSheet(entityId, filterProps);
+  const [exporting, setExporting] = useState(false);
+  const { entities, activeEntityId } = useEntity();
+  const entityName = entities?.find(e => e._id === activeEntityId)?.name ?? "";
 
   if (loading) return <SkeletonLayout />;
 
@@ -399,6 +406,31 @@ export default function BalanceSheetTab({ entityId }) {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* 0. Period label + export button */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        {filterLabel && (
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)]">
+            {filterLabel}
+          </span>
+        )}
+        <button
+          onClick={async () => {
+            setExporting(true);
+            await new Promise(r => setTimeout(r, 0));
+            exportBalanceSheetPDF(balanceSheet, filterLabel, entityName);
+            setExporting(false);
+          }}
+          disabled={exporting}
+          title="Download Balance Sheet as PDF"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border border-[var(--color-border)] bg-transparent text-[11px] font-semibold cursor-pointer text-[var(--color-text-body)] hover:bg-[var(--color-surface)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {exporting
+            ? <Loader2Icon size={12} className="animate-spin" />
+            : <DownloadIcon size={12} />}
+          Export PDF
+        </button>
+      </div>
+
       {/* 1. Equation banner */}
       <EquationBanner
         isBalanced={isBalanced}

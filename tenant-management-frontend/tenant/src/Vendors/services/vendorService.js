@@ -80,6 +80,29 @@ export const updatePersonnel = async (personnelId, personnelData) => {
   return response.data;
 };
 
+// ─── VENDOR PAYMENTS (AP) ──────────────────────────────────────────────────────
+
+export const recordVendorPayment = async (vendorId, paymentData) => {
+  const response = await api.post(`/api/vendor/${vendorId}/payments`, paymentData);
+  return response.data;
+};
+
+export const getVendorPayments = async (vendorId, filters = {}) => {
+  const params = new URLSearchParams();
+  if (filters.from) params.append("from", filters.from);
+  if (filters.to) params.append("to", filters.to);
+  if (filters.contractId) params.append("contractId", filters.contractId);
+  const qs = params.toString();
+  const url = qs ? `/api/vendor/${vendorId}/payments?${qs}` : `/api/vendor/${vendorId}/payments`;
+  const response = await api.get(url);
+  return response.data;
+};
+
+export const getVendorBalance = async (vendorId) => {
+  const response = await api.get(`/api/vendor/${vendorId}/balance`);
+  return response.data;
+};
+
 // ─── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
 
 /**

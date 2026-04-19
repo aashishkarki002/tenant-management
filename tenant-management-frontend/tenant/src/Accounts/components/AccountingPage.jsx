@@ -20,7 +20,13 @@
 import { useState, useMemo, useCallback } from "react";
 import { AnimatePresence, motion } from "motion/react"; // eslint-disable-line no-unused-vars
 import { cn } from "@/lib/utils";
-
+import {
+    Select,
+    SelectTrigger,
+    SelectValue,
+    SelectContent,
+    SelectItem,
+} from "@/components/ui/select";
 // ── Date utilities — ONE import, no local duplicates ─────────────────────────
 import {
     NEPALI_MONTH_NAMES,
@@ -52,12 +58,6 @@ import BalanceSheetTab from "./tabs/BalanceSheetTab";
 // Now uses QUARTER_LABELS from nepaliCalendar — not a local duplicate
 // QUARTER_LABELS[1] === "Shrawan–Ashwin" etc.
 
-const GRANULARITIES = [
-    { id: "month", label: "Month" },
-    { id: "quarter", label: "Quarter" },
-    { id: "year", label: "Year" },
-    { id: "custom", label: "Custom" },
-];
 
 const TABS = [
     { id: "overview", label: "Overview" },
@@ -87,7 +87,7 @@ export function buildCompareLabel(granularity, { year, quarter, month } = {}) {
     if (granularity === "quarter" && quarter && year)
         return `Q${quarter} · ${QUARTER_LABELS[quarter]} · FY ${year}`;
     if (granularity === "month" && month && year)
-        return `${NEPALI_MONTH_NAMES[month - 1]} ${year}`;
+        return `${NEPALI_MONTH_NAMES[month - 1]} ${month <= 3 ? year + 1 : year}`;
     return null;
 }
 
@@ -176,7 +176,7 @@ export default function AccountingPage() {
         if (filterGranularity === "custom" && customStart && customEnd)
             return `${toBSDate(customStart)} → ${toBSDate(customEnd)}`;
         if (filterGranularity === "month" && selectedMonth)
-            return `${NEPALI_MONTH_NAMES[selectedMonth - 1]} ${selectedFiscalYear}`;
+            return `${NEPALI_MONTH_NAMES[selectedMonth - 1]} ${selectedMonth <= 3 ? selectedFiscalYear + 1 : selectedFiscalYear}`;
         if (filterGranularity === "quarter" && selectedQuarter)
             return `Q${selectedQuarter} · ${QUARTER_LABELS[selectedQuarter]} · FY ${selectedFiscalYear}`;
         return `FY ${selectedFiscalYear}/${String(selectedFiscalYear + 1).slice(2)}`;
@@ -231,10 +231,31 @@ export default function AccountingPage() {
                 filterLabel={filterLabel}
             />
 
-            {/* Tab bar — pinned below filter bar, scrolls horizontally on narrow viewports */}
+            {/* Tab bar — dropdown on mobile, pill row on sm+ */}
+
+            <div className="no-print sm:hidden flex-shrink-0 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
+                <Select value={activeTab} onValueChange={setActiveTab}>
+                    <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select tab" />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                        {TABS.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                                {t.label}
+                                {t.id === "ledger" && ledgerEntries.length > 0
+                                    ? ` (${ledgerEntries.length})`
+                                    : ""}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {/* Desktop: scrollable pill tabs */}
             <div
                 role="tablist"
-                className="no-print flex-shrink-0 flex items-center gap-0.5 px-4 sm:px-7 pt-3 pb-0 border-b border-[var(--color-border)] bg-[var(--color-bg)] overflow-x-auto [&::-webkit-scrollbar]:hidden"
+                className="no-print hidden sm:flex flex-shrink-0 items-center gap-0.5 px-4 sm:px-7 pt-3 pb-0 border-b border-[var(--color-border)] bg-[var(--color-bg)] overflow-x-auto [&::-webkit-scrollbar]:hidden"
             >
                 {TABS.map(t => (
                     <button
@@ -342,7 +363,11 @@ export default function AccountingPage() {
                         )}
 
                         {activeTab === "balance-sheet" && (
-                            <BalanceSheetTab entityId={resolvedEntityId} />
+                            <BalanceSheetTab
+                                entityId={resolvedEntityId}
+                                filterProps={filterProps}
+                                filterLabel={filterLabel}
+                            />
                         )}
                     </motion.div>
                 </AnimatePresence>

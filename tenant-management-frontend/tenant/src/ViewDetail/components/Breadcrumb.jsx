@@ -3,7 +3,7 @@ import { ChevronRight, LayoutDashboard } from "lucide-react";
 
 function Breadcrumb({ tenantName }) {
   return (
-    <nav aria-label="breadcrumb" className="flex items-center gap-1 text-xs text-muted-foreground mb-4">
+    <nav aria-label="breadcrumb" className="flex items-center mt-1 text-xs text-muted-foreground mb-4">
       <Link
         to="/"
         className="flex items-center gap-1 hover:text-foreground transition-colors duration-150 cursor-pointer"

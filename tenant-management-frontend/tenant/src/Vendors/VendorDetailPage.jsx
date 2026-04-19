@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Edit, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, Edit, Trash2, Plus, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import VendorCard from "./components/VendorCard";
 import VendorTransactionsTable from "./components/VendorTransactionsTable";
@@ -9,6 +9,7 @@ import VendorForm from "./components/VendorForm";
 import TransactionForm from "./components/TransactionForm";
 import ContractForm from "./components/ContractForm";
 import ContractsList from "./components/ContractsList";
+import RecordVendorPaymentDialog from "./components/RecordVendorPaymentDialog";
 import { toast } from "sonner";
 import {
   getVendorById,
@@ -18,6 +19,8 @@ import {
   createContract,
   transformVendorForFrontend,
   transformVendorForBackend,
+  getVendorPayments,
+  getVendorBalance,
 } from "./services/vendorService";
 
 export default function VendorDetailPage() {
@@ -34,12 +37,35 @@ export default function VendorDetailPage() {
   const [isContractFormOpen, setIsContractFormOpen] = useState(false);
   const [selectedContract, setSelectedContract] = useState(null);
   const [submeters, setSubmeters] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [balance, setBalance] = useState(null);
+  const [isPaymentFormOpen, setIsPaymentFormOpen] = useState(false);
 
   useEffect(() => {
     fetchVendorDetails();
     fetchTransactions();
     fetchSubmeters();
     fetchProperties();
+    fetchPayments();
+    fetchBalance();
+  }, [id]);
+
+  const fetchPayments = useCallback(async () => {
+    try {
+      const res = await getVendorPayments(id);
+      if (res.success) setPayments(res.payments || []);
+    } catch (err) {
+      console.error("Error fetching payments:", err);
+    }
+  }, [id]);
+
+  const fetchBalance = useCallback(async () => {
+    try {
+      const res = await getVendorBalance(id);
+      if (res.success) setBalance(res.balance);
+    } catch (err) {
+      console.error("Error fetching balance:", err);
+    }
   }, [id]);
 
   const fetchVendorDetails = async () => {
@@ -299,6 +325,7 @@ export default function VendorDetailPage() {
 
           <ContractsList
             contracts={contracts}
+            vendorId={id}
             onEdit={handleEditContract}
           />
         </div>
@@ -337,6 +364,158 @@ export default function VendorDetailPage() {
 
           <VendorTransactionsTable transactions={transactions} />
         </div>
+
+        {/* ── Payments Section ── */}
+        <div
+          className="rounded-xl border p-6"
+          style={{
+            backgroundColor: "var(--color-surface)",
+            borderColor: "var(--color-border)",
+          }}
+        >
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2
+                className="text-xl font-bold"
+                style={{ color: "var(--color-text-strong)" }}
+              >
+                Payments
+              </h2>
+              <p className="mt-1 text-sm" style={{ color: "var(--color-text-sub)" }}>
+                Payments made to this vendor
+              </p>
+            </div>
+            <Button size="sm" onClick={() => setIsPaymentFormOpen(true)}>
+              <CreditCard className="mr-2 h-4 w-4" />
+              Record Payment
+            </Button>
+          </div>
+
+          {/* Balance summary */}
+          {balance && (
+            <div className="mb-6 space-y-3">
+              {/* Expense side */}
+              {balance.serviceContractPaisa > 0 && (
+                <div>
+                  <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: "var(--color-text-sub)" }}>
+                    Expense (Service Contracts)
+                  </p>
+                  <div className="grid grid-cols-3 gap-4">
+                    {[
+                      { label: "Contracted", value: balance.serviceContractPaisa },
+                      { label: "Paid Out", value: balance.totalOutflowPaisa },
+                      { label: "Outstanding", value: balance.expenseOutstandingPaisa, danger: balance.expenseOutstandingPaisa > 0 },
+                    ].map(({ label, value, danger }) => (
+                      <div
+                        key={label}
+                        className="rounded-lg border p-4"
+                        style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}
+                      >
+                        <p className="text-xs mb-1" style={{ color: "var(--color-text-sub)" }}>{label}</p>
+                        <p className="text-lg font-semibold" style={{ color: danger ? "var(--color-danger)" : "var(--color-text-strong)" }}>
+                          Rs. {((value ?? 0) / 100).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Revenue side */}
+              {balance.stallLeaseContractPaisa > 0 && (
+                <div>
+                  <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: "var(--color-text-sub)" }}>
+                    Revenue (Stall Leases)
+                  </p>
+                  <div className="grid grid-cols-3 gap-4">
+                    {[
+                      { label: "Lease Amount", value: balance.stallLeaseContractPaisa },
+                      { label: "Received", value: balance.totalInflowPaisa },
+                      { label: "Outstanding", value: balance.revenueOutstandingPaisa, danger: balance.revenueOutstandingPaisa > 0 },
+                    ].map(({ label, value, danger }) => (
+                      <div
+                        key={label}
+                        className="rounded-lg border p-4"
+                        style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}
+                      >
+                        <p className="text-xs mb-1" style={{ color: "var(--color-text-sub)" }}>{label}</p>
+                        <p className="text-lg font-semibold" style={{ color: danger ? "var(--color-danger)" : "var(--color-success)" }}>
+                          Rs. {((value ?? 0) / 100).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Fallback for vendors with no contracts yet */}
+              {!balance.serviceContractPaisa && !balance.stallLeaseContractPaisa && (
+                <p className="text-sm py-2" style={{ color: "var(--color-text-weak)" }}>No contracts yet</p>
+              )}
+            </div>
+          )}
+
+          {/* Payments table */}
+          {payments.length === 0 ? (
+            <p className="text-sm py-6 text-center" style={{ color: "var(--color-text-weak)" }}>
+              No payments recorded yet
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
+                    {["Date", "Direction", "Amount", "Method", "Reference", "TDS Deducted", "Recorded By"].map((h) => (
+                      <th
+                        key={h}
+                        className="text-left py-2 px-3 text-xs font-medium"
+                        style={{ color: "var(--color-text-sub)" }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((p) => (
+                    <tr
+                      key={p._id}
+                      style={{ borderBottom: "1px solid var(--color-border)" }}
+                    >
+                      <td className="py-2.5 px-3" style={{ color: "var(--color-text-body)" }}>
+                        {new Date(p.paymentDate).toLocaleDateString()}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span
+                          className="text-xs rounded px-1.5 py-0.5 font-medium"
+                          style={{
+                            backgroundColor: p.paymentDirection === "inflow" ? "var(--color-success-bg)" : "var(--color-danger-bg)",
+                            color: p.paymentDirection === "inflow" ? "var(--color-success)" : "var(--color-danger)",
+                          }}
+                        >
+                          {p.paymentDirection === "inflow" ? "Received" : "Paid Out"}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 font-medium" style={{ color: "var(--color-text-strong)" }}>
+                        Rs. {((p.amountPaisa ?? 0) / 100).toLocaleString()}
+                      </td>
+                      <td className="py-2.5 px-3 capitalize" style={{ color: "var(--color-text-body)" }}>
+                        {p.paymentMethod?.replace("_", " ")}
+                      </td>
+                      <td className="py-2.5 px-3" style={{ color: "var(--color-text-sub)" }}>
+                        {p.referenceNumber || "—"}
+                      </td>
+                      <td className="py-2.5 px-3" style={{ color: "var(--color-text-sub)" }}>
+                        {p.tdsDeductedPaisa ? `Rs. ${(p.tdsDeductedPaisa / 100).toLocaleString()}` : "—"}
+                      </td>
+                      <td className="py-2.5 px-3" style={{ color: "var(--color-text-sub)" }}>
+                        {p.recordedBy?.name || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       <VendorForm
@@ -364,6 +543,17 @@ export default function VendorDetailPage() {
         onClose={() => setIsTransactionFormOpen(false)}
         onSubmit={handleSubmitTransaction}
         vendor={vendor}
+      />
+
+      <RecordVendorPaymentDialog
+        open={isPaymentFormOpen}
+        onClose={() => setIsPaymentFormOpen(false)}
+        vendorId={id}
+        contracts={contracts}
+        onSuccess={() => {
+          fetchPayments();
+          fetchBalance();
+        }}
       />
     </div>
   );

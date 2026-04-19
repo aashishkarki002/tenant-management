@@ -12,6 +12,8 @@ export const useMaintenanceFilters = (maintenance) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
+  const [nepaliMonthFilter, setNepaliMonthFilter] = useState(0); // 0 = All
+  const [nepaliYearFilter, setNepaliYearFilter] = useState(0);   // 0 = All
 
   /**
    * Apply all filters to maintenance list
@@ -29,6 +31,16 @@ export const useMaintenanceFilters = (maintenance) => {
       list = list.filter((m) => (m.priority || '').toLowerCase() === priorityFilter.toLowerCase());
     }
 
+    // Apply Nepali year filter
+    if (nepaliYearFilter !== 0) {
+      list = list.filter((m) => m.nepaliYear === nepaliYearFilter);
+    }
+
+    // Apply Nepali month filter
+    if (nepaliMonthFilter !== 0) {
+      list = list.filter((m) => m.nepaliMonth === nepaliMonthFilter);
+    }
+
     // Apply search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -43,7 +55,7 @@ export const useMaintenanceFilters = (maintenance) => {
     }
 
     return list;
-  }, [maintenance, statusFilter, priorityFilter, searchQuery]);
+  }, [maintenance, statusFilter, priorityFilter, nepaliYearFilter, nepaliMonthFilter, searchQuery]);
 
   /**
    * Group filtered tickets by status and priority
@@ -56,8 +68,14 @@ export const useMaintenanceFilters = (maintenance) => {
    * Check if any filters are active
    */
   const hasActiveFilters = useMemo(() => {
-    return statusFilter !== 'All' || priorityFilter !== 'All' || searchQuery.trim();
-  }, [statusFilter, priorityFilter, searchQuery]);
+    return (
+      statusFilter !== 'All' ||
+      priorityFilter !== 'All' ||
+      searchQuery.trim() ||
+      nepaliYearFilter !== 0 ||
+      nepaliMonthFilter !== 0
+    );
+  }, [statusFilter, priorityFilter, searchQuery, nepaliYearFilter, nepaliMonthFilter]);
 
   /**
    * Clear all filters
@@ -66,6 +84,8 @@ export const useMaintenanceFilters = (maintenance) => {
     setSearchQuery('');
     setStatusFilter('All');
     setPriorityFilter('All');
+    setNepaliMonthFilter(0);
+    setNepaliYearFilter(0);
   };
 
   return {
@@ -75,6 +95,10 @@ export const useMaintenanceFilters = (maintenance) => {
     setStatusFilter,
     priorityFilter,
     setPriorityFilter,
+    nepaliMonthFilter,
+    setNepaliMonthFilter,
+    nepaliYearFilter,
+    setNepaliYearFilter,
     filteredMaintenance,
     groupedTickets,
     hasActiveFilters,

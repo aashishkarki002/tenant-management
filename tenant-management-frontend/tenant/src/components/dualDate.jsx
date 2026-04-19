@@ -71,17 +71,13 @@ const DualCalendarTailwind = ({ onChange, value }) => {
     setTimeout(() => {
       nepaliPickerReadyRef.current = true;
     }, 500);
-  }, [nepaliDate]);
+  }, []);
 
   /* ─── BS → AD ────────────────────────────────────────────────── */
   const handleNepaliChange = useCallback(
     (bsDate) => {
       if (!bsDate) return;
       const cleaned = bsDate.split(" ")[0];
-
-      // MOBILE AUTO-FIRE FIX: the library fires onChange on mount regardless
-      // of what value is set. Block ALL events until the mount window passes.
-      // 500 ms covers slow Android WebViews where the burst fires later.
       if (!nepaliPickerReadyRef.current) return;
 
       // Same date re-selected: just close without re-firing onChange.
