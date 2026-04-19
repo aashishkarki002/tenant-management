@@ -500,7 +500,7 @@ export async function generateTdsCertificateController(req, res) {
     }
 
     const Rent = (await import("./rent.Model.js")).Rent;
-    const Tenant = (await import("../tenant/Tenant.Model.js")).default;
+    const Tenant = (await import("../tenant/Tenant.Model.js")).Tenant;
 
     const tenant = await Tenant.findById(tenantId).select("name address panNumber").lean();
     if (!tenant) {

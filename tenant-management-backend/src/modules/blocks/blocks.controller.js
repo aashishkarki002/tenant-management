@@ -5,7 +5,11 @@ import { Unit } from "../units/unit.model.js";
 export async function getAllBlocksWithStats(req, res) {
   try {
     const [blocks, innerAgg, unitAgg] = await Promise.all([
-      Block.find({}).populate("ownershipEntityId").lean(),
+      Block.find({})
+        .populate("ownershipEntityId")
+        .populate("migrationHistory.fromEntityId", "name type")
+        .populate("migrationHistory.toEntityId", "name type")
+        .lean(),
       InnerBlock.aggregate([{ $group: { _id: "$block", innerBlocks: { $sum: 1 } } }]),
       Unit.aggregate([
         { $match: { isDeleted: false } },

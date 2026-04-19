@@ -1,7 +1,7 @@
 import Admin from "./admin.Model.js";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { loginUserService, changePasswordService } from "./auth.services.js";
+import { loginUserService, changePasswordService, forgotPasswordService, verifyResetCodeService, resetPasswordService } from "./auth.services.js";
 import { sendEmail } from "../../config/nodemailer.js";
 import { generateAccessToken, generateRefreshToken } from "../../utils/jwt.js";
 import dotenv from "dotenv";
@@ -724,6 +724,78 @@ export const updateProfilePicture = async (req, res) => {
  *
  * Removes the current profile picture from Cloudinary and clears the field.
  */
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    const result = await forgotPasswordService(email);
+
+    if (result.otp) {
+      await sendEmail({
+        to: email,
+        subject: "Your password reset code",
+        html: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
+            <h2>Password Reset</h2>
+            <p>Hello${result.adminName ? `, ${result.adminName}` : ""},</p>
+            <p>Use the code below to reset your password. It expires in <strong>10 minutes</strong>.</p>
+            <div style="background:#f4f4f5;border-radius:8px;padding:24px;text-align:center;margin:24px 0">
+              <span style="font-size:36px;font-weight:700;letter-spacing:8px">${result.otp}</span>
+            </div>
+            <p style="color:#888;font-size:13px">If you did not request this, you can ignore this email.</p>
+          </div>
+        `,
+      });
+    }
+
+    return res.status(200).json({ success: true, message: result.message });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    return res.status(500).json({ success: false, message: "Failed to send reset code" });
+  }
+};
+
+export const verifyResetCode = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ success: false, message: "Email and code are required" });
+    }
+
+    const result = await verifyResetCodeService(email, code);
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+
+    return res.status(200).json({ success: true, resetToken: result.resetToken });
+  } catch (error) {
+    console.error("Verify reset code error:", error);
+    return res.status(500).json({ success: false, message: "Verification failed" });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+    if (!email || !resetToken || !newPassword) {
+      return res.status(400).json({ success: false, message: "Email, reset token, and new password are required" });
+    }
+
+    const result = await resetPasswordService(email, resetToken, newPassword);
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+
+    return res.status(200).json({ success: true, message: result.message });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res.status(500).json({ success: false, message: "Password reset failed" });
+  }
+};
+
 export const removeProfilePicture = async (req, res) => {
   try {
     const adminId = req.admin?.id;

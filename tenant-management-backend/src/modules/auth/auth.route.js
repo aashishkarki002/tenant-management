@@ -10,8 +10,11 @@ import {
   refreshToken,
   getMe,
   updateAdmin,
-  updateProfilePicture, // NEW
-  removeProfilePicture, // NEW
+  updateProfilePicture,
+  removeProfilePicture,
+  forgotPassword,
+  verifyResetCode,
+  resetPassword,
 } from "./auth.controller.js";
 import { protect } from "../../middleware/protect.js";
 import upload from "../../middleware/upload.js";
@@ -24,6 +27,9 @@ router.post("/login", loginUser);
 router.get("/verify-email", verifyEmail);
 router.post("/resend-email-verification", resendEmailVerification);
 router.post("/refresh-token", refreshToken);
+router.post("/forgot-password", forgotPassword);
+router.post("/verify-reset-code", verifyResetCode);
+router.post("/reset-password", resetPassword);
 
 // Protected routes
 router.post("/logout", protect, logoutUser);

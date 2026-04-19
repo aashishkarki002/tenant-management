@@ -490,7 +490,7 @@ export async function settlePayment(
       return {
         success: false,
         isOverpayment: true,
-        message: `Paid amount (₹${paidAmountRupees}) exceeds estimated amount (₹${estimatedPaisa / 100}). Confirm to proceed.`,
+        message: `Paid amount (RS ${paidAmountRupees}) exceeds estimated amount (RS ${estimatedPaisa / 100}). Confirm to proceed.`,
         overpaymentDiffRupees: (finalPaidAmountPaisa - estimatedPaisa) / 100,
         data: null,
         expense: null,
