@@ -471,8 +471,28 @@ export async function submitResult(resultId, updateData, adminId) {
   // linkedMaintenanceId updates are included in the same write.
   await result.save();
 
+  // Notify all admins + the submitting staff that a checklist was completed.
+  // Fire-and-forget — submission response is not blocked by notification delivery.
+  const propertyName = result.property?.name ?? "Unknown Property";
+  createAndEmitNotification({
+    type: "CHECKLIST_SUBMITTED",
+    title: "✅ Daily Checklist Submitted",
+    message: `${result.category} checklist for ${propertyName} has been submitted on ${new Date(result.checkDate).toLocaleDateString()}.`,
+    data: {
+      resultId: result._id,
+      category: result.category,
+      status: result.status,
+      passedItems: result.passedItems,
+      failedItems: result.failedItems,
+      propertyId: result.property?._id ?? result.property,
+    },
+    adminIds: [adminId.toString()],
+  }).catch((err) =>
+    console.error("[checklist] failed to emit submitted notification:", err),
+  );
+
   if (result.hasIssues) {
-    _notifyIssues(result, result.property?.name ?? "Unknown Property");
+    _notifyIssues(result, propertyName);
   }
 
   return {
