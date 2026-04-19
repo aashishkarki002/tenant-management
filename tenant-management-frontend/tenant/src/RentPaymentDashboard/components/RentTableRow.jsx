@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, MoreHorizontal } from "lucide-react";
 import { TableRow, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
+import api from "../../../plugins/axios";
 
 const STATUS_CLASS = {
   paid: "bg-emerald-50/90 text-emerald-800 border-emerald-200/70 font-medium dark:bg-emerald-950/35 dark:text-emerald-200 dark:border-emerald-800/50",
@@ -46,6 +48,32 @@ export const RentTableRow = ({
 }) => {
   const navigate = useNavigate();
   const [arrearsOpen, setArrearsOpen] = useState(false);
+  const [certLoading, setCertLoading] = useState(false);
+
+  const hasTds = (rent.tdsAmountPaisa || 0) > 0;
+
+  const handleDownloadTdsCert = async () => {
+    const tenantId = rent.tenant?._id;
+    const year = rent.nepaliYear;
+    if (!tenantId || !year) return;
+    setCertLoading(true);
+    try {
+      const res = await api.get(
+        `/api/rent/tds/certificate/${tenantId}?nepaliYear=${year}`,
+        { responseType: "blob" },
+      );
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `TDS-Certificate-${rent.tenant.name.replace(/\s+/g, "-")}-${year}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to generate TDS certificate");
+    } finally {
+      setCertLoading(false);
+    }
+  };
 
   const { rentAmount, camAmount, totalDue, lateFeeAmount, hasLateFee } =
     getPaymentAmounts(rent, cams);
@@ -101,7 +129,7 @@ export const RentTableRow = ({
     rent.status === "paid" && hasOutstandingLateFee ? "Pay fee" : "Pay";
 
   // Dropdown has secondary actions only — primary "Pay" is now an inline button
-  const hasDropdownItems = !!tenantId;
+  const hasDropdownItems = !!tenantId || hasTds;
 
   return (
     <TableRow
@@ -216,13 +244,23 @@ export const RentTableRow = ({
                   <MoreHorizontal className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuContent align="end" className="w-48">
                 {tenantId && (
                   <DropdownMenuItem
                     className="text-xs"
                     onClick={() => navigate(`/tenant/viewDetail/${tenantId}`)}
                   >
                     View tenant
+                  </DropdownMenuItem>
+                )}
+                {tenantId && hasTds && <DropdownMenuSeparator />}
+                {hasTds && (
+                  <DropdownMenuItem
+                    className="text-xs"
+                    disabled={certLoading}
+                    onClick={handleDownloadTdsCert}
+                  >
+                    {certLoading ? "Generating…" : "Download TDS Certificate"}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>

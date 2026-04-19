@@ -21,8 +21,8 @@ const fmtPaisa = (p) =>
         : "—";
 
 export function BlockCard({ block, selected, onSelect, onMigrate }) {
-    const totalUnits = block.totalUnits ?? block.units ?? 0;
-    const occupiedUnits = block.occupiedUnits ?? block.occupied ?? 0;
+    const totalUnits = block.unitCount ?? block.totalUnits ?? block.units ?? 0;
+    const occupiedUnits = block.occupiedUnitCount ?? block.occupiedUnits ?? block.occupied ?? 0;
     const occupancy = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
     const short = (block.name ?? "BL").replace(/\s+/g, "").slice(0, 2).toUpperCase();
     const entityType = block.ownershipEntity?.type ?? "private";

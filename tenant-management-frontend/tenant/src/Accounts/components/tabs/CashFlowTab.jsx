@@ -23,17 +23,17 @@ import { fmtK, fmtN } from "../AccountingPage";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
-    inflow:  "var(--color-info)",
+    inflow: "var(--color-info)",
     outflow: "var(--color-warning)",
-    net:     "var(--color-success)",
-    netNeg:  "var(--color-danger)",
-    border:  "var(--color-border)",
+    net: "var(--color-success)",
+    netNeg: "var(--color-danger)",
+    border: "var(--color-border)",
     surface: "var(--color-surface-raised)",
-    sub:     "var(--color-text-sub)",
-    body:    "var(--color-text-body)",
-    strong:  "var(--color-text-strong)",
-    muted:   "var(--color-muted)",
-    bg:      "var(--color-bg)",
+    sub: "var(--color-text-sub)",
+    body: "var(--color-text-body)",
+    strong: "var(--color-text-strong)",
+    muted: "var(--color-muted)",
+    bg: "var(--color-bg)",
 };
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
@@ -90,11 +90,11 @@ function StatementRow({ label, amount, pct, color, isTotal = false, loading }) {
                     className={`tabular-nums font-bold leading-none ${isTotal ? "text-[15px]" : "text-[12px]"}`}
                     style={{ color }}
                 >
-                    ₹{fmtK(Math.abs(amount))}
+                    RS {fmtK(Math.abs(amount))}
                 </div>
                 {!isTotal && (
                     <div className="text-[9px] mt-0.5 tabular-nums" style={{ color: C.sub }}>
-                        ₹{fmtN(Math.abs(amount))}
+                        RS {fmtN(Math.abs(amount))}
                     </div>
                 )}
             </div>
@@ -151,7 +151,7 @@ function WaterfallChart({ inflows, outflows, totalIn, totalOut, net, loading }) 
                     tickLine={false}
                 />
                 <YAxis
-                    tickFormatter={v => `₹${fmtK(v)}`}
+                    tickFormatter={v => `RS ${fmtK(v)}`}
                     tick={{ fontSize: 9, fill: C.sub }}
                     axisLine={false}
                     tickLine={false}
@@ -175,7 +175,7 @@ function WaterfallChart({ inflows, outflows, totalIn, totalOut, net, loading }) 
                                     {label}
                                 </div>
                                 <div className="text-[13px] font-black text-white tabular-nums">
-                                    ₹{fmtN(v?.value ?? 0)}
+                                    RS {fmtN(v?.value ?? 0)}
                                 </div>
                             </div>
                         );
@@ -214,14 +214,14 @@ function TrendChip({ chartData, loading }) {
             <div>
                 <div className="text-[9px] font-bold tracking-[0.12em] uppercase mb-0.5" style={{ color: C.sub }}>Best month</div>
                 <div className="text-[14px] font-bold tabular-nums" style={{ color: C.inflow }}>
-                    ₹{fmtK(Math.max(...chartData.map(d => d.revenue ?? 0)))}
+                    RS {fmtK(Math.max(...chartData.map(d => d.revenue ?? 0)))}
                 </div>
             </div>
             <div className="w-px h-10 self-center" style={{ background: C.border }} />
             <div>
                 <div className="text-[9px] font-bold tracking-[0.12em] uppercase mb-0.5" style={{ color: C.sub }}>Highest spend</div>
                 <div className="text-[14px] font-bold tabular-nums" style={{ color: C.outflow }}>
-                    ₹{fmtK(Math.max(...chartData.map(d => d.expenses ?? 0)))}
+                    RS {fmtK(Math.max(...chartData.map(d => d.expenses ?? 0)))}
                 </div>
             </div>
         </div>
@@ -239,12 +239,12 @@ export default function CashFlowTab({
     chartData = [],
     loadingChart,
 }) {
-    const inflows  = summary?.incomeStreams?.breakdown ?? [];
-    const outflows = summary?.expensesBreakdown        ?? [];
+    const inflows = summary?.incomeStreams?.breakdown ?? [];
+    const outflows = summary?.expensesBreakdown ?? [];
     const { totalRevenue = 0, totalExpenses = 0, netCashFlow = 0 } = totals;
     const isDeficit = netCashFlow < 0;
-    const netColor  = isDeficit ? C.netNeg : C.net;
-    const margin    = totalRevenue > 0 ? ((netCashFlow / totalRevenue) * 100).toFixed(1) : "—";
+    const netColor = isDeficit ? C.netNeg : C.net;
+    const margin = totalRevenue > 0 ? ((netCashFlow / totalRevenue) * 100).toFixed(1) : "—";
 
     return (
         <div className="flex flex-col gap-4">
@@ -285,10 +285,10 @@ export default function CashFlowTab({
                         ) : (
                             <>
                                 <div className="text-[22px] font-black tabular-nums leading-none" style={{ color }}>
-                                    {prefix}₹{fmtK(value)}
+                                    {prefix}RS {fmtK(value)}
                                 </div>
                                 <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: C.sub }}>
-                                    ₹{fmtN(value)}
+                                    RS {fmtN(value)}
                                 </div>
                             </>
                         )}
@@ -389,10 +389,10 @@ export default function CashFlowTab({
                         ) : (
                             <div className="text-right">
                                 <div className="text-[24px] font-black tabular-nums leading-none" style={{ color: netColor }}>
-                                    {netCashFlow >= 0 ? "+" : "−"}₹{fmtK(Math.abs(netCashFlow))}
+                                    {netCashFlow >= 0 ? "+" : "−"}RS {fmtK(Math.abs(netCashFlow))}
                                 </div>
                                 <div className="text-[10px] tabular-nums mt-0.5" style={{ color: netColor, opacity: 0.65 }}>
-                                    ₹{fmtN(Math.abs(netCashFlow))}
+                                    RS {fmtN(Math.abs(netCashFlow))}
                                 </div>
                             </div>
                         )}

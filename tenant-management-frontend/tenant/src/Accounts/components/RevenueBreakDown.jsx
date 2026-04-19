@@ -15,36 +15,36 @@ import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ORDER } from "@/constants/payment
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-    bg:          "var(--color-bg)",
-    surface:     "var(--color-surface)",
-    alt:         "var(--color-muted)",
-    border:      "var(--color-border)",
-    text:        "var(--color-text-strong)",
-    body:        "var(--color-text-body)",
-    sub:         "var(--color-text-sub)",
-    weak:        "var(--color-text-weak)",
-    accent:      "var(--color-accent)",
-    revenue:     "var(--color-info)",
-    revenueBg:   "var(--color-info-bg)",
-    green:       "var(--color-success)",
-    greenBg:     "var(--color-success-bg)",
-    amber:       "var(--color-warning)",
-    amberBg:     "var(--color-warning-bg)",
+    bg: "var(--color-bg)",
+    surface: "var(--color-surface)",
+    alt: "var(--color-muted)",
+    border: "var(--color-border)",
+    text: "var(--color-text-strong)",
+    body: "var(--color-text-body)",
+    sub: "var(--color-text-sub)",
+    weak: "var(--color-text-weak)",
+    accent: "var(--color-accent)",
+    revenue: "var(--color-info)",
+    revenueBg: "var(--color-info-bg)",
+    green: "var(--color-success)",
+    greenBg: "var(--color-success-bg)",
+    amber: "var(--color-warning)",
+    amberBg: "var(--color-warning-bg)",
     amberBorder: "var(--color-warning-border)",
-    red:         "var(--color-danger)",
-    redBg:       "var(--color-danger-bg)",
-    blue:        "var(--color-info)",
-    blueBg:      "var(--color-info-bg)",
+    red: "var(--color-danger)",
+    redBg: "var(--color-danger-bg)",
+    blue: "var(--color-info)",
+    blueBg: "var(--color-info-bg)",
 };
 
 const REF_CFG = {
-    RENT:        { bg: T.blueBg,    color: T.blue },
-    PARKING:     { bg: "#DBEAFE",   color: "#1D4ED8" },
-    AD:          { bg: "#EDE9FE",   color: "#5B21B6" },
-    CAM:         { bg: T.amberBg,   color: T.amber },
-    ELECTRICITY: { bg: "#FEF9C3",   color: "#A16207" },
-    MAINTENANCE: { bg: "#ECFEFF",   color: "#0E7490" },
-    MANUAL:      { bg: T.alt,       color: T.sub },
+    RENT: { bg: T.blueBg, color: T.blue },
+    PARKING: { bg: "#DBEAFE", color: "#1D4ED8" },
+    AD: { bg: "#EDE9FE", color: "#5B21B6" },
+    CAM: { bg: T.amberBg, color: T.amber },
+    ELECTRICITY: { bg: "#FEF9C3", color: "#A16207" },
+    MAINTENANCE: { bg: "#ECFEFF", color: "#0E7490" },
+    MANUAL: { bg: T.alt, color: T.sub },
 };
 
 // ─── Animation constants ──────────────────────────────────────────────────────
@@ -59,38 +59,38 @@ const ANIM_CSS = `
   [data-rb] * { animation-duration:0.01ms !important; transition-duration:0.01ms !important; }
 }`;
 
-const fmt  = (n) => `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+const fmt = (n) => `RS ${Math.round(Number(n)).toLocaleString("en-IN")}`;
 const fmtK = (v) => {
     const a = Math.abs(v);
     return a >= 100000 ? `${(a / 100000).toFixed(1)}L`
-         : a >= 1000   ? `${(a / 1000).toFixed(0)}K`
-         : String(a);
+        : a >= 1000 ? `${(a / 1000).toFixed(0)}K`
+            : String(a);
 };
 
 // ─── Mini SVG Sparkline (no recharts overhead) ────────────────────────────────
 function MiniSparkline({ data, color = "var(--color-info)", width = 96, height = 32, highlightIdx = -1 }) {
     if (!data || data.length < 2) return null;
     const vals = data.map(d => d.revenue);
-    const min  = Math.min(...vals);
-    const max  = Math.max(...vals);
-    const rng  = max - min || 1;
-    const pad  = 3;
-    const pts  = vals.map((v, i) => [
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const rng = max - min || 1;
+    const pad = 3;
+    const pts = vals.map((v, i) => [
         (i / (vals.length - 1)) * (width - pad * 2) + pad,
         height - pad - ((v - min) / rng) * (height - pad * 2),
     ]);
     const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-    const hi   = highlightIdx >= 0 && highlightIdx < pts.length ? pts[highlightIdx] : null;
+    const hi = highlightIdx >= 0 && highlightIdx < pts.length ? pts[highlightIdx] : null;
     return (
         <svg width={width} height={height} style={{ overflow: "visible", flexShrink: 0 }}>
             <path d={path} fill="none" stroke={color} strokeWidth="1.5"
                 strokeLinecap="round" strokeLinejoin="round"
                 pathLength="1"
                 style={{
-                    strokeDasharray:  1,
+                    strokeDasharray: 1,
                     strokeDashoffset: 1,
-                    opacity:          0.6,
-                    animation:        `rb-draw 0.9s ${EX} 0.15s both`,
+                    opacity: 0.6,
+                    animation: `rb-draw 0.9s ${EX} 0.15s both`,
                 }} />
             {hi && (
                 <circle cx={hi[0]} cy={hi[1]} r="3" fill={color} stroke="white" strokeWidth="1.5"
@@ -106,10 +106,10 @@ function Chip({ up, label, size = "sm" }) {
         <span
             className="inline-flex items-center gap-[3px] rounded font-bold"
             style={{
-                padding:    size === "sm" ? "1px 7px" : "3px 10px",
-                fontSize:   size === "sm" ? 10 : 12,
+                padding: size === "sm" ? "1px 7px" : "3px 10px",
+                fontSize: size === "sm" ? 10 : 12,
                 background: up ? T.greenBg : T.redBg,
-                color:      up ? T.green   : T.red,
+                color: up ? T.green : T.red,
             }}
         >
             {up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
@@ -142,9 +142,9 @@ function ChartTip({ active, payload, label }) {
     return (
         <div className="rounded-lg px-3.5 py-2.5" style={{
             background: "linear-gradient(140deg, #0a2f46 0%, #1a5276 100%)",
-            boxShadow:  "0 8px 24px rgba(0,0,0,.22)",
-            minWidth:   140,
-            border:     "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 8px 24px rgba(0,0,0,.22)",
+            minWidth: 140,
+            border: "1px solid rgba(255,255,255,0.08)",
         }}>
             <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-2"
                 style={{ color: "rgba(255,255,255,.38)" }}>{label}</div>
@@ -152,7 +152,7 @@ function ChartTip({ active, payload, label }) {
                 <div key={p.dataKey} className="flex items-center justify-between gap-4 text-xs text-white">
                     <span style={{ opacity: 0.6 }}>{p.name}</span>
                     <span className="font-bold tabular-nums">
-                        ₹{Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}
+                        RS {Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}
                     </span>
                 </div>
             ))}
@@ -164,8 +164,8 @@ function ChartTip({ active, payload, label }) {
 function StatusBadge({ s }) {
     const cfgs = {
         RECORDED: { bg: T.amberBg, color: T.amber },
-        SYNCED:   { bg: T.greenBg, color: T.green },
-        REVERSED: { bg: T.redBg,   color: T.red },
+        SYNCED: { bg: T.greenBg, color: T.green },
+        REVERSED: { bg: T.redBg, color: T.red },
     };
     const { bg, color } = cfgs[s] ?? { bg: T.alt, color: T.sub };
     return (
@@ -200,16 +200,16 @@ function SectionLabel({ children, right }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function RevenueBreakDown({
     onRevenueAdded,
-    selectedQuarter  = null,
-    selectedMonth    = null,
-    fiscalYear       = null,
-    compareMode      = false,
-    compareQuarter   = null,
-    customStartDate  = "",
-    customEndDate    = "",
-    openDialog       = false,
+    selectedQuarter = null,
+    selectedMonth = null,
+    fiscalYear = null,
+    compareMode = false,
+    compareQuarter = null,
+    customStartDate = "",
+    customEndDate = "",
+    openDialog = false,
     onDialogOpenHandled,
-    entityId         = null,
+    entityId = null,
 }) {
     const isMobile = useIsMobile();
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -242,10 +242,10 @@ export default function RevenueBreakDown({
     useEffect(() => {
         api.get("/api/tenant/get-tenants")
             .then(({ data }) => setTenants(data?.tenants ?? []))
-            .catch(() => {});
+            .catch(() => { });
         api.get("/api/revenue/get-revenue-source")
             .then(({ data }) => setSources(data?.revenueSource ?? []))
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     const onSuccess = () => { refetch(); onRevenueAdded?.(); };
@@ -277,14 +277,14 @@ export default function RevenueBreakDown({
         }).click();
     };
 
-    const totals         = D?.totals            ?? { total: 0, count: 0, avg: 0, momPct: null };
-    const streams        = D?.streams           ?? [];
-    const trend          = D?.trend             ?? [];
+    const totals = D?.totals ?? { total: 0, count: 0, avg: 0, momPct: null };
+    const streams = D?.streams ?? [];
+    const trend = D?.trend ?? [];
     const payMethodSplit = D?.paymentMethodSplit ?? [];
-    const payerSplit    = D?.payerSplit   ?? [];
-    const refTypes      = D?.refTypes     ?? [];
-    const topTenants    = D?.topTenants   ?? [];
-    const transactions   = D?.transactions      ?? [];
+    const payerSplit = D?.payerSplit ?? [];
+    const refTypes = D?.refTypes ?? [];
+    const topTenants = D?.topTenants ?? [];
+    const transactions = D?.transactions ?? [];
 
     const filteredTxns = payMethodFilter
         ? transactions.filter(t => t.paymentMethod === payMethodFilter)
@@ -301,23 +301,23 @@ export default function RevenueBreakDown({
         if (!trend || trend.length < 2) return null;
         const vals = trend.map(d => d.revenue).filter(v => v > 0);
         if (!vals.length) return null;
-        const avg  = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
         const peak = trend.reduce((a, b) => b.revenue > a.revenue ? b : a);
-        const peakIdx  = trend.indexOf(peak);
+        const peakIdx = trend.indexOf(peak);
         const topStream = streams[0]?.name ?? "rent collection";
         if (peak.revenue > avg * 1.3) {
             return {
-                text:      `Revenue peaked in ${peak.label} — driven by ${topStream.toLowerCase()}`,
+                text: `Revenue peaked in ${peak.label} — driven by ${topStream.toLowerCase()}`,
                 peakIdx,
                 peakLabel: peak.label,
                 peakValue: peak.revenue,
-                isPeak:    true,
+                isPeak: true,
             };
         }
         return {
-            text:    `${totals.count} collection${totals.count !== 1 ? "s" : ""} across ${streams.length} stream${streams.length !== 1 ? "s" : ""} · ${periodLabel}`,
+            text: `${totals.count} collection${totals.count !== 1 ? "s" : ""} across ${streams.length} stream${streams.length !== 1 ? "s" : ""} · ${periodLabel}`,
             peakIdx: trend.length - 1,
-            isPeak:  false,
+            isPeak: false,
         };
     }, [trend, streams, totals, periodLabel]);
 
@@ -339,13 +339,13 @@ export default function RevenueBreakDown({
                         <div
                             className="font-black leading-none tabular-nums"
                             style={{
-                                fontSize:      isMobile ? 40 : 52,
-                                color:         T.text,
+                                fontSize: isMobile ? 40 : 52,
+                                color: T.text,
                                 letterSpacing: "-0.02em",
-                                animation:     `rb-up 0.5s ${EO} both`,
+                                animation: `rb-up 0.5s ${EO} both`,
                             }}
                         >
-                            ₹{Number(Math.abs(totals.total)).toLocaleString("en-IN")}
+                            RS {Number(Math.abs(totals.total)).toLocaleString("en-IN")}
                         </div>
                     )}
 
@@ -454,9 +454,9 @@ export default function RevenueBreakDown({
                     className="rounded-xl flex items-center justify-between gap-6 mb-8"
                     style={{
                         background: T.surface,
-                        border:     `1px solid ${T.border}`,
-                        padding:    "18px 22px",
-                        animation:  `rb-in 0.35s ${EO} both`,
+                        border: `1px solid ${T.border}`,
+                        padding: "18px 22px",
+                        animation: `rb-in 0.35s ${EO} both`,
                     }}
                 >
                     <div className="flex-1 min-w-0">
@@ -500,7 +500,7 @@ export default function RevenueBreakDown({
                         <AreaChart data={trend} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="rb-rv-fill-v2" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%"   stopColor={T.revenue} stopOpacity={0.07} />
+                                    <stop offset="0%" stopColor={T.revenue} stopOpacity={0.07} />
                                     <stop offset="100%" stopColor={T.revenue} stopOpacity={0} />
                                 </linearGradient>
                             </defs>
@@ -591,8 +591,8 @@ export default function RevenueBreakDown({
                         <div>
                             {[
                                 { label: "Avg per transaction", value: fmt(totals.avg), large: true },
-                                { label: "Revenue streams",     value: streams.length },
-                                { label: "Total transactions",  value: totals.count },
+                                { label: "Revenue streams", value: streams.length },
+                                { label: "Total transactions", value: totals.count },
                                 ...(streams[0]
                                     ? [{ label: "Top stream", value: streams[0].name }]
                                     : []),
@@ -602,15 +602,15 @@ export default function RevenueBreakDown({
                                     className="py-3 border-b last:border-b-0"
                                     style={{
                                         borderColor: `${T.border}99`,
-                                        animation:   `rb-up 0.35s ${EO} ${i * 45}ms both`,
+                                        animation: `rb-up 0.35s ${EO} ${i * 45}ms both`,
                                     }}
                                 >
                                     <div className="text-[10px] mb-0.5" style={{ color: T.sub }}>{s.label}</div>
                                     <div
                                         className="font-bold tabular-nums leading-snug"
                                         style={{
-                                            fontSize:      s.large ? 17 : 14,
-                                            color:         T.text,
+                                            fontSize: s.large ? 17 : 14,
+                                            color: T.text,
                                             letterSpacing: "-0.01em",
                                         }}
                                     >
@@ -786,8 +786,8 @@ export default function RevenueBreakDown({
                         ...PAYMENT_METHOD_ORDER.map(v => ({ value: v, label: PAYMENT_METHOD_LABELS[v] })),
                     ].map(opt => {
                         const isActive = payMethodFilter === opt.value;
-                        const split    = opt.value ? payMethodSplit.find(s => s.method === opt.value) : null;
-                        const isEmpty  = opt.value && (!split || split.count === 0);
+                        const split = opt.value ? payMethodSplit.find(s => s.method === opt.value) : null;
+                        const isEmpty = opt.value && (!split || split.count === 0);
                         return (
                             <button
                                 key={opt.value ?? "all"}
@@ -795,11 +795,11 @@ export default function RevenueBreakDown({
                                 disabled={isEmpty}
                                 className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-md text-[11px] font-semibold transition-colors border"
                                 style={{
-                                    cursor:      isEmpty ? "default" : "pointer",
-                                    background:  isActive ? T.revenue : "transparent",
+                                    cursor: isEmpty ? "default" : "pointer",
+                                    background: isActive ? T.revenue : "transparent",
                                     borderColor: isActive ? T.revenue : T.border,
-                                    color:       isActive ? "#fff" : isEmpty ? T.weak : T.sub,
-                                    opacity:     isEmpty ? 0.4 : 1,
+                                    color: isActive ? "#fff" : isEmpty ? T.weak : T.sub,
+                                    opacity: isEmpty ? 0.4 : 1,
                                 }}
                             >
                                 {opt.label}
@@ -808,7 +808,7 @@ export default function RevenueBreakDown({
                                         className="rounded px-1 tabular-nums text-[9px]"
                                         style={{
                                             background: isActive ? "rgba(255,255,255,0.2)" : T.alt,
-                                            color:      isActive ? "#fff" : T.sub,
+                                            color: isActive ? "#fff" : T.sub,
                                         }}
                                     >
                                         {split.count}
@@ -831,20 +831,20 @@ export default function RevenueBreakDown({
                                 <thead>
                                     <tr>
                                         {[
-                                            { key: "Date",   align: "left"  },
-                                            { key: "Payer",  align: "left"  },
-                                            { key: "Ref",    align: "left"  },
+                                            { key: "Date", align: "left" },
+                                            { key: "Payer", align: "left" },
+                                            { key: "Ref", align: "left" },
                                             { key: "Amount", align: "right" },
-                                            { key: "Status", align: "left"  },
+                                            { key: "Status", align: "left" },
                                         ].map(h => (
                                             <th
                                                 key={h.key}
                                                 className="py-2.5 text-[9px] font-bold tracking-[0.08em] uppercase border-b"
                                                 style={{
-                                                    color:      T.weak,
+                                                    color: T.weak,
                                                     borderColor: T.border,
-                                                    textAlign:  h.align,
-                                                    paddingLeft:  h.key === "Date" ? 0 : 14,
+                                                    textAlign: h.align,
+                                                    paddingLeft: h.key === "Date" ? 0 : 14,
                                                     paddingRight: h.key === "Status" ? 0 : 14,
                                                 }}
                                             >
@@ -905,10 +905,10 @@ export default function RevenueBreakDown({
                                             className="px-3 py-1 rounded-md border text-[11px] font-semibold transition-colors"
                                             style={{
                                                 borderColor: T.border,
-                                                background:  T.surface,
-                                                color:       disabled ? T.weak : T.text,
-                                                cursor:      disabled ? "default" : "pointer",
-                                                opacity:     disabled ? 0.45 : 1,
+                                                background: T.surface,
+                                                color: disabled ? T.weak : T.text,
+                                                cursor: disabled ? "default" : "pointer",
+                                                opacity: disabled ? 0.45 : 1,
                                             }}
                                         >
                                             {label}

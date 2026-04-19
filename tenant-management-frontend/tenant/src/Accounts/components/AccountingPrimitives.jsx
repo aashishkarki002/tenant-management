@@ -253,10 +253,10 @@ export function ChartTip({ active, payload, label }) {
                         </span>
                         <span className="font-bold text-[11px] tabular-nums">
                             {p.dataKey === "net"
-                                ? `${(p.value ?? 0) >= 0 ? "+" : "−"}₹${Math.abs(
+                                ? `${(p.value ?? 0) >= 0 ? "+" : "−"}RS ${Math.abs(
                                     p.value || 0,
                                 ).toLocaleString()}`
-                                : `₹${Math.abs(p.value || 0).toLocaleString()}`}
+                                : `RS ${Math.abs(p.value || 0).toLocaleString()}`}
                         </span>
                     </div>
                 ))}

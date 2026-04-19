@@ -12,7 +12,7 @@ const TYPE_LABELS = {
 };
 
 const TYPE_ICONS = {
-  CASH_REFUND: "₹",
+  CASH_REFUND: " RS ",
   MAINTENANCE_ADJUSTMENT: <Wrench className="w-4 h-4" />,
   MAINTENANCE_EXPENSE_OFFSET: <Wrench className="w-4 h-4" />,
   RENT_ADJUSTMENT: <Home className="w-4 h-4" />,

@@ -323,9 +323,9 @@ export const ArrearsPaymentDialog = ({
                                 overpaying ? "text-amber-600" : underpaying ? "text-sky-600" : "text-emerald-600",
                             )}>
                                 {overpaying
-                                    ? `₹${Math.abs(balancePaisa / 100).toLocaleString()} more than due — will be noted`
+                                    ? `RS ${Math.abs(balancePaisa / 100).toLocaleString()} more than due — will be noted`
                                     : underpaying
-                                        ? `₹${Math.abs(balancePaisa / 100).toLocaleString()} short — partial payment`
+                                        ? `RS ${Math.abs(balancePaisa / 100).toLocaleString()} short — partial payment`
                                         : "✓ Covers selected months exactly"}
                             </p>
                         )}

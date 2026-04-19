@@ -31,7 +31,7 @@ import { useEntity } from "../../../context/EntityContext";
 function fmtPaisa(paisa = 0) {
   const abs = Math.abs(paisa);
   const sign = paisa < 0 ? "−" : "";
-  return `${sign}₹ ${(abs / 100).toLocaleString("en-IN", {
+  return `${sign}RS  ${(abs / 100).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -39,10 +39,10 @@ function fmtPaisa(paisa = 0) {
 
 // ─── EquationBanner ───────────────────────────────────────────────────────────
 function EquationBanner({ isBalanced, totalAssets, totalLiabilitiesAndEquity, discrepancy }) {
-  const color   = isBalanced ? "var(--color-success)"    : "var(--color-danger)";
+  const color = isBalanced ? "var(--color-success)" : "var(--color-danger)";
   const bgColor = isBalanced ? "var(--color-success-bg)" : "var(--color-danger-bg)";
-  const Icon    = isBalanced ? CheckCircle2Icon : AlertTriangleIcon;
-  const label   = isBalanced ? "Balanced" : "Out of Balance";
+  const Icon = isBalanced ? CheckCircle2Icon : AlertTriangleIcon;
+  const label = isBalanced ? "Balanced" : "Out of Balance";
 
   return (
     <div
@@ -108,7 +108,7 @@ function EquationBanner({ isBalanced, totalAssets, totalLiabilitiesAndEquity, di
 // ─── AccountRow ───────────────────────────────────────────────────────────────
 function AccountRow({ account }) {
   const isSynthetic = account.isSynthetic;
-  const isAbnormal  = account.balanceSide?.includes("abnormal") || account.balanceSide?.includes("deficit");
+  const isAbnormal = account.balanceSide?.includes("abnormal") || account.balanceSide?.includes("deficit");
   const isDebitSide = account.balanceSide?.startsWith("DR");
 
   return (
@@ -214,10 +214,10 @@ function SectionCard({ title, accentColor, accounts, extraRows = [], totalLabel,
         ) : (
           <>
             {accounts.map((acc) => (
-              <AccountRow key={acc.code} account={acc} />
+              <AccountRow key={`acc-${acc.code}`} account={acc} />
             ))}
             {extraRows.map((acc) => (
-              <AccountRow key={acc.code} account={acc} />
+              <AccountRow key={`extra-${acc.code}`} account={acc} />
             ))}
           </>
         )}

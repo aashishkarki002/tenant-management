@@ -72,9 +72,17 @@ function AuditLog() {
     useEffect(() => {
         api.get("/api/migration/audit-log")
             .then((res) => setEvents(res.data?.data ?? []))
-            .catch(() => setEvents([]))   // not yet deployed — show empty state
+            .catch(() => setEvents([]))
             .finally(() => setLoading(false));
     }, []);
+
+    const fmtDate = (d) => {
+        if (!d) return "—";
+        return new Date(d).toLocaleString("en-IN", {
+            day: "2-digit", month: "short", year: "numeric",
+            hour: "2-digit", minute: "2-digit",
+        });
+    };
 
     return (
         <Card className="border-border">
@@ -98,21 +106,45 @@ function AuditLog() {
                     </div>
                 ) : (
                     <div className="divide-y divide-border">
-                        {events.map((ev, i) => (
-                            <div key={ev._id ?? i} className="flex items-center gap-3 py-3">
-                                <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-xs text-foreground truncate">
-                                        <span className="font-semibold">{ev.blockName}</span> migrated to{" "}
-                                        <span className="font-semibold">{ev.toEntityName}</span>
-                                    </p>
-                                    <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                                        {ev.migratedAt} · by {ev.migratedByName ?? "System"}
-                                    </p>
+                        {events.map((ev, i) => {
+                            const blockName = ev.blockId?.name ?? ev.snapshotData?.blockName ?? "Unknown block";
+                            const fromName = ev.fromEntityId?.name ?? "—";
+                            const toName = ev.toEntityId?.name ?? "—";
+                            const toType = ev.toEntityId?.type;
+                            const byName = ev.migratedBy?.name ?? "System";
+                            const date = fmtDate(ev.completedAt ?? ev.createdAt);
+                            const statusColor = ev.status === "rolled_back"
+                                ? "bg-amber-500" : ev.status === "completed"
+                                ? "bg-emerald-500" : "bg-muted-foreground";
+
+                            return (
+                                <div key={ev._id ?? i} className="flex items-start gap-3 py-3">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${statusColor}`} />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs text-foreground truncate">
+                                            <span className="font-semibold">{blockName}</span>
+                                            {" "}
+                                            {ev.status === "rolled_back" ? "rolled back to" : "migrated from"}{" "}
+                                            <span className="font-semibold">{fromName}</span>
+                                            {" → "}
+                                            <span className="font-semibold">{toName}</span>
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                            {date} · by {byName}
+                                        </p>
+                                        {ev.snapshotData && (
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                {ev.snapshotData.tenantCount ?? 0} tenants · {ev.snapshotData.rentCount ?? 0} open rents
+                                                {ev.snapshotData.outstandingPaisa > 0
+                                                    ? ` · ${fmtPaisa(ev.snapshotData.outstandingPaisa)} outstanding`
+                                                    : ""}
+                                            </p>
+                                        )}
+                                    </div>
+                                    {toType && <EntityBadge type={toType} />}
                                 </div>
-                                {ev.toEntityType && <EntityBadge type={ev.toEntityType} />}
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </CardContent>

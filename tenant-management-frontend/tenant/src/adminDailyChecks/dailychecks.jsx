@@ -1,12 +1,11 @@
 
 import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import NepaliDate from "nepali-datetime";
 import { toast } from "sonner";
 import TodayBoard from "./components/TodayBoard";
-import ChecklistCalendar from "./components/CheckListCalendar";
 import { Button } from "@/components/ui/button";
-import { Settings2 } from "lucide-react";
+import { Settings2, CalendarDays } from "lucide-react";
 import TemplateEditor from "./components/TemplateEditor";
 import api from "../../plugins/axios";
 
@@ -16,39 +15,6 @@ function toNepaliISO(nd) {
   const m = String(nd.getMonth() + 1).padStart(2, "0");
   const d = String(nd.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
-}
-
-function getCurrentNepaliYearMonth() {
-  const nd = new NepaliDate(new Date());
-  return { year: nd.getYear(), month: nd.getMonth() + 1 };
-}
-
-// ─── Tab bar ──────────────────────────────────────────────────────────────────
-
-const TABS = [
-  { id: "today", label: "Today" },
-  { id: "history", label: "History" },
-];
-
-function TabBar({ activeTab, onTabChange }) {
-  return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
-      {TABS.map(({ id, label }) => (
-        <button
-          key={id}
-          onClick={() => onTabChange(id)}
-          className={[
-            "px-4 py-1.5 rounded-md text-xs font-medium transition-all duration-100",
-            activeTab === id
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          ].join(" ")}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -65,7 +31,6 @@ function DailyChecksPage({ propertyId }) {
   const navigate = useNavigate();
   const effectivePropertyId = propertyId ?? OWNERSHIP_ENTITY_ID;
 
-  const [activeTab, setActiveTab] = useState("today");
   // ── Template editor state ─────────────────────────────────────────────────
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState(null);
@@ -94,9 +59,7 @@ function DailyChecksPage({ propertyId }) {
     if (!open) setEditingTemplateId(null);
   }, []);
 
-  // Today's Nepali date — used to highlight calendar cell and as TodayBoard default
   const todayNepaliDate = toNepaliISO(new NepaliDate(new Date()));
-  const { year: currentYear, month: currentMonth } = getCurrentNepaliYearMonth();
 
   const handleCardClick = useCallback(
     (result) => {
@@ -118,36 +81,34 @@ function DailyChecksPage({ propertyId }) {
             {todayNepaliDate}
           </p>
         </div>
-        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          onClick={handleOpenTemplateSettings}
-          title="Manage templates"
-        >
-          <Settings2 className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/calendar"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-muted-fill transition-colors text-muted-foreground"
+          >
+            <CalendarDays className="h-3.5 w-3.5" />
+            View Calendar
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={handleOpenTemplateSettings}
+            title="Manage templates"
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="h-px bg-border/50" />
 
       {/* ── View content ────────────────────────────────────────────────── */}
-      {activeTab === "today" ? (
-        <TodayBoard
-          propertyId={effectivePropertyId}
-          onCardClick={handleCardClick}
-          refreshKey={todayRefreshKey}
-        />
-      ) : (
-        <ChecklistCalendar
-          propertyId={effectivePropertyId}
-          initialYear={currentYear}
-          initialMonth={currentMonth}
-          todayNepaliDate={todayNepaliDate}
-          onCardClick={handleCardClick}
-        />
-      )}
+      <TodayBoard
+        propertyId={effectivePropertyId}
+        onCardClick={handleCardClick}
+        refreshKey={todayRefreshKey}
+      />
       {editingTemplateId && (
         <TemplateEditor
           templateId={editingTemplateId}

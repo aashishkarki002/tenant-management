@@ -190,8 +190,7 @@ export default function payments() {
         });
 
         toast.success(
-          `Receipt sent successfully to ${
-            res.data.data?.emailSentTo || "tenant"
+          `Receipt sent successfully to ${res.data.data?.emailSentTo || "tenant"
           }`
         );
 
@@ -261,21 +260,21 @@ export default function payments() {
 
   return (
     <>
-  {/* Breadcrumb */}
-  <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2 px-2 sm:px-4 lg:px-0 pt-2">
-    <Link to="/rent-payment" className="hover:text-foreground transition-colors">Rent &amp; Payments</Link>
-    <span>›</span>
-    <Link to="/rent-payment" className="hover:text-foreground transition-colors">Payments</Link>
-    <span>›</span>
-    <span className="text-foreground font-medium">{payment?.rent?.tenant?.name || "Receipt"}</span>
-  </nav>
-  <div className="flex flex-col lg:flex-row gap-4 px-2 sm:px-4 lg:px-0">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2 px-2 sm:px-4 lg:px-0 pt-2">
+        <Link to="/rent-payment" className="hover:text-foreground transition-colors">Rent &amp; Payments</Link>
+        <span>›</span>
+        <Link to="/rent-payment" className="hover:text-foreground transition-colors">Payments</Link>
+        <span>›</span>
+        <span className="text-foreground font-medium">{payment?.rent?.tenant?.name || "Receipt"}</span>
+      </nav>
+      <div className="flex flex-col lg:flex-row gap-4 px-2 sm:px-4 lg:px-0">
 
-  <div id="payment-details-container" ref={printRef} className="w-full lg:flex-2">
+        <div id="payment-details-container" ref={printRef} className="w-full lg:flex-2">
           <div className="w-full ">
             <Card className="w-full mt-4 sm:mt-6">
               <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
 
                   <div>
                     <CardTitle className="text-xl sm:text-2xl font-bold">
@@ -381,7 +380,7 @@ export default function payments() {
                 </div>
                 <div className="text-left sm:text-right">
                   <p className="text-gray-500 text-2xl sm:text-3xl font-bold">
-                    ₹ {payment?.amount?.toLocaleString()}
+                    RS {payment?.amount?.toLocaleString()}
                   </p>
                   <p className="text-black text-xs sm:text-sm mt-1 break-words">
                     {payment?.amount?.toString()} Nepali Rupees Only
@@ -466,17 +465,17 @@ export default function payments() {
                   <Zap className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                   <h3 className="text-base sm:text-lg font-semibold">Quick Actions</h3>
                 </div>
-                  <div className="space-y-2 sm:space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   <Button
-    className="w-full justify-start text-xs sm:text-sm"
-    variant="outline"
-    onClick={handleExportPageAsPDF}
-  >
-    <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
-    Export Page as PDF
-  </Button>
-  </div>
-                  <div className="space-y-2 sm:space-y-3 mt-2">
+                    className="w-full justify-start text-xs sm:text-sm"
+                    variant="outline"
+                    onClick={handleExportPageAsPDF}
+                  >
+                    <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                    Export Page as PDF
+                  </Button>
+                </div>
+                <div className="space-y-2 sm:space-y-3 mt-2">
                   <Button
                     className="w-full justify-start text-xs sm:text-sm"
                     variant="default"

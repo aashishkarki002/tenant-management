@@ -173,7 +173,7 @@ function TenantFinancials({
                     originalValue={originalTenant?.pricePerSqft}
                     showComparison={showComparison}
                     isChanged={changedFields?.pricePerSqft}
-                    prefix="₹"
+                    prefix="RS"
                     helperText="Includes 10% TDS"
                 />
 
@@ -184,7 +184,7 @@ function TenantFinancials({
                     originalValue={originalTenant?.camRatePerSqft}
                     showComparison={showComparison}
                     isChanged={changedFields?.camRatePerSqft}
-                    prefix="₹"
+                    prefix="RS"
                     helperText="Common Area Maintenance"
                 />
 
@@ -195,7 +195,7 @@ function TenantFinancials({
                     originalValue={originalTenant?.securityDeposit}
                     showComparison={showComparison}
                     isChanged={changedFields?.securityDeposit}
-                    prefix="₹"
+                    prefix="RS"
                     helperText="Refundable deposit"
                 />
             </div>
@@ -229,7 +229,7 @@ function TenantFinancials({
                         <div className="flex justify-between items-center">
                             <span className="text-muted-foreground">Gross Rent:</span>
                             <span className="font-medium">
-                                ₹{currentCalculation.grossMonthly.toLocaleString("en-IN", {
+                                RS {currentCalculation.grossMonthly.toLocaleString("en-IN", {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2,
                                 })}
@@ -239,7 +239,7 @@ function TenantFinancials({
                         <div className="flex justify-between items-center text-red-600">
                             <span>Less: TDS (10%):</span>
                             <span className="font-medium">
-                                - ₹{currentCalculation.tds.toLocaleString("en-IN", {
+                                - RS {currentCalculation.tds.toLocaleString("en-IN", {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2,
                                 })}
@@ -249,7 +249,7 @@ function TenantFinancials({
                         <div className="flex justify-between items-center">
                             <span className="text-muted-foreground">Net Rent:</span>
                             <span className="font-medium">
-                                ₹{currentCalculation.netRent.toLocaleString("en-IN", {
+                                RS{currentCalculation.netRent.toLocaleString("en-IN", {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2,
                                 })}
@@ -259,7 +259,7 @@ function TenantFinancials({
                         <div className="flex justify-between items-center">
                             <span className="text-muted-foreground">CAM Charges:</span>
                             <span className="font-medium">
-                                ₹{currentCalculation.cam.toLocaleString("en-IN", {
+                                RS {currentCalculation.cam.toLocaleString("en-IN", {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2,
                                 })}
@@ -271,7 +271,7 @@ function TenantFinancials({
                         <div className="flex justify-between items-center text-lg font-bold">
                             <span>Total Monthly:</span>
                             <span className="text-green-600">
-                                ₹{currentCalculation.totalMonthly.toLocaleString("en-IN", {
+                                RS {currentCalculation.totalMonthly.toLocaleString("en-IN", {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2,
                                 })}
@@ -285,7 +285,7 @@ function TenantFinancials({
                             <div className="flex justify-between items-center text-sm text-muted-foreground">
                                 <span>Previous Monthly Total:</span>
                                 <span>
-                                    ₹{financialSummary.monthlyTotal.toLocaleString("en-IN", {
+                                    RS {financialSummary.monthlyTotal.toLocaleString("en-IN", {
                                         minimumFractionDigits: 2,
                                         maximumFractionDigits: 2,
                                     })}
@@ -305,7 +305,7 @@ function TenantFinancials({
                                         financialSummary.monthlyTotal
                                         ? "+"
                                         : ""}
-                                    ₹{(
+                                    RS {(
                                         currentCalculation.totalMonthly -
                                         financialSummary.monthlyTotal
                                     ).toLocaleString("en-IN", {
@@ -322,9 +322,9 @@ function TenantFinancials({
                         <strong>Calculation:</strong>
                         <div className="mt-1 font-mono">
                             ({formik.values.leasedSquareFeet || 0} sq ft ×{" "}
-                            ₹{formik.values.pricePerSqft || 0}) - 10% TDS +{" "}
+                            RS{formik.values.pricePerSqft || 0}) - 10% TDS +{" "}
                             ({formik.values.leasedSquareFeet || 0} sq ft ×{" "}
-                            ₹{formik.values.camRatePerSqft || 0})
+                            RS {formik.values.camRatePerSqft || 0})
                         </div>
                     </div>
                 </Card>

@@ -419,7 +419,7 @@ export const AddMaintenanceDialog = ({
                 <div>
                   <Label>Estimated Cost</Label>
                   <div className="relative mt-2">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₹</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">RS</span>
                     <Input
                       name="estimatedCost"
                       type="number"

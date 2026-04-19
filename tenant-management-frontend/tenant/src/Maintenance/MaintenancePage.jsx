@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { List, Calendar, Zap } from 'lucide-react';
+import { List, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFormik } from 'formik';
 import { toast } from 'sonner';
@@ -8,7 +8,6 @@ import { useUnits } from '../hooks/use-units';
 import { useBankAccounts } from '../Accounts/hooks/useAccounting';
 import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import MaintenanceCard from './components/MaintenanceCard';
-import MaintenanceCalendar from './components/MaintenanceCalendar';
 import GeneratorPanel from '../Generators/Generator';
 import { MaintenanceHeader } from './components/MaintenanceHeader';
 import { MaintenanceStats } from './components/MaintenanceStats';
@@ -221,7 +220,6 @@ export default function MaintenancePage() {
           <TabsList className=" h-auto  gap-2">
             {[
               { id: "list", label: "List", Icon: List },
-              { id: "calendar", label: "Calendar", Icon: Calendar },
               { id: "generator", label: "Generator", Icon: Zap },
             ].map(({ id, label, Icon }) => (
               <TabsTrigger
@@ -296,11 +294,6 @@ export default function MaintenancePage() {
             }
           />
         </div>
-      )}
-
-      {/* Calendar Tab */}
-      {activeTab === 'calendar' && (
-        <MaintenanceCalendar maintenance={maintenance} />
       )}
 
       {/* Generator Tab */}

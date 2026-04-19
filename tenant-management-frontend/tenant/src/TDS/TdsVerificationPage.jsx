@@ -44,7 +44,7 @@ export const TdsVerificationPage = () => {
   const [filterYear, setFilterYear] = useState("");
   const [filterTenant, setFilterTenant] = useState("");
   const [tenants, setTenants] = useState([]);
-  
+
   // Batch verification state
   const [batchDate, setBatchDate] = useState("");
   const [batchNepaliDate, setBatchNepaliDate] = useState("");
@@ -74,19 +74,19 @@ export const TdsVerificationPage = () => {
       const params = {
         status: "all",
       };
-      
+
       if (filterMonth) params.nepaliMonth = filterMonth;
       if (filterYear) params.nepaliYear = filterYear;
       if (filterTenant) params.tenantId = filterTenant;
 
       const response = await api.get("/api/rent/get-rents", { params });
-      
+
       if (response.data.success) {
         // Filter only rents with TDS that haven't been verified yet
         const unverifiedTdsRents = (response.data.rents || []).filter(
-          (rent) => 
-            rent.tdsAmountPaisa > 0 && 
-            rent.tdsRecordedInLedger && 
+          (rent) =>
+            rent.tdsAmountPaisa > 0 &&
+            rent.tdsRecordedInLedger &&
             !rent.tdsPaidToGovernment
         );
         setRents(unverifiedTdsRents);
@@ -342,7 +342,7 @@ export const TdsVerificationPage = () => {
                   {selectedRentIds.length} rent(s) selected
                 </p>
                 <p className="text-xs text-amber-700 mt-1">
-                  Total TDS: ₹{(totalTdsAmount / 100).toLocaleString()}
+                  Total TDS: RS {(totalTdsAmount / 100).toLocaleString()}
                 </p>
               </div>
               <AlertCircle className="w-5 h-5 text-amber-600" />
@@ -412,7 +412,7 @@ export const TdsVerificationPage = () => {
                         {rent.nepaliMonth}/{rent.nepaliYear}
                       </TableCell>
                       <TableCell>
-                        ₹{(rent.tdsAmountPaisa / 100).toLocaleString()}
+                        RS {(rent.tdsAmountPaisa / 100).toLocaleString()}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="bg-amber-50">

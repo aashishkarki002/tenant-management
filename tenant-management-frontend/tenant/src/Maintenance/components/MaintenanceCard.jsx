@@ -339,10 +339,10 @@ export default function MaintenanceCard({
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Info label="Type" value={maintenanceItem.type} />
                 <Info label="Scope" value={maintenanceItem.scope?.replace('_', ' ')} />
-                <Info label="Estimated" value={`₹${(maintenanceItem.amount || 0).toLocaleString('en-IN')}`} />
+                <Info label="Estimated" value={`RS ${(maintenanceItem.amount || 0).toLocaleString('en-IN')}`} />
                 <Info
                   label="Paid"
-                  value={`₹${(maintenanceItem.paidAmount || 0).toLocaleString('en-IN')}`}
+                  value={`RS ${(maintenanceItem.paidAmount || 0).toLocaleString('en-IN')}`}
                   highlight={maintenanceItem.paymentStatus === 'overpaid' ? 'amber' : null}
                 />
               </div>

@@ -140,9 +140,9 @@ export function FuelRefillDialog({ gen, open, onClose, onDone, bankAccounts = []
                     </div>
 
                     <div>
-                        <Label>Cost (₹)</Label>
+                        <Label>Cost (RS )</Label>
                         <div className="relative mt-1">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">RS </span>
                             <Input
                                 type="number" min="0" className="pl-6"
                                 placeholder="Leave blank if no expense entry needed"

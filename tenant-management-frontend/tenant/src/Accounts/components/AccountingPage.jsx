@@ -393,18 +393,18 @@ function TabContextStrip({ totals, filterLabel }) {
                         "text-[14px] font-bold",
                         totals.netCashFlow >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]",
                     )}>
-                        {totals.netCashFlow >= 0 ? "+" : "−"}₹{fmtK(Math.abs(totals.netCashFlow))}
+                        {totals.netCashFlow >= 0 ? "+" : "−"}RS {fmtK(Math.abs(totals.netCashFlow))}
                     </span>
                 </div>
                 <div className="w-px h-4 bg-[var(--color-border)]" />
                 <div className="flex items-center gap-1.5">
                     <span className="text-[11px] text-[var(--color-text-sub)]">Revenue</span>
-                    <span className="text-[13px] font-semibold text-[var(--color-info)]">₹{fmtK(totals.totalRevenue)}</span>
+                    <span className="text-[13px] font-semibold text-[var(--color-info)]">RS {fmtK(totals.totalRevenue)}</span>
                 </div>
                 <div className="w-px h-4 bg-[var(--color-border)]" />
                 <div className="flex items-center gap-1.5">
                     <span className="text-[11px] text-[var(--color-text-sub)]">Expenses</span>
-                    <span className="text-[13px] font-semibold text-[var(--color-warning)]">₹{fmtK(totals.totalExpenses)}</span>
+                    <span className="text-[13px] font-semibold text-[var(--color-warning)]">RS {fmtK(totals.totalExpenses)}</span>
                 </div>
             </div>
             <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)]">

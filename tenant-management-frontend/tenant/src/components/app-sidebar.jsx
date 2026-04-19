@@ -16,6 +16,7 @@ import {
   ClipboardList,
   FileText,
   Megaphone,
+  CalendarDays,
 } from "lucide-react";
 
 import {
@@ -74,6 +75,7 @@ const NAV_GROUPS = [
   {
     label: "Operations",
     items: [
+      { title: "Calendar", url: "/calendar", icon: CalendarDays },
       { title: "Daily Checks", url: "/admin-daily-checks", icon: ClipboardList, badge: "Today" },
       { title: "Maintenance", url: "/maintenance", icon: Wrench },
       { title: "Broadcasts", url: "/broadcasts", icon: Megaphone },

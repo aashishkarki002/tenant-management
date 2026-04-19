@@ -81,7 +81,7 @@ export const fmt = {
       : "—",
   rupees: (paisa) =>
     paisa != null && paisa > 0
-      ? `₹${(paisa / 100).toLocaleString("en-IN")}`
+      ? `RS ${(paisa / 100).toLocaleString("en-IN")}`
       : "—",
   pct: (n) => `${n ?? 0}%`,
   kwh: (n) => (n != null ? `${Number(n).toFixed(1)} kWh` : "—"),

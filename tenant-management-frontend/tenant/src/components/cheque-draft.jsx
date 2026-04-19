@@ -20,7 +20,7 @@ export default function ChequeDraft() {
         payeeName: 'Property Owner Full Name',
         amountNumbers: '50,000.00',
         amountWords: 'Fifty Thousand',
-        currency: '₹',
+        currency: 'RS ',
     });
 
     const handleInputChange = (e) => {
@@ -175,7 +175,7 @@ export default function ChequeDraft() {
                                         onChange={handleInputChange}
                                         className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        <option value="₹">Indian Rupee (₹)</option>
+
                                         <option value="₨">Nepalese Rupee (₨)</option>
                                         <option value="$">US Dollar ($)</option>
                                         <option value="€">Euro (€)</option>

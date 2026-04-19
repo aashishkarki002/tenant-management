@@ -101,8 +101,8 @@ function EventPopover({ event, position, onClose }) {
                     )}
                     {m.type && <Row label="Type" value={m.type} />}
                     {m.assignedTo?.name && <Row label="Assigned" value={m.assignedTo.name} />}
-                    {m.amount > 0 && <Row label="Estimated" value={`₹${Number(m.amount).toLocaleString('en-IN')}`} />}
-                    {m.paidAmount > 0 && <Row label="Paid" value={`₹${Number(m.paidAmount).toLocaleString('en-IN')}`} />}
+                    {m.amount > 0 && <Row label="Estimated" value={`RS ${Number(m.amount).toLocaleString('en-IN')}`} />}
+                    {m.paidAmount > 0 && <Row label="Paid" value={`RS ${Number(m.paidAmount).toLocaleString('en-IN')}`} />}
                     {m.description && (
                         <div className="mt-2 rounded-md bg-muted-fill p-2 text-text-sub leading-relaxed">
                             {m.description}

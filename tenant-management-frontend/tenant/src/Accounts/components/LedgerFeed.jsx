@@ -19,7 +19,7 @@ export default function LedgerFeed({ entries = [], loading, onViewAll }) {
     if (!recent.length) {
         return (
             <div className="py-10 text-center">
-                <div className="text-2xl mb-2 opacity-30">₹</div>
+                <div className="text-2xl mb-2 opacity-30">RS </div>
                 <div className="text-[13px] font-semibold text-[var(--color-text-body)]">
                     No transactions yet
                 </div>
@@ -84,7 +84,7 @@ export default function LedgerFeed({ entries = [], loading, onViewAll }) {
                                             : "text-[var(--color-success)]",
                                     )}
                                 >
-                                    {isDebit ? "−" : "+"}₹{fmtN(amt)}
+                                    {isDebit ? "−" : "+"}RS {fmtN(amt)}
                                 </div>
                             </div>
                         </div>

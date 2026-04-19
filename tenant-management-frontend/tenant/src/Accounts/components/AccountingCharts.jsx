@@ -333,11 +333,11 @@ export function CompareStatStrip({ stats, labelA, labelB, loading }) {
                         <div className="grid grid-cols-2 gap-1.5">
                             <div>
                                 <div className="text-[10px] mb-0.5 text-[var(--color-text-sub)]">{labelA}</div>
-                                <div className="text-[15px] font-bold text-[var(--color-text-strong)]">₹{fmtK(s.a ?? 0)}</div>
+                                <div className="text-[15px] font-bold text-[var(--color-text-strong)]">RS{fmtK(s.a ?? 0)}</div>
                             </div>
                             <div>
                                 <div className="text-[10px] mb-0.5 text-[var(--color-text-sub)]">{labelB}</div>
-                                <div className="text-[15px] font-bold text-[var(--color-text-strong)]">₹{fmtK(s.b ?? 0)}</div>
+                                <div className="text-[15px] font-bold text-[var(--color-text-strong)]">RS{fmtK(s.b ?? 0)}</div>
                             </div>
                         </div>
                         <div className="flex items-center gap-1.5 mt-2.5">
@@ -410,7 +410,7 @@ export function RevenueStreamTable({ breakdown = [], loading }) {
                         </span>
                     </div>
                     <div className="text-[13px] font-bold text-right text-[var(--color-text-strong)]">
-                        ₹{fmtK(item.amount)}
+                        RS {fmtK(item.amount)}
                     </div>
                 </div>
             ))}
@@ -448,7 +448,7 @@ export function BreakdownPills({ breakdown = [], loading }) {
                         {item.name}
                     </span>
                     <span className="text-xs font-bold shrink-0 text-[var(--color-text-strong)]">
-                        ₹{fmtK(item.amount)}
+                        RS {fmtK(item.amount)}
                     </span>
                     <span className="text-[10px] min-w-[24px] text-right text-[var(--color-text-sub)]">
                         {total > 0 ? ((item.amount / total) * 100).toFixed(0) : 0}%

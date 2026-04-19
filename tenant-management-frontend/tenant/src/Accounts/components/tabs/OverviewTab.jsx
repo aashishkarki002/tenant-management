@@ -31,10 +31,10 @@ function HeroNumber({ value, loading }) {
                     textShadow: "0 2px 12px rgba(0,0,0,0.18)",
                 }}
             >
-                {value < 0 && "−"}₹{fmtK(Math.abs(value))}
+                {value < 0 && "−"}RS {fmtK(Math.abs(value))}
             </div>
             <div className="text-[11px] mt-1 text-white/35 tabular-nums">
-                ₹{fmtN(Math.abs(value))}
+                RS {fmtN(Math.abs(value))}
             </div>
         </div>
     );
@@ -56,13 +56,13 @@ function KpiNumber({ value, color, loading, size = "lg" }) {
                     color,
                 }}
             >
-                ₹{fmtK(value)}
+                RS {fmtK(value)}
             </div>
             <div
                 className="text-[10px] mt-0.5 tabular-nums"
                 style={{ color: "var(--color-text-sub)" }}
             >
-                ₹{fmtN(value)}
+                RS {fmtN(value)}
             </div>
         </div>
     );
@@ -168,7 +168,7 @@ export default function OverviewTab({
                                     className="text-[13px] font-bold tabular-nums"
                                     style={{ color: x.c }}
                                 >
-                                    ₹{fmtK(x.v)}
+                                    RS {fmtK(x.v)}
                                 </div>
                             </div>
                         ))}
@@ -407,7 +407,7 @@ function CashFlowSummaryCard({ inflows, outflows, totalIn, totalOut, net, loadin
                             <div className="h-5 w-24 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
                         ) : (
                             <div className="text-[18px] font-black tabular-nums leading-none" style={{ color: "var(--color-info)" }}>
-                                ₹{fmtK(totalIn)}
+                                RS {fmtK(totalIn)}
                             </div>
                         )}
                     </div>
@@ -429,7 +429,7 @@ function CashFlowSummaryCard({ inflows, outflows, totalIn, totalOut, net, loadin
                                                 {item.name ?? item.label ?? "—"}
                                             </span>
                                             <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--color-info)" }}>
-                                                ₹{fmtK(item.amount ?? 0)}
+                                                RS {fmtK(item.amount ?? 0)}
                                             </span>
                                         </div>
                                         <ProgBar value={item.amount ?? 0} max={totalIn} color="var(--color-info)" h={2} />
@@ -450,7 +450,7 @@ function CashFlowSummaryCard({ inflows, outflows, totalIn, totalOut, net, loadin
                             <div className="h-5 w-24 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
                         ) : (
                             <div className="text-[18px] font-black tabular-nums leading-none" style={{ color: "var(--color-warning)" }}>
-                                ₹{fmtK(totalOut)}
+                                RS {fmtK(totalOut)}
                             </div>
                         )}
                     </div>
@@ -470,7 +470,7 @@ function CashFlowSummaryCard({ inflows, outflows, totalIn, totalOut, net, loadin
                                             {item.name ?? item.label ?? "—"}
                                         </span>
                                         <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--color-warning)" }}>
-                                            ₹{fmtK(item.amount ?? 0)}
+                                            RS {fmtK(item.amount ?? 0)}
                                         </span>
                                     </div>
                                     <ProgBar value={item.amount ?? 0} max={totalOut} color="var(--color-warning)" h={2} />
@@ -507,7 +507,7 @@ function CashFlowSummaryCard({ inflows, outflows, totalIn, totalOut, net, loadin
                 ) : (
                     <div className="flex items-baseline gap-1.5">
                         <span className="text-[20px] font-black tabular-nums leading-none" style={{ color: isDeficit ? "var(--color-danger)" : "var(--color-success)" }}>
-                            {net >= 0 ? "+" : "−"}₹{fmtK(Math.abs(net))}
+                            {net >= 0 ? "+" : "−"}RS {fmtK(Math.abs(net))}
                         </span>
                         {grandTotal > 0 && (
                             <span className="text-[10px] font-semibold" style={{ color: isDeficit ? "var(--color-danger)" : "var(--color-success)", opacity: 0.7 }}>

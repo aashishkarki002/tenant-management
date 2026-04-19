@@ -5,20 +5,20 @@ import { TrendingUp, TrendingDown, Wallet, DollarSign, CreditCard, AlertCircle }
 // ─── Formatters ───────────────────────────────────────────────────────────────
 
 function formatCurrency(val) {
-  if (val == null || val === "") return "₹0";
+  if (val == null || val === "") return "RS 0";
   const n = Number(val);
   if (Number.isNaN(n)) return String(val);
-  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  return `RS ${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
 function formatCompact(val) {
-  if (val == null || val === "") return "₹0";
+  if (val == null || val === "") return "RS 0";
   const n = Number(val);
   if (Number.isNaN(n)) return String(val);
-  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
-  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
-  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}k`;
-  return `₹${n.toLocaleString("en-IN")}`;
+  if (n >= 10_000_000) return `RS ${(n / 10_000_000).toFixed(2)}Cr`;
+  if (n >= 100_000) return `RS ${(n / 100_000).toFixed(2)}L`;
+  if (n >= 1_000) return `RS ${(n / 1_000).toFixed(1)}k`;
+  return `RS ${n.toLocaleString("en-IN")}`;
 }
 
 // ─── Animated Counter ─────────────────────────────────────────────────────────
@@ -34,10 +34,10 @@ function AnimatedCounter({ value, duration = 0.6 }) {
     const animate = (timestamp) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / (duration * 1000), 1);
-      
+
       // easeOut cubic
       const easeProgress = 1 - Math.pow(1 - progress, 3);
-      
+
       setDisplayValue(Math.floor(targetValue * easeProgress));
 
       if (progress < 1) {
@@ -72,8 +72,8 @@ function MiniSparkline({ data = [], positive = true }) {
   const gradientId = `gradient-${Math.random().toString(36).substr(2, 9)}`;
 
   return (
-    <svg 
-      viewBox="0 0 100 24" 
+    <svg
+      viewBox="0 0 100 24"
       className="w-full h-6 opacity-0"
       preserveAspectRatio="none"
     >
@@ -83,7 +83,7 @@ function MiniSparkline({ data = [], positive = true }) {
           <stop offset="100%" stopColor={positive ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)"} stopOpacity="0.0" />
         </linearGradient>
       </defs>
-      
+
       <motion.polyline
         points={points}
         fill="none"
@@ -95,7 +95,7 @@ function MiniSparkline({ data = [], positive = true }) {
         animate={{ pathLength: 1, opacity: 0.6 }}
         transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
       />
-      
+
       <motion.polygon
         points={`0,100 ${points} 100,100`}
         fill={`url(#${gradientId})`}
@@ -113,17 +113,16 @@ function DeltaIndicator({ value, percentage = true }) {
   if (value == null || value === 0) return null;
 
   const isPositive = value > 0;
-  const displayValue = percentage 
+  const displayValue = percentage
     ? `${Math.abs(value).toFixed(1)}%`
     : formatCompact(Math.abs(value));
 
   return (
     <motion.div
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide ${
-        isPositive 
-          ? "bg-green-500/10 text-green-600 dark:text-green-400" 
-          : "bg-red-500/10 text-red-600 dark:text-red-400"
-      }`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide ${isPositive
+        ? "bg-green-500/10 text-green-600 dark:text-green-400"
+        : "bg-red-500/10 text-red-600 dark:text-red-400"
+        }`}
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.3, delay: 0.5, ease: "easeOut" }}
@@ -196,7 +195,7 @@ function KpiCard({
       className={`relative rounded-2xl border ${styles.border} ${styles.bg} p-5 overflow-hidden
                   transition-shadow duration-200 cursor-default`}
       style={{
-        boxShadow: isHovered 
+        boxShadow: isHovered
           ? "0 8px 24px -4px rgba(0, 0, 0, 0.08), 0 2px 8px -2px rgba(0, 0, 0, 0.04)"
           : "0 2px 8px -2px rgba(0, 0, 0, 0.04)",
       }}
@@ -215,10 +214,10 @@ function KpiCard({
       onHoverEnd={() => setIsHovered(false)}
     >
       {/* Background gradient (subtle) */}
-      <div 
+      <div
         className="absolute inset-0 opacity-0 pointer-events-none"
         style={{
-          background: variant === "primary" 
+          background: variant === "primary"
             ? "radial-gradient(circle at top right, rgba(255,255,255,0.03), transparent 60%)"
             : "radial-gradient(circle at top right, rgba(0,0,0,0.01), transparent 60%)",
         }}
@@ -238,7 +237,7 @@ function KpiCard({
               </div>
             )}
           </div>
-          
+
           <motion.div
             className={`rounded-xl p-2.5 ${styles.iconBg}`}
             initial={{ scale: 0.8, opacity: 0 }}

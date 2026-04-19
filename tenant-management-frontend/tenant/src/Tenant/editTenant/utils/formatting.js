@@ -44,11 +44,11 @@ export function paisaToRupees(paisa) {
  * Format money for display with currency symbol
  *
  * @param {number} paisa - Amount in paisa
- * @param {boolean} includeCurrency - Whether to include ₹ symbol
+ * @param {boolean} includeCurrency - Whether to include RS symbol
  * @returns {string} Formatted money string
  *
  * @example
- * formatMoney(10050) // "₹100.50"
+ * formatMoney(10050) // "RS 100.50"
  * formatMoney(10050, false) // "100.50"
  */
 export function formatMoney(paisa, includeCurrency = true) {
@@ -57,18 +57,18 @@ export function formatMoney(paisa, includeCurrency = true) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return includeCurrency ? `₹${formatted}` : formatted;
+  return includeCurrency ? ` RS ${formatted}` : formatted;
 }
 
 /**
  * Parse money string to paisa
  * Handles various input formats
  *
- * @param {string} moneyString - Money string (e.g., "₹1,000.50", "1000.50")
+ * @param {string} moneyString - Money string (e.g., "RS 1,000.50", "1000.50")
  * @returns {number} Amount in paisa
  *
  * @example
- * parseMoneyToPaisa("₹1,000.50") // 100050
+ * parseMoneyToPaisa("RS 1,000.50") // 100050
  * parseMoneyToPaisa("1000.50") // 100050
  */
 export function parseMoneyToPaisa(moneyString) {
@@ -77,7 +77,7 @@ export function parseMoneyToPaisa(moneyString) {
   }
 
   // Remove currency symbols and commas
-  const cleaned = String(moneyString).replace(/[₹,\s]/g, "");
+  const cleaned = String(moneyString).replace(/[ RS,\s]/g, "");
   const rupees = parseFloat(cleaned);
 
   return rupeesToPaisa(rupees);

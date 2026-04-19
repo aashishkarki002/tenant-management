@@ -7,7 +7,7 @@
  * Props:
  *   label    string  e.g. "Rent"
  *   percent  number  0–100
- *   amount   string  pre-formatted e.g. "₹9K"
+ *   amount   string  pre-formatted e.g. "RS9K"
  *   color    string? CSS color value — defaults to var(--color-accent)
  */
 

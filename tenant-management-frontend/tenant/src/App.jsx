@@ -36,6 +36,7 @@ import CheckListResultDetails from "./adminDailyChecks/checkListResultDetails/ch
 import VendorsPage from "./Vendors/VendorsPage";
 import VendorDetailPage from "./Vendors/VendorDetailPage";
 import ForgetPassword from "./Auth/forgetPassword";
+import CalendarPage from "./Calendar/CalendarPage";
 
 // Roles that can access admin-level features
 const ADMIN_ROLES = ["admin", "super_admin"];
@@ -61,7 +62,7 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname.toLowerCase();
-  const hideSidebar = path.startsWith("/login") || path.startsWith("/signup");
+  const hideSidebar = path.startsWith("/login") || path.startsWith("/signup") || path.startsWith("/forget-password");
 
   useEffect(() => {
     return setupSwMessageListener(navigate, async (notificationId) => {
@@ -178,6 +179,9 @@ export default function App() {
       />
       <Route path="/vendors/:id"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><VendorDetailPage /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/calendar"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><CalendarPage /></RoleRoute></ProtectedRoutes>}
       />
 
     </Routes>

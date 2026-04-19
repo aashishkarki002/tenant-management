@@ -11,14 +11,14 @@ function fmt(val) {
     if (val == null || val === "") return "—";
     const n = Number(val);
     if (Number.isNaN(n)) return String(val);
-    if (n >= 1_000_000) return `₹${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `₹${(n / 1_000).toFixed(0)}k`;
-    return `₹${n.toLocaleString()}`;
+    if (n >= 1_000_000) return `RS ${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `RS ${(n / 1_000).toFixed(0)}k`;
+    return `RS ${n.toLocaleString()}`;
 }
 
 function fmtFull(val) {
     if (val == null) return "—";
-    return `₹${Number(val).toLocaleString()}`;
+    return `RS ${Number(val).toLocaleString()}`;
 }
 
 // ─── Info tooltip ─────────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ function fmtCompact(n) {
 }
 
 function fmtFull(n) {
-    return `₹${Number(n).toLocaleString('en-IN')}`;
+    return `RS ${Number(n).toLocaleString('en-IN')}`;
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -214,9 +214,9 @@ function SummaryStrip({ data }) {
 
     const items = [
         { label: 'FY', value: `${recorded.length}/12 mo` },
-        { label: 'YTD', value: `₹${fmtCompact(ytdTotal)}` },
-        { label: 'Avg', value: `₹${fmtCompact(avg)}/mo` },
-        peakName ? { label: 'Peak', value: `${peakName} · ₹${fmtCompact(peak.revenue)}` } : null,
+        { label: 'YTD', value: `RS ${fmtCompact(ytdTotal)}` },
+        { label: 'Avg', value: `RS ${fmtCompact(avg)}/mo` },
+        peakName ? { label: 'Peak', value: `${peakName} · RS ${fmtCompact(peak.revenue)}` } : null,
     ].filter(Boolean);
 
     return (

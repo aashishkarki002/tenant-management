@@ -120,7 +120,7 @@ function normalizeDashboardStats(raw) {
   // ── Vacancy — flip occupancy from % metric to revenue-gap metric ────────────
   //
   // The owner doesn't need to know "87% occupied" — they need to know
-  // "3 units vacant, costing ₹42k/mo in lost revenue."
+  // "3 units vacant, costing RS 42k/mo in lost revenue."
   // When fully occupied, flip to positive signal: days at full occupancy.
   //
   // vacantUnits          — how many units are empty right now

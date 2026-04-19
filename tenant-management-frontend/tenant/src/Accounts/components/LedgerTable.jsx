@@ -25,9 +25,9 @@ import {
 } from "lucide-react";
 
 const LEDGER_FILTERS = [
-    { value: "all",    label: "All" },
+    { value: "all", label: "All" },
     { value: "credit", label: "Credits" },
-    { value: "debit",  label: "Debits" },
+    { value: "debit", label: "Debits" },
 ];
 
 export default function LedgerTable({
@@ -64,13 +64,13 @@ export default function LedgerTable({
                             style={{
                                 background: isActive
                                     ? opt.value === "credit" ? "var(--color-success)"
-                                    : opt.value === "debit"  ? "var(--color-danger)"
-                                    : "var(--color-accent)"
+                                        : opt.value === "debit" ? "var(--color-danger)"
+                                            : "var(--color-accent)"
                                     : "transparent",
                                 borderColor: isActive
                                     ? opt.value === "credit" ? "var(--color-success)"
-                                    : opt.value === "debit"  ? "var(--color-danger)"
-                                    : "var(--color-accent)"
+                                        : opt.value === "debit" ? "var(--color-danger)"
+                                            : "var(--color-accent)"
                                     : "var(--color-border)",
                                 color: isActive ? "#fff" : "var(--color-text-sub)",
                             }}
@@ -124,14 +124,14 @@ export default function LedgerTable({
                                         {entry.description || entry.account?.name || "—"}
                                     </TableCell>
                                     <TableCell className="text-[12px] font-medium tabular-nums text-[var(--color-danger)]">
-                                        {entry.debit ? `−₹${entry.debit.toLocaleString()}` : "—"}
+                                        {entry.debit ? `−RS ${entry.debit.toLocaleString()}` : "—"}
                                     </TableCell>
                                     <TableCell className="text-[12px] font-medium tabular-nums text-[var(--color-success)]">
-                                        {entry.credit ? `+₹${entry.credit.toLocaleString()}` : "—"}
+                                        {entry.credit ? `+RS ${entry.credit.toLocaleString()}` : "—"}
                                     </TableCell>
                                     <TableCell className="text-right text-[12px] font-semibold tabular-nums text-[var(--color-text-strong)]">
                                         {entry.runningBalance !== undefined
-                                            ? `₹${entry.runningBalance.toLocaleString()}`
+                                            ? `RS ${entry.runningBalance.toLocaleString()}`
                                             : "—"}
                                     </TableCell>
                                 </TableRow>

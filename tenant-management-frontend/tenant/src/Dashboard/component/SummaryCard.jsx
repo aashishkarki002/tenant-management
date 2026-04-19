@@ -11,9 +11,9 @@ function fmt(val) {
   if (val == null || val === '') return '—';
   const n = Number(val);
   if (Number.isNaN(n)) return String(val);
-  if (n >= 1_000_000) return `₹${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1000) return `₹${(n / 1000).toFixed(0)}k`;
-  return `₹${n.toLocaleString()}`;
+  if (n >= 1_000_000) return `RS ${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `RS ${(n / 1000).toFixed(0)}k`;
+  return `RS ${n.toLocaleString()}`;
 }
 
 function pct(a, b) {
@@ -65,8 +65,8 @@ function RevenueCard({ stats, loading }) {
           {loading ? <Bone dark w="w-32" h="h-10" /> : (
             <p className="text-4xl font-bold tabular-nums leading-none" style={{ color: 'white' }}>
               {view === 'month'
-                ? (display != null ? `₹${Number(display).toLocaleString()}` : '—')
-                : `₹${Number(ytd).toLocaleString()}`}
+                ? (display != null ? `RS ${Number(display).toLocaleString()}` : '—')
+                : `RS ${Number(ytd).toLocaleString()}`}
             </p>
           )}
           {!loading && <p className="text-xs mt-1.5" style={{ color: '#C47272' }}>
@@ -146,7 +146,7 @@ function RevenueCard({ stats, loading }) {
                     </span>
                     <span className="text-xs font-medium tabular-nums shrink-0"
                       style={{ color: has ? '#F0DADA' : '#521C1C' }}>
-                      {has ? `₹${Number(m.total).toLocaleString()}` : 'no data'}
+                      {has ? `RS ${Number(m.total).toLocaleString()}` : 'no data'}
                     </span>
                   </div>
                 );
@@ -190,7 +190,7 @@ function MoneyRiskCard({ stats, loading }) {
             {loading ? <Bone w="w-28" h="h-10" /> : (
               <p className="text-4xl font-bold tabular-nums leading-none"
                 style={{ color: allClear ? '#2E7A4A' : '#B02020' }}>
-                {outstanding != null ? `₹${Number(outstanding).toLocaleString()}` : '—'}
+                {outstanding != null ? `RS ${Number(outstanding).toLocaleString()}` : '—'}
               </p>
             )}
             {!loading && <p className="text-xs mt-1.5" style={{ color: '#948472' }}>

@@ -296,7 +296,7 @@ export default function SettlementDialog({
                             <div className="rounded-xl bg-muted-fill/60 px-4 py-3 flex items-center justify-between">
                                 <span className="text-sm text-text-sub">Estimated Cost</span>
                                 <span className="text-xl font-bold text-text-strong tabular-nums">
-                                    ₹{estimatedAmount.toLocaleString('en-IN')}
+                                    RS {estimatedAmount.toLocaleString('en-IN')}
                                 </span>
                             </div>
 
@@ -363,7 +363,7 @@ export default function SettlementDialog({
                             <div className="space-y-1.5">
                                 <Label className="text-sm">Paid Amount</Label>
                                 <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-sub text-sm">₹</span>
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-sub text-sm">RS </span>
                                     <Input
                                         type="number"
                                         min="0"
@@ -504,7 +504,7 @@ export default function SettlementDialog({
                                     </p>
                                     <p className="text-xs text-amber-700">{overpaymentMeta.message}</p>
                                     <p className="text-xs text-amber-700 font-medium">
-                                        Excess amount: ₹{overpaymentMeta.diffRupees?.toLocaleString('en-IN')}
+                                        Excess amount: RS {overpaymentMeta.diffRupees?.toLocaleString('en-IN')}
                                     </p>
                                     <p className="text-xs text-amber-600">
                                         If you confirm, the overpayment will be recorded in the ledger.

@@ -15,58 +15,58 @@ import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD_ORDER } from "@/constants/payment
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-    bg:          "var(--color-bg)",
-    surface:     "var(--color-surface)",
-    alt:         "var(--color-muted)",
-    border:      "var(--color-border)",
-    text:        "var(--color-text-strong)",
-    body:        "var(--color-text-body)",
-    sub:         "var(--color-text-sub)",
-    weak:        "var(--color-text-weak)",
-    accent:      "var(--color-accent)",
-    red:         "var(--color-danger)",
-    redBg:       "var(--color-danger-bg)",
-    redBorder:   "var(--color-danger-border)",
-    amber:       "var(--color-warning)",
-    amberBg:     "var(--color-warning-bg)",
+    bg: "var(--color-bg)",
+    surface: "var(--color-surface)",
+    alt: "var(--color-muted)",
+    border: "var(--color-border)",
+    text: "var(--color-text-strong)",
+    body: "var(--color-text-body)",
+    sub: "var(--color-text-sub)",
+    weak: "var(--color-text-weak)",
+    accent: "var(--color-accent)",
+    red: "var(--color-danger)",
+    redBg: "var(--color-danger-bg)",
+    redBorder: "var(--color-danger-border)",
+    amber: "var(--color-warning)",
+    amberBg: "var(--color-warning-bg)",
     amberBorder: "var(--color-warning-border)",
-    green:       "var(--color-success)",
-    greenBg:     "var(--color-success-bg)",
-    blue:        "var(--color-info)",
-    blueBg:      "var(--color-info-bg)",
+    green: "var(--color-success)",
+    greenBg: "var(--color-success-bg)",
+    blue: "var(--color-info)",
+    blueBg: "var(--color-info-bg)",
 };
 
 const REF_CFG = {
-    MANUAL:      { bg: T.alt,     color: T.sub },
-    MAINTENANCE: { bg: T.redBg,   color: T.red },
-    UTILITY:     { bg: T.blueBg,  color: T.blue },
-    SALARY:      { bg: "#EDE9FE", color: "#5B21B6" },
-    RENT:        { bg: T.amberBg, color: T.amber },
-    VENDOR:      { bg: "#ECFEFF", color: "#0E7490" },
+    MANUAL: { bg: T.alt, color: T.sub },
+    MAINTENANCE: { bg: T.redBg, color: T.red },
+    UTILITY: { bg: T.blueBg, color: T.blue },
+    SALARY: { bg: "#EDE9FE", color: "#5B21B6" },
+    RENT: { bg: T.amberBg, color: T.amber },
+    VENDOR: { bg: "#ECFEFF", color: "#0E7490" },
 };
 
-const fmt  = (n) => `₹${Math.round(Number(n)).toLocaleString("en-IN")}`;
+const fmt = (n) => `RS ${Math.round(Number(n)).toLocaleString("en-IN")}`;
 const fmtK = (v) => {
     const a = Math.abs(v);
     return a >= 100000 ? `${(a / 100000).toFixed(1)}L`
-         : a >= 1000   ? `${(a / 1000).toFixed(0)}K`
-         : String(a);
+        : a >= 1000 ? `${(a / 1000).toFixed(0)}K`
+            : String(a);
 };
 
 // ─── Mini SVG Sparkline ───────────────────────────────────────────────────────
 function MiniSparkline({ data, color = "var(--color-danger)", width = 96, height = 32, highlightIdx = -1 }) {
     if (!data || data.length < 2) return null;
     const vals = data.map(d => d.expenses);
-    const min  = Math.min(...vals);
-    const max  = Math.max(...vals);
-    const rng  = max - min || 1;
-    const pad  = 3;
-    const pts  = vals.map((v, i) => [
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const rng = max - min || 1;
+    const pad = 3;
+    const pts = vals.map((v, i) => [
         (i / (vals.length - 1)) * (width - pad * 2) + pad,
         height - pad - ((v - min) / rng) * (height - pad * 2),
     ]);
     const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-    const hi   = highlightIdx >= 0 && highlightIdx < pts.length ? pts[highlightIdx] : null;
+    const hi = highlightIdx >= 0 && highlightIdx < pts.length ? pts[highlightIdx] : null;
     return (
         <svg width={width} height={height} style={{ overflow: "visible", flexShrink: 0 }}>
             <path d={path} fill="none" stroke={color} strokeWidth="1.5"
@@ -84,10 +84,10 @@ function Chip({ up, label, size = "sm" }) {
         <span
             className="inline-flex items-center gap-[3px] rounded font-bold"
             style={{
-                padding:    size === "sm" ? "1px 7px" : "3px 10px",
-                fontSize:   size === "sm" ? 10 : 12,
+                padding: size === "sm" ? "1px 7px" : "3px 10px",
+                fontSize: size === "sm" ? 10 : 12,
                 background: up ? T.greenBg : T.redBg,
-                color:      up ? T.green   : T.red,
+                color: up ? T.green : T.red,
             }}
         >
             {up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
@@ -120,9 +120,9 @@ function ChartTip({ active, payload, label }) {
     return (
         <div className="rounded-lg px-3.5 py-2.5" style={{
             background: "linear-gradient(140deg, #0a2f46 0%, #1a5276 100%)",
-            boxShadow:  "0 8px 24px rgba(0,0,0,.22)",
-            minWidth:   140,
-            border:     "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 8px 24px rgba(0,0,0,.22)",
+            minWidth: 140,
+            border: "1px solid rgba(255,255,255,0.08)",
         }}>
             <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-2"
                 style={{ color: "rgba(255,255,255,.38)" }}>{label}</div>
@@ -130,7 +130,7 @@ function ChartTip({ active, payload, label }) {
                 <div key={p.dataKey} className="flex items-center justify-between gap-4 text-xs text-white">
                     <span style={{ opacity: 0.6 }}>{p.name}</span>
                     <span className="font-bold tabular-nums">
-                        ₹{Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}
+                        RS {Number(Math.abs(p.value || 0)).toLocaleString("en-IN")}
                     </span>
                 </div>
             ))}
@@ -142,8 +142,8 @@ function ChartTip({ active, payload, label }) {
 function StatusBadge({ s }) {
     const cfgs = {
         RECORDED: { bg: T.amberBg, color: T.amber },
-        SYNCED:   { bg: T.greenBg, color: T.green },
-        REVERSED: { bg: T.redBg,   color: T.red },
+        SYNCED: { bg: T.greenBg, color: T.green },
+        REVERSED: { bg: T.redBg, color: T.red },
     };
     const { bg, color } = cfgs[s] ?? { bg: T.alt, color: T.sub };
     return (
@@ -162,7 +162,7 @@ function PayeeBadge({ t }) {
     return (
         <span className="rounded text-[9px] font-bold px-1.5 py-0.5" style={{
             background: t === "EXTERNAL" ? T.redBg : T.amberBg,
-            color:      t === "EXTERNAL" ? T.red   : T.amber,
+            color: t === "EXTERNAL" ? T.red : T.amber,
         }}>{t}</span>
     );
 }
@@ -187,16 +187,16 @@ function SectionLabel({ children, right }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function ExpenseBreakDown({
     onExpenseAdded,
-    selectedQuarter  = null,
-    selectedMonth    = null,
-    fiscalYear       = null,
-    compareMode      = false,
-    compareQuarter   = null,
-    customStartDate  = "",
-    customEndDate    = "",
-    openDialog       = false,
+    selectedQuarter = null,
+    selectedMonth = null,
+    fiscalYear = null,
+    compareMode = false,
+    compareQuarter = null,
+    customStartDate = "",
+    customEndDate = "",
+    openDialog = false,
     onDialogOpenHandled,
-    entityId         = null,
+    entityId = null,
 }) {
     const isMobile = useIsMobile();
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -219,10 +219,10 @@ export default function ExpenseBreakDown({
     useEffect(() => {
         api.get("/api/tenant/get-tenants")
             .then(({ data }) => setTenants(data?.tenants ?? []))
-            .catch(() => {});
+            .catch(() => { });
         api.get("/api/expense/get-expense-sources")
             .then(({ data }) => setExpSources(data?.expenseSources ?? []))
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     const onSuccess = () => { refetch(); onExpenseAdded?.(); };
@@ -254,15 +254,15 @@ export default function ExpenseBreakDown({
         }).click();
     };
 
-    const totals         = D?.totals            ?? { total: 0, count: 0, avg: 0, momPct: null };
-    const categories     = D?.categories        ?? [];
-    const trend          = D?.trend             ?? [];
-    const payeeSplit     = D?.payeeSplit        ?? [];
-    const refTypes       = D?.refTypes          ?? [];
-    const operatingAmt   = D?.operatingAmt      ?? 0;
-    const nonOpAmt       = D?.nonOpAmt          ?? 0;
+    const totals = D?.totals ?? { total: 0, count: 0, avg: 0, momPct: null };
+    const categories = D?.categories ?? [];
+    const trend = D?.trend ?? [];
+    const payeeSplit = D?.payeeSplit ?? [];
+    const refTypes = D?.refTypes ?? [];
+    const operatingAmt = D?.operatingAmt ?? 0;
+    const nonOpAmt = D?.nonOpAmt ?? 0;
     const payMethodSplit = D?.paymentMethodSplit ?? [];
-    const transactions   = D?.transactions      ?? [];
+    const transactions = D?.transactions ?? [];
 
     const filteredTxns = payMethodFilter
         ? transactions.filter(t => t.paymentMethod === payMethodFilter)
@@ -279,24 +279,24 @@ export default function ExpenseBreakDown({
         if (!trend || trend.length < 2) return null;
         const vals = trend.map(d => d.expenses).filter(v => v > 0);
         if (!vals.length) return null;
-        const avg         = vals.reduce((a, b) => a + b, 0) / vals.length;
-        const peak        = trend.reduce((a, b) => b.expenses > a.expenses ? b : a);
-        const peakIdx     = trend.indexOf(peak);
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const peak = trend.reduce((a, b) => b.expenses > a.expenses ? b : a);
+        const peakIdx = trend.indexOf(peak);
         const topCategory = categories[0]?.name ?? "general expenses";
-        const opRatio     = totals.total > 0 ? Math.round((operatingAmt / totals.total) * 100) : 0;
+        const opRatio = totals.total > 0 ? Math.round((operatingAmt / totals.total) * 100) : 0;
         if (peak.expenses > avg * 1.3) {
             return {
-                text:      `Spending peaked in ${peak.label} — driven by ${topCategory.toLowerCase()}`,
+                text: `Spending peaked in ${peak.label} — driven by ${topCategory.toLowerCase()}`,
                 peakIdx,
                 peakLabel: peak.label,
                 peakValue: peak.expenses,
-                isPeak:    true,
+                isPeak: true,
             };
         }
         return {
-            text:    `${opRatio}% operating costs · ${totals.count} transaction${totals.count !== 1 ? "s" : ""} across ${categories.length} categor${categories.length !== 1 ? "ies" : "y"} · ${periodLabel}`,
+            text: `${opRatio}% operating costs · ${totals.count} transaction${totals.count !== 1 ? "s" : ""} across ${categories.length} categor${categories.length !== 1 ? "ies" : "y"} · ${periodLabel}`,
             peakIdx: trend.length - 1,
-            isPeak:  false,
+            isPeak: false,
         };
     }, [trend, categories, totals, operatingAmt, periodLabel]);
 
@@ -317,13 +317,13 @@ export default function ExpenseBreakDown({
                         <div
                             className="font-black leading-none tabular-nums"
                             style={{
-                                fontSize:      isMobile ? 40 : 52,
-                                color:         T.red,
+                                fontSize: isMobile ? 40 : 52,
+                                color: T.red,
                                 letterSpacing: "-0.02em",
                             }}
                         >
                             <span style={{ fontSize: isMobile ? 26 : 34, opacity: 0.5, marginRight: 2, verticalAlign: "baseline" }}>−</span>
-                            ₹{Number(Math.abs(totals.total)).toLocaleString("en-IN")}
+                            RS {Number(Math.abs(totals.total)).toLocaleString("en-IN")}
                         </div>
                     )}
 
@@ -431,8 +431,8 @@ export default function ExpenseBreakDown({
                     className="rounded-xl flex items-center justify-between gap-6 mb-8"
                     style={{
                         background: T.surface,
-                        border:     `1px solid ${T.border}`,
-                        padding:    "18px 22px",
+                        border: `1px solid ${T.border}`,
+                        padding: "18px 22px",
                     }}
                 >
                     <div className="flex-1 min-w-0">
@@ -476,7 +476,7 @@ export default function ExpenseBreakDown({
                         <AreaChart data={trend} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="ex-fill-v2" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%"   stopColor={T.red} stopOpacity={0.08} />
+                                    <stop offset="0%" stopColor={T.red} stopOpacity={0.08} />
                                     <stop offset="100%" stopColor={T.red} stopOpacity={0} />
                                 </linearGradient>
                             </defs>
@@ -566,8 +566,8 @@ export default function ExpenseBreakDown({
                         <div>
                             {[
                                 { label: "Avg per transaction", value: fmt(totals.avg), large: true },
-                                { label: "Expense categories",  value: categories.length },
-                                { label: "Total transactions",  value: totals.count },
+                                { label: "Expense categories", value: categories.length },
+                                { label: "Total transactions", value: totals.count },
                                 ...(categories[0]
                                     ? [{ label: "Top category", value: categories[0].name }]
                                     : []),
@@ -587,8 +587,8 @@ export default function ExpenseBreakDown({
                                     <div
                                         className="font-bold tabular-nums leading-snug"
                                         style={{
-                                            fontSize:      s.large ? 17 : 14,
-                                            color:         T.text,
+                                            fontSize: s.large ? 17 : 14,
+                                            color: T.text,
                                             letterSpacing: "-0.01em",
                                         }}
                                     >
@@ -699,8 +699,8 @@ export default function ExpenseBreakDown({
                         </SectionLabel>
                         <div className={`flex gap-10 ${isMobile ? "flex-col" : ""}`}>
                             {[
-                                { label: "Operating",     value: operatingAmt, note: "Salary · Utility · Maintenance", color: T.red },
-                                { label: "Non-Operating", value: nonOpAmt,     note: "Vendor · Manual · Other",         color: T.amber },
+                                { label: "Operating", value: operatingAmt, note: "Salary · Utility · Maintenance", color: T.red },
+                                { label: "Non-Operating", value: nonOpAmt, note: "Vendor · Manual · Other", color: T.amber },
                             ].map(x => {
                                 const barW = totals.total > 0 ? (x.value / totals.total) * 100 : 0;
                                 return (
@@ -754,8 +754,8 @@ export default function ExpenseBreakDown({
                         ...PAYMENT_METHOD_ORDER.map(v => ({ value: v, label: PAYMENT_METHOD_LABELS[v] })),
                     ].map(opt => {
                         const isActive = payMethodFilter === opt.value;
-                        const split    = opt.value ? payMethodSplit.find(s => s.method === opt.value) : null;
-                        const isEmpty  = opt.value && (!split || split.count === 0);
+                        const split = opt.value ? payMethodSplit.find(s => s.method === opt.value) : null;
+                        const isEmpty = opt.value && (!split || split.count === 0);
                         return (
                             <button
                                 key={opt.value ?? "all"}
@@ -763,11 +763,11 @@ export default function ExpenseBreakDown({
                                 disabled={isEmpty}
                                 className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-md text-[11px] font-semibold transition-colors border"
                                 style={{
-                                    cursor:      isEmpty ? "default" : "pointer",
-                                    background:  isActive ? T.red : "transparent",
+                                    cursor: isEmpty ? "default" : "pointer",
+                                    background: isActive ? T.red : "transparent",
                                     borderColor: isActive ? T.red : T.border,
-                                    color:       isActive ? "#fff" : isEmpty ? T.weak : T.sub,
-                                    opacity:     isEmpty ? 0.4 : 1,
+                                    color: isActive ? "#fff" : isEmpty ? T.weak : T.sub,
+                                    opacity: isEmpty ? 0.4 : 1,
                                 }}
                             >
                                 {opt.label}
@@ -776,7 +776,7 @@ export default function ExpenseBreakDown({
                                         className="rounded px-1 tabular-nums text-[9px]"
                                         style={{
                                             background: isActive ? "rgba(255,255,255,0.2)" : T.alt,
-                                            color:      isActive ? "#fff" : T.sub,
+                                            color: isActive ? "#fff" : T.sub,
                                         }}
                                     >
                                         {split.count}
@@ -799,21 +799,21 @@ export default function ExpenseBreakDown({
                                 <thead>
                                     <tr>
                                         {[
-                                            { key: "Date",   align: "left"  },
-                                            { key: "Source", align: "left"  },
-                                            { key: "Ref",    align: "left"  },
-                                            { key: "Payee",  align: "left"  },
+                                            { key: "Date", align: "left" },
+                                            { key: "Source", align: "left" },
+                                            { key: "Ref", align: "left" },
+                                            { key: "Payee", align: "left" },
                                             { key: "Amount", align: "right" },
-                                            { key: "Status", align: "left"  },
+                                            { key: "Status", align: "left" },
                                         ].map(h => (
                                             <th
                                                 key={h.key}
                                                 className="py-2.5 text-[9px] font-bold tracking-[0.08em] uppercase border-b"
                                                 style={{
-                                                    color:        T.weak,
-                                                    borderColor:  T.border,
-                                                    textAlign:    h.align,
-                                                    paddingLeft:  h.key === "Date" ? 0 : 14,
+                                                    color: T.weak,
+                                                    borderColor: T.border,
+                                                    textAlign: h.align,
+                                                    paddingLeft: h.key === "Date" ? 0 : 14,
                                                     paddingRight: h.key === "Status" ? 0 : 14,
                                                 }}
                                             >
@@ -877,10 +877,10 @@ export default function ExpenseBreakDown({
                                             className="px-3 py-1 rounded-md border text-[11px] font-semibold"
                                             style={{
                                                 borderColor: T.border,
-                                                background:  T.surface,
-                                                color:       disabled ? T.weak : T.text,
-                                                cursor:      disabled ? "default" : "pointer",
-                                                opacity:     disabled ? 0.45 : 1,
+                                                background: T.surface,
+                                                color: disabled ? T.weak : T.text,
+                                                cursor: disabled ? "default" : "pointer",
+                                                opacity: disabled ? 0.45 : 1,
                                             }}
                                         >
                                             {label}

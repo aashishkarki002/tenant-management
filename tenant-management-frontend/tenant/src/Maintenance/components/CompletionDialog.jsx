@@ -147,7 +147,7 @@ export default function CompletionDialog({
               Estimated Cost
             </span>
             <span className="text-lg font-semibold">
-              ₹{estimatedAmount}
+              RS {estimatedAmount}
             </span>
           </div>
 
@@ -251,7 +251,7 @@ export default function CompletionDialog({
                     {overpaymentMeta.message}
                   </p>
                   <p className="text-xs text-amber-700">
-                    Excess: ₹{overpaymentMeta.diffRupees}
+                    Excess: RS {overpaymentMeta.diffRupees}
                   </p>
                 </div>
               </div>

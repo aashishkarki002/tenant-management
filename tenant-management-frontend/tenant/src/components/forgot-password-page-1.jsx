@@ -1,19 +1,23 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-// Label is technically not used for the main inputs due to inline icons, but keep for Progress aria-label potentially
-// import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react' // Use relevant icons
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import api from '../../plugins/axios'
 
 const ForgotPasswordPage1 = () => {
+  const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
+  const [resetToken, setResetToken] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   const calculatePasswordStrength = (password) => {
     let strength = 0
@@ -24,21 +28,68 @@ const ForgotPasswordPage1 = () => {
     return strength
   }
 
-  const goToNextStep = (nextStep) => {
-    setStep(nextStep)
+  const handleSendCode = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      await api.post('/api/auth/forgot-password', { email })
+      setStep(2)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to send reset code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleVerifyCode = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      const { data } = await api.post('/api/auth/verify-reset-code', { email, code })
+      setResetToken(data.resetToken)
+      setStep(3)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Invalid or expired code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResendCode = async () => {
+    setError('')
+    setCode('')
+    setLoading(true)
+    try {
+      await api.post('/api/auth/forgot-password', { email })
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to resend code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      await api.post('/api/auth/reset-password', { email, resetToken, newPassword: password })
+      setStep(4)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Password reset failed')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const renderStepContent = () => {
     switch (step) {
-      case 1: // Email Step
+      case 1:
         return (
           <>
-            {/* Header Text (Below Logo) */}
             <CardHeader className='pt-0 text-center'>
               <CardTitle className='text-2xl'>Forgot password?</CardTitle>
               <CardDescription>Enter your email address to reset your password</CardDescription>
             </CardHeader>
-            {/* Form */}
             <div className='flex flex-col gap-6'>
               <div className='relative'>
                 <Input
@@ -49,44 +100,44 @@ const ForgotPasswordPage1 = () => {
                   autoComplete='email'
                   value={email}
                   onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && email && handleSendCode()}
                   required />
-                <Mail
-                  className='text-muted-foreground absolute start-3 top-1/2 size-5 -translate-y-1/2' />
+                <Mail className='text-muted-foreground absolute start-3 top-1/2 size-5 -translate-y-1/2' />
               </div>
+              {error && <p className='text-destructive text-sm text-center'>{error}</p>}
               <Button
                 type='button'
                 className="h-9 px-4 py-2 w-full cursor-pointer"
-                onClick={() => goToNextStep(2)}
-                disabled={!email}>
-                Send Reset Code
+                onClick={handleSendCode}
+                disabled={!email || loading}>
+                {loading ? 'Sending…' : 'Send Reset Code'}
               </Button>
-              {/* Sign Up Link */}
               <p className='mt-6 flex justify-center gap-1 text-center text-sm'>
-                <span>Don't have an account yet?</span>
-                <a href='#' className='underline underline-offset-4'>
-                  Sign Up
-                </a>
+                <span>Remember your password?</span>
+                <button
+                  type='button'
+                  className='underline underline-offset-4 cursor-pointer'
+                  onClick={() => navigate('/login')}>
+                  Sign In
+                </button>
               </p>
             </div>
           </>
-        );
+        )
 
-      case 2: // Verify Code Step
+      case 2:
         return (
           <>
-            {/* Header Text */}
             <div className='mb-6 text-center'>
               <h1 className='mb-2 text-2xl font-bold tracking-tight text-balance'>Check Your Email</h1>
               <p className='text-muted-foreground text-sm text-balance'>
                 Enter the 6-digit code sent to{' '}
-                <span className='text-foreground font-medium'>{email || 'your email'}</span>.
+                <span className='text-foreground font-medium'>{email}</span>.
               </p>
             </div>
-            {/* Form */}
             <div className='flex flex-col gap-6'>
-              <InputOTP maxLength={6} value={code} onChange={value => setCode(value)}>
+              <InputOTP maxLength={6} value={code} onChange={value => { setCode(value); setError('') }}>
                 <InputOTPGroup className='grid w-full grid-cols-6 gap-2 sm:gap-3'>
-                  {/* Styled slots matching transparent input */}
                   <InputOTPSlot index={0} className='h-12 w-auto flex-1 rounded-md border-l text-lg' />
                   <InputOTPSlot index={1} className='h-12 w-auto flex-1 rounded-md border-l text-lg' />
                   <InputOTPSlot index={2} className='h-12 w-auto flex-1 rounded-md border-l text-lg' />
@@ -95,37 +146,38 @@ const ForgotPasswordPage1 = () => {
                   <InputOTPSlot index={5} className='h-12 w-auto flex-1 rounded-md border-l text-lg' />
                 </InputOTPGroup>
               </InputOTP>
+              {error && <p className='text-destructive text-sm text-center'>{error}</p>}
               <Button
                 type='button'
                 className="h-9 px-4 py-2 w-full cursor-pointer"
-                onClick={() => goToNextStep(3)}
-                disabled={code.length < 6}>
-                Verify Code
+                onClick={handleVerifyCode}
+                disabled={code.length < 6 || loading}>
+                {loading ? 'Verifying…' : 'Verify Code'}
               </Button>
               <p className='text-muted-foreground text-center text-sm'>
                 Didn't receive it?{' '}
                 <Button
                   variant='link'
-                  className='cursor-pointer px-1 font-medium underline underline-offset-4 hover:underline'>
+                  className='cursor-pointer px-1 font-medium underline underline-offset-4 hover:underline'
+                  onClick={handleResendCode}
+                  disabled={loading}>
                   Resend Code
                 </Button>
               </p>
             </div>
           </>
-        );
+        )
 
-      case 3: // Set New Password Step
+      case 3: {
         const strength = calculatePasswordStrength(password)
         return (
           <>
-            {/* Header Text */}
             <div className='mb-6 text-center'>
               <h1 className='mb-2 text-2xl font-bold tracking-tight text-balance'>Create New Password</h1>
               <p className='text-muted-foreground text-sm text-balance'>
                 Choose a strong password for account security.
               </p>
             </div>
-            {/* Form */}
             <div className='flex flex-col gap-6'>
               <div className='relative'>
                 <Input
@@ -135,10 +187,9 @@ const ForgotPasswordPage1 = () => {
                   className='bg-transparent ps-10 text-sm'
                   autoComplete='new-password'
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={e => { setPassword(e.target.value); setError('') }}
                   required />
-                <Lock
-                  className='text-muted-foreground absolute start-3 top-1/2 size-5 -translate-y-1/2' />
+                <Lock className='text-muted-foreground absolute start-3 top-1/2 size-5 -translate-y-1/2' />
                 <Button
                   type='button'
                   variant='ghost'
@@ -149,39 +200,42 @@ const ForgotPasswordPage1 = () => {
                   {showPassword ? <EyeOff /> : <Eye />}
                 </Button>
               </div>
-              {/* Password Strength */}
               <div className='flex flex-col gap-1'>
                 <Progress value={strength} className='h-2' aria-label='Password strength indicator' />
                 <small className='text-muted-foreground block text-end text-xs'>
                   {strength === 0 ? '' : strength < 50 ? 'Weak' : strength < 75 ? 'Medium' : 'Strong'}
                 </small>
               </div>
-
+              {error && <p className='text-destructive text-sm text-center'>{error}</p>}
               <Button
                 type='button'
                 className="h-9 px-4 py-2 w-full cursor-pointer"
-                onClick={() => goToNextStep(4)}
-                disabled={strength < 75}>
-                Set New Password
+                onClick={handleResetPassword}
+                disabled={strength < 75 || loading}>
+                {loading ? 'Resetting…' : 'Set New Password'}
               </Button>
             </div>
           </>
-        );
+        )
+      }
 
-      case 4: // Completion Step
+      case 4:
         return (
           <>
             <CardHeader className='mb-4 pt-0 text-center'>
-              <CardTitle className='text-2xl'>Congratulations</CardTitle>
-              <CardDescription>You successfully reset your password</CardDescription>
+              <CardTitle className='text-2xl'>Password Reset!</CardTitle>
+              <CardDescription>Your password has been reset successfully.</CardDescription>
             </CardHeader>
             <CardFooter>
-              <Button className="h-9 px-4 py-2 w-full cursor-pointer" onClick={() => void 0}>
-                Back to login
+              <Button
+                className="h-9 px-4 py-2 w-full cursor-pointer"
+                onClick={() => navigate('/login')}>
+                Back to Login
               </Button>
             </CardFooter>
           </>
-        );
+        )
+
       default:
         return null
     }
@@ -194,7 +248,6 @@ const ForgotPasswordPage1 = () => {
         className='relative z-10 container mx-auto flex min-h-dvh items-center justify-center px-4 py-12 sm:py-16'>
         <Card
           className='bg-background/80 relative w-full max-w-md ring-0 p-6 shadow-2xl backdrop-blur-md sm:p-8'>
-          {/* Centered Logo (Structure similar to LoginPage1/ForgotPasswordPage1 but using LoginPage3's logo style) */}
           <div className='my-4 flex justify-center'>
             <div className='bg-secondary relative size-14 rounded-full border'>
               <div className='flex h-full items-center justify-center'>
@@ -228,12 +281,11 @@ const ForgotPasswordPage1 = () => {
             </div>
           </div>
 
-          {/* Render the current step content */}
           {renderStepContent()}
         </Card>
       </div>
     </section>
-  );
+  )
 }
 
 export default ForgotPasswordPage1

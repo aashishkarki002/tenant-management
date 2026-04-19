@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }) => {
     // Skip fetch on public routes to prevent redirect loops.
     if (!force) {
       const path = window.location.pathname.toLowerCase();
-      if (path.startsWith("/login") || path.startsWith("/signup")) {
+      if (path.startsWith("/login") || path.startsWith("/signup") || path.startsWith("/forget-password")) {
         setLoading(false);
         setUser(null);
         return;

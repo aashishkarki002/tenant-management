@@ -44,7 +44,7 @@ api.interceptors.response.use(
     const isLogoutRequest = originalRequest.url?.includes("/logout");
     const path = window.location.pathname.toLowerCase();
     const isPublicRoute =
-      path.startsWith("/login") || path.startsWith("/signup");
+      path.startsWith("/login") || path.startsWith("/signup") || path.startsWith("/forget-password");
 
     // Attempt token refresh on 401 (access token expired)
     if (

@@ -927,7 +927,7 @@ function AddTenants() {
                   {formik.values.paymentMethod === "cheque" && (
                     <>
                       <div className="space-y-2">
-                        <Label>Cheque Amount (₹)</Label>
+                        <Label>Cheque Amount (RS)</Label>
                         <Input
                           type="number"
                           name="chequeAmount"
@@ -957,7 +957,7 @@ function AddTenants() {
                           <TableRow>
                             <TableHead>Unit Name</TableHead>
                             <TableHead>Sqft*</TableHead>
-                            <TableHead>₹/Sqft*</TableHead>
+                            <TableHead>RS /Sqft*</TableHead>
                             <TableHead>CAM/Sqft*</TableHead>
                             <TableHead>Security Deposit*</TableHead>
                           </TableRow>
@@ -1161,15 +1161,15 @@ function AddTenants() {
                           </div>
                           <div>
                             <Label className="text-sm text-muted-foreground">Gross Monthly Rent:</Label>
-                            <p className="text-lg font-medium">₹{totals.grossMonthlyRent.toFixed(2)}</p>
+                            <p className="text-lg font-medium">RS {totals.grossMonthlyRent.toFixed(2)}</p>
                           </div>
                           <div>
                             <Label className="text-sm text-muted-foreground">Monthly CAM:</Label>
-                            <p className="text-lg font-medium">₹{totals.monthlyCAM.toFixed(2)}</p>
+                            <p className="text-lg font-medium">RS {totals.monthlyCAM.toFixed(2)}</p>
                           </div>
                           <div>
                             <Label className="text-sm text-muted-foreground">Total Security Deposit:</Label>
-                            <p className="text-lg font-medium">₹{totals.totalSecurityDeposit.toFixed(2)}</p>
+                            <p className="text-lg font-medium">RS {totals.totalSecurityDeposit.toFixed(2)}</p>
                           </div>
                         </div>
                       </div>

@@ -14,6 +14,7 @@ import { exportRentsToCsv } from "./utils/rentExport";
 import api from "../../plugins/axios";
 import { NEPALI_MONTH_NAMES } from "@/utils/nepaliDate";
 import { NEPALI_QUARTERS, getQuarterForMonth } from "./utils/quarterUtils";
+import { TdsTab } from "./components/TdsTab";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { cn } from "@/lib/utils";
 import { SlidersHorizontal, Search } from "lucide-react";
@@ -317,6 +318,7 @@ const RentPayment = () => {
           {[
             { id: "rent", label: "Rent" },
             { id: "payments", label: "Payments" },
+            { id: "tds", label: "TDS" },
           ].map((t) => (
             <button
               key={t.id}
@@ -524,6 +526,8 @@ const RentPayment = () => {
           </div>
         </div>
       )}
+
+      {activeTab === "tds" && <TdsTab />}
 
       <Sheet open={isFilterDrawerOpen} onOpenChange={setIsFilterDrawerOpen}>
         <SheetContent side="bottom" className="h-[85vh] p-0 rounded-t-2xl">

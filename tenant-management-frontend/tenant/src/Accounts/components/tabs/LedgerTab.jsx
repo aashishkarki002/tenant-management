@@ -179,7 +179,7 @@ function MetricChip({ label, value, color, bg, border, icon }) {
                 className="text-[17px] font-black tabular-nums leading-none"
                 style={{ color, letterSpacing: "-0.025em" }}
             >
-                ₹{fmtK(value)}
+                RS {fmtK(value)}
             </div>
         </div>
     );

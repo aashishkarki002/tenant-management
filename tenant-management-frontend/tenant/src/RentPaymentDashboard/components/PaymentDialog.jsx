@@ -405,11 +405,11 @@ export const PaymentDialog = ({
                   Rent {tdsAmountPaisa > 0 ? "(net TDS)" : ""}
                 </p>
                 <p style={{ ...S.textStrong, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
-                  ₹{rentAmount.toLocaleString()}
+                  RS {rentAmount.toLocaleString()}
                 </p>
                 {tdsAmountPaisa > 0 && (
                   <p style={{ ...S.warning, fontSize: "10px", marginTop: "3px" }}>
-                    TDS ₹{(tdsAmountPaisa / 100).toLocaleString()} withheld
+                    TDS RS {(tdsAmountPaisa / 100).toLocaleString()} withheld
                   </p>
                 )}
               </div>
@@ -420,7 +420,7 @@ export const PaymentDialog = ({
                   CAM
                 </p>
                 <p style={{ ...S.textStrong, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
-                  ₹{camAmount.toLocaleString()}
+                  RS {camAmount.toLocaleString()}
                 </p>
               </div>
 
@@ -452,7 +452,7 @@ export const PaymentDialog = ({
                     </span>
                   </div>
                   <p style={{ ...S.danger, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
-                    ₹{lateFeeAmount.toLocaleString()}
+                    RS {lateFeeAmount.toLocaleString()}
                   </p>
                   <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "3px" }}>Full payment required</p>
                 </div>
@@ -461,7 +461,7 @@ export const PaymentDialog = ({
 
             <div style={{ ...S.divider, marginTop: "12px", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <p style={{ ...S.textSub, fontSize: "12px" }}>Total Due</p>
-              <p style={{ ...S.textStrong, fontSize: "17px", fontWeight: 700 }}>₹{totalDue.toLocaleString()}</p>
+              <p style={{ ...S.textStrong, fontSize: "17px", fontWeight: 700 }}>RS {totalDue.toLocaleString()}</p>
             </div>
 
             {/* ── TDS Verification ──────────────────────────────────────────── */}
@@ -486,12 +486,12 @@ export const PaymentDialog = ({
                       )}
                     </div>
                     <p style={{ fontSize: "11px", color: rent?.tdsPaidToGovernment ? "var(--color-success)" : "rgb(161, 98, 7)", opacity: 0.9 }}>
-                      {rent?.tdsPaidToGovernment 
+                      {rent?.tdsPaidToGovernment
                         ? `Verified on ${rent.tdsPaidDate ? new Date(rent.tdsPaidDate).toLocaleDateString() : "N/A"}`
-                        : "Tenant must pay ₹" + (tdsAmountPaisa / 100).toLocaleString() + " to government"}
+                        : "Tenant must pay RS" + (tdsAmountPaisa / 100).toLocaleString() + " to government"}
                     </p>
                   </div>
-                  
+
                   {!rent?.tdsPaidToGovernment && (
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }}>
@@ -675,7 +675,7 @@ export const PaymentDialog = ({
                           </span>
                         )}
                         <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 700 }}>
-                          ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          RS {unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </p>
                         <p style={{ ...S.textWeak, fontSize: "10px" }}>remaining</p>
                       </div>
@@ -753,7 +753,7 @@ export const PaymentDialog = ({
                     </label>
                     <Input
                       type="number"
-                      placeholder={`Full due: ₹${totalDue.toLocaleString()}`}
+                      placeholder={`Full due: RS ${totalDue.toLocaleString()}`}
                       value={formik.values?.amount || ""}
                       onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
                       onBlur={(e) => { if (!e.target.value) handleAmountChange(totalDue, rent); }}
@@ -773,11 +773,11 @@ export const PaymentDialog = ({
                       <div>
                         <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>Rent</p>
                         <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                          Due ₹{rentAmount.toLocaleString()}
+                          Due RS {rentAmount.toLocaleString()}
                         </p>
                       </div>
                       <p style={{ fontSize: "13px", fontWeight: 700, color: rentAllocation > 0 ? "var(--color-text-strong)" : "var(--color-muted)" }}>
-                        ₹{rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        RS {rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </p>
                     </div>
 
@@ -786,11 +786,11 @@ export const PaymentDialog = ({
                         <div>
                           <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>CAM</p>
                           <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                            Due ₹{camAmount.toLocaleString()}
+                            Due RS {camAmount.toLocaleString()}
                           </p>
                         </div>
                         <p style={{ fontSize: "13px", fontWeight: 700, color: camAllocation > 0 ? "var(--color-text-strong)" : "var(--color-muted)" }}>
-                          ₹{camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          RS {camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </p>
                       </div>
                     )}
@@ -819,16 +819,16 @@ export const PaymentDialog = ({
                             </span>
                           </div>
                           <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                            Due ₹{lateFeeAmount.toLocaleString()} · full only
+                            Due RS {lateFeeAmount.toLocaleString()} · full only
                           </p>
                         </div>
                         <div style={{ textAlign: "right" }}>
                           <p style={{ fontSize: "13px", fontWeight: 700, color: (lateFeeAllocation || 0) > 0 ? "var(--color-danger)" : "var(--color-muted)" }}>
-                            ₹{(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            RS {(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </p>
                           {(lateFeeAllocation || 0) === 0 && paymentAmount > 0 && (
                             <p style={{ ...S.textWeak, fontSize: "10px" }}>
-                              +₹{lateFeeAmount.toLocaleString()} to cover
+                              +RS {lateFeeAmount.toLocaleString()} to cover
                             </p>
                           )}
                         </div>
@@ -852,7 +852,7 @@ export const PaymentDialog = ({
                               <div key={alloc.unitId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                 <span style={{ ...S.textSub, fontSize: "11px" }}>{unit?.name || alloc.unitId}</span>
                                 <span style={{ ...S.textBody, fontSize: "11px", fontWeight: 600 }}>
-                                  ₹{alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                  RS {alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </span>
                               </div>
                             );
@@ -874,7 +874,7 @@ export const PaymentDialog = ({
                         Total Allocated
                       </p>
                       <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 700 }}>
-                        ₹{totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        RS {totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </p>
                     </div>
                   </div>
@@ -908,7 +908,7 @@ export const PaymentDialog = ({
                       <div style={{ flex: 1 }}>
                         <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>Rent</p>
                         <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                          Due ₹{rentAmount.toLocaleString()}
+                          Due RS {rentAmount.toLocaleString()}
                         </p>
                       </div>
                       <div style={{ width: "130px" }}>
@@ -927,7 +927,7 @@ export const PaymentDialog = ({
                       <div style={{ flex: 1 }}>
                         <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>CAM</p>
                         <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                          Due ₹{camAmount.toLocaleString()}
+                          Due RS {camAmount.toLocaleString()}
                         </p>
                       </div>
                       <div style={{ width: "130px" }}>
@@ -966,11 +966,11 @@ export const PaymentDialog = ({
                             </span>
                           </div>
                           <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                            Due ₹{lateFeeAmount.toLocaleString()}
+                            Due RS {lateFeeAmount.toLocaleString()}
                           </p>
                           {isPartialLateFee && (
                             <p style={{ ...S.danger, fontSize: "10px", marginTop: "2px", fontWeight: 500 }}>
-                              Enter ₹{lateFeeAmount.toLocaleString()} or 0
+                              Enter RS {lateFeeAmount.toLocaleString()} or 0
                             </p>
                           )}
                         </div>
@@ -1001,7 +1001,7 @@ export const PaymentDialog = ({
                               padding: 0,
                             }}
                           >
-                            Fill ₹{lateFeeAmount.toLocaleString()}
+                            Fill RS {lateFeeAmount.toLocaleString()}
                           </button>
                         </div>
                       </div>
@@ -1027,8 +1027,8 @@ export const PaymentDialog = ({
                             color: isOverAllocated ? "var(--color-danger)" : "var(--color-warning)",
                           }}>
                             {isOverAllocated
-                              ? `₹${(totalAllocated - (formik.values?.amount || 0)).toLocaleString()} over`
-                              : `₹${((formik.values?.amount || 0) - totalAllocated).toLocaleString()} unallocated`}
+                              ? `RS ${(totalAllocated - (formik.values?.amount || 0)).toLocaleString()} over`
+                              : `RS ${((formik.values?.amount || 0) - totalAllocated).toLocaleString()} unallocated`}
                           </p>
                         )}
                       </div>
@@ -1037,7 +1037,7 @@ export const PaymentDialog = ({
                         fontWeight: 700,
                         color: isOverAllocated ? "var(--color-danger)" : "var(--color-text-strong)",
                       }}>
-                        ₹{totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        RS {totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </p>
                     </div>
                   </div>
@@ -1060,8 +1060,8 @@ export const PaymentDialog = ({
                           color: unitAllocationMismatch ? "var(--color-danger)" : "var(--color-text-sub)",
                         }}>
                           {unitAllocationMismatch
-                            ? `Total ₹${manualUnitRentTotal.toFixed(0)} ≠ rent ₹${rentAllocation.toFixed(0)}`
-                            : `Must sum to ₹${rentAllocation.toLocaleString()}`}
+                            ? `Total RS ${manualUnitRentTotal.toFixed(0)} ≠ rent RS ${rentAllocation.toFixed(0)}`
+                            : `Must sum to Rs${rentAllocation.toLocaleString()}`}
                         </p>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1070,7 +1070,7 @@ export const PaymentDialog = ({
                             <div style={{ flex: 1 }}>
                               <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 500 }}>{unit.name}</p>
                               <p style={{ ...S.textWeak, fontSize: "10px" }}>
-                                Remaining ₹{unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                Remaining RS {unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                               </p>
                             </div>
                             <Input
@@ -1243,9 +1243,9 @@ export const PaymentDialog = ({
             }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: isMobile ? "8px" : "4px", marginBottom: "8px" }}>
                 {[
-                  { label: "Due", value: `₹${totalDue.toLocaleString()}` },
-                  { label: "Allocated", value: `₹${totalAllocated.toLocaleString()}` },
-                  { label: "Remaining", value: `₹${balanceOwed.toLocaleString()}` },
+                  { label: "Due", value: `RS${totalDue.toLocaleString()}` },
+                  { label: "Allocated", value: `RS${totalAllocated.toLocaleString()}` },
+                  { label: "Remaining", value: `RS ${balanceOwed.toLocaleString()}` },
                 ].map((item) => (
                   <div key={item.label} style={{ textAlign: "center" }}>
                     <p style={{ ...S.textWeak, fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -1294,12 +1294,12 @@ export const PaymentDialog = ({
                   )}
                   {isPartialLateFee && (
                     <p style={{ ...S.danger, fontSize: "11px" }}>
-                      Late fee must be ₹{lateFeeAmount.toLocaleString()} or 0.
+                      Late fee must be RS {lateFeeAmount.toLocaleString()} or 0.
                     </p>
                   )}
                   {unitAllocationMismatch && (
                     <p style={{ ...S.danger, fontSize: "11px" }}>
-                      Unit allocations must sum to ₹{rentAllocation.toFixed(2)}.
+                      Unit allocations must sum to RS {rentAllocation.toFixed(2)}.
                     </p>
                   )}
                   {needsBankAccount && !formik.values?.bankAccountCode && (

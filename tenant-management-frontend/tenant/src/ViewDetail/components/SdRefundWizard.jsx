@@ -39,7 +39,7 @@ const ADJUSTMENT_TYPES = [
     {
         type: "CASH_REFUND",
         label: "Cash / Bank Refund",
-        icon: "₹",
+        icon: " RS ",
         color: "#10b981",
         description: "Return funds to tenant via cash or bank transfer",
         needsPayment: true,

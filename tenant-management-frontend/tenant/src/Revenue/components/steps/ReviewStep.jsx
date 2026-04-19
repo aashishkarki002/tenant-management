@@ -42,7 +42,7 @@ export function ReviewStep({ formik, tenants, bankAccounts, revenueSource }) {
           <Row label="Payer" value={payerLabel} />
           <Row label="Reference type" value={sourceLabel} />
           <Row label="Reference ID" value={v.referenceId} />
-          <Row label="Amount" value={v.amount ? `₹ ${v.amount}` : "—"} />
+          <Row label="Amount" value={v.amount ? `RS ${v.amount}` : "—"} />
           <Row label="Notes" value={v.notes} />
           <Row label="Bank account" value={bankLabel} />
           <Row label="Payment date" value={v.date} />

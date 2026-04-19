@@ -46,7 +46,7 @@ const fmtK = (v) => {
     return `${s}${a}`;
 };
 
-const fmtPaisa = (paisa = 0) => `₹${fmtK(paisa / 100)}`;
+const fmtPaisa = (paisa = 0) => `RS ${fmtK(paisa / 100)}`;
 
 const pct = (part, total) =>
     total > 0 ? Math.min(100, Math.round((part / total) * 100)) : 0;
