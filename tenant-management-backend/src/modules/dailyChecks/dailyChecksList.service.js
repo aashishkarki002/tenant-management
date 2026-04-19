@@ -486,7 +486,6 @@ export async function submitResult(resultId, updateData, adminId) {
       failedItems: result.failedItems,
       propertyId: result.property?._id ?? result.property,
     },
-    adminIds: [adminId.toString()],
   }).catch((err) =>
     console.error("[checklist] failed to emit submitted notification:", err),
   );
