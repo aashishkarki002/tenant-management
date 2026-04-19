@@ -1,6 +1,7 @@
 import Vendor from "./vendor.model.js";
 import VendorContract from "./vendorContract.model.js";
 import AssignedPersonnel from "./assignedPersonnel.model.js";
+import VendorPayment from "./vendorPayment.model.js";
 
 // ─── VENDOR CRUD ───────────────────────────────────────────────────────────────
 
@@ -138,6 +139,7 @@ export const createContract = async (req, res) => {
     const {
       vendorId,
       propertyId,
+      contractType = "service",
       serviceType,
       description,
       billingCycle,
@@ -146,20 +148,31 @@ export const createContract = async (req, res) => {
       endDate,
       autoRenew,
       expenseAccountCode,
+      revenueAccountCode,
+      stallDescription,
+      eventName,
+      leaseDays,
       notes,
     } = req.body;
 
-    if (
-      !vendorId ||
-      !propertyId ||
-      !contractAmountPaisa ||
-      !startDate ||
-      !expenseAccountCode
-    ) {
+    if (!vendorId || !propertyId || !contractAmountPaisa || !startDate) {
       return res.status(400).json({
         success: false,
-        message:
-          "vendorId, propertyId, contractAmountPaisa, startDate, expenseAccountCode are required",
+        message: "vendorId, propertyId, contractAmountPaisa, startDate are required",
+      });
+    }
+
+    if (contractType === "service" && !expenseAccountCode) {
+      return res.status(400).json({
+        success: false,
+        message: "expenseAccountCode is required for service contracts",
+      });
+    }
+
+    if (contractType === "stall_lease" && !revenueAccountCode) {
+      return res.status(400).json({
+        success: false,
+        message: "revenueAccountCode is required for stall_lease contracts",
       });
     }
 
@@ -172,6 +185,7 @@ export const createContract = async (req, res) => {
     const contract = await VendorContract.create({
       vendor: vendorId,
       property: propertyId,
+      contractType,
       serviceType: serviceType || vendor.serviceType,
       description,
       billingCycle,
@@ -179,7 +193,11 @@ export const createContract = async (req, res) => {
       startDate,
       endDate,
       autoRenew,
-      expenseAccountCode,
+      expenseAccountCode: contractType === "service" ? expenseAccountCode : null,
+      revenueAccountCode: contractType === "stall_lease" ? revenueAccountCode : null,
+      stallDescription: contractType === "stall_lease" ? stallDescription : null,
+      eventName: contractType === "stall_lease" ? eventName : null,
+      leaseDays: contractType === "stall_lease" ? leaseDays : null,
       notes,
     });
 
@@ -312,5 +330,176 @@ export const getVendorsByServiceType = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: "Failed to fetch vendors" });
+  }
+};
+
+// ─── VENDOR PAYMENTS (AP) ──────────────────────────────────────────────────────
+
+export const recordVendorPayment = async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+    const {
+      contractId,
+      amountPaisa,
+      paymentDate,
+      nepaliDate,
+      paymentMethod,
+      bankAccountId,
+      referenceNumber,
+      tdsDeductedPaisa,
+      notes,
+    } = req.body;
+
+    if (!amountPaisa || !paymentDate || !paymentMethod) {
+      return res.status(400).json({
+        success: false,
+        message: "amountPaisa, paymentDate, and paymentMethod are required",
+      });
+    }
+
+    if (
+      (paymentMethod === "bank_transfer" || paymentMethod === "cheque") &&
+      !bankAccountId
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "bankAccountId is required for bank_transfer or cheque payments",
+      });
+    }
+
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found" });
+    }
+
+    const payment = await VendorPayment.create({
+      vendor: vendorId,
+      contract: contractId || null,
+      amountPaisa,
+      paymentDirection: req.body.paymentDirection === "inflow" ? "inflow" : "outflow",
+      paymentDate,
+      nepaliDate: nepaliDate || null,
+      paymentMethod,
+      bankAccount: bankAccountId || null,
+      referenceNumber: referenceNumber || null,
+      tdsDeductedPaisa: tdsDeductedPaisa || 0,
+      notes: notes || null,
+      recordedBy: req.admin.id,
+    });
+
+    await payment.populate([
+      { path: "contract", select: "description billingCycle contractAmountPaisa" },
+      { path: "bankAccount", select: "bankName accountNumber" },
+      { path: "recordedBy", select: "name email" },
+    ]);
+
+    return res.status(201).json({ success: true, message: "Payment recorded", payment });
+  } catch (error) {
+    console.error("recordVendorPayment error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to record payment" });
+  }
+};
+
+export const getVendorPayments = async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+    const { from, to, contractId } = req.query;
+
+    const filter = { vendor: vendorId };
+    if (contractId) filter.contract = contractId;
+    if (from || to) {
+      filter.paymentDate = {};
+      if (from) filter.paymentDate.$gte = new Date(from);
+      if (to) filter.paymentDate.$lte = new Date(to);
+    }
+
+    const payments = await VendorPayment.find(filter)
+      .populate("contract", "description billingCycle")
+      .populate("bankAccount", "bankName accountNumber")
+      .populate("recordedBy", "name email")
+      .sort({ paymentDate: -1 });
+
+    return res.status(200).json({ success: true, count: payments.length, payments });
+  } catch (error) {
+    console.error("getVendorPayments error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch payments" });
+  }
+};
+
+export const getVendorBalance = async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor not found" });
+    }
+
+    const [contractAgg, paymentAgg] = await Promise.all([
+      VendorContract.aggregate([
+        { $match: { vendor: vendor._id, isActive: true } },
+        {
+          $group: {
+            _id: "$contractType",
+            total: { $sum: "$contractAmountPaisa" },
+          },
+        },
+      ]),
+      VendorPayment.aggregate([
+        { $match: { vendor: vendor._id } },
+        {
+          $group: {
+            _id: "$paymentDirection",
+            total: { $sum: "$amountPaisa" },
+            totalTds: { $sum: "$tdsDeductedPaisa" },
+          },
+        },
+      ]),
+    ]);
+
+    const serviceContractPaisa =
+      contractAgg.find((r) => r._id === "service")?.total ?? 0;
+    const stallLeaseContractPaisa =
+      contractAgg.find((r) => r._id === "stall_lease")?.total ?? 0;
+
+    const totalOutflowPaisa =
+      paymentAgg.find((r) => r._id === "outflow")?.total ?? 0;
+    const totalInflowPaisa =
+      paymentAgg.find((r) => r._id === "inflow")?.total ?? 0;
+    const totalTdsDeductedPaisa =
+      paymentAgg.find((r) => r._id === "outflow")?.totalTds ?? 0;
+
+    // Expense outstanding: what we still owe service vendors
+    const expenseOutstandingPaisa = serviceContractPaisa - totalOutflowPaisa;
+    // Revenue outstanding: what stall vendors still owe us
+    const revenueOutstandingPaisa = stallLeaseContractPaisa - totalInflowPaisa;
+
+    return res.status(200).json({
+      success: true,
+      balance: {
+        // expense (service contracts)
+        serviceContractPaisa,
+        totalOutflowPaisa,
+        expenseOutstandingPaisa,
+        totalTdsDeductedPaisa,
+        // revenue (stall_lease contracts)
+        stallLeaseContractPaisa,
+        totalInflowPaisa,
+        revenueOutstandingPaisa,
+      },
+    });
+  } catch (error) {
+    console.error("getVendorBalance error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch vendor balance" });
   }
 };

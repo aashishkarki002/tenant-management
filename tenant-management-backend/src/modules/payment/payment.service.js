@@ -408,6 +408,7 @@ export async function createPayment(paymentData) {
         adminId: payment.createdBy,
         entityId,
         blockId: rent.block,
+        paymentMethod: paymentData.paymentMethod,
         session,
       });
     }
@@ -421,6 +422,7 @@ export async function createPayment(paymentData) {
         adminId: payment.createdBy,
         entityId,
         blockId: cam.block,
+        paymentMethod: paymentData.paymentMethod,
         session,
       });
     }
@@ -435,6 +437,7 @@ export async function createPayment(paymentData) {
         adminId: payment.createdBy,
         entityId,
         blockId: rent.block,
+        paymentMethod: paymentData.paymentMethod,
         session,
       });
     }

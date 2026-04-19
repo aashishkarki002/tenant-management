@@ -1,6 +1,41 @@
+import NepaliDate from "nepali-datetime";
 import { ledgerService } from "./ledger.service.js";
 import { getBalanceSummary } from "./domains/accountBalanceManger.js";
 import { formatMoney } from "../../utils/moneyUtil.js";
+
+// ─── Date-range resolver (mirrors ledger.service.js pattern) ──────────────────
+const FISCAL_QUARTER_MONTHS = { 1: [3, 4, 5], 2: [6, 7, 8], 3: [9, 10, 11], 4: [0, 1, 2] };
+const FISCAL_YEAR_MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+
+function bsMonthToDateRange(year, month0) {
+  const firstNp = new NepaliDate(year, month0, 1);
+  const lastDay = NepaliDate.getDaysOfMonth(year, month0);
+  const lastNp  = new NepaliDate(year, month0, lastDay);
+  const toISO   = (nd) => nd.getDateObject().toISOString().split("T")[0];
+  return { startDate: toISO(firstNp), endDate: toISO(lastNp) };
+}
+
+function resolveBSFilterToGregorian({ fiscalYear, quarter, month, startDate, endDate }) {
+  if (startDate || endDate) return { startDate: startDate || undefined, endDate: endDate || undefined };
+  const fy = fiscalYear ? Number(fiscalYear) : undefined;
+  if (month) {
+    const r = bsMonthToDateRange(fy ?? new NepaliDate().getYear(), Number(month) - 1);
+    return { startDate: r.startDate, endDate: r.endDate };
+  }
+  if (quarter) {
+    const months = FISCAL_QUARTER_MONTHS[Number(quarter)].map((m0) => ({ year: fy, month0: m0 }));
+    const first  = bsMonthToDateRange(months[0].year, months[0].month0);
+    const last   = bsMonthToDateRange(months[months.length - 1].year, months[months.length - 1].month0);
+    return { startDate: first.startDate, endDate: last.endDate };
+  }
+  if (fy != null && Number.isFinite(fy)) {
+    const fyMonths = FISCAL_YEAR_MONTH_ORDER.map((m0) => ({ year: m0 <= 2 ? fy + 1 : fy, month0: m0 }));
+    const first    = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
+    const last     = bsMonthToDateRange(fyMonths[fyMonths.length - 1].year, fyMonths[fyMonths.length - 1].month0);
+    return { startDate: first.startDate, endDate: last.endDate };
+  }
+  return { startDate: undefined, endDate: undefined };
+}
 
 /**
  * Get ledger entries with various filtering options
@@ -183,9 +218,18 @@ export const getAccountLedger = async (req, res) => {
  */
 export const getBalanceSheet = async (req, res) => {
   try {
-    const { entityId } = req.query;
+    const { entityId, fiscalYear, quarter, month, startDate, endDate } = req.query;
 
-    const summary = await getBalanceSummary({ entityId, nonZeroOnly: false });
+    const { startDate: resolvedStart, endDate: resolvedEnd } = resolveBSFilterToGregorian({
+      fiscalYear, quarter, month, startDate, endDate,
+    });
+
+    const summary = await getBalanceSummary({
+      entityId,
+      nonZeroOnly: false,
+      startDate: resolvedStart,
+      endDate: resolvedEnd,
+    });
     const { accounts, subtotals, trialBalance } = summary;
 
     const assetAccounts     = accounts.ASSET     ?? [];

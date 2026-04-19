@@ -24,6 +24,8 @@ const adminSchema = new Schema({
   // FIX: Removed the erroneous `timestamps: true` field-level option —
   // that is a schema-level option and was silently ignored here.
   passwordChangedAt: { type: Date, default: null },
+  passwordResetToken: { type: String, default: null },
+  passwordResetTokenExpiresAt: { type: Date, default: null },
 });
 
 adminSchema.pre("save", async function () {

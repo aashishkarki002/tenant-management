@@ -24,6 +24,8 @@ import {
   recordUnitRentPayment,
 } from "./rent.payment.service.js";
 import { handleTdsDocumentUpload } from "./rent.tds.service.js";
+import { generateTdsCertificate } from "../../utils/tdsCertificateGenerator.js";
+import { generateRentRollPDF } from "../../utils/rentRollPdfGenerator.js";
 
 // ── Read ──────────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,8 @@ export async function getRentsController(req, res) {
       // Treat "all" (sent by the frontend All-Statuses option) as no filter
       status: rawStatus === "all" ? undefined : rawStatus,
       nepaliMonth: req.query.nepaliMonth,
+      nepaliMonthStart: req.query.nepaliMonthStart,
+      nepaliMonthEnd: req.query.nepaliMonthEnd,
       nepaliYear: req.query.nepaliYear,
       startDate: req.query.startDate,
       endDate: req.query.endDate,
@@ -476,6 +480,117 @@ export async function uploadTdsDocumentController(req, res) {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to upload TDS document",
+    });
+  }
+}
+
+/**
+ * GET /api/rent/tds/certificate/:tenantId?nepaliYear=2081
+ *
+ * Generates a TDS deduction certificate PDF for a tenant for the given Nepali year.
+ * Streams the PDF directly to the client as a download.
+ */
+export async function generateTdsCertificateController(req, res) {
+  try {
+    const { tenantId } = req.params;
+    const { nepaliYear } = req.query;
+
+    if (!nepaliYear) {
+      return res.status(400).json({ success: false, message: "nepaliYear query param is required" });
+    }
+
+    const Rent = (await import("./rent.Model.js")).Rent;
+    const Tenant = (await import("../tenant/Tenant.Model.js")).default;
+
+    const tenant = await Tenant.findById(tenantId).select("name address panNumber").lean();
+    if (!tenant) {
+      return res.status(404).json({ success: false, message: "Tenant not found" });
+    }
+
+    const rents = await Rent.find({
+      tenant: tenantId,
+      nepaliYear: Number(nepaliYear),
+      tdsAmountPaisa: { $gt: 0 },
+    })
+      .select("nepaliYear nepaliMonth grossRentAmountPaisa tdsAmountPaisa tdsRecordedInLedger tdsPaidToGovernment")
+      .lean();
+
+    if (!rents.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No TDS records found for tenant in year ${nepaliYear}`,
+      });
+    }
+
+    const pdfBuffer = await generateTdsCertificate({ tenant, rents, nepaliYear });
+
+    const filename = `TDS-Certificate-${tenant.name.replace(/\s+/g, "-")}-${nepaliYear}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error("[generateTdsCertificateController]", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate TDS certificate",
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * GET /api/rent/export/pdf?nepaliMonth=1&nepaliYear=2081&propertyId=...
+ *
+ * Generates a rent roll PDF for the given period and streams it to the client.
+ */
+export async function exportRentRollPdfController(req, res) {
+  try {
+    const { nepaliMonth, nepaliYear, propertyId } = req.query;
+
+    if (!nepaliYear) {
+      return res.status(400).json({ success: false, message: "nepaliYear is required" });
+    }
+
+    const filter = { nepaliYear: Number(nepaliYear) };
+    if (nepaliMonth) filter.nepaliMonth = Number(nepaliMonth);
+
+    const Rent = (await import("./rent.Model.js")).Rent;
+    let query = Rent.find(filter)
+      .populate("tenant", "name")
+      .populate("block", "name")
+      .populate("innerBlock", "name")
+      .sort({ "tenant.name": 1, nepaliMonth: 1 })
+      .lean();
+
+    const rents = await query;
+
+    // Filter by property if requested (block belongs to property)
+    const filteredRents = propertyId
+      ? rents.filter((r) => r.block?.property?.toString() === propertyId)
+      : rents;
+
+    if (!filteredRents.length) {
+      return res.status(404).json({ success: false, message: "No rent records found for this period" });
+    }
+
+    const period = { nepaliMonth: nepaliMonth ? Number(nepaliMonth) : null, nepaliYear: Number(nepaliYear) };
+    const pdfBuffer = await generateRentRollPDF(filteredRents, period);
+
+    const filename = nepaliMonth
+      ? `Rent-Roll-${nepaliYear}-Month${nepaliMonth}.pdf`
+      : `Rent-Roll-${nepaliYear}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error("[exportRentRollPdfController]", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate rent roll PDF",
+      error: error.message,
     });
   }
 }

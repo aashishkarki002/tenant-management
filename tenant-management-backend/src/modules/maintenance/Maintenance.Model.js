@@ -139,6 +139,15 @@ const maintenanceSchema = new mongoose.Schema(
     completionNotes: String,
     recurring: { type: Boolean, default: false },
     recurringIntervalDays: Number,
+    // Standard top-level BS date fields (matches convention across all other models)
+    nepaliMonth: {
+      type: Number,
+      min: 1,
+      max: 12,
+    },
+    nepaliYear: {
+      type: Number,
+    },
     scheduledNepaliMonth: {
       type: Number,
       min: 1,
@@ -189,6 +198,7 @@ maintenanceSchema.index({ entityId: 1, scheduledDate: -1 });
 maintenanceSchema.index({ property: 1, unit: 1 });
 maintenanceSchema.index({ scope: 1, property: 1, status: 1 });
 maintenanceSchema.index({ sourceType: 1, sourceRef: 1 });
+maintenanceSchema.index({ nepaliYear: 1, nepaliMonth: 1 });
 maintenanceSchema.index({ scheduledNepaliYear: 1, scheduledNepaliMonth: 1 });
 maintenanceSchema.index({ completionNepaliYear: 1, completionNepaliMonth: 1 });
 

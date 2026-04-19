@@ -419,9 +419,12 @@ export async function rebuildAccountBalance(
  * @param {string[]}         [options.types]      — e.g. ["ASSET", "LIABILITY"]
  * @param {string[]}         [options.codes]      — specific account codes
  * @param {boolean}          [options.nonZeroOnly]
+ * @param {string}           [options.startDate]  — ISO date string (Gregorian); enables period mode
+ * @param {string}           [options.endDate]    — ISO date string (Gregorian); enables period mode
  */
 export async function getBalanceSummary(options = {}) {
-  const { entityId, types, codes, nonZeroOnly = false } = options;
+  const { entityId, types, codes, nonZeroOnly = false, startDate, endDate } = options;
+  const hasPeriod = !!(startDate || endDate);
 
   const filter = { isActive: true };
   if (entityId) filter.entityId = new mongoose.Types.ObjectId(String(entityId));
@@ -433,13 +436,66 @@ export async function getBalanceSummary(options = {}) {
     .sort({ code: 1 })
     .lean();
 
+  // When a date range is given, compute balances from ledger entries in that period
+  // rather than using the running currentBalancePaisa snapshot.
+  let periodBalanceMap = new Map(); // accountId (string) -> signedPaisa
+  if (hasPeriod) {
+    const dateMatch = {};
+    if (startDate) dateMatch.$gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      dateMatch.$lte = end;
+    }
+    const ledgerMatch = { transactionDate: dateMatch };
+    if (entityId) ledgerMatch.entityId = new mongoose.Types.ObjectId(String(entityId));
+
+    const agg = await LedgerEntry.aggregate([
+      { $match: ledgerMatch },
+      {
+        $group: {
+          _id: "$account",
+          totalDebit:  { $sum: "$debitAmountPaisa" },
+          totalCredit: { $sum: "$creditAmountPaisa" },
+        },
+      },
+    ]);
+
+    for (const entry of agg) {
+      periodBalanceMap.set(String(entry._id), {
+        totalDebit: entry.totalDebit,
+        totalCredit: entry.totalCredit,
+      });
+    }
+  }
+
   const rows = accounts
-    .filter((a) => !nonZeroOnly || (a.currentBalancePaisa ?? 0) !== 0)
+    .filter((a) => {
+      if (!nonZeroOnly) return true;
+      if (hasPeriod) {
+        const e = periodBalanceMap.get(String(a._id));
+        return e ? (e.totalDebit !== 0 || e.totalCredit !== 0) : false;
+      }
+      return (a.currentBalancePaisa ?? 0) !== 0;
+    })
     .map((a) => {
-      // Guard: old documents may not have currentBalancePaisa set in MongoDB
-      const balancePaisa = Number.isInteger(a.currentBalancePaisa)
-        ? a.currentBalancePaisa
-        : 0;
+      let balancePaisa;
+      if (hasPeriod) {
+        const e = periodBalanceMap.get(String(a._id));
+        if (e) {
+          // DR-normal types (ASSET, EXPENSE): balance = debit - credit
+          // CR-normal types (LIABILITY, REVENUE, EQUITY): balance = credit - debit
+          const isDebitNormal = NORMAL_SIDE[a.type] ?? true;
+          balancePaisa = isDebitNormal
+            ? e.totalDebit - e.totalCredit
+            : e.totalCredit - e.totalDebit;
+        } else {
+          balancePaisa = 0;
+        }
+      } else {
+        // Guard: old documents may not have currentBalancePaisa set in MongoDB
+        balancePaisa = Number.isInteger(a.currentBalancePaisa) ? a.currentBalancePaisa : 0;
+      }
       return {
         code: a.code,
         name: a.name,
@@ -465,10 +521,19 @@ export async function getBalanceSummary(options = {}) {
     subtotals[type] = formatBalance(total);
   }
 
-  // Trial balance check from ledger (scoped to entity if provided)
-  const matchStage = entityId
-    ? { entityId: new mongoose.Types.ObjectId(String(entityId)) }
-    : {};
+  // Trial balance — scoped to entity and period when applicable
+  const matchStage = {};
+  if (entityId) matchStage.entityId = new mongoose.Types.ObjectId(String(entityId));
+  if (hasPeriod) {
+    const dateMatch = {};
+    if (startDate) dateMatch.$gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      dateMatch.$lte = end;
+    }
+    matchStage.transactionDate = dateMatch;
+  }
 
   const [debitResult] = await LedgerEntry.aggregate([
     { $match: matchStage },

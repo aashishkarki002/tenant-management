@@ -145,20 +145,23 @@ function getQuarterMonths(quarter, fiscalYear) {
   return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({ year, month0 }));
 }
 
+// Baisakh(0), Jestha(1), Ashadh(2) end the FY and fall in the *next* BS year
+// (e.g. FY 2081 → Baisakh 2082). All other months fall within the FY year.
+function calendarYearForBsMonth(month0, fiscalYear) {
+  return month0 <= 2 ? fiscalYear + 1 : fiscalYear;
+}
+
 function getFiscalYearMonths(fiscalYear) {
-  return FISCAL_YEAR_MONTH_ORDER.map((month0) => {
-    const year = month0 <= 2 ? fiscalYear + 1 : fiscalYear;
-    return { year, month0 };
-  });
+  return FISCAL_YEAR_MONTH_ORDER.map((month0) => ({
+    year: calendarYearForBsMonth(month0, fiscalYear),
+    month0,
+  }));
 }
 
 function resolveMonthToDateRange(month, fiscalYear) {
   const month0 = month - 1;
   const fy = fiscalYear ?? new NepaliDate().getYear();
-  // Baisakh(0), Jestha(1), Ashadh(2) are the last quarter of the FY and fall
-  // in the *next* calendar year (e.g. FY 2081 → Baisakh 2082, not 2081).
-  const year = month0 <= 2 ? fy + 1 : fy;
-  return bsMonthToDateRange(year, month0);
+  return bsMonthToDateRange(calendarYearForBsMonth(month0, fy), month0);
 }
 
 function pctChange(base, next) {

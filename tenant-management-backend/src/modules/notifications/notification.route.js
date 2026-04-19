@@ -3,6 +3,7 @@ import {
   getNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
+  deleteNotification,
 } from "./notification.controller.js";
 import { protect } from "../../middleware/protect.js";
 const router = Router();
@@ -14,4 +15,5 @@ router.patch(
   markAllNotificationsAsRead
 );
 router.patch("/mark-notification-as-read/:id", protect, markNotificationAsRead);
+router.delete("/:id", protect, deleteNotification);
 export default router;

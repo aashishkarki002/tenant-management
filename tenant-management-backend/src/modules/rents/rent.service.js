@@ -47,7 +47,12 @@ function buildRentsFilter(filters = {}) {
   )
     query.status = filters.status;
 
-  if (filters.nepaliMonth != null) {
+  if (filters.nepaliMonthStart != null && filters.nepaliMonthEnd != null) {
+    const start = Number(filters.nepaliMonthStart);
+    const end = Number(filters.nepaliMonthEnd);
+    if (start >= 1 && start <= 12 && end >= 1 && end <= 12)
+      query.nepaliMonth = { $gte: start, $lte: end };
+  } else if (filters.nepaliMonth != null) {
     const m = Number(filters.nepaliMonth);
     if (m >= 1 && m <= 12) query.nepaliMonth = m;
   }

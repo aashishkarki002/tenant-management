@@ -63,3 +63,28 @@ export const markNotificationAsRead = async (req, res) => {
     });
   }
 };
+
+export const deleteNotification = async (req, res) => {
+  try {
+    const notification = await Notification.findOne({
+      _id: req.params.id,
+      admin: req.admin.id,
+    });
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found or access denied",
+      });
+    }
+
+    await notification.deleteOne();
+    res.status(200).json({ success: true, message: "Notification deleted" });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete notification",
+      error: error.message,
+    });
+  }
+};

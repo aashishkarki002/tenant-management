@@ -14,6 +14,9 @@ import {
   getPersonnelByContract,
   updatePersonnel,
   getVendorsByServiceType,
+  recordVendorPayment,
+  getVendorPayments,
+  getVendorBalance,
 } from "./vendor.controller.js";
 
 const vendorRouter = Router();
@@ -39,5 +42,10 @@ vendorRouter.patch("/personnel/:id", updatePersonnel);
 
 // Service Type
 vendorRouter.get("/service-type/:serviceType", getVendorsByServiceType);
+
+// Vendor Payments (AP)
+vendorRouter.post("/:vendorId/payments", recordVendorPayment);
+vendorRouter.get("/:vendorId/payments", getVendorPayments);
+vendorRouter.get("/:vendorId/balance", getVendorBalance);
 
 export { vendorRouter };

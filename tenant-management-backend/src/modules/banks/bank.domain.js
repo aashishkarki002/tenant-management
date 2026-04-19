@@ -117,7 +117,14 @@ export async function applyPaymentToBank({
     return null;
   }
 
-  // bank_transfer | cheque — increment the operational bank balance
+  if (paymentMethod === "cheque") {
+    // Cheque in transit: the ledger posts DR CHEQUE_CLEARING (1020) / CR AR (1200)
+    // at receipt time. BankAccount.balancePaisa must NOT increase until the cheque
+    // physically clears — that second leg (DR bank / CR 1020) is posted by markDeposited().
+    return null;
+  }
+
+  // bank_transfer — increment the operational bank balance
   const bankAccount = await findActiveBankAccount(bankAccountId, session);
 
   // Backward-compat: older BankAccount docs may be missing entityId.

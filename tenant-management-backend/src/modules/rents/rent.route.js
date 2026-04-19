@@ -21,6 +21,8 @@ import {
   markTdsPaidController,
   uploadTdsDocumentController,
   backfillTenantRentsController,
+  generateTdsCertificateController,
+  exportRentRollPdfController,
 } from "./rent.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { validateTdsDocumentMiddleware } from "../../utils/fileValidation.js";
@@ -53,6 +55,12 @@ router.post(
   validateTdsDocumentMiddleware,
   recordRentPaymentController,
 );
+
+// ── TDS Certificate (must come before /:rentId routes) ───────────────────────
+router.get("/tds/certificate/:tenantId", protect, generateTdsCertificateController);
+
+// ── Rent Roll PDF Export ──────────────────────────────────────────────────────
+router.get("/export/pdf", protect, exportRentRollPdfController);
 
 // ── TDS Management ────────────────────────────────────────────────────────────
 // Support TDS document upload for marking TDS as paid separately

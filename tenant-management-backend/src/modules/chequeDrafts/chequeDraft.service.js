@@ -21,6 +21,7 @@ import {
   buildChequeDepositJournal,
   buildChequeBounceJournal,
 } from "../ledger/journal-builders/index.js";
+import BankAccount from "../banks/BankAccountModel.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE
@@ -163,6 +164,20 @@ export async function markDeposited(
         { $set: { status: "RECORDED", transactionId: transaction._id } },
         { session },
       );
+    }
+
+    // Increment BankAccount.balancePaisa now that the cheque has physically cleared.
+    // applyPaymentToBank() skips this for cheque at receipt time so the bank widget
+    // does not show the amount until the cheque deposits (true transit behaviour).
+    if (draft.direction === "RECEIVED" && draft.bankAccountCode) {
+      const bankAccount = await BankAccount.findOne({
+        accountCode: draft.bankAccountCode,
+        isDeleted: { $ne: true },
+      }).session(session);
+      if (bankAccount) {
+        bankAccount.balancePaisa += draft.amountPaisa;
+        await bankAccount.save({ session });
+      }
     }
 
     await session.commitTransaction();

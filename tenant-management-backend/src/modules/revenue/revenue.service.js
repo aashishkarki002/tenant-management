@@ -753,6 +753,7 @@ export async function recordRentRevenue({
   adminId,
   entityId,
   blockId,
+  paymentMethod = "bank_transfer",
   session = null,
 }) {
   try {
@@ -791,7 +792,9 @@ export async function recordRentRevenue({
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "RENT",
           referenceId: new mongoose.Types.ObjectId(rentId),
-          status: "RECORDED",
+          paymentMethod,
+          // Cheques in transit: not recognised until deposited.
+          status: paymentMethod === "cheque" ? "PENDING_CHEQUE" : "RECORDED",
           notes: note,
           createdBy: new mongoose.Types.ObjectId(adminId),
           ...(entityId && { entityId: new mongoose.Types.ObjectId(entityId) }),
@@ -818,6 +821,7 @@ export async function recordCamRevenue({
   adminId,
   entityId,
   blockId,
+  paymentMethod = "bank_transfer",
   session = null,
 }) {
   try {
@@ -851,7 +855,8 @@ export async function recordCamRevenue({
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "CAM",
           referenceId: new mongoose.Types.ObjectId(camId),
-          status: "RECORDED",
+          paymentMethod,
+          status: paymentMethod === "cheque" ? "PENDING_CHEQUE" : "RECORDED",
           notes: note,
           createdBy: new mongoose.Types.ObjectId(adminId),
           ...(entityId && { entityId: new mongoose.Types.ObjectId(entityId) }),
@@ -921,6 +926,7 @@ export async function recordLateFeeRevenue({
   adminId,
   entityId,
   blockId,
+  paymentMethod = "bank_transfer",
   session = null,
 }) {
   try {
@@ -947,7 +953,8 @@ export async function recordLateFeeRevenue({
           tenant: new mongoose.Types.ObjectId(tenantId),
           referenceType: "LATE_FEE",
           referenceId: new mongoose.Types.ObjectId(rentId),
-          status: "RECORDED",
+          paymentMethod,
+          status: paymentMethod === "cheque" ? "PENDING_CHEQUE" : "RECORDED",
           notes: note,
           createdBy: new mongoose.Types.ObjectId(adminId),
           ...(entityId && { entityId: new mongoose.Types.ObjectId(entityId) }),

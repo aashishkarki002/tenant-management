@@ -149,6 +149,8 @@ export async function createMaintenance(maintenanceData) {
       const { npYear, npMonth } = getNepaliYearMonthFromDate(
         maintenanceData.scheduledDate,
       );
+      maintenanceData.nepaliYear = npYear;
+      maintenanceData.nepaliMonth = npMonth;
       maintenanceData.scheduledNepaliYear = npYear;
       maintenanceData.scheduledNepaliMonth = npMonth;
     }
@@ -232,8 +234,8 @@ export async function getAllMaintenance(filters = {}) {
     if (assignedTo) query.assignedTo = assignedTo;
     if (sourceType) query.sourceType = sourceType;
     if (priority) query.priority = priority;
-    if (nepaliYear) query.scheduledNepaliYear = Number(nepaliYear);
-    if (nepaliMonth) query.scheduledNepaliMonth = Number(nepaliMonth);
+    if (nepaliYear) query.nepaliYear = Number(nepaliYear);
+    if (nepaliMonth) query.nepaliMonth = Number(nepaliMonth);
 
     const skip = (Number(page) - 1) * Number(limit);
 
