@@ -886,7 +886,7 @@ export default function Tenants() {
   const activeTenants = tenants.filter(t => t.status === "active").length;
 
   const outstandingRent = useMemo(
-    () => tenants.reduce((sum, t) => sum + (t.outstandingAmount ?? 0), 0),
+    () => tenants.reduce((sum, t) => sum + (t.overdueBalance ?? 0), 0),
     [tenants]
   );
 

@@ -1,14 +1,3 @@
-/**
- * checkListResultDetails.jsx  — tenant-owner view (redesigned)
- *
- * Design: warm editorial minimalism
- *   – Instrument Serif headline + Outfit body
- *   – Paper-white (#F9F8F5) background
- *   – Left-border accent rows instead of full-bg chips
- *   – Bottom sheet for history (industry standard mobile pattern)
- *   – Horizontal segmented pass-rate bar (cleaner than radial for quick read)
- */
-
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -20,12 +9,14 @@ import {
     XCircle,
     AlertCircle,
     ChevronRight,
+    ChevronLeft,
     History,
     X,
     RefreshCw,
     Loader2,
     StickyNote,
     Building2,
+    ZoomIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import api from "../../../plugins/axios";
@@ -35,10 +26,6 @@ import {
     getStatusBadgeClass,
 } from "../constants/checkListConstants";
 import { formatTime } from "../utils/checkListDateUtil";
-
-// ─── Google Fonts injection ───────────────────────────────────────────────────
-// In production, add these to your index.html <head> instead.
-// <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
 // ─── Token palette ────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -81,8 +68,118 @@ function computePassRate(result) {
     return Math.round((result.passedItems / result.totalItems) * 100);
 }
 
+const IMAGE_BASE = "https://app.sallyanhouse.com/tenantsDocs";
+
+// ─── Image Lightbox ───────────────────────────────────────────────────────────
+function ImageLightbox({ images, startIndex, onClose }) {
+    const [current, setCurrent] = useState(startIndex ?? 0);
+
+    // Close on Escape, nav with arrow keys
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === "Escape") onClose();
+            if (e.key === "ArrowRight") setCurrent((c) => Math.min(c + 1, images.length - 1));
+            if (e.key === "ArrowLeft") setCurrent((c) => Math.max(c - 1, 0));
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [images.length, onClose]);
+
+    // Prevent body scroll
+    useEffect(() => {
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = ""; };
+    }, []);
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex flex-col bg-black/95"
+            onClick={onClose}
+        >
+            {/* Header */}
+            <div
+                className="flex items-center justify-between px-4 py-3 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <button
+                    onClick={onClose}
+                    className="flex items-center gap-2 text-white/80 hover:text-white transition-colors text-sm"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back
+                </button>
+                {images.length > 1 && (
+                    <span className="text-white/50 text-xs tabular-nums">
+                        {current + 1} / {images.length}
+                    </span>
+                )}
+                <button
+                    onClick={onClose}
+                    className="h-8 w-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+                    aria-label="Close"
+                >
+                    <X className="h-4 w-4 text-white" />
+                </button>
+            </div>
+
+            {/* Image */}
+            <div
+                className="flex-1 flex items-center justify-center px-4 pb-4 min-h-0"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <img
+                    src={`${IMAGE_BASE}${images[current]}`}
+                    alt={`Image ${current + 1}`}
+                    className="max-h-full max-w-full object-contain rounded-lg select-none"
+                    draggable={false}
+                />
+            </div>
+
+            {/* Prev / Next */}
+            {images.length > 1 && (
+                <div
+                    className="flex items-center justify-between px-4 pb-5 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <button
+                        onClick={() => setCurrent((c) => Math.max(c - 1, 0))}
+                        disabled={current === 0}
+                        className="h-9 w-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-30"
+                        aria-label="Previous image"
+                    >
+                        <ChevronLeft className="h-5 w-5 text-white" />
+                    </button>
+
+                    {/* Dot indicators */}
+                    <div className="flex gap-1.5">
+                        {images.map((_, i) => (
+                            <button
+                                key={i}
+                                onClick={() => setCurrent(i)}
+                                className={cn(
+                                    "h-1.5 rounded-full transition-all",
+                                    i === current ? "w-4 bg-white" : "w-1.5 bg-white/30"
+                                )}
+                                aria-label={`Go to image ${i + 1}`}
+                            />
+                        ))}
+                    </div>
+
+                    <button
+                        onClick={() => setCurrent((c) => Math.min(c + 1, images.length - 1))}
+                        disabled={current === images.length - 1}
+                        className="h-9 w-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-30"
+                        aria-label="Next image"
+                    >
+                        <ChevronRight className="h-5 w-5 text-white" />
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ─── Segmented progress bar ───────────────────────────────────────────────────
-// Industry standard for pass/fail ratios in inspection-style UIs
 function SegmentedBar({ passed, failed, total }) {
     if (!total) return null;
     const passW = Math.round((passed / total) * 100);
@@ -124,9 +221,9 @@ function SegmentedBar({ passed, failed, total }) {
         </div>
     );
 }
-const IMAGE_BASE = "https://app.sallyanhouse.com/tenantsDocs";
 
-function ItemRow({ item, index }) {
+// ─── Item row ─────────────────────────────────────────────────────────────────
+function ItemRow({ item, index, onImageOpen }) {
     const passed = item.isOk ?? item.passed ?? item.status === "pass";
     const note = item.notes ?? item.note ?? item.remarks ?? "";
     const label = item.label ?? item.name ?? item.checkItem ?? `Item ${index + 1}`;
@@ -168,35 +265,38 @@ function ItemRow({ item, index }) {
                 )}
             </div>
 
-            {/* Issue images */}
+            {/* Issue images — tap to open lightbox, no new tab */}
             {images.length > 0 && (
                 <div className="flex flex-wrap gap-2 pl-6 mt-1">
                     {images.map((src, i) => (
-                        <a
+                        <button
                             key={i}
-                            href={`${IMAGE_BASE}${src}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block"
+                            type="button"
+                            onClick={() => onImageOpen(images, i)}
+                            className="relative group block focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 rounded-lg"
+                            aria-label={`View image ${i + 1}`}
                         >
                             <img
                                 src={`${IMAGE_BASE}${src}`}
                                 alt={`Issue ${i + 1}`}
-                                className="h-20 w-20 object-cover rounded-lg border border-rose-100 hover:opacity-90 transition-opacity"
-                                onError={(e) => {
-                                    e.currentTarget.style.display = "none";
-                                }}
+                                className="h-20 w-20 object-cover rounded-lg border border-rose-100 group-hover:opacity-80 transition-opacity"
+                                onError={(e) => { e.currentTarget.style.display = "none"; }}
                             />
-                        </a>
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity">
+                                <div className="h-6 w-6 rounded-full bg-black/50 flex items-center justify-center">
+                                    <ZoomIn className="h-3.5 w-3.5 text-white" />
+                                </div>
+                            </div>
+                        </button>
                     ))}
                 </div>
             )}
         </div>
-    )
+    );
 }
 
 // ─── Section group ────────────────────────────────────────────────────────────
-function SectionGroup({ section }) {
+function SectionGroup({ section, onImageOpen }) {
     const failedCount = section.items.filter(
         (it) => !(it.isOk ?? it.passed ?? it.status === "pass")
     ).length;
@@ -215,7 +315,7 @@ function SectionGroup({ section }) {
             </div>
             <div className="space-y-0.5">
                 {section.items.map((item, i) => (
-                    <ItemRow key={item._id ?? i} item={item} index={i} />
+                    <ItemRow key={item._id ?? i} item={item} index={i} onImageOpen={onImageOpen} />
                 ))}
             </div>
         </div>
@@ -223,26 +323,15 @@ function SectionGroup({ section }) {
 }
 
 // ─── History bottom sheet ─────────────────────────────────────────────────────
-/**
- * Industry pattern: bottom sheet (like Google Maps / Airbnb)
- * – Slides up from bottom on mobile
- * – Centered modal sheet on desktop
- * – Backdrop dismisses on click
- * – Drag handle at top (visual affordance)
- */
-function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel }) {
+function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel, onSelect }) {
     const sheetRef = useRef(null);
 
-    // Trap focus inside sheet when open (a11y)
     useEffect(() => {
-        if (isOpen) {
-            sheetRef.current?.focus();
-        }
+        if (isOpen) sheetRef.current?.focus();
     }, [isOpen]);
 
     return (
         <>
-            {/* Backdrop */}
             <div
                 className={cn(
                     "fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px] transition-opacity duration-300",
@@ -252,7 +341,6 @@ function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel 
                 aria-hidden="true"
             />
 
-            {/* Sheet */}
             <div
                 ref={sheetRef}
                 tabIndex={-1}
@@ -260,7 +348,6 @@ function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel 
                 aria-label="Checklist history"
                 aria-modal="true"
                 className={cn(
-                    // Mobile: bottom sheet | Desktop: centered modal-like sheet
                     "fixed z-50 bg-[#FAFAF8] shadow-2xl outline-none",
                     "left-0 right-0 bottom-0 rounded-t-2xl max-h-[80vh]",
                     "sm:left-1/2 sm:-translate-x-1/2 sm:bottom-8 sm:w-full sm:max-w-md sm:rounded-2xl",
@@ -275,7 +362,6 @@ function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel 
                     <div className="h-1 w-10 rounded-full bg-zinc-300" />
                 </div>
 
-                {/* Sheet header */}
                 <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-100">
                     <div>
                         <h2 className="text-sm font-semibold text-zinc-900">Check History</h2>
@@ -290,7 +376,6 @@ function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel 
                     </button>
                 </div>
 
-                {/* Sheet body */}
                 <div className="overflow-y-auto max-h-[60vh] px-5 py-4 space-y-2">
                     {isLoading ? (
                         <div className="flex flex-col items-center gap-3 py-10 text-zinc-400">
@@ -310,14 +395,14 @@ function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel 
                             const passRate = computePassRate(entry);
 
                             return (
-                                <div
+                                <button
                                     key={entry._id ?? idx}
-                                    className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-white px-4 py-3 hover:border-zinc-200 hover:shadow-sm transition-all cursor-pointer"
+                                    type="button"
+                                    onClick={() => { onClose(); onSelect(entry._id); }}
+                                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-100 bg-white px-4 py-3 hover:border-zinc-200 hover:shadow-sm transition-all text-left"
                                 >
-                                    {/* Status dot */}
                                     <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
 
-                                    {/* Date */}
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-medium text-zinc-800 truncate">
                                             {entry.nepaliDate ?? "—"}
@@ -329,7 +414,6 @@ function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel 
                                         </p>
                                     </div>
 
-                                    {/* Pass rate chip */}
                                     {entry.status !== "PENDING" && (
                                         <span
                                             className={cn(
@@ -344,7 +428,7 @@ function HistorySheet({ isOpen, onClose, history = [], isLoading, categoryLabel 
                                     )}
 
                                     <ChevronRight className="h-3.5 w-3.5 text-zinc-300 shrink-0" />
-                                </div>
+                                </button>
                             );
                         })
                     )}
@@ -394,6 +478,15 @@ function ChecklistResultDetail() {
     const [history, setHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
 
+    // Lightbox state
+    const [lightbox, setLightbox] = useState(null); // { images: [], startIndex: 0 }
+
+    const openLightbox = useCallback((images, startIndex = 0) => {
+        setLightbox({ images, startIndex });
+    }, []);
+
+    const closeLightbox = useCallback(() => setLightbox(null), []);
+
     // ── Fetch current result ──────────────────────────────────────────────────
     const fetchResult = useCallback(async () => {
         setIsLoading(true);
@@ -411,6 +504,7 @@ function ChecklistResultDetail() {
     useEffect(() => {
         if (id) fetchResult();
     }, [id, fetchResult]);
+
     const openHistory = useCallback(async () => {
         setHistoryOpen(true);
         if (history.length > 0 || !result) return;
@@ -430,7 +524,7 @@ function ChecklistResultDetail() {
             const list = data?.data ?? data?.results ?? [];
             setHistory(
                 Array.isArray(list)
-                    ? list.filter((r) => String(r._id) !== id)  // ← Bug 1 fix
+                    ? list.filter((r) => String(r._id) !== id)
                     : []
             );
         } catch {
@@ -442,18 +536,21 @@ function ChecklistResultDetail() {
 
     // ── Close sheet on Escape ─────────────────────────────────────────────────
     useEffect(() => {
-        const onKey = (e) => { if (e.key === "Escape") setHistoryOpen(false); };
+        const onKey = (e) => {
+            if (e.key === "Escape" && !lightbox) setHistoryOpen(false);
+        };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, []);
+    }, [lightbox]);
 
     // ── Derived values ────────────────────────────────────────────────────────
     const isPending = result?.status === "PENDING";
     const hasIssues = result?.hasIssues;
     const passRate = computePassRate(result);
-    const cfg = STATUS_CONFIG[result?.status] ?? STATUS_CONFIG.PENDING;
 
     const categoryLabel = CATEGORY_LABELS?.[result?.category] ?? result?.category ?? "Inspection";
+    // Checklist template name if provided by API
+    const checklistName = result?.checklist?.name ?? result?.checklistName ?? null;
     const blockName = result?.block?.name ?? null;
     const submittedBy = result?.submittedBy?.name ?? null;
     const submittedTime = result?.submittedAt ? formatTime(result.submittedAt) : null;
@@ -467,8 +564,6 @@ function ChecklistResultDetail() {
         })
         : null;
 
-    // Support section-based structure (new API) and flat items (old API)
-    // The service returns mergedSections under `sections` key
     const sections = result?.sections ?? result?.mergedSections ?? [];
     const flatItems = result?.items ?? result?.checkItems ?? result?.itemResults ?? [];
     const hasSections = sections.length > 0;
@@ -485,10 +580,19 @@ function ChecklistResultDetail() {
     // ── Render ────────────────────────────────────────────────────────────────
     return (
         <>
-            <div className="checklist-detail w-full min-h-full bg-background px-4 pb-4 pt-2">
+            {/* Image lightbox — full screen, no new tab */}
+            {lightbox && (
+                <ImageLightbox
+                    images={lightbox.images}
+                    startIndex={lightbox.startIndex}
+                    onClose={closeLightbox}
+                />
+            )}
+
+            <div className="checklist-detail w-full min-h-full bg-background px-4 pb-6 pt-2">
 
                 {/* ── Top nav bar ─────────────────────────────────────────────────── */}
-                <div className="flex items-center justify-between mb-7">
+                <div className="flex items-center justify-between mb-6">
                     <button
                         onClick={() => navigate(-1)}
                         className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 transition-colors"
@@ -497,7 +601,6 @@ function ChecklistResultDetail() {
                         Back
                     </button>
 
-                    {/* History trigger */}
                     {!isLoading && !error && result && (
                         <button
                             onClick={openHistory}
@@ -530,14 +633,11 @@ function ChecklistResultDetail() {
                         </button>
                     </div>
                 ) : !result ? null : (
-                    <div className="space-y-7">
+                    <div className="space-y-6">
 
-                        {/* ── Header block ──────────────────────────────────────────────
-                Category as editorial display heading (Instrument Serif)
-                Status as inline pill — no card, just open typography
-            ────────────────────────────────────────────────────────────── */}
+                        {/* ── Header ──────────────────────────────────────────────────── */}
                         <div className="space-y-2.5">
-                            {/* Status + category type row */}
+                            {/* Status pill */}
                             <div className="flex items-center gap-2 flex-wrap">
                                 <span
                                     className={cn(
@@ -552,11 +652,7 @@ function ChecklistResultDetail() {
                                     <span
                                         className={cn(
                                             "h-1.5 w-1.5 rounded-full",
-                                            isPending
-                                                ? "bg-zinc-400"
-                                                : hasIssues
-                                                    ? "bg-rose-500"
-                                                    : "bg-emerald-500"
+                                            isPending ? "bg-zinc-400" : hasIssues ? "bg-rose-500" : "bg-emerald-500"
                                         )}
                                     />
                                     {isPending ? "Pending" : hasIssues ? "Issues found" : "All clear"}
@@ -564,24 +660,29 @@ function ChecklistResultDetail() {
 
                                 {result.checklistType && (
                                     <span className="text-[11px] font-medium text-zinc-400 bg-zinc-100 rounded-full px-2.5 py-1">
-                                        {result.checklistType.replace("_", " ")}
+                                        {result.checklistType.replace(/_/g, " ")}
                                     </span>
                                 )}
                             </div>
 
-                            {/* Category heading */}
+                            {/* What check this is */}
                             <h1 className="serif text-3xl text-zinc-900 leading-tight tracking-[-0.01em]">
                                 {categoryLabel}
                             </h1>
 
-                            {/* Meta line */}
+                            {/* Checklist template name — tells user exactly which checklist ran */}
+                            {checklistName && (
+                                <p className="text-sm text-zinc-500 font-medium">{checklistName}</p>
+                            )}
+
+                            {/* Meta: date, block, who, when */}
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500">
                                 <span className="flex items-center gap-1.5">
                                     <CalendarDays className="h-3.5 w-3.5 text-zinc-400" />
                                     {nepaliDate}
                                 </span>
                                 {englishDate && (
-                                    <span className="text-zinc-400 text-xs">{englishDate}</span>
+                                    <span className="text-zinc-400 text-xs hidden sm:inline">{englishDate}</span>
                                 )}
                                 {blockName && (
                                     <span className="flex items-center gap-1.5">
@@ -589,12 +690,22 @@ function ChecklistResultDetail() {
                                         {blockName}
                                     </span>
                                 )}
+                                {submittedBy && (
+                                    <span className="flex items-center gap-1.5">
+                                        <User className="h-3.5 w-3.5 text-zinc-400" />
+                                        {submittedBy}
+                                    </span>
+                                )}
+                                {submittedTime && (
+                                    <span className="flex items-center gap-1.5">
+                                        <Clock className="h-3.5 w-3.5 text-zinc-400" />
+                                        {submittedTime}
+                                    </span>
+                                )}
                             </div>
                         </div>
 
-                        {/* ── Pass rate bar ──────────────────────────────────────────────
-                Clean horizontal segmented bar — instant read for tenant owner
-            ────────────────────────────────────────────────────────────── */}
+                        {/* ── Pass rate bar ─────────────────────────────────────────────── */}
                         {!isPending && result.totalItems > 0 && (
                             <div className="bg-white rounded-2xl border border-zinc-100 px-4 py-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                                 <div className="flex items-baseline justify-between mb-3">
@@ -614,30 +725,7 @@ function ChecklistResultDetail() {
                             </div>
                         )}
 
-                        {/* ── Submitted by / time meta ───────────────────────────────── */}
-                        {!isPending && (submittedBy || submittedTime) && (
-                            <div className="flex items-center gap-4 text-xs text-zinc-500">
-                                {submittedBy && (
-                                    <span className="flex items-center gap-1.5">
-                                        <User className="h-3.5 w-3.5 text-zinc-400" />
-                                        {submittedBy}
-                                    </span>
-                                )}
-                                {submittedTime && (
-                                    <span className="flex items-center gap-1.5">
-                                        <Clock className="h-3.5 w-3.5 text-zinc-400" />
-                                        {submittedTime}
-                                    </span>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Divider */}
-                        <div className="h-px bg-zinc-100" />
-
-                        {/* ── Issues summary callout (if any) ───────────────────────────
-                Shown at top so tenant owner sees it immediately
-            ────────────────────────────────────────────────────────────── */}
+                        {/* ── Issues callout ─────────────────────────────────────────────── */}
                         {!isPending && hasIssues && (
                             <div className="flex items-start gap-3 rounded-xl bg-rose-50 border border-rose-100 px-4 py-3.5">
                                 <XCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
@@ -652,7 +740,7 @@ function ChecklistResultDetail() {
                             </div>
                         )}
 
-                        {/* ── Overall notes ──────────────────────────────────────────── */}
+                        {/* ── Overall notes ──────────────────────────────────────────────── */}
                         {result.overallNotes && (
                             <div className="flex items-start gap-2.5 text-sm text-zinc-600">
                                 <StickyNote className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
@@ -660,10 +748,9 @@ function ChecklistResultDetail() {
                             </div>
                         )}
 
-                        {/* ── Checklist items (section-aware) ───────────────────────────
-                Sections: group by section with section label header
-                Flat items: single unified list sorted failed-first
-            ────────────────────────────────────────────────────────────── */}
+                        <div className="h-px bg-zinc-100" />
+
+                        {/* ── Checklist items ────────────────────────────────────────────── */}
                         {isPending ? (
                             <div className="flex flex-col items-center gap-2 py-12 text-center">
                                 <Clock className="h-6 w-6 text-zinc-200" />
@@ -672,12 +759,15 @@ function ChecklistResultDetail() {
                         ) : hasSections ? (
                             <div className="space-y-5">
                                 {sections.map((section, si) => (
-                                    <SectionGroup key={section._id ?? si} section={section} />
+                                    <SectionGroup
+                                        key={section._id ?? si}
+                                        section={section}
+                                        onImageOpen={openLightbox}
+                                    />
                                 ))}
                             </div>
                         ) : flatItems.length > 0 ? (
                             <div className="space-y-5">
-                                {/* Failed first — standard UX: show problems at top */}
                                 {flatItems.filter((it) => !(it.isOk ?? it.passed ?? it.status === "pass")).length > 0 && (
                                     <div className="space-y-1">
                                         <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 pb-1.5">
@@ -686,7 +776,7 @@ function ChecklistResultDetail() {
                                         {flatItems
                                             .filter((it) => !(it.isOk ?? it.passed ?? it.status === "pass"))
                                             .map((item, i) => (
-                                                <ItemRow key={item._id ?? i} item={item} index={i} />
+                                                <ItemRow key={item._id ?? i} item={item} index={i} onImageOpen={openLightbox} />
                                             ))}
                                     </div>
                                 )}
@@ -698,7 +788,7 @@ function ChecklistResultDetail() {
                                         {flatItems
                                             .filter((it) => it.isOk ?? it.passed ?? it.status === "pass")
                                             .map((item, i) => (
-                                                <ItemRow key={item._id ?? i} item={item} index={i} />
+                                                <ItemRow key={item._id ?? i} item={item} index={i} onImageOpen={openLightbox} />
                                             ))}
                                     </div>
                                 )}
@@ -715,9 +805,8 @@ function ChecklistResultDetail() {
                 onClose={() => setHistoryOpen(false)}
                 history={history}
                 isLoading={historyLoading}
-                categoryLabel={
-                    CATEGORY_LABELS?.[result?.category] ?? result?.category ?? "Inspection"
-                }
+                categoryLabel={categoryLabel}
+                onSelect={(entryId) => navigate(`/admin-daily-checks/results/${entryId}`)}
             />
         </>
     );

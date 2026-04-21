@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import DualCalendarTailwind from "../components/dualDate";
 import { CheckCircle, AlertCircle, Filter, Download } from "lucide-react";
+import { getTodayNepali, NEPALI_MONTH_NAMES } from "@/utils/nepaliDate";
 
 /**
  * TDS Verification Page
@@ -127,64 +128,31 @@ export const TdsVerificationPage = () => {
     }
 
     setVerifying(true);
-    const results = {
-      success: 0,
-      failed: 0,
-      errors: [],
-    };
 
     try {
-      for (const rentId of selectedRentIds) {
-        try {
-          const payload = {
-            tdsPaidDate: batchDate,
-            nepaliTdsPaidDate: batchNepaliDate,
-            tdsPaidNotes: batchNotes,
-          };
+      const response = await api.post("/api/rent/tds/batch-mark-paid", {
+        rentIds: selectedRentIds,
+        tdsPaidDate: batchDate,
+        nepaliTdsPaidDate: batchNepaliDate,
+        tdsPaidNotes: batchNotes,
+      });
 
-          const response = await api.patch(
-            `/api/rent/${rentId}/tds/mark-paid`,
-            payload
-          );
-
-          if (response.data.success) {
-            results.success++;
-          } else {
-            results.failed++;
-            results.errors.push({
-              rentId,
-              message: response.data.message || "Unknown error",
-            });
-          }
-        } catch (error) {
-          results.failed++;
-          results.errors.push({
-            rentId,
-            message: error.response?.data?.message || error.message,
-          });
-        }
-      }
-
-      // Show results
-      if (results.success > 0) {
+      if (response.data.success) {
+        const { success: successCount = 0, skipped = 0 } = response.data;
         toast.success(
-          `Successfully verified ${results.success} TDS payment(s)`
+          `Verified ${successCount} TDS payment(s)${skipped > 0 ? ` (${skipped} already verified)` : ""}`
         );
+        setSelectedRentIds([]);
+        setBatchDate("");
+        setBatchNepaliDate("");
+        setBatchNotes("");
+        fetchUnverifiedRents();
+      } else {
+        toast.error(response.data.message || "Batch verification failed");
       }
-      if (results.failed > 0) {
-        toast.error(`Failed to verify ${results.failed} payment(s)`);
-        console.error("Verification errors:", results.errors);
-      }
-
-      // Reset and refresh
-      setSelectedRentIds([]);
-      setBatchDate("");
-      setBatchNepaliDate("");
-      setBatchNotes("");
-      fetchUnverifiedRents();
     } catch (error) {
       console.error("Batch verification error:", error);
-      toast.error("Batch verification failed");
+      toast.error(error.response?.data?.message || "Batch verification failed");
     } finally {
       setVerifying(false);
     }
@@ -195,7 +163,7 @@ export const TdsVerificationPage = () => {
     return sum + (rent?.tdsAmountPaisa || 0);
   }, 0);
 
-  const currentYear = new Date().getFullYear() + 57; // Approximate Nepali year
+  const currentYear = getTodayNepali().year;
 
   const [downloading, setDownloading] = React.useState(false);
 
@@ -264,15 +232,15 @@ export const TdsVerificationPage = () => {
               <label className="text-xs font-medium text-muted-foreground block mb-2">
                 Month
               </label>
-              <Select value={filterMonth} onValueChange={setFilterMonth}>
+              <Select value={filterMonth || "all"} onValueChange={(v) => setFilterMonth(v === "all" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All months" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All months</SelectItem>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                    <SelectItem key={month} value={month.toString()}>
-                      {month}
+                  <SelectItem value="all">All months</SelectItem>
+                  {NEPALI_MONTH_NAMES.map((name, i) => (
+                    <SelectItem key={i + 1} value={(i + 1).toString()}>
+                      {name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -283,12 +251,12 @@ export const TdsVerificationPage = () => {
               <label className="text-xs font-medium text-muted-foreground block mb-2">
                 Year
               </label>
-              <Select value={filterYear} onValueChange={setFilterYear}>
+              <Select value={filterYear || "all"} onValueChange={(v) => setFilterYear(v === "all" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All years" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All years</SelectItem>
+                  <SelectItem value="all">All years</SelectItem>
                   {Array.from({ length: 5 }, (_, i) => currentYear - i).map(
                     (year) => (
                       <SelectItem key={year} value={year.toString()}>
@@ -304,12 +272,12 @@ export const TdsVerificationPage = () => {
               <label className="text-xs font-medium text-muted-foreground block mb-2">
                 Tenant
               </label>
-              <Select value={filterTenant} onValueChange={setFilterTenant}>
+              <Select value={filterTenant || "all"} onValueChange={(v) => setFilterTenant(v === "all" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All tenants" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All tenants</SelectItem>
+                  <SelectItem value="all">All tenants</SelectItem>
                   {tenants.map((tenant) => (
                     <SelectItem key={tenant._id} value={tenant._id}>
                       {tenant.name}

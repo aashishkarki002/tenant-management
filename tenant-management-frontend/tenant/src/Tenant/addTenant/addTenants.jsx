@@ -232,7 +232,6 @@ function AddTenants() {
                 property={property}
                 onNext={handleNext}
                 stepErrors={activeTab === TAB_KEYS.PERSONAL_INFO ? activeStepErrors : []}
-                isNextDisabled={!getStepValidation(TAB_KEYS.PERSONAL_INFO, formik.values).ok}
               />
             </TabsContent>
 
@@ -244,7 +243,6 @@ function AddTenants() {
                 onNext={handleNext}
                 onPrevious={handlePrevious}
                 stepErrors={activeTab === TAB_KEYS.LEASE_DETAILS ? activeStepErrors : []}
-                isNextDisabled={!getStepValidation(TAB_KEYS.LEASE_DETAILS, formik.values).ok}
               />
             </TabsContent>
 
@@ -256,7 +254,6 @@ function AddTenants() {
                 onNext={handleNext}
                 onPrevious={handlePrevious}
                 stepErrors={activeTab === TAB_KEYS.FINANCIAL ? activeStepErrors : []}
-                isNextDisabled={!getStepValidation(TAB_KEYS.FINANCIAL, formik.values).ok}
               />
             </TabsContent>
 

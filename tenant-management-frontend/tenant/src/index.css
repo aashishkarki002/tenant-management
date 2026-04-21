@@ -59,6 +59,9 @@
   --color-bg: #fafaf8; /* Page canvas — warm stone-50 */
   --color-surface: #f5f4f0; /* Cards, panels, sidebar */
   --color-surface-raised: #ffffff; /* Modals, dropdowns (elevated) */
+  --color-surface-invert: #0d2535; /* Inverted card (dark on light) — DarkCard, ChartTip */
+  --color-surface-invert-text: rgba(255, 255, 255, 0.9); /* Text on --color-surface-invert */
+  --color-surface-invert-sub: rgba(255, 255, 255, 0.45); /* Secondary text on inverted surface */
   --color-border: #e7e5e0; /* All borders, dividers */
   --color-muted-fill: #d6d3cc; /* Progress fills, skeleton loaders */
 
@@ -190,6 +193,9 @@
   --color-bg: #0f1117; /* Page canvas — deep near-black */
   --color-surface: #171b24; /* Cards, panels, sidebar */
   --color-surface-raised: #1e2330; /* Modals, dropdowns (elevated) */
+  --color-surface-invert: #162030; /* Inverted card (petrol-dark, stands out on dark canvas) */
+  --color-surface-invert-text: rgba(255, 255, 255, 0.9);
+  --color-surface-invert-sub: rgba(255, 255, 255, 0.45);
   --color-border: #2a2f3d; /* Borders, dividers */
   --color-muted-fill: #333848; /* Progress fills, skeleton loaders */
 
@@ -300,6 +306,18 @@
   50% {
     opacity: 0.8;
   }
+}
+/* Skeleton shimmer sweep — used by AccountingPrimitives Skeleton component */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+.animate-shimmer {
+  animation: shimmer 1.6s infinite;
 }
 
 .ap {

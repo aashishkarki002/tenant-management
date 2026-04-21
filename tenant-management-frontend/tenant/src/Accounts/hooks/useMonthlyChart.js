@@ -25,8 +25,9 @@ function toFYOrder(data) {
   return [...data].sort((a, b) => {
     const la = (a.label ?? "").toLowerCase();
     const lb = (b.label ?? "").toLowerCase();
-    const ai = fyOrder.findIndex(n => la.startsWith(n.slice(0, 3)));
-    const bi = fyOrder.findIndex(n => lb.startsWith(n.slice(0, 3)));
+    // Use full-name match to avoid "Ash" prefix colliding between Ashwin (Q1) and Ashadh (Q4)
+    const ai = fyOrder.findIndex(n => la === n);
+    const bi = fyOrder.findIndex(n => lb === n);
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 }

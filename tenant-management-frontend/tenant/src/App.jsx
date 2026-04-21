@@ -37,6 +37,7 @@ import VendorsPage from "./Vendors/VendorsPage";
 import VendorDetailPage from "./Vendors/VendorDetailPage";
 import ForgetPassword from "./Auth/forgetPassword";
 import CalendarPage from "./Calendar/CalendarPage";
+import TdsVerificationPage from "./TDS/TdsVerificationPage";
 
 // Roles that can access admin-level features
 const ADMIN_ROLES = ["admin", "super_admin"];
@@ -182,6 +183,9 @@ export default function App() {
       />
       <Route path="/calendar"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><CalendarPage /></RoleRoute></ProtectedRoutes>}
+      />
+      <Route path="/tds-verification"
+        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><TdsVerificationPage /></RoleRoute></ProtectedRoutes>}
       />
 
     </Routes>

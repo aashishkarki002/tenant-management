@@ -17,6 +17,7 @@ import {
   FileText,
   Megaphone,
   CalendarDays,
+  ShieldCheck,
 } from "lucide-react";
 
 import {
@@ -70,6 +71,7 @@ const NAV_GROUPS = [
     items: [
       { title: "Rent & Payments", url: "/rent-payment", icon: Banknote },
       { title: "Accounting", url: "/accounting", icon: ReceiptText },
+      { title: "TDS Verification", url: "/tds-verification", icon: ShieldCheck },
     ],
   },
   {

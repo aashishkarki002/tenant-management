@@ -39,6 +39,7 @@ import {
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
 import { useMonthlyChart } from "../hooks/useMonthlyChart";
+import { usePortfolioHealth } from "../hooks/usePortfolioHealth";
 import { useEntity } from "../../context/EntityContext";
 
 // ── Sub-components (extracted from this file) ─────────────────────────────────
@@ -85,7 +86,7 @@ export function buildCompareLabel(granularity, { year, quarter, month } = {}) {
     if (granularity === "year" && year)
         return `FY ${year}/${String(year + 1).slice(2)}`;
     if (granularity === "quarter" && quarter && year)
-        return `Q${quarter} · ${QUARTER_LABELS[quarter]} · FY ${year}`;
+        return `Q${quarter} · ${QUARTER_LABELS[quarter]} · FY ${year}/${String(year + 1).slice(2)}`;
     if (granularity === "month" && month && year)
         return `${NEPALI_MONTH_NAMES[month - 1]} ${month <= 3 ? year + 1 : year}`;
     return null;
@@ -160,6 +161,10 @@ export default function AccountingPage() {
         resolvedEntityId,
     );
     useBankAccounts(); // keeps bank account context warm for dialogs
+    const { health, loading: healthLoading, refetch: refetchHealth } = usePortfolioHealth(
+        resolvedFilter.quarter, resolvedFilter.startDate, resolvedFilter.endDate,
+        resolvedFilter.month, resolvedFilter.fiscalYear, resolvedEntityId,
+    );
     const { chartData, compareData, comparisonStats, loadingChart } = useMonthlyChart(
         chartQuarter, activeCompareQtr,
         selectedFiscalYear, chartAllYear, resolvedEntityId,
@@ -178,7 +183,7 @@ export default function AccountingPage() {
         if (filterGranularity === "month" && selectedMonth)
             return `${NEPALI_MONTH_NAMES[selectedMonth - 1]} ${selectedMonth <= 3 ? selectedFiscalYear + 1 : selectedFiscalYear}`;
         if (filterGranularity === "quarter" && selectedQuarter)
-            return `Q${selectedQuarter} · ${QUARTER_LABELS[selectedQuarter]} · FY ${selectedFiscalYear}`;
+            return `Q${selectedQuarter} · ${QUARTER_LABELS[selectedQuarter]} · FY ${selectedFiscalYear}/${String(selectedFiscalYear + 1).slice(2)}`;
         return `FY ${selectedFiscalYear}/${String(selectedFiscalYear + 1).slice(2)}`;
     }, [filterGranularity, selectedQuarter, selectedMonth, selectedFiscalYear, customStart, customEnd]);
 
@@ -293,7 +298,6 @@ export default function AccountingPage() {
                     >
                         {activeTab === "overview" && (
                             <OverviewTab
-                                summary={summary}
                                 loadingSummary={loadingSummary}
                                 totals={totals}
                                 netMargin={netMargin}
@@ -309,6 +313,8 @@ export default function AccountingPage() {
                                 loadingLedger={loadingLedger}
                                 onViewLedger={() => setActiveTab("ledger")}
                                 currentBSMonth={getCurrentBSMonthName()}
+                                health={health}
+                                healthLoading={healthLoading}
                             />
                         )}
 

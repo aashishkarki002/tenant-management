@@ -147,6 +147,8 @@ export const ArrearsPaymentDialog = ({
         setPaymentMethod,
         bankAccountId,
         setBankAccountId,
+        bankAccountCode,
+        setBankAccountCode,
         transactionRef,
         setTransactionRef,
         note,
@@ -361,6 +363,7 @@ export const ArrearsPaymentDialog = ({
                                 value={bankAccountId}
                                 onChange={(id, code) => {
                                     setBankAccountId(id);
+                                    setBankAccountCode(code);
                                 }}
                             />
                         </div>

@@ -35,8 +35,8 @@ export default function BankingTab({ entityId }) {
             <section>
                 <Lbl>Cash in Hand</Lbl>
                 <DarkCard>
-                    <p className="text-xs text-white/60 mb-1">Cash on Hand</p>
-                    <p className="text-2xl font-bold text-white">
+                    <p className="text-xs mb-1" style={{ color: "var(--color-surface-invert-sub)" }}>Cash on Hand</p>
+                    <p className="text-2xl font-bold" style={{ color: "var(--color-surface-invert-text)" }}>
                         {cashInHand?.balanceFormatted ?? "Rs. 0.00"}
                     </p>
                     {cashInHand && !cashInHand.hasLedgerAccount && (

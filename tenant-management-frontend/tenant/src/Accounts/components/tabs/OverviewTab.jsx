@@ -1,98 +1,316 @@
-import { Card, DarkCard, Lbl, Delta, Spark, Skeleton, ProgBar } from "../AccountingPrimitives";
+/**
+ * OverviewTab — distilled
+ *
+ * Before: 9 card-chrome elements (5 health chips + 4 KPI cards) + sidebar + chart
+ * After:  1 summary bar → full-width chart → 2-col detail row → transactions
+ *
+ * Changes from audit:
+ *  - PortfolioHealthStrip + HeroCard + 3×KpiCard → single SummaryBar
+ *  - DarkCard removed; size + color carry hierarchy instead
+ *  - Sparklines + breakdown pills removed from KPI level
+ *  - Chart always full-width (no competing sidebar)
+ *  - ArrearsAgingCard + MiniCashFlow → compact 2-col panels below chart
+ *  - Min text size 11px (was 9px throughout)
+ *  - Max font weight: font-bold (was font-black)
+ *  - Uppercase tracking removed from field-level labels
+ */
+
+import { Skeleton, ProgBar } from "../AccountingPrimitives";
 import {
     RevExpChart,
     CompareChart,
-    CompareStatStrip,
-    BreakdownPills,
 } from "../AccountingCharts";
 import ChartCard from "../ChartCard";
 import LedgerFeed from "../LedgerFeed";
-import { fmtK, fmtN } from "../AccountingPage";
+import { fmtK } from "../AccountingPage";
 import { cn } from "@/lib/utils";
+import {
+    TrendingUpIcon, TrendingDownIcon,
+    CheckCircle2Icon,
+} from "lucide-react";
 
-// ─── Local design tokens ──────────────────────────────────────────────────────
+// ─── Tokens ───────────────────────────────────────────────────────────────────
 const T = {
-    revenue: "var(--color-info)",
+    revenue:  "var(--color-info)",
     expenses: "var(--color-warning)",
-    liabilities: "var(--color-danger)",
+    success:  "var(--color-success)",
+    danger:   "var(--color-danger)",
+    sub:      "var(--color-text-sub)",
+    body:     "var(--color-text-body)",
+    strong:   "var(--color-text-strong)",
+    border:   "var(--color-border)",
+    surface:  "var(--color-surface)",
+    raised:   "var(--color-surface-raised)",
 };
 
-// ─── Tiny sub-atoms used only in this file ─────────────────────────────────────
-function HeroNumber({ value, loading }) {
-    if (loading) return <Skeleton h={52} />;
+function paisaToRs(p) { return (p ?? 0) / 100; }
+
+// ─── Trend badge — replaces YoYBadge, inline and token-correct ───────────────
+function TrendBadge({ pct, loading }) {
+    if (loading) return <div className="h-4 w-10 rounded animate-pulse" style={{ background: T.border }} />;
+    if (pct == null) return null;
+    const up = pct > 0, flat = pct === 0;
+    const color = flat ? T.sub : up ? T.success : T.danger;
     return (
-        <div>
-            <div
-                className="text-white font-black leading-none tabular-nums"
-                style={{
-                    fontSize: "clamp(32px, 5vw, 52px)",
-                    letterSpacing: "-0.035em",
-                    wordBreak: "break-all",
-                    textShadow: "0 2px 12px rgba(0,0,0,0.18)",
-                }}
-            >
-                {value < 0 && "−"}RS {fmtK(Math.abs(value))}
-            </div>
-            <div className="text-[11px] mt-1 text-white/35 tabular-nums">
-                RS {fmtN(Math.abs(value))}
+        <span className="inline-flex items-center gap-0.5" style={{ color }}>
+            {!flat && (up ? <TrendingUpIcon size={10} /> : <TrendingDownIcon size={10} />)}
+            <span className="text-[11px] font-semibold tabular-nums">
+                {up ? "+" : ""}{pct.toFixed(1)}% YoY
+            </span>
+        </span>
+    );
+}
+
+// ─── SummaryBar — replaces PortfolioHealthStrip + HeroCard + 3 KpiCards ──────
+//
+// One bordered container, four metric cells divided by hairline borders.
+// Net Cash gets the dominant treatment via font size + color, not a black card.
+// No sparklines, no breakdown pills, no nested card chrome.
+function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading }) {
+    const col = health?.collection;
+    const yoy = health?.yoyDeltas;
+    const isDeficit = (totals.netCashFlow ?? 0) < 0;
+    const netColor = isDeficit ? T.danger : T.success;
+
+    return (
+        <div
+            className="rounded-xl overflow-hidden"
+            style={{ background: T.raised, border: `1px solid ${T.border}` }}
+        >
+            <div className="grid grid-cols-2 lg:grid-cols-4">
+
+                {/* Net Cash — primary, slightly larger */}
+                <div className="flex flex-col gap-1 px-5 py-4 border-r border-b lg:border-b-0"
+                    style={{ borderColor: T.border }}>
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium" style={{ color: T.sub }}>
+                            Net cash flow
+                        </span>
+                        <span className={cn(
+                            "text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                            isDeficit
+                                ? "bg-[var(--color-danger-bg)] text-[var(--color-danger)]"
+                                : "bg-[var(--color-success-bg)] text-[var(--color-success)]",
+                        )}>
+                            {isDeficit ? "Deficit" : "Surplus"}
+                        </span>
+                    </div>
+                    {loadingSummary
+                        ? <Skeleton h={32} />
+                        : (
+                            <span
+                                className="font-bold tabular-nums leading-none"
+                                style={{
+                                    fontSize: "clamp(20px, 2.5vw, 28px)",
+                                    color: netColor,
+                                    letterSpacing: "-0.02em",
+                                }}
+                            >
+                                {isDeficit ? "−" : "+"}RS {fmtK(Math.abs(totals.netCashFlow))}
+                            </span>
+                        )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px]" style={{ color: T.sub }}>
+                            {netMargin >= 0 ? "+" : ""}{netMargin.toFixed(1)}% margin
+                        </span>
+                        <TrendBadge pct={yoy?.netCashFlow?.pct} loading={healthLoading} />
+                    </div>
+                </div>
+
+                {/* Revenue */}
+                <div className="flex flex-col gap-1 px-5 py-4 border-b lg:border-b-0 lg:border-l"
+                    style={{ borderColor: T.border }}>
+                    <span className="text-[11px] font-medium" style={{ color: T.sub }}>Revenue</span>
+                    {loadingSummary
+                        ? <Skeleton h={28} />
+                        : (
+                            <span
+                                className="text-[22px] font-bold tabular-nums leading-none"
+                                style={{ color: T.revenue, letterSpacing: "-0.02em" }}
+                            >
+                                RS {fmtK(totals.totalRevenue)}
+                            </span>
+                        )}
+                    <TrendBadge pct={yoy?.revenue?.pct} loading={healthLoading} />
+                </div>
+
+                {/* Expenses */}
+                <div className="flex flex-col gap-1 px-5 py-4 border-r border-t lg:border-t-0 lg:border-l"
+                    style={{ borderColor: T.border }}>
+                    <span className="text-[11px] font-medium" style={{ color: T.sub }}>Expenses</span>
+                    {loadingSummary
+                        ? <Skeleton h={28} />
+                        : (
+                            <span
+                                className="text-[22px] font-bold tabular-nums leading-none"
+                                style={{ color: T.expenses, letterSpacing: "-0.02em" }}
+                            >
+                                RS {fmtK(totals.totalExpenses)}
+                            </span>
+                        )}
+                    <TrendBadge pct={yoy?.expenses?.pct} loading={healthLoading} />
+                </div>
+
+                {/* NOI Margin */}
+                <div className="flex flex-col gap-1 px-5 py-4 border-t lg:border-t-0 lg:border-l"
+                    style={{ borderColor: T.border }}>
+                    <span className="text-[11px] font-medium" style={{ color: T.sub }}>NOI margin</span>
+                    {healthLoading
+                        ? <Skeleton h={28} />
+                        : (
+                            <span
+                                className="text-[22px] font-bold tabular-nums leading-none"
+                                style={{
+                                    color: (health?.noi?.noiMarginPct ?? 0) >= 40 ? T.success
+                                        : (health?.noi?.noiMarginPct ?? 0) >= 20 ? "var(--color-warning)"
+                                        : T.danger,
+                                    letterSpacing: "-0.02em",
+                                }}
+                            >
+                                {(health?.noi?.noiMarginPct ?? 0).toFixed(1)}%
+                            </span>
+                        )}
+                    <span className="text-[11px]" style={{ color: T.sub }}>
+                        {healthLoading ? "" : `NOI: RS ${fmtK(paisaToRs(health?.noi?.noiPaisa ?? 0))}`}
+                    </span>
+                </div>
+
             </div>
         </div>
     );
 }
 
-function KpiNumber({ value, color, loading, size = "lg" }) {
-    const sizes = {
-        lg: "clamp(24px,3.5vw,38px)",
-        md: "clamp(20px,2.8vw,30px)",
-    };
-    if (loading) return <Skeleton h={size === "lg" ? 38 : 30} />;
+// ─── ArrearsPanel — simplified list, no icon overload ────────────────────────
+function ArrearsPanel({ aging, loading }) {
+    const buckets = [
+        { label: "1–30 days",  data: aging?.days30,     color: "var(--color-warning)" },
+        { label: "31–60 days", data: aging?.days60,     color: "var(--color-danger)",  opacity: 0.7 },
+        { label: "60+ days",   data: aging?.days90Plus, color: "var(--color-danger)" },
+    ];
+
+    const totalAmount = buckets.reduce((s, b) => s + (b.data?.amountPaisa ?? 0), 0);
+    const totalCount  = buckets.reduce((s, b) => s + (b.data?.count ?? 0), 0);
+
     return (
-        <div>
-            <div
-                className="font-black leading-none tabular-nums"
-                style={{
-                    fontSize: sizes[size],
-                    letterSpacing: "-0.03em",
-                    color,
-                }}
-            >
-                RS {fmtK(value)}
+        <div className="rounded-xl overflow-hidden" style={{ background: T.raised, border: `1px solid ${T.border}` }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.border }}>
+                <span className="text-[12px] font-semibold" style={{ color: T.body }}>Arrears aging</span>
+                {!loading && totalCount > 0 && (
+                    <span className="text-[12px] font-semibold tabular-nums" style={{ color: T.danger }}>
+                        RS {fmtK(paisaToRs(totalAmount))}
+                    </span>
+                )}
             </div>
-            <div
-                className="text-[10px] mt-0.5 tabular-nums"
-                style={{ color: "var(--color-text-sub)" }}
-            >
-                RS {fmtN(value)}
-            </div>
+
+            {!loading && totalCount === 0 ? (
+                <div className="flex items-center gap-2 px-4 py-3.5">
+                    <CheckCircle2Icon size={13} style={{ color: T.success }} />
+                    <span className="text-[12px] font-medium" style={{ color: T.success }}>
+                        No outstanding arrears
+                    </span>
+                </div>
+            ) : (
+                <div className="flex flex-col divide-y" style={{ borderColor: T.border }}>
+                    {buckets.map((b) => (
+                        <div key={b.label} className="flex items-center justify-between px-4 py-2.5">
+                            {loading
+                                ? <Skeleton h={14} />
+                                : (
+                                    <>
+                                        <div className="flex items-center gap-2">
+                                            <div
+                                                className="w-1.5 h-1.5 rounded-full shrink-0"
+                                                style={{ background: b.color, opacity: b.opacity ?? 1 }}
+                                            />
+                                            <span className="text-[12px]" style={{ color: T.body }}>{b.label}</span>
+                                            <span className="text-[11px]" style={{ color: T.sub }}>
+                                                {b.data?.count ?? 0} rent{(b.data?.count ?? 0) !== 1 ? "s" : ""}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span
+                                                className="text-[12px] font-semibold tabular-nums"
+                                                style={{ color: b.color, opacity: b.opacity ?? 1 }}
+                                            >
+                                                RS {fmtK(paisaToRs(b.data?.amountPaisa ?? 0))}
+                                            </span>
+                                            <ProgBar
+                                                value={b.data?.amountPaisa ?? 0}
+                                                max={totalAmount || 1}
+                                                color={b.color}
+                                                h={2}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
 
-/** Inline revenue vs expenses bar — fills width proportionally */
-function RevExpBar({ revenue, expenses }) {
-    const total = (revenue ?? 0) + (expenses ?? 0);
-    const revPct = total > 0 ? (revenue / total) * 100 : 50;
+// ─── CompareTable — period comparison summary ─────────────────────────────────
+function CompareTable({ comparisonStats, labelA, labelB }) {
+    if (!comparisonStats) return null;
+    const rows = [
+        { label: "Revenue",       key: "revenue",     color: T.revenue },
+        { label: "Expenses",      key: "expenses",    color: T.expenses },
+        { label: "Net cash flow", key: "netCashFlow", color: T.success },
+    ];
     return (
-        <div className="flex gap-0.5 h-1 rounded-full overflow-hidden mt-3">
+        <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.border}` }}>
             <div
-                className="rounded-l-full"
-                style={{
-                    width: `${revPct}%`,
-                    background: "rgba(255,255,255,0.55)",
-                    transition: "width .8s cubic-bezier(0.25,0.46,0.45,0.94)",
-                }}
-            />
-            <div
-                className="rounded-r-full flex-1"
-                style={{ background: "rgba(255,255,255,0.15)" }}
-            />
+                className="grid grid-cols-4 text-[11px] font-semibold px-4 py-2.5 border-b"
+                style={{ borderColor: T.border, background: T.surface, color: T.sub }}
+            >
+                <div>Metric</div>
+                <div className="text-right truncate">{labelA}</div>
+                <div className="text-right truncate">{labelB}</div>
+                <div className="text-right">Change</div>
+            </div>
+            {rows.map((r) => {
+                const s = comparisonStats[r.key];
+                if (!s) return null;
+                const up = s.pct > 0, flat = s.pct === 0;
+                const changeColor = flat ? T.sub : up ? T.success : T.danger;
+                return (
+                    <div
+                        key={r.label}
+                        className="grid grid-cols-4 px-4 py-2.5 border-b last:border-b-0 items-center"
+                        style={{ borderColor: T.border }}
+                    >
+                        <div className="text-[12px] font-medium" style={{ color: T.body }}>{r.label}</div>
+                        <div className="text-[12px] font-semibold tabular-nums text-right" style={{ color: r.color }}>
+                            RS {fmtK(s.a)}
+                        </div>
+                        <div className="text-[12px] font-semibold tabular-nums text-right" style={{ color: r.color, opacity: 0.6 }}>
+                            RS {fmtK(s.b)}
+                        </div>
+                        <div className="flex items-center justify-end gap-1">
+                            {s.pct == null
+                                ? <span className="text-[11px]" style={{ color: T.sub }}>—</span>
+                                : (
+                                    <>
+                                        {!flat && (up
+                                            ? <TrendingUpIcon size={10} style={{ color: changeColor }} />
+                                            : <TrendingDownIcon size={10} style={{ color: changeColor }} />)}
+                                        <span className="text-[12px] font-semibold tabular-nums" style={{ color: changeColor }}>
+                                            {up ? "+" : ""}{s.pct?.toFixed(1)}%
+                                        </span>
+                                    </>
+                                )}
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
 
-// ─── Main component ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 export default function OverviewTab({
-    summary,
     loadingSummary,
     totals,
     netMargin,
@@ -108,454 +326,112 @@ export default function OverviewTab({
     loadingLedger,
     onViewLedger,
     currentBSMonth,
+    health,
+    healthLoading,
 }) {
-    const isDeficit = (totals.netCashFlow ?? 0) < 0;
-
     return (
         <div className="flex flex-col gap-4">
 
-            {/* ══════════════════════════════════════════════════════════════
-                TIER 1 — 2×2 KPI grid: hero (top-left) + 3 stat cards
-            ══════════════════════════════════════════════════════════════ */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* ── 1. Summary bar — 4 metrics, one surface, no card-per-metric ── */}
+            <SummaryBar
+                totals={totals}
+                netMargin={netMargin}
+                health={health}
+                loadingSummary={loadingSummary}
+                healthLoading={healthLoading}
+            />
 
-                {/* ── Hero: Net Cash Position ─────────────────────────────── */}
-                <DarkCard className="flex flex-col justify-between min-h-[168px]">
-                    {/* Label row */}
-                    <div className="flex items-center justify-between">
-                        <Lbl light className="mb-0">Net Cash Position</Lbl>
-                        <span
-                            className={cn(
-                                "text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest",
-                                isDeficit
-                                    ? "bg-red-400/20 text-red-200"
-                                    : "bg-white/15 text-white/70",
-                            )}
-                        >
-                            {isDeficit ? "Deficit" : "Surplus"}
-                        </span>
-                    </div>
-
-                    {/* Hero number */}
-                    <HeroNumber value={totals.netCashFlow} loading={loadingSummary} />
-
-                    {/* Margin pill + sub-line */}
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <Delta
-                            value={netMargin}
-                            label={`${netMargin >= 0 ? "+" : ""}${netMargin.toFixed(1)}% margin`}
-                        />
-                        <span className="text-[11px] text-white/35">{filterLabel}</span>
-                    </div>
-
-                    {/* Rev vs Exp inline ratio bar */}
-                    <RevExpBar
-                        revenue={totals.totalRevenue}
-                        expenses={totals.totalExpenses}
-                    />
-
-                    {/* Rev / Exp sub-row */}
-                    <div className="flex gap-5 mt-2.5">
-                        {[
-                            { l: "Revenue", v: totals.totalRevenue, c: "rgba(110,231,183,0.9)" },
-                            { l: "Expenses", v: totals.totalExpenses, c: "rgba(252,165,165,0.9)" },
-                        ].map((x) => (
-                            <div key={x.l}>
-                                <div className="text-[9px] uppercase tracking-widest text-white/30 mb-0.5">
-                                    {x.l}
-                                </div>
-                                <div
-                                    className="text-[13px] font-bold tabular-nums"
-                                    style={{ color: x.c }}
-                                >
-                                    RS {fmtK(x.v)}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </DarkCard>
-
-                {/* ── Revenue ────────────────────────────────────────────── */}
-                <KpiCard
-                    label="Total Revenue"
-                    value={totals.totalRevenue}
-                    loading={loadingSummary}
-                    color={T.revenue}
-                    sparkData={chartData.map((d) => ({ v: d.revenue ?? 0 }))}
-                    sparkColor={T.revenue}
-                    pills={summary?.incomeStreams?.breakdown?.slice(0, 3) ?? []}
-                />
-
-                {/* ── Expenses ───────────────────────────────────────────── */}
-                <KpiCard
-                    label="Total Expenses"
-                    value={totals.totalExpenses}
-                    loading={loadingSummary}
-                    color={T.expenses}
-                    sparkData={chartData.map((d) => ({ v: d.expenses ?? 0 }))}
-                    sparkColor={T.expenses}
-                    pills={summary?.expensesBreakdown?.slice(0, 3) ?? []}
-                />
-
-                {/* ── Liabilities ─────────────────────────────────────────── */}
-                <KpiCard
-                    label="Liabilities"
-                    value={totals.totalLiabilities}
-                    loading={loadingSummary}
-                    color={T.liabilities}
-                    badge={
-                        <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--color-danger-bg)] text-[var(--color-danger)] uppercase tracking-widest">
-                            Balance Sheet
-                        </span>
-                    }
-                    pills={summary?.liabilitiesBreakdown ?? []}
-                    footnote="Deposits & obligations — not cash flow"
-                />
-            </div>
-
-            {/* ══════════════════════════════════════════════════════════════
-                COMPARE MODE — period A vs B
-            ══════════════════════════════════════════════════════════════ */}
+            {/* ── 2. Compare mode banner ─────────────────────────────────────── */}
             {compareMode && (
-                <>
-                    <Card>
-                        <CompareBanner labelA={labelA} labelB={labelB} />
-                        {!loadingChart && compareData.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center gap-2 h-[200px] border border-dashed border-[var(--color-border)] rounded-xl">
-                                <span className="text-[13px] font-semibold text-[var(--color-text-body)]">No comparison data</span>
-                                <span className="text-[11px] text-[var(--color-text-sub)]">
-                                    Select a period B using the Compare button above
-                                </span>
-                            </div>
-                        ) : (
-                            <CompareChart
-                                data={compareData}
-                                loading={loadingChart}
-                                labelA={labelA}
-                                labelB={labelB}
-                            />
-                        )}
-                    </Card>
-                    <CompareStatStrip
-                        stats={comparisonStats}
-                        labelA={labelA}
-                        labelB={labelB}
-                        loading={loadingChart}
-                    />
-                </>
+                <div
+                    className="rounded-xl px-4 py-2.5 flex items-center gap-3 flex-wrap"
+                    style={{
+                        background: "var(--color-accent-light)",
+                        border: "1px solid var(--color-accent-mid)",
+                    }}
+                >
+                    <span className="text-[11px] font-semibold" style={{ color: "var(--color-accent)" }}>
+                        Comparing
+                    </span>
+                    <span className="text-[12px] px-2.5 py-0.5 rounded-full bg-[var(--color-accent)] text-white font-semibold">
+                        A: {labelA}
+                    </span>
+                    <span className="text-[12px]" style={{ color: T.sub }}>vs</span>
+                    <span
+                        className="text-[12px] px-2.5 py-0.5 rounded-full border font-semibold"
+                        style={{
+                            background: "var(--color-warning-bg)",
+                            color: "var(--color-warning)",
+                            borderColor: "var(--color-warning-border)",
+                        }}
+                    >
+                        B: {labelB}
+                    </span>
+                </div>
             )}
 
-            {/* ══════════════════════════════════════════════════════════════
-                TIER 2 — Cash Flow Trend chart (full width)
-                In compare mode shows period A data so the chart is never blank.
-            ══════════════════════════════════════════════════════════════ */}
+            {/* ── 3. Chart — always full width ──────────────────────────────── */}
             <ChartCard
-                title={compareMode ? `Period A · ${labelA}` : "Cash Flow Trend"}
-                subtitle={compareMode ? "Primary period breakdown" : filterLabel}
+                title={compareMode
+                    ? `Cash flow — ${labelA} vs ${labelB}`
+                    : "Cash flow trend"}
+                subtitle={filterLabel}
                 actions={
-                    <div className="flex gap-3.5">
+                    <div className="flex gap-4">
                         {[
-                            { c: T.revenue, l: "Revenue" },
-                            { c: T.expenses, l: "Expenses" },
-                        ].map((x) => (
-                            <div key={x.l} className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]">
-                                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: x.c }} />
-                                {x.l}
+                            { color: T.revenue, label: "Revenue" },
+                            { color: T.expenses, label: "Expenses" },
+                        ].map(x => (
+                            <div key={x.label} className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-sm" style={{ background: x.color }} />
+                                <span className="text-[11px]" style={{ color: T.sub }}>{x.label}</span>
                             </div>
                         ))}
                     </div>
                 }
             >
-                <RevExpChart data={chartData} loading={loadingChart} currentMonth={currentBSMonth} />
+                {compareMode
+                    ? <CompareChart data={compareData} loading={loadingChart} labelA={labelA} labelB={labelB} />
+                    : <RevExpChart data={chartData} loading={loadingChart} currentMonth={currentBSMonth} />}
             </ChartCard>
 
-            {/* ══════════════════════════════════════════════════════════════
-                TIER 2b — Cash Flow Summary (where money moved)
-            ══════════════════════════════════════════════════════════════ */}
-            <CashFlowSummaryCard
-                inflows={summary?.incomeStreams?.breakdown ?? []}
-                outflows={summary?.expensesBreakdown ?? []}
-                totalIn={totals.totalRevenue}
-                totalOut={totals.totalExpenses}
-                net={totals.netCashFlow}
-                loading={loadingSummary}
-                filterLabel={filterLabel}
-            />
-
-            {/* ══════════════════════════════════════════════════════════════
-                TIER 3 — Recent Transactions
-            ══════════════════════════════════════════════════════════════ */}
-            <Card>
-                <div className="flex justify-between items-center mb-4">
-                    <div>
-                        <Lbl className="mb-0">Recent Transactions</Lbl>
-                        <div className="text-[11px] text-[var(--color-text-sub)] mt-0.5">
-                            Latest {Math.min(8, ledgerEntries.length)} entries
-                        </div>
-                    </div>
-                    <button
-                        onClick={onViewLedger}
-                        className="text-[11px] font-bold bg-transparent border-none cursor-pointer text-[var(--color-accent)] hover:opacity-75 transition-opacity flex items-center gap-1"
-                    >
-                        View all ledger →
-                    </button>
-                </div>
-                <LedgerFeed
-                    entries={ledgerEntries}
-                    loading={loadingLedger}
-                    onViewAll={onViewLedger}
-                />
-            </Card>
-        </div>
-    );
-}
-
-// ─── Private sub-components ───────────────────────────────────────────────────
-
-/** KPI card — used for Revenue, Expenses, Liabilities */
-function KpiCard({
-    label,
-    value,
-    loading,
-    color,
-    sparkData,
-    sparkColor,
-    pills = [],
-    badge,
-    footnote,
-}) {
-    return (
-        <div
-            className={cn(
-                "rounded-2xl bg-[var(--color-surface-raised)] p-5 flex flex-col min-h-[168px]",
-                "border border-[var(--color-border)]/50",
-                "shadow-[0_1px_4px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.03)]",
-                "transition-shadow duration-200 hover:shadow-[0_4px_16px_rgba(0,0,0,0.09)]",
-            )}
-        >
-            {/* Label row */}
-            <div className="flex items-center justify-between mb-2">
-                <Lbl className="mb-0">{label}</Lbl>
-                {badge}
-            </div>
-
-            {/* Primary number */}
-            <KpiNumber value={value} color={color} loading={loading} />
-
-            {/* Sparkline */}
-            {sparkData && (
-                <div className="mt-2.5 -mx-1">
-                    <Spark data={sparkData} color={sparkColor} h={28} />
-                </div>
+            {/* Compare table (compare mode only) */}
+            {compareMode && comparisonStats && (
+                <CompareTable comparisonStats={comparisonStats} labelA={labelA} labelB={labelB} />
             )}
 
-            {/* Breakdown pills */}
-            {pills.length > 0 && (
-                <div className="mt-2.5 flex-1">
-                    <BreakdownPills breakdown={pills} loading={loading} />
-                </div>
-            )}
+            {/* ── 4. Arrears — full width, most actionable data on this page ── */}
+            <ArrearsPanel aging={health?.arrearsAging} loading={healthLoading} />
 
-            {/* Footnote */}
-            {footnote && (
-                <div className="mt-2 text-[10px] text-[var(--color-text-sub)] leading-tight">
-                    {footnote}
-                </div>
-            )}
-        </div>
-    );
-}
-
-// ─── CashFlowSummaryCard ──────────────────────────────────────────────────────
-/**
- * Replaces the old Revenue Streams + Expense Breakdown two-column grid.
- * Shows where money came in and where it went in a single compact card,
- * without duplicating the detail already visible in the Revenue/Expense tabs.
- */
-function CashFlowSummaryCard({ inflows, outflows, totalIn, totalOut, net, loading, filterLabel }) {
-    const isDeficit = net < 0;
-    const grandTotal = totalIn + totalOut;
-
-    return (
-        <div
-            className="rounded-2xl border overflow-hidden"
-            style={{
-                background: "var(--color-surface-raised)",
-                borderColor: "var(--color-border)",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-            }}
-        >
-            {/* Header row */}
+            {/* ── 5. Recent transactions ────────────────────────────────────── */}
             <div
-                className="flex items-center justify-between px-5 py-3 border-b"
-                style={{ borderColor: "var(--color-border)" }}
+                className="rounded-xl overflow-hidden"
+                style={{ background: T.raised, border: `1px solid ${T.border}` }}
             >
-                <div className="text-[10px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--color-text-sub)" }}>
-                    Where Money Moved
-                </div>
-                <div className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full" style={{ background: "var(--color-accent-light)", color: "var(--color-accent)" }}>
-                    {filterLabel}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 divide-x" style={{ borderColor: "var(--color-border)" }}>
-                {/* ── Inflows ─────────────────────────────────── */}
-                <div className="px-5 py-4">
-                    <div className="flex items-baseline gap-2 mb-3">
-                        <div className="text-[9px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--color-text-sub)" }}>IN</div>
-                        {loading ? (
-                            <div className="h-5 w-24 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
-                        ) : (
-                            <div className="text-[18px] font-black tabular-nums leading-none" style={{ color: "var(--color-info)" }}>
-                                RS {fmtK(totalIn)}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex flex-col gap-2.5">
-                        {loading
-                            ? [1, 2, 3].map(i => (
-                                <div key={i} className="flex flex-col gap-1">
-                                    <div className="h-2.5 w-3/4 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
-                                    <div className="h-1 w-full rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
-                                </div>
-                            ))
-                            : (inflows.slice(0, 4)).map((item, i) => {
-                                const pct = totalIn > 0 ? (item.amount / totalIn) * 100 : 0;
-                                return (
-                                    <div key={item.name ?? i}>
-                                        <div className="flex justify-between items-baseline mb-0.5">
-                                            <span className="text-[11px] font-medium truncate max-w-[70%]" style={{ color: "var(--color-text-body)" }}>
-                                                {item.name ?? item.label ?? "—"}
-                                            </span>
-                                            <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--color-info)" }}>
-                                                RS {fmtK(item.amount ?? 0)}
-                                            </span>
-                                        </div>
-                                        <ProgBar value={item.amount ?? 0} max={totalIn} color="var(--color-info)" h={2} />
-                                    </div>
-                                );
-                            })}
-                        {!loading && inflows.length === 0 && (
-                            <div className="text-[11px]" style={{ color: "var(--color-text-sub)" }}>No inflows recorded</div>
-                        )}
-                    </div>
-                </div>
-
-                {/* ── Outflows ────────────────────────────────── */}
-                <div className="px-5 py-4" style={{ borderLeftColor: "var(--color-border)" }}>
-                    <div className="flex items-baseline gap-2 mb-3">
-                        <div className="text-[9px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--color-text-sub)" }}>OUT</div>
-                        {loading ? (
-                            <div className="h-5 w-24 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
-                        ) : (
-                            <div className="text-[18px] font-black tabular-nums leading-none" style={{ color: "var(--color-warning)" }}>
-                                RS {fmtK(totalOut)}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex flex-col gap-2.5">
-                        {loading
-                            ? [1, 2, 3].map(i => (
-                                <div key={i} className="flex flex-col gap-1">
-                                    <div className="h-2.5 w-3/4 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
-                                    <div className="h-1 w-full rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
-                                </div>
-                            ))
-                            : (outflows.slice(0, 4)).map((item, i) => (
-                                <div key={item.name ?? item._id ?? i}>
-                                    <div className="flex justify-between items-baseline mb-0.5">
-                                        <span className="text-[11px] font-medium truncate max-w-[70%]" style={{ color: "var(--color-text-body)" }}>
-                                            {item.name ?? item.label ?? "—"}
-                                        </span>
-                                        <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--color-warning)" }}>
-                                            RS {fmtK(item.amount ?? 0)}
-                                        </span>
-                                    </div>
-                                    <ProgBar value={item.amount ?? 0} max={totalOut} color="var(--color-warning)" h={2} />
-                                </div>
-                            ))}
-                        {!loading && outflows.length === 0 && (
-                            <div className="text-[11px]" style={{ color: "var(--color-text-sub)" }}>No expenses recorded</div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* ── Net row ─────────────────────────────────────── */}
-            <div
-                className="flex items-center justify-between px-5 py-3 border-t"
-                style={{
-                    borderColor: "var(--color-border)",
-                    background: isDeficit ? "var(--color-danger-bg)" : "var(--color-success-bg)",
-                }}
-            >
-                <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-bold tracking-[0.14em] uppercase" style={{ color: isDeficit ? "var(--color-danger)" : "var(--color-success)" }}>
-                        Net Cash Flow
-                    </span>
-                    <span
-                        className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-widest"
-                        style={{ background: isDeficit ? "var(--color-danger-border)" : "var(--color-success-border)", color: isDeficit ? "var(--color-danger)" : "var(--color-success)" }}
-                    >
-                        {isDeficit ? "Deficit" : "Surplus"}
-                    </span>
-                </div>
-                {loading ? (
-                    <div className="h-6 w-28 rounded animate-pulse" style={{ background: "var(--color-muted)" }} />
-                ) : (
-                    <div className="flex items-baseline gap-1.5">
-                        <span className="text-[20px] font-black tabular-nums leading-none" style={{ color: isDeficit ? "var(--color-danger)" : "var(--color-success)" }}>
-                            {net >= 0 ? "+" : "−"}RS {fmtK(Math.abs(net))}
+                <div
+                    className="flex items-center justify-between px-4 py-3 border-b"
+                    style={{ borderColor: T.border }}
+                >
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-[13px] font-semibold" style={{ color: T.body }}>
+                            Recent transactions
                         </span>
-                        {grandTotal > 0 && (
-                            <span className="text-[10px] font-semibold" style={{ color: isDeficit ? "var(--color-danger)" : "var(--color-success)", opacity: 0.7 }}>
-                                {Math.round(Math.abs(net) / grandTotal * 100)}% of volume
+                        {ledgerEntries.length > 0 && (
+                            <span className="text-[11px]" style={{ color: T.sub }}>
+                                {Math.min(8, ledgerEntries.length)} of {ledgerEntries.length}
                             </span>
                         )}
                     </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function CompareBanner({ labelA, labelB }) {
-    return (
-        <div className="flex items-center justify-between mb-4">
-            <div>
-                <Lbl className="mb-0.5">Period Comparison</Lbl>
-                <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)] font-semibold">
-                        A: {labelA}
-                    </span>
-                    <span className="text-[10px] text-[var(--color-text-sub)]">vs</span>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-warning-bg)] text-[var(--color-warning)] font-semibold">
-                        B: {labelB}
-                    </span>
-                </div>
-            </div>
-            <div className="flex gap-3.5 flex-wrap">
-                {[
-                    { c: "var(--color-info)", l: "Rev A", swatchOp: 1 },
-                    { c: "var(--color-info)", l: "Rev B", swatchOp: 0.35 },
-                    { c: "var(--color-warning)", l: "Exp A", swatchOp: 1 },
-                    { c: "var(--color-warning)", l: "Exp B", swatchOp: 0.35 },
-                ].map((x) => (
-                    <div
-                        key={x.l}
-                        className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]"
+                    <button
+                        onClick={onViewLedger}
+                        className="text-[12px] font-semibold bg-transparent border-none cursor-pointer text-[var(--color-accent)] hover:opacity-75 transition-opacity"
                     >
-                        <span
-                            className="w-2.5 h-2.5 rounded-sm shrink-0"
-                            style={{ background: x.c, opacity: x.swatchOp }}
-                        />
-                        {x.l}
-                    </div>
-                ))}
+                        View all →
+                    </button>
+                </div>
+                <LedgerFeed entries={ledgerEntries} loading={loadingLedger} onViewAll={onViewLedger} />
             </div>
+
         </div>
     );
 }
-

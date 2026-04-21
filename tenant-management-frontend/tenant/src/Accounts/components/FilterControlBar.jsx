@@ -466,7 +466,7 @@ export default function FilterControlBar({
                                 {filterGranularity === "quarter" && (
                                     <>
                                         <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-text-sub)] mb-2 px-1">
-                                            Quarter · FY {selectedFiscalYear}
+                                            Quarter · FY {selectedFiscalYear}/{String(selectedFiscalYear + 1).slice(2)}
                                         </p>
                                         {QUARTERS.map(q => (
                                             <DropdownMenuItem
@@ -502,7 +502,7 @@ export default function FilterControlBar({
                                 {filterGranularity === "month" && (
                                     <>
                                         <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-text-sub)] mb-2 px-1">
-                                            Month · FY {selectedFiscalYear}
+                                            Month · FY {selectedFiscalYear}/{String(selectedFiscalYear + 1).slice(2)}
                                         </p>
                                         <div className="grid grid-cols-3 gap-1">
                                             {NEPALI_MONTHS_FY_ORDER.map(({ month, name }) => (

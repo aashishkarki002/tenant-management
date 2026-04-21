@@ -22,6 +22,7 @@ import {
   getVendorPayments,
   getVendorBalance,
 } from "./services/vendorService";
+import api from "../../plugins/axios";
 
 export default function VendorDetailPage() {
   const { id } = useParams();
@@ -92,53 +93,43 @@ export default function VendorDetailPage() {
     }
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
-
-
-      setTransactions(mockTransactions);
+      const res = await getVendorPayments(id);
+      if (res.success) setTransactions(res.payments || []);
     } catch (error) {
       console.error("Error fetching transactions:", error);
       toast.error("Failed to fetch transactions");
     }
-  };
+  }, [id]);
 
-  const fetchElectricityData = async (submeterId) => {
+  const fetchElectricityData = useCallback(async (subMeterId) => {
+    if (!subMeterId) return;
     try {
-
-
-      setElectricityData(electricityData);
+      const res = await api.get(`/api/electricity/submeter-summary/${subMeterId}`);
+      if (res.data.success) setElectricityData(res.data.summary);
     } catch (error) {
       console.error("Error fetching electricity data:", error);
     }
-  };
+  }, []);
 
-  const fetchSubmeters = async () => {
+  const fetchSubmeters = useCallback(async () => {
     try {
-      // TODO: Replace with actual API call
-      const mockSubmeters = [
-        { _id: "SM-001", name: "Submeter 1", location: "Courtyard A" },
-        { _id: "SM-002", name: "Submeter 2", location: "Courtyard B" },
-      ];
-      setSubmeters(mockSubmeters);
+      const res = await api.get("/api/electricity/sub-meters");
+      setSubmeters(res.data.subMeters || res.data.data || []);
     } catch (error) {
       console.error("Error fetching submeters:", error);
     }
-  };
+  }, []);
 
-  const fetchProperties = async () => {
+  const fetchProperties = useCallback(async () => {
     try {
-      // TODO: Implement actual API call to fetch properties
-      // For now using mock data
-      const mockProperties = [
-        { _id: "1", name: "Property A" },
-        { _id: "2", name: "Property B" },
-      ];
-      setProperties(mockProperties);
+      const res = await api.get("/api/property/get-property");
+      setProperties(res.data.properties || res.data.data || []);
     } catch (error) {
       console.error("Error fetching properties:", error);
     }
-  };
+  }, []);
 
   const handleEditVendor = () => {
     setIsFormOpen(true);

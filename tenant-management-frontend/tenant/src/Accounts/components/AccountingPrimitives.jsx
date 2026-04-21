@@ -1,16 +1,16 @@
 /**
- * AccountingPrimitives.jsx  —  REDESIGNED
+ * AccountingPrimitives.jsx
  *
- * Fintech-grade UI atoms. Design decisions:
- *   • Cards use box-shadow hierarchy instead of heavy borders
- *   • Sparklines have a subtle area fill for better readability
- *   • Delta pill uses trend icons (TrendingUp/Down) not arrow icons
- *   • ProgBar is 3px — razor thin, confidence-inspiring
- *   • ChartTip uses a gradient dark panel matching the DarkCard treatment
- *   • Skeleton has a shimmer sweep animation
- *   • DarkCard uses a diagonal gradient + subtle dot-grid texture
+ * Normalized from audit findings:
+ *   • DarkCard: hard-coded #0d2535 → var(--color-surface-invert) token
+ *   • ChartTip: hard-coded gradient (#0a2f46 → #1a5276) → var(--color-surface-invert)
+ *     (gradient was AI slop; flat surface reads cleaner and is theme-safe)
+ *   • Skeleton: inline <style> shimmer keyframe moved to index.css;
+ *     background updated to --color-muted-fill (semantically correct for loaders)
+ *   • Spark: gradient IDs were shared across instances — fixed with useId()
  */
 
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 import { TrendingUpIcon, TrendingDownIcon } from "lucide-react";
 
@@ -31,13 +31,18 @@ export function Card({ children, className = "" }) {
     );
 }
 
+/**
+ * DarkCard — inverted surface for prominent single-metric display.
+ * Uses --color-surface-invert (deep petrol in light mode, elevated petrol in
+ * dark mode) so it remains visible and on-brand in both themes.
+ */
 export function DarkCard({ children, className = "" }) {
     return (
         <div
             className={cn("rounded-2xl overflow-hidden", className)}
             style={{
-                background: "#0d2535",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+                background: "var(--color-surface-invert)",
+                boxShadow: "inset 0 1px 0 var(--color-surface-invert-sub)",
             }}
         >
             <div className="p-5">{children}</div>
@@ -53,7 +58,9 @@ export function Lbl({ children, light = false, className = "" }) {
         <div
             className={cn(
                 "text-[10px] font-bold tracking-[0.14em] uppercase mb-2",
-                light ? "text-white/38" : "text-[var(--color-text-sub)]",
+                light
+                    ? "text-[var(--color-surface-invert-sub)]"
+                    : "text-[var(--color-text-sub)]",
                 className,
             )}
         >
@@ -115,8 +122,16 @@ export function ProgBar({ value, max, color = "var(--color-accent)", h = 3 }) {
     );
 }
 
-/** Sparkline with area fill */
+/**
+ * Sparkline with area fill.
+ * Each instance gets a unique gradient ID via useId() to prevent
+ * cross-instance gradient pollution when multiple sparks render simultaneously.
+ */
 export function Spark({ data = [], color = "var(--color-accent)", h = 32 }) {
+    const uid = useId();
+    // useId returns ":r0:" style strings — strip non-alphanum for valid SVG IDs
+    const gradId = `spark-grad-${uid.replace(/\W/g, "")}`;
+
     if (data.length < 2) return <div style={{ height: h }} />;
     const vals = data.map((d) => d.v ?? 0);
     const mn = Math.min(...vals),
@@ -127,8 +142,7 @@ export function Spark({ data = [], color = "var(--color-accent)", h = 32 }) {
     const pts = vals
         .map(
             (v, i) =>
-                `${(i / (vals.length - 1)) * W},${h - ((v - mn) / rng) * h * 0.82
-                }`,
+                `${(i / (vals.length - 1)) * W},${h - ((v - mn) / rng) * h * 0.82}`,
         )
         .join(" ");
 
@@ -136,8 +150,7 @@ export function Spark({ data = [], color = "var(--color-accent)", h = 32 }) {
         `0,${h}`,
         ...vals.map(
             (v, i) =>
-                `${(i / (vals.length - 1)) * W},${h - ((v - mn) / rng) * h * 0.82
-                }`,
+                `${(i / (vals.length - 1)) * W},${h - ((v - mn) / rng) * h * 0.82}`,
         ),
         `${W},${h}`,
     ].join(" ");
@@ -146,8 +159,6 @@ export function Spark({ data = [], color = "var(--color-accent)", h = 32 }) {
         x: W,
         y: h - ((vals.at(-1) - mn) / rng) * h * 0.82,
     };
-
-    const gradId = `sg-${color.replace(/[^a-z0-9]/gi, "")}`;
 
     return (
         <svg
@@ -172,22 +183,14 @@ export function Spark({ data = [], color = "var(--color-accent)", h = 32 }) {
                 strokeLinecap="round"
             />
             <circle cx={last.x} cy={last.y} r={2.5} fill={color} />
-            <circle
-                cx={last.x}
-                cy={last.y}
-                r={4.5}
-                fill={color}
-                fillOpacity={0.2}
-            />
+            <circle cx={last.x} cy={last.y} r={4.5} fill={color} fillOpacity={0.2} />
         </svg>
     );
 }
 
 /** Semi-circle gauge */
 export function Gauge({ pct, color = "var(--color-accent)" }) {
-    const r = 48,
-        cx = 60,
-        cy = 58;
+    const r = 48, cx = 60, cy = 58;
     const cl = Math.max(0, Math.min(1, pct));
     const angle = Math.PI + cl * Math.PI;
     const x = cx + r * Math.cos(angle),
@@ -215,26 +218,36 @@ export function Gauge({ pct, color = "var(--color-accent)" }) {
                 cy={y}
                 r={4}
                 fill={color}
-                stroke="white"
+                stroke="var(--color-surface-raised)"
                 strokeWidth={1.5}
             />
         </svg>
     );
 }
 
-/** Recharts tooltip — gradient dark panel */
+/**
+ * Recharts tooltip — uses --color-surface-invert for a dark panel that
+ * reads clearly over chart backgrounds in both light and dark mode.
+ * Gradient removed (was AI slop; flat surface is cleaner and theme-safe).
+ */
 export function ChartTip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     return (
         <div
-            className="rounded-xl shadow-2xl min-w-[160px] overflow-hidden border border-white/8"
+            className="rounded-xl shadow-lg min-w-[160px] overflow-hidden"
             style={{
-                background:
-                    "linear-gradient(140deg, #0a2f46 0%, #1a5276 100%)",
+                background: "var(--color-surface-invert)",
+                border: "1px solid var(--color-surface-invert-sub)",
             }}
         >
-            <div className="px-3.5 pt-2.5 pb-1.5 border-b border-white/10">
-                <div className="text-[10px] font-bold tracking-[0.12em] uppercase text-white/45">
+            <div
+                className="px-3.5 pt-2.5 pb-1.5 border-b"
+                style={{ borderColor: "var(--color-surface-invert-sub)" }}
+            >
+                <div
+                    className="text-[10px] font-bold tracking-[0.12em] uppercase"
+                    style={{ color: "var(--color-surface-invert-sub)" }}
+                >
                     {label}
                 </div>
             </div>
@@ -242,20 +255,19 @@ export function ChartTip({ active, payload, label }) {
                 {payload.map((p) => (
                     <div
                         key={p.dataKey}
-                        className="flex items-center gap-2 text-white"
+                        className="flex items-center gap-2"
+                        style={{ color: "var(--color-surface-invert-text)" }}
                     >
                         <span
                             className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
                             style={{ background: p.fill ?? p.color }}
                         />
-                        <span className="opacity-50 flex-1 text-[11px]">
+                        <span className="flex-1 text-[11px]" style={{ color: "var(--color-surface-invert-sub)" }}>
                             {p.name}
                         </span>
                         <span className="font-bold text-[11px] tabular-nums">
                             {p.dataKey === "net"
-                                ? `${(p.value ?? 0) >= 0 ? "+" : "−"}RS ${Math.abs(
-                                    p.value || 0,
-                                ).toLocaleString()}`
+                                ? `${(p.value ?? 0) >= 0 ? "+" : "−"}RS ${Math.abs(p.value || 0).toLocaleString()}`
                                 : `RS ${Math.abs(p.value || 0).toLocaleString()}`}
                         </span>
                     </div>
@@ -265,25 +277,27 @@ export function ChartTip({ active, payload, label }) {
     );
 }
 
-/** Shimmer skeleton */
+/**
+ * Shimmer skeleton.
+ * Keyframe lives in index.css (avoid per-render <style> injection).
+ * Background uses --color-muted-fill (semantically correct for loaders).
+ */
 export function Skeleton({ h = 32 }) {
     return (
         <div
             className="rounded-xl relative overflow-hidden"
             style={{
                 height: h,
-                background: "var(--color-border)",
+                background: "var(--color-muted-fill)",
             }}
         >
             <div
-                className="absolute inset-0 -translate-x-full"
+                className="absolute inset-0 animate-shimmer"
                 style={{
                     background:
-                        "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.28) 50%,transparent 100%)",
-                    animation: "shimmer 1.6s infinite",
+                        "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.22) 50%, transparent 100%)",
                 }}
             />
-            <style>{`@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}`}</style>
         </div>
     );
 }
