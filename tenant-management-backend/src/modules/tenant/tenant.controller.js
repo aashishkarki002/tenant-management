@@ -1,5 +1,5 @@
 import * as tenantService from "./tenant.service.js";
-import { getTenantBalance } from "../tenantBalance/tenantBalance.service.js";
+import { getTenantBalance, rebuildAllTenantBalances } from "../tenantBalance/tenantBalance.service.js";
 import { TenantBalance } from "../tenantBalance/tenantBalance.model.js";
 export const createTenant = async (req, res) => {
   const adminId = req.admin_id ?? req.admin?.id;
@@ -386,6 +386,20 @@ export const getTenantsWithArrears = async (req, res) => {
     return res.status(200).json({ success: true, arrears });
   } catch (error) {
     console.error("[getTenantsWithArrears]", error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /api/tenant/tenant-balance/rebuild
+ * Admin-only: triggers a full rebuild of all tenant balance snapshots.
+ */
+export const rebuildTenantBalancesController = async (req, res) => {
+  try {
+    const result = await rebuildAllTenantBalances();
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    console.error("[rebuildTenantBalancesController]", error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 };

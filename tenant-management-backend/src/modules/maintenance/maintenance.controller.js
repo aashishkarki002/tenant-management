@@ -8,6 +8,9 @@ import {
   getMaintenanceByTenantId,
   getMaintenanceByAssignedStaff,
 } from "./maintenance.service.js";
+import { Maintenance } from "./Maintenance.Model.js";
+import ftpClient from "../../config/ftpClient.js";
+import fs from "fs";
 
 // ─── Role helper ──────────────────────────────────────────────────────────────
 // Maps req.admin.role (DB enum) → the lowercase key the service layer uses.
@@ -223,6 +226,84 @@ export async function getMyMaintenanceTasksController(req, res) {
       maintenance: result.data,
     });
   } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * POST /api/maintenance/:id/attachments
+ * Upload one or more attachment files to a maintenance task.
+ * Files are uploaded to FTP; paths are stored in task.attachments[].
+ */
+export async function addMaintenanceAttachmentsController(req, res) {
+  try {
+    const { id } = req.params;
+    const files = req.files;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, message: "No files uploaded" });
+    }
+
+    const task = await Maintenance.findById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: "Maintenance task not found" });
+    }
+
+    const added = [];
+    const errors = [];
+
+    for (const file of files) {
+      const remotePath = `/maintenance/${id}/${Date.now()}-${file.originalname}`;
+      try {
+        const uploaded = await ftpClient.upload(file.path, remotePath);
+        if (uploaded) {
+          added.push({ filename: file.originalname, url: remotePath, mimetype: file.mimetype });
+        } else {
+          errors.push(file.originalname);
+        }
+      } catch (err) {
+        errors.push(file.originalname);
+        console.error("[maintenance attachments] FTP upload failed:", err.message);
+      } finally {
+        try { fs.unlinkSync(file.path); } catch (_) {}
+      }
+    }
+
+    if (added.length > 0) {
+      task.attachments.push(...added);
+      await task.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      added,
+      errors,
+      attachments: task.attachments,
+    });
+  } catch (error) {
+    console.error("[addMaintenanceAttachmentsController]", error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * DELETE /api/maintenance/:id
+ * Soft-delete a maintenance task.
+ */
+export async function deleteMaintenanceController(req, res) {
+  try {
+    const { id } = req.params;
+    const task = await Maintenance.findByIdAndUpdate(
+      id,
+      { $set: { isDeleted: true, deletedAt: new Date() } },
+      { new: true }
+    );
+    if (!task) {
+      return res.status(404).json({ success: false, message: "Maintenance task not found" });
+    }
+    return res.status(200).json({ success: true, message: "Maintenance task deleted" });
+  } catch (error) {
+    console.error("[deleteMaintenanceController]", error.message);
     return res.status(500).json({ success: false, message: error.message });
   }
 }

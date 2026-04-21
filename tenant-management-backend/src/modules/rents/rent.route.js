@@ -19,6 +19,7 @@ import {
   sendEmailToTenantsController,
   recordRentPaymentController,
   markTdsPaidController,
+  batchMarkTdsPaidController,
   uploadTdsDocumentController,
   backfillTenantRentsController,
   generateTdsCertificateController,
@@ -58,6 +59,9 @@ router.post(
 
 // ── TDS Certificate (must come before /:rentId routes) ───────────────────────
 router.get("/tds/certificate/:tenantId", protect, generateTdsCertificateController);
+
+// ── Batch TDS mark-paid ───────────────────────────────────────────────────────
+router.post("/tds/batch-mark-paid", protect, batchMarkTdsPaidController);
 
 // ── Rent Roll PDF Export ──────────────────────────────────────────────────────
 router.get("/export/pdf", protect, exportRentRollPdfController);

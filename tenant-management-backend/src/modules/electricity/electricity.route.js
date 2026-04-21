@@ -26,6 +26,7 @@ import {
   getSubMeters,
   updateSubMeter,
   deactivateSubMeter,
+  getSubMeterSummary,
 } from "./subMeter.controller.js";
 import upload from "../../middleware/upload.js";
 import { protect } from "../../middleware/protect.js";
@@ -68,6 +69,7 @@ router.post("/nea-bill/:propertyId", protect, upload.single("neaBillPdf"), uploa
 router.get("/nea-bill/:propertyId", protect, getNeaBills);
 
 // ── History / summaries ───────────────────────────────────────────────────────
+router.get("/submeter-summary/:subMeterId", protect, getSubMeterSummary);
 router.get("/unit-history/:unitId", getUnitConsumptionHistory);
 router.get("/tenant-summary/:tenantId", getTenantElectricitySummary);
 

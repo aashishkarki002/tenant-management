@@ -42,15 +42,19 @@ const expenseSchema = new mongoose.Schema(
       match: /^\d{4}-\d{2}-\d{2}$/,
     },
     nepaliMonth: {
-      type: Number,
+      type: Number, // 1-based — expense PERIOD (when cost was incurred), used for P&L reports
       required: true,
       min: 1,
       max: 12,
     },
     nepaliYear: {
-      type: Number,
+      type: Number, // expense PERIOD year — used for P&L reports
       required: true,
     },
+
+    // Payment date in BS — for cash-flow-by-month queries (may differ from nepaliYear/Month)
+    paymentNepaliYear: { type: Number },
+    paymentNepaliMonth: { type: Number, min: 1, max: 12 },
 
     // ─────────────────────────────────────────────────
     // PAYEE

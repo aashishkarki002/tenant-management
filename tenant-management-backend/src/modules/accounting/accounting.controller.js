@@ -3,6 +3,7 @@ import {
   getMonthlyChartData,
   getRevenueBreakdownSummary,
   getExpenseBreakdownSummary,
+  getPortfolioHealth,
 } from "./accounting.service.js";
 import { OwnershipEntity } from "../ownership/OwnershipEntity.Model.js";
 import { SystemConfig } from "../systemConfig/SystemConfig.Model.js";
@@ -131,6 +132,25 @@ export async function getExpenseBreakdownController(req, res) {
     res
       .status(500)
       .json({ success: false, message: "Failed to fetch expense breakdown" });
+  }
+}
+
+export async function getPortfolioHealthController(req, res) {
+  try {
+    const { quarter, month, startDate, endDate, fiscalYear, entityId } =
+      extractFilters(req.query);
+    const data = await getPortfolioHealth({
+      quarter,
+      month,
+      startDate,
+      endDate,
+      fiscalYear,
+      entityId,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("[accounting] portfolio-health error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch portfolio health" });
   }
 }
 

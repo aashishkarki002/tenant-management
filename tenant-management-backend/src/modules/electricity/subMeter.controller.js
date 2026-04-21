@@ -10,6 +10,7 @@
 
 import mongoose from "mongoose";
 import { SubMeter, METER_TYPES } from "./SubMeter.Model.js";
+import { Electricity } from "./Electricity.Model.js";
 
 const VALID_METER_TYPES = [
   METER_TYPES.COMMON_AREA,
@@ -232,6 +233,73 @@ export const deactivateSubMeter = async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: error.message || "Server error" });
+  }
+};
+
+/**
+ * GET /api/electricity/submeter-summary/:subMeterId
+ *
+ * Returns aggregated kWh consumption and billing totals for a sub-meter
+ * across the past N months (default 12).
+ */
+export const getSubMeterSummary = async (req, res) => {
+  try {
+    const { subMeterId } = req.params;
+    const months = parseInt(req.query.months, 10) || 12;
+
+    if (!mongoose.Types.ObjectId.isValid(subMeterId)) {
+      return res.status(400).json({ success: false, message: "Invalid subMeterId" });
+    }
+
+    const subMeter = await SubMeter.findById(subMeterId).lean();
+    if (!subMeter) {
+      return res.status(404).json({ success: false, message: "Sub-meter not found" });
+    }
+
+    const rows = await Electricity.aggregate([
+      { $match: { subMeter: new mongoose.Types.ObjectId(subMeterId) } },
+      {
+        $group: {
+          _id: { nepaliYear: "$nepaliYear", nepaliMonth: "$nepaliMonth" },
+          totalUnits: { $sum: "$unitsConsumed" },
+          totalAmountPaisa: { $sum: { $ifNull: ["$totalAmountPaisa", 0] } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { "_id.nepaliYear": -1, "_id.nepaliMonth": -1 } },
+      { $limit: months },
+    ]);
+
+    const totals = rows.reduce(
+      (acc, r) => {
+        acc.totalUnits += r.totalUnits;
+        acc.totalAmountPaisa += r.totalAmountPaisa;
+        return acc;
+      },
+      { totalUnits: 0, totalAmountPaisa: 0 },
+    );
+
+    return res.status(200).json({
+      success: true,
+      summary: {
+        subMeter,
+        months: rows.map((r) => ({
+          nepaliYear: r._id.nepaliYear,
+          nepaliMonth: r._id.nepaliMonth,
+          totalUnits: r.totalUnits,
+          totalAmountPaisa: r.totalAmountPaisa,
+          readingCount: r.count,
+        })),
+        totals: {
+          totalUnits: totals.totalUnits,
+          totalAmountPaisa: totals.totalAmountPaisa,
+          totalAmountRupees: totals.totalAmountPaisa / 100,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("[getSubMeterSummary]", error.message);
+    res.status(500).json({ success: false, message: error.message || "Server error" });
   }
 };
 

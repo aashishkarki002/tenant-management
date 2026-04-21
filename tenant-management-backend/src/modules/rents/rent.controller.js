@@ -10,6 +10,7 @@
  *   - No logic changes to the payment or cron controllers.
  */
 
+import mongoose from "mongoose";
 import {
   getRentsService,
   getRentByIdService,
@@ -423,6 +424,61 @@ export async function markTdsPaidController(req, res) {
       success: false,
       message: error.message || "Failed to mark TDS as paid",
     });
+  }
+}
+
+/**
+ * POST /api/rent/tds/batch-mark-paid
+ *
+ * Body: { rentIds: string[], tdsPaidDate: string, nepaliTdsPaidDate?: string, tdsPaidNotes?: string }
+ *
+ * Marks multiple rents' TDS as paid in a single atomic transaction.
+ * Rolls back all changes if any individual mark fails (other than skip-eligible).
+ */
+export async function batchMarkTdsPaidController(req, res) {
+  const { rentIds, tdsPaidDate, nepaliTdsPaidDate, tdsPaidNotes } = req.body;
+
+  if (!Array.isArray(rentIds) || rentIds.length === 0) {
+    return res.status(400).json({ success: false, message: "rentIds must be a non-empty array" });
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { Rent } = await import("./rent.Model.js");
+    const { buildEntityMapForBlocks } = await import("../../helper/resolveEntity.js");
+
+    // Resolve all blocks up-front for entity map
+    const rents = await Rent.find({ _id: { $in: rentIds } }).select("block tenant").session(session);
+    const blockIds = [...new Set(rents.map((r) => r.block?.toString()).filter(Boolean))];
+    const entityMap = await buildEntityMapForBlocks(blockIds);
+
+    const adminId = req.admin?._id ?? req.admin?.id;
+    const data = {
+      tdsPaidDate: tdsPaidDate ? new Date(tdsPaidDate) : undefined,
+      nepaliTdsPaidDate,
+      tdsPaidNotes,
+    };
+
+    const results = { success: 0, skipped: 0 };
+
+    for (const rentId of rentIds) {
+      const rent = rents.find((r) => r._id.toString() === rentId);
+      const entityId = rent ? (entityMap.get(rent.block?.toString()) ?? null) : null;
+      const result = await markTdsPaidToGovernment(rentId, adminId, data, session, entityId);
+      if (result.skipped) results.skipped++;
+      else results.success++;
+    }
+
+    await session.commitTransaction();
+    return res.status(200).json({ success: true, ...results });
+  } catch (error) {
+    await session.abortTransaction();
+    console.error("[batchMarkTdsPaidController]", error.message);
+    return res.status(500).json({ success: false, message: error.message || "Batch TDS mark-paid failed" });
+  } finally {
+    session.endSession();
   }
 }
 

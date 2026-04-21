@@ -226,7 +226,7 @@ export async function getAllMaintenance(filters = {}) {
       limit = 30,
     } = filters;
 
-    const query = {};
+    const query = { isDeleted: { $ne: true } };
     if (status) query.status = status;
     if (scope) query.scope = scope;
     if (propertyId) query.property = propertyId;

@@ -119,6 +119,44 @@ async function aggregateCam(tenantId, session) {
   };
 }
 
+/**
+ * Count how many consecutive months (walking backwards from the most recent
+ * open month) the tenant has at least one open-status Rent document.
+ */
+async function computeConsecutiveUnpaidMonths(tenantId, session) {
+  const tenantObjId =
+    tenantId instanceof mongoose.Types.ObjectId
+      ? tenantId
+      : new mongoose.Types.ObjectId(tenantId);
+
+  const openMonths = await Rent.aggregate([
+    { $match: { tenant: tenantObjId, status: { $in: OPEN_STATUSES } } },
+    { $group: { _id: { year: "$nepaliYear", month: "$nepaliMonth" } } },
+    { $sort: { "_id.year": -1, "_id.month": -1 } },
+  ]).session(session ?? null);
+
+  if (openMonths.length === 0) return 0;
+
+  const monthSet = new Set(
+    openMonths.map(({ _id }) => _id.year * 12 + _id.month),
+  );
+
+  let count = 0;
+  let y = openMonths[0]._id.year;
+  let m = openMonths[0]._id.month;
+
+  while (monthSet.has(y * 12 + m)) {
+    count++;
+    m--;
+    if (m === 0) {
+      m = 12;
+      y--;
+    }
+  }
+
+  return count;
+}
+
 // ── Public: single-tenant sync ────────────────────────────────────────────────
 
 /**
@@ -134,9 +172,10 @@ async function aggregateCam(tenantId, session) {
  * @param {mongoose.ClientSession|null} [session]
  */
 export async function syncTenantBalance(tenantId, session = null) {
-  const [rentData, camData] = await Promise.all([
+  const [rentData, camData, consecutiveUnpaidMonths] = await Promise.all([
     aggregateRent(tenantId, session),
     aggregateCam(tenantId, session),
+    computeConsecutiveUnpaidMonths(tenantId, session),
   ]);
 
   const { rentDuePaisa, lateFeeDuePaisa, oldestYear, oldestMonth } = rentData;
@@ -151,6 +190,7 @@ export async function syncTenantBalance(tenantId, session = null) {
         camDuePaisa,
         lateFeeDuePaisa,
         totalDuePaisa,
+        consecutiveUnpaidMonths,
         oldestOverdueNepaliYear: oldestYear,
         oldestOverdueNepaliMonth: oldestMonth,
         lastSyncedAt: new Date(),

@@ -5,6 +5,7 @@ import {
   getRevenueBreakdownController,
   getExpenseBreakdownController,
   getConsolidatedController,
+  getPortfolioHealthController,
 } from "./accounting.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -33,6 +34,9 @@ const guard = [protect, authorize("admin", "super_admin", "staff")];
 
 // Dashboard KPI summary
 router.get("/summary", ...guard, getAccountingSummaryController);
+
+// Portfolio health — collection rate, arrears aging, NOI, YoY deltas
+router.get("/portfolio-health", ...guard, getPortfolioHealthController);
 
 /**
  * Monthly chart data.

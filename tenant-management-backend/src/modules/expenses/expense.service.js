@@ -349,6 +349,9 @@ export async function createExpense(expenseData, externalSession = null) {
       blockId,
       // Cheque-specific
       chequeNumber,
+      // Accrual accounting: period when cost was incurred (may differ from payment date)
+      expensePeriodMonth,
+      expensePeriodYear,
     } = expenseData;
 
     // ── Resolve scope from entity type (frontend only needs to send entityId) ─
@@ -378,10 +381,31 @@ export async function createExpense(expenseData, externalSession = null) {
     const resolvedEnglishDate = englishDate ?? _legacyEnglishDate;
 
     // ── Nepali date resolution ──────────────────────────────────────────────
-    const { nepaliDate, nepaliMonth, nepaliYear } = resolveNepaliDateFields({
+    // nepaliDate / paymentNepaliMonth / paymentNepaliYear → PAYMENT date (cash flow)
+    // nepaliMonth / nepaliYear → EXPENSE PERIOD (when cost was incurred, for P&L)
+    //
+    // Priority for expense period:
+    //  1. Explicit expensePeriodYear/Month from caller
+    //  2. staffPayee.payPeriod for SALARY/INTERNAL expenses
+    //  3. Derived from payment date (same as before — no regression for non-period callers)
+    const {
+      nepaliDate,
+      nepaliMonth: paymentNepaliMonth,
+      nepaliYear: paymentNepaliYear,
+    } = resolveNepaliDateFields({
       nepaliDateStr,
       englishDate: resolvedEnglishDate,
     });
+
+    const nepaliYear =
+      expensePeriodYear ??
+      (payeeType === "INTERNAL" ? staffPayee?.payPeriod?.year : undefined) ??
+      paymentNepaliYear;
+
+    const nepaliMonth =
+      expensePeriodMonth ??
+      (payeeType === "INTERNAL" ? staffPayee?.payPeriod?.month : undefined) ??
+      paymentNepaliMonth;
 
     // ── Amount ──────────────────────────────────────────────────────────────
     const finalAmountPaisa =
@@ -443,8 +467,10 @@ export async function createExpense(expenseData, externalSession = null) {
         ? new Date(resolvedEnglishDate)
         : new Date(),
       nepaliDate,
-      nepaliMonth,
-      nepaliYear,
+      nepaliMonth,      // expense period — P&L reports group by this
+      nepaliYear,       // expense period year
+      paymentNepaliYear,  // actual payment date — cash flow reports group by this
+      paymentNepaliMonth,
       payeeType,
       referenceType: referenceType ?? "MANUAL",
       referenceId,
@@ -506,8 +532,9 @@ export async function createExpense(expenseData, externalSession = null) {
     };
 
     // nepali date fields passed explicitly to every postExpenseJournalForEntity
-    // call so the ledger entry is always stamped with the correct BS date —
-    // mirrors the pattern in revenue.service.js postRevenueJournalForEntity().
+    // call so the ledger entry is stamped with the expense PERIOD (not payment date)
+    // for correct P&L grouping — mirrors the accrual pattern in revenue.service.js.
+    // nepaliDate is the payment date string (for the actual ledger entry timestamp).
     const journalDateFields = { nepaliDate, nepaliMonth, nepaliYear };
 
     if (scope === "building") {

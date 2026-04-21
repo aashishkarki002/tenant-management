@@ -8,6 +8,7 @@
 // The full router with the new route in the correct position:
 
 import { Router } from "express";
+import multer from "multer";
 import { protect } from "../../middleware/protect.js";
 import {
   createMaintenanceController,
@@ -16,9 +17,13 @@ import {
   updateMaintenanceStatusController,
   updateMaintenanceAssignedToController,
   getMaintenanceByTenantIdController,
-  getMyMaintenanceTasksController, // ← new
+  getMyMaintenanceTasksController,
   settlePaymentController,
+  addMaintenanceAttachmentsController,
+  deleteMaintenanceController,
 } from "./maintenance.controller.js";
+
+const upload = multer({ dest: "temp/" });
 
 const router = Router();
 
@@ -44,5 +49,11 @@ router.patch("/:id/assign", protect, updateMaintenanceAssignedToController);
 
 // Payment settlement
 router.patch("/:id/settle", protect, settlePaymentController);
+
+// Attachments
+router.post("/:id/attachments", protect, upload.array("attachments", 10), addMaintenanceAttachmentsController);
+
+// Soft-delete
+router.delete("/:id", protect, deleteMaintenanceController);
 
 export default router;

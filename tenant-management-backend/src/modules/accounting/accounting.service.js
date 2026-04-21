@@ -6,6 +6,7 @@ import { Liability } from "../liabilities/Liabilities.Model.js";
 import { LiabilitySource } from "../liabilities/LiabilitesSource.Model.js";
 import { Expense } from "../expenses/Expense.Model.js";
 import ExpenseSource from "../expenses/ExpenseSource.Model.js";
+import { Rent } from "../rents/rent.Model.js";
 import { paisaToRupees } from "../../utils/moneyUtil.js";
 import { buildEntityFilter } from "../../utils/buildEntityFilter.js";
 
@@ -142,7 +143,12 @@ function getLastNMonths(n = 5) {
 
 function getQuarterMonths(quarter, fiscalYear) {
   const year = fiscalYear ?? new NepaliDate().getYear();
-  return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({ year, month0 }));
+  // Q4 months (Baisakh=0, Jestha=1, Ashadh=2) fall in fiscalYear+1, not fiscalYear.
+  // e.g. FY 2081 Q4 → Baisakh 2082, Jestha 2082, Ashadh 2082.
+  return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({
+    year: calendarYearForBsMonth(month0, year),
+    month0,
+  }));
 }
 
 // Baisakh(0), Jestha(1), Ashadh(2) end the FY and fall in the *next* BS year
@@ -404,6 +410,206 @@ export async function getAccountingSummary({
     liabilitiesBreakdown,
     ledger: ledgerSummary,
     expensesBreakdown,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── 1b. PORTFOLIO HEALTH ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Returns portfolio-level health metrics for the dashboard:
+ *   - collection: rent collection rate + outstanding amounts
+ *   - arrearsAging: open rents bucketed by days overdue (cross-period, always live)
+ *   - noi: Net Operating Income (revenue minus operating expenses, excludes loan interest)
+ *   - yoyDeltas: % change vs same period one fiscal year ago
+ *
+ * All monetary values in paisa. Percentages as floats (e.g. 87.5 not 0.875).
+ */
+export async function getPortfolioHealth({
+  startDate,
+  endDate,
+  quarter,
+  month,
+  fiscalYear,
+  entityId = null,
+} = {}) {
+  // ── Resolve date range (same logic as getAccountingSummary) ──────────────────
+  let resolvedStart = startDate;
+  let resolvedEnd = endDate;
+
+  if (!resolvedStart && !resolvedEnd) {
+    if (month) {
+      ({ startDate: resolvedStart, endDate: resolvedEnd } =
+        resolveMonthToDateRange(Number(month), fiscalYear));
+    } else if (quarter) {
+      const qMonths = getQuarterMonths(Number(quarter), fiscalYear);
+      const first = bsMonthToDateRange(qMonths[0].year, qMonths[0].month0);
+      const last = bsMonthToDateRange(qMonths[qMonths.length - 1].year, qMonths[qMonths.length - 1].month0);
+      resolvedStart = first.startDate;
+      resolvedEnd = last.endDate;
+    } else if (fiscalYear) {
+      const fyMonths = getFiscalYearMonths(fiscalYear);
+      const first = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
+      const last = bsMonthToDateRange(fyMonths[fyMonths.length - 1].year, fyMonths[fyMonths.length - 1].month0);
+      resolvedStart = first.startDate;
+      resolvedEnd = last.endDate;
+    }
+  }
+
+  const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
+  const entityFilter = buildEntityFilter(entityId);
+
+  // ── 1. Current + previous year summaries (for YoY deltas) ───────────────────
+  const prevFiscalYear = fiscalYear ? fiscalYear - 1 : null;
+  const [currentSummary, prevSummary] = await Promise.all([
+    getAccountingSummary({ startDate, endDate, quarter, month, fiscalYear, entityId }),
+    prevFiscalYear !== null
+      ? getAccountingSummary({ quarter, month, fiscalYear: prevFiscalYear, entityId })
+      : Promise.resolve(null),
+  ]);
+
+  // ── 2. Collection rate — Rent collection filtered by due date range ───────────
+  // Rent does not have entityId; collection rate is a portfolio-wide metric.
+  const rentMatch = { status: { $ne: "cancelled" } };
+  if (dateFilter) rentMatch.englishDueDate = dateFilter;
+
+  const rentStats = await Rent.aggregate([
+    { $match: rentMatch },
+    {
+      $group: {
+        _id: "$status",
+        count: { $sum: 1 },
+        grossPaisa: { $sum: "$grossRentAmountPaisa" },
+        paidPaisa: { $sum: "$paidAmountPaisa" },
+        tdsPaisa: { $sum: { $ifNull: ["$tdsAmountPaisa", 0] } },
+      },
+    },
+  ]);
+
+  let totalRents = 0, paidCount = 0, outstandingPaisa = 0, totalExpectedNetPaisa = 0;
+  for (const s of rentStats) {
+    totalRents += s.count;
+    const netExpected = s.grossPaisa - s.tdsPaisa;
+    totalExpectedNetPaisa += netExpected;
+    if (s._id === "paid") {
+      paidCount += s.count;
+    } else {
+      outstandingPaisa += netExpected - s.paidPaisa;
+    }
+  }
+  outstandingPaisa = Math.max(0, outstandingPaisa);
+
+  // ── 3. Arrears aging — all currently open rents, aged by days past due ───────
+  // This is always cross-period (live snapshot of what is currently owed).
+  const nowMs = Date.now();
+
+  const agingPipeline = await Rent.aggregate([
+    { $match: { status: { $in: ["pending", "partially_paid", "overdue"] } } },
+    {
+      $addFields: {
+        netOwedPaisa: {
+          $max: [
+            0,
+            {
+              $subtract: [
+                { $subtract: ["$grossRentAmountPaisa", { $ifNull: ["$tdsAmountPaisa", 0] }] },
+                "$paidAmountPaisa",
+              ],
+            },
+          ],
+        },
+        daysPastDue: {
+          $divide: [
+            { $subtract: [new Date(nowMs), "$englishDueDate"] },
+            86400000,
+          ],
+        },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $switch: {
+            branches: [
+              { case: { $lte: ["$daysPastDue", 0] }, then: "current" },
+              { case: { $lte: ["$daysPastDue", 30] }, then: "1-30" },
+              { case: { $lte: ["$daysPastDue", 60] }, then: "31-60" },
+            ],
+            default: "60+",
+          },
+        },
+        count: { $sum: 1 },
+        amountPaisa: { $sum: "$netOwedPaisa" },
+      },
+    },
+  ]);
+
+  const arrearsAging = {
+    current:  { count: 0, amountPaisa: 0 },
+    days30:   { count: 0, amountPaisa: 0 },
+    days60:   { count: 0, amountPaisa: 0 },
+    days90Plus: { count: 0, amountPaisa: 0 },
+  };
+  for (const b of agingPipeline) {
+    const key = b._id === "1-30" ? "days30" : b._id === "31-60" ? "days60" : b._id === "60+" ? "days90Plus" : "current";
+    arrearsAging[key] = { count: b.count, amountPaisa: Math.max(0, b.amountPaisa) };
+  }
+
+  // ── 4. NOI = Revenue − Operating Expenses (excludes loan interest & NEA cost) ─
+  const expOpMatch = { ...entityFilter };
+  if (dateFilter) expOpMatch.englishDate = dateFilter;
+  expOpMatch.referenceType = { $nin: ["ELECTRICITY_NEA_COST", "LOAN_INTEREST"] };
+
+  const [expOpAgg] = await Expense.aggregate([
+    { $match: expOpMatch },
+    { $group: { _id: null, total: { $sum: "$amountPaisa" } } },
+  ]);
+  const operatingExpensesPaisa = expOpAgg?.total ?? 0;
+  const currentRevenuePaisa = Math.round((currentSummary.totals.totalRevenue ?? 0) * 100);
+  const noiPaisa = currentRevenuePaisa - operatingExpensesPaisa;
+
+  // ── 5. YoY deltas ────────────────────────────────────────────────────────────
+  const yoyDeltas = prevSummary
+    ? {
+        revenue: {
+          currentPaisa: currentRevenuePaisa,
+          prevPaisa: Math.round((prevSummary.totals.totalRevenue ?? 0) * 100),
+          pct: pctChange(prevSummary.totals.totalRevenue, currentSummary.totals.totalRevenue),
+        },
+        expenses: {
+          currentPaisa: Math.round((currentSummary.totals.totalExpenses ?? 0) * 100),
+          prevPaisa: Math.round((prevSummary.totals.totalExpenses ?? 0) * 100),
+          pct: pctChange(prevSummary.totals.totalExpenses, currentSummary.totals.totalExpenses),
+        },
+        netCashFlow: {
+          currentPaisa: Math.round((currentSummary.totals.netCashFlow ?? 0) * 100),
+          prevPaisa: Math.round((prevSummary.totals.netCashFlow ?? 0) * 100),
+          pct: pctChange(prevSummary.totals.netCashFlow, currentSummary.totals.netCashFlow),
+        },
+      }
+    : null;
+
+  return {
+    collection: {
+      totalRents,
+      paidCount,
+      pendingCount: totalRents - paidCount,
+      ratePct: totalRents > 0 ? +((paidCount / totalRents) * 100).toFixed(1) : 0,
+      outstandingPaisa,
+      totalExpectedNetPaisa,
+    },
+    arrearsAging,
+    noi: {
+      revenuePaisa: currentRevenuePaisa,
+      operatingExpensesPaisa,
+      noiPaisa,
+      noiMarginPct:
+        currentRevenuePaisa > 0
+          ? +((noiPaisa / currentRevenuePaisa) * 100).toFixed(1)
+          : 0,
+    },
+    yoyDeltas,
   };
 }
 
