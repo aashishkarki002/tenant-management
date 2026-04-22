@@ -7,16 +7,17 @@ import { CalendarDays, Download, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCalendarEvents } from "./hooks/useCalendarEvents";
 import EventPopover from "./components/EventPopover";
+import { Button } from "@/components/ui/button";
 
 // ── Event type definitions ─────────────────────────────────────────────────────
 
 const EVENT_TYPES = {
-  MAINTENANCE:     { label: "Maintenance",     color: "#f97316" },
-  DAILY_CHECK:     { label: "Daily Checks",    color: "#10b981" },
-  RENT_DUE:        { label: "Rent Due",         color: "#3b82f6" },
-  RENT_OVERDUE:    { label: "Rent Overdue",     color: "#dc2626" },
-  LEASE_START:     { label: "Tenant Join",      color: "#14b8a6" },
-  LEASE_END:       { label: "Lease End",        color: "#8b5cf6" },
+  MAINTENANCE: { label: "Maintenance", color: "#ff9900" },
+  DAILY_CHECK: { label: "Daily Checks", color: "#10b981" },
+  RENT_DUE: { label: "Rent Due", color: "#3b82f6" },
+  RENT_OVERDUE: { label: "Rent Overdue", color: "#dc2626" },
+  LEASE_START: { label: "Tenant Join", color: "#14b8a6" },
+  LEASE_END: { label: "Lease End", color: "#8b5cf6" },
   RENT_ESCALATION: { label: "Rent Escalation", color: "#f59e0b" },
 };
 
@@ -199,14 +200,13 @@ export default function CalendarPage() {
           )}
         </div>
 
-        <button
+        <Button
           onClick={handleExport}
           disabled={rawEvents.length === 0}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-background hover:bg-muted-fill transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Download className="w-3.5 h-3.5" />
           Export iCal
-        </button>
+        </Button>
       </div>
 
       {/* ── Filter chips ─────────────────────────────────────────────────── */}
@@ -230,7 +230,7 @@ export default function CalendarPage() {
       )}
 
       {/* ── Calendar ─────────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-border bg-background shadow-sm overflow-hidden unified-fc">
+      <div className="rounded-xl border border-border bg-background text-white shadow-sm overflow-hidden unified-fc">
         <FullCalendar
           ref={calendarRef}
           plugins={FC_PLUGINS}

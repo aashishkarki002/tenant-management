@@ -22,14 +22,14 @@ export function EntityCard({ entity, blockCount = 0, onEdit }) {
     return (
         <div className="flex flex-col rounded-xl border border-border bg-card hover:border-muted-foreground/40 transition-colors overflow-hidden">
             {/* Header stripe */}
-            <div className={`h-1 w-full ${isCompany ? "bg-sky-400" : "bg-emerald-400"}`} />
+            <div className="w-full h-1" />
 
             <div className="px-4 py-4 flex flex-col gap-3">
                 {/* Top row */}
                 <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0
-              ${isCompany ? "bg-sky-100 text-sky-700" : "bg-emerald-100 text-emerald-700"}`}>
+              ${isCompany ? "bg-sky-100 text-company-700" : "bg-emerald-100 text-emerald-700"}`}>
                             {entity.chartOfAccountsPrefix || (isCompany ? "CO" : "PVT")}
                         </div>
                         <div className="min-w-0">

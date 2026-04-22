@@ -15,7 +15,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import api from "../../../plugins/axios";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,12 +51,14 @@ function KpiStrip({ blocks }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {kpis.map((kpi) => (
                 <div key={kpi.label}
-                    className={`rounded-xl border px-4 py-3 bg-card ${kpi.danger ? "border-destructive/30 bg-destructive/5" : "border-border"}`}>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">{kpi.label}</p>
-                    <p className={`text-base font-bold font-mono ${kpi.danger ? "text-destructive" : "text-foreground"}`}>
+                    className={`rounded-xl border px-4 py-3 bg-[var(--color-surface)] ${kpi.danger
+                        ? "border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5"
+                        : "border-[var(--color-border)]"}`}>
+                    <p className="text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-1">{kpi.label}</p>
+                    <p className={`text-base font-bold font-mono ${kpi.danger ? "text-[var(--color-danger)]" : "text-[var(--color-text-body)]"}`}>
                         {kpi.value}
                     </p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{kpi.sub}</p>
+                    <p className="text-[10px] text-[var(--color-text-sub)] mt-0.5">{kpi.sub}</p>
                 </div>
             ))}
         </div>
@@ -85,27 +86,27 @@ function AuditLog() {
     };
 
     return (
-        <Card className="border-border">
-            <CardHeader className="pb-3 border-b border-border">
-                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-slate-900 flex items-center justify-center">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <div className="pb-3 border-b border-[var(--color-border)] px-4 pt-4">
+                <h3 className="text-sm font-semibold text-[var(--color-text-body)] flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-[var(--color-accent)] flex items-center justify-center">
                         <Clock className="w-3.5 h-3.5 text-white" />
                     </div>
                     Migration Audit Log
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-3">
+                </h3>
+            </div>
+            <div className="p-4">
                 {loading ? (
                     <div className="space-y-2">
                         {[1, 2].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
                     </div>
                 ) : events.length === 0 ? (
                     <div className="py-8 text-center">
-                        <Clock className="w-7 h-7 text-muted-foreground/30 mx-auto mb-2" />
-                        <p className="text-xs text-muted-foreground">No migration events recorded yet.</p>
+                        <Clock className="w-7 h-7 text-[var(--color-text-sub)]/30 mx-auto mb-2" />
+                        <p className="text-xs text-[var(--color-text-sub)]">No migration events recorded yet.</p>
                     </div>
                 ) : (
-                    <div className="divide-y divide-border">
+                    <div className="divide-y divide-[var(--color-border)]">
                         {events.map((ev, i) => {
                             const blockName = ev.blockId?.name ?? ev.snapshotData?.blockName ?? "Unknown block";
                             const fromName = ev.fromEntityId?.name ?? "—";
@@ -115,13 +116,13 @@ function AuditLog() {
                             const date = fmtDate(ev.completedAt ?? ev.createdAt);
                             const statusColor = ev.status === "rolled_back"
                                 ? "bg-amber-500" : ev.status === "completed"
-                                ? "bg-emerald-500" : "bg-muted-foreground";
+                                    ? "bg-emerald-500" : "bg-[var(--color-text-sub)]";
 
                             return (
                                 <div key={ev._id ?? i} className="flex items-start gap-3 py-3">
                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${statusColor}`} />
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-xs text-foreground truncate">
+                                        <p className="text-xs text-[var(--color-text-body)] truncate">
                                             <span className="font-semibold">{blockName}</span>
                                             {" "}
                                             {ev.status === "rolled_back" ? "rolled back to" : "migrated from"}{" "}
@@ -129,11 +130,11 @@ function AuditLog() {
                                             {" → "}
                                             <span className="font-semibold">{toName}</span>
                                         </p>
-                                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                        <p className="text-[10px] text-[var(--color-text-sub)] font-mono mt-0.5">
                                             {date} · by {byName}
                                         </p>
                                         {ev.snapshotData && (
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                                            <p className="text-[10px] text-[var(--color-text-sub)] mt-0.5">
                                                 {ev.snapshotData.tenantCount ?? 0} tenants · {ev.snapshotData.rentCount ?? 0} open rents
                                                 {ev.snapshotData.outstandingPaisa > 0
                                                     ? ` · ${fmtPaisa(ev.snapshotData.outstandingPaisa)} outstanding`
@@ -147,8 +148,8 @@ function AuditLog() {
                         })}
                     </div>
                 )}
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }
 
@@ -211,7 +212,6 @@ export function OrganizationTab() {
 
     useEffect(() => () => clearInterval(syncRef.current), []);
 
-    // ── Entity save (create or edit) ─────────────────────────────────────────
     const handleEntitySave = async (data) => {
         if (entityToEdit) {
             await updateEntity(entityToEdit._id, data);
@@ -220,11 +220,9 @@ export function OrganizationTab() {
         }
     };
 
-    // ── Block count per entity ────────────────────────────────────────────────
     const blockCountForEntity = (entityId) =>
         blocks.filter((b) => b.ownershipEntityId === entityId || b.ownershipEntity?._id === entityId).length;
 
-    // ── Loading / Error states ────────────────────────────────────────────────
     if (loading) {
         return (
             <div className="space-y-4">
@@ -240,8 +238,8 @@ export function OrganizationTab() {
     if (error) {
         return (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
-                <AlertCircle className="w-8 h-8 text-destructive" />
-                <p className="text-sm font-semibold text-foreground">{error}</p>
+                <AlertCircle className="w-8 h-8 text-[var(--color-danger)]" />
+                <p className="text-sm font-semibold text-[var(--color-text-body)]">{error}</p>
                 <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={refreshEntities}>
                     <RefreshCw className="w-3.5 h-3.5" />Retry
                 </Button>
@@ -252,7 +250,7 @@ export function OrganizationTab() {
     return (
         <div className="space-y-6">
 
-            {/* ── Sync indicator ─────────────────────────────────────────────────── */}
+            {/* Sync indicator */}
             {syncActive && (
                 <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800">
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
@@ -266,35 +264,33 @@ export function OrganizationTab() {
                 </div>
             )}
 
-            {/* ── KPI strip ──────────────────────────────────────────────────────── */}
+            {/* KPI strip */}
             <KpiStrip blocks={blocks} />
 
-            {/* ── Entities ────────────────────────────────────────────────────────── */}
-            <Card className="border-border">
-                <CardHeader className="pb-4 border-b border-border">
-                    <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-md bg-slate-900 flex items-center justify-center">
-                                <Building2 className="w-3.5 h-3.5 text-white" />
-                            </div>
-                            Ownership Entities
-                            <Badge variant="secondary" className="text-[11px] font-semibold">{entities.length}</Badge>
-                        </CardTitle>
-                        <Button
-                            size="sm"
-                            className="gap-2 h-8 text-xs px-3"
-                            onClick={() => { setEntityToEdit(null); setEntityDialogOpen(true); }}
-                        >
-                            <Plus className="w-3.5 h-3.5" />New Entity
-                        </Button>
-                    </div>
-                </CardHeader>
-                <CardContent className="pt-4">
+            {/* Entities */}
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+                <div className="flex items-center justify-between px-4 pt-4 pb-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-body)] flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-md bg-[var(--color-accent)] flex items-center justify-center">
+                            <Building2 className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        Ownership Entities
+                        <Badge variant="secondary" className="text-[11px] font-semibold">{entities.length}</Badge>
+                    </h3>
+                    <Button
+                        size="sm"
+                        className="gap-2 h-8 text-xs px-3"
+                        onClick={() => { setEntityToEdit(null); setEntityDialogOpen(true); }}
+                    >
+                        <Plus className="w-3.5 h-3.5" />New Entity
+                    </Button>
+                </div>
+                <div className="p-4">
                     {entities.length === 0 ? (
-                        <div className="text-center py-10 border-2 border-dashed border-border rounded-xl">
-                            <Building2 className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                            <p className="text-sm font-medium text-muted-foreground">No entities yet</p>
-                            <p className="text-xs text-muted-foreground/60 mt-1 mb-4">
+                        <div className="text-center py-10 border-2 border-dashed border-[var(--color-border)] rounded-xl">
+                            <Building2 className="w-8 h-8 text-[var(--color-text-sub)]/30 mx-auto mb-2" />
+                            <p className="text-sm font-medium text-[var(--color-text-sub)]">No entities yet</p>
+                            <p className="text-xs text-[var(--color-text-sub)]/60 mt-1 mb-4">
                                 Create a private or company entity to assign buildings.
                             </p>
                             <Button size="sm" className="gap-1.5 h-8 text-xs"
@@ -314,13 +310,13 @@ export function OrganizationTab() {
                             ))}
                         </div>
                     )}
-                </CardContent>
-            </Card>
+                </div>
+            </div>
 
-            {/* ── Block cards ─────────────────────────────────────────────────────── */}
+            {/* Block cards */}
             {blocks.length > 0 && (
                 <div className="space-y-3">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                    <p className="text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest">
                         Buildings — select to view details or migrate
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -337,7 +333,7 @@ export function OrganizationTab() {
                 </div>
             )}
 
-            {/* ── Block detail panel ───────────────────────────────────────────────── */}
+            {/* Block detail panel */}
             {selectedBlock && (
                 <BlockDetailPanel
                     block={selectedBlock}
@@ -346,10 +342,10 @@ export function OrganizationTab() {
                 />
             )}
 
-            {/* ── Audit log ────────────────────────────────────────────────────────── */}
+            {/* Audit log */}
             <AuditLog />
 
-            {/* ── Entity form dialog ───────────────────────────────────────────────── */}
+            {/* Entity form dialog */}
             <EntityFormDialog
                 open={entityDialogOpen}
                 onOpenChange={setEntityDialogOpen}
@@ -357,7 +353,7 @@ export function OrganizationTab() {
                 onSave={handleEntitySave}
             />
 
-            {/* ── Migration wizard ─────────────────────────────────────────────────── */}
+            {/* Migration wizard */}
             {wizardBlock && (
                 <MigrationWizard
                     block={wizardBlock}

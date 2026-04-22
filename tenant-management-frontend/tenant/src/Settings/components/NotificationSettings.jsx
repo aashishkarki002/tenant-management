@@ -1,19 +1,19 @@
-// src/components/settings/NotificationSettings.tsx
-//
-// Drop this into any settings page/tab.
-// Handles every state a user can be in, including recovery ("not getting notifs").
+// src/components/settings/NotificationSettings.jsx
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Bell, BellOff, BellRing, RefreshCw, Smartphone,
     Download, Globe, ShieldAlert, CheckCircle2, AlertCircle,
-    ChevronRight,
+    ChevronRight, Clock, Save, Zap, CreditCard, CalendarClock,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { usePushNotifications } from "../../hooks/usePushNotification";
 import { useAuth } from "../../context/AuthContext";
-
-
+import api from "../../../plugins/axios";
+import { toast } from "sonner";
 
 // ── Helper: resolve the platform install reason ────────────────────────────────
 function getInstallReason(isIOS) {
@@ -42,6 +42,225 @@ function getInstallReason(isIOS) {
     };
 }
 
+// ── Defaults (mirror backend CRON_DEFAULTS) ────────────────────────────────────
+const DEFAULT_CRON = {
+    rentReminder: { enabled: true, daysBeforeMonthEnd: 7 },
+    dailyChecklist: {
+        morning: { enabled: true, time: "07:30" },
+        escalation: { enabled: true, time: "10:30" },
+        eod: { enabled: true, time: "16:30" },
+    },
+    electricityOverdue: { enabled: true, overdueDays: 30 },
+    lateFeeNotify: { enabled: true },
+    loanEmiReminder: { enabled: true },
+};
+
+// ── Cron schedule section (admin-only) ────────────────────────────────────────
+function CronScheduleSettings() {
+    const [cfg, setCfg] = useState(DEFAULT_CRON);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        api.get("/api/settings/cron")
+            .then((r) => { if (r.data.success) setCfg(r.data.data); })
+            .catch(() => toast.error("Failed to load schedule settings"))
+            .finally(() => setLoading(false));
+    }, []);
+
+    const save = async () => {
+        setSaving(true);
+        try {
+            const r = await api.post("/api/settings/cron", cfg);
+            if (r.data.success) toast.success("Schedule settings saved");
+            else toast.error(r.data.message || "Failed to save");
+        } catch {
+            toast.error("Failed to save schedule settings");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const setChecklist = (key, patch) =>
+        setCfg((s) => ({
+            ...s,
+            dailyChecklist: {
+                ...s.dailyChecklist,
+                [key]: { ...s.dailyChecklist[key], ...patch },
+            },
+        }));
+
+    const SectionLabel = ({ children }) => (
+        <p className="text-[10px] font-bold uppercase tracking-widest mb-2"
+            style={{ color: "var(--color-text-weak)" }}>{children}</p>
+    );
+
+    const RowCard = ({ children }) => (
+        <div className="rounded-xl border px-4 py-3 space-y-3"
+            style={{ background: "var(--color-surface-raised)", borderColor: "var(--color-border)" }}>
+            {children}
+        </div>
+    );
+
+    const Row = ({ label, desc, checked, onToggle, children }) => (
+        <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium" style={{ color: "var(--color-text-strong)" }}>{label}</p>
+                {desc && <p className="text-[12px] mt-0.5" style={{ color: "var(--color-text-sub)" }}>{desc}</p>}
+                {children}
+            </div>
+            <Switch checked={checked} onCheckedChange={onToggle} />
+        </div>
+    );
+
+    if (loading) {
+        return (
+            <div className="space-y-2 animate-pulse">
+                {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-16 rounded-xl border"
+                        style={{ background: "var(--color-surface-raised)", borderColor: "var(--color-border)" }} />
+                ))}
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-5">
+            {/* Rent Reminder */}
+            <div>
+                <SectionLabel>Rent Reminder</SectionLabel>
+                <RowCard>
+                    <Row
+                        label="Month-end reminder"
+                        desc="Notify admins when rent is still unpaid near month-end."
+                        checked={cfg.rentReminder.enabled}
+                        onToggle={(v) => setCfg((s) => ({ ...s, rentReminder: { ...s.rentReminder, enabled: v } }))}
+                    >
+                        {cfg.rentReminder.enabled && (
+                            <div className="flex items-center gap-2 mt-2">
+                                <Label className="text-xs text-muted-foreground whitespace-nowrap">Days before month end</Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={28}
+                                    className="h-8 w-20 text-sm"
+                                    value={cfg.rentReminder.daysBeforeMonthEnd}
+                                    onChange={(e) =>
+                                        setCfg((s) => ({
+                                            ...s,
+                                            rentReminder: { ...s.rentReminder, daysBeforeMonthEnd: Number(e.target.value) },
+                                        }))
+                                    }
+                                />
+                            </div>
+                        )}
+                    </Row>
+                </RowCard>
+            </div>
+
+            {/* Daily Checklist */}
+            <div>
+                <SectionLabel>Daily Checklist Notifications</SectionLabel>
+                <RowCard>
+                    <div className="space-y-4 divide-y" style={{ borderColor: "var(--color-border)" }}>
+                        {[
+                            { key: "morning", label: "Morning — checklist creation", desc: "Sent when daily checklists are created and ready." },
+                            { key: "escalation", label: "Mid-day escalation", desc: "Sent if checklists are still pending mid-morning." },
+                            { key: "eod", label: "End-of-day warning", desc: "Sent if any checklist is incomplete by day-end." },
+                        ].map(({ key, label, desc }, i) => (
+                            <div key={key} className={i > 0 ? "pt-3" : ""}>
+                                <Row
+                                    label={label}
+                                    desc={desc}
+                                    checked={cfg.dailyChecklist[key].enabled}
+                                    onToggle={(v) => setChecklist(key, { enabled: v })}
+                                >
+                                    {cfg.dailyChecklist[key].enabled && (
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <Clock className="w-3.5 h-3.5" style={{ color: "var(--color-text-weak)" }} />
+                                            <Input
+                                                type="time"
+                                                className="h-8 w-32 text-sm"
+                                                value={cfg.dailyChecklist[key].time}
+                                                onChange={(e) => setChecklist(key, { time: e.target.value })}
+                                            />
+                                        </div>
+                                    )}
+                                </Row>
+                            </div>
+                        ))}
+                    </div>
+                </RowCard>
+            </div>
+
+            {/* Electricity Overdue */}
+            <div>
+                <SectionLabel>Electricity Bills</SectionLabel>
+                <RowCard>
+                    <Row
+                        label="Overdue bill alerts"
+                        desc="Notify admins when electricity bills have been pending too long."
+                        checked={cfg.electricityOverdue.enabled}
+                        onToggle={(v) => setCfg((s) => ({ ...s, electricityOverdue: { ...s.electricityOverdue, enabled: v } }))}
+                    >
+                        {cfg.electricityOverdue.enabled && (
+                            <div className="flex items-center gap-2 mt-2">
+                                <Label className="text-xs text-muted-foreground whitespace-nowrap">Mark overdue after (days)</Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={365}
+                                    className="h-8 w-20 text-sm"
+                                    value={cfg.electricityOverdue.overdueDays}
+                                    onChange={(e) =>
+                                        setCfg((s) => ({
+                                            ...s,
+                                            electricityOverdue: { ...s.electricityOverdue, overdueDays: Number(e.target.value) },
+                                        }))
+                                    }
+                                />
+                            </div>
+                        )}
+                    </Row>
+                </RowCard>
+            </div>
+
+            {/* Late Fee & Loan EMI */}
+            <div>
+                <SectionLabel>Other Alerts</SectionLabel>
+                <RowCard>
+                    <div className="space-y-4 divide-y" style={{ borderColor: "var(--color-border)" }}>
+                        <Row
+                            label="Late fee applied"
+                            desc="Notify admins when late fees are automatically charged."
+                            checked={cfg.lateFeeNotify.enabled}
+                            onToggle={(v) => setCfg((s) => ({ ...s, lateFeeNotify: { enabled: v } }))}
+                        />
+                        <div className="pt-3">
+                            <Row
+                                label="Loan EMI reminders"
+                                desc="Remind admins about upcoming loan EMI payments."
+                                checked={cfg.loanEmiReminder.enabled}
+                                onToggle={(v) => setCfg((s) => ({ ...s, loanEmiReminder: { enabled: v } }))}
+                            />
+                        </div>
+                    </div>
+                </RowCard>
+            </div>
+
+            <Button
+                className="gap-2 h-8 text-xs px-4"
+                onClick={save}
+                disabled={saving}
+            >
+                <Save className="w-3.5 h-3.5" />
+                {saving ? "Saving…" : "Save Schedule Settings"}
+            </Button>
+        </div>
+    );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function NotificationSettings() {
     const { user } = useAuth();
     const {
@@ -59,7 +278,8 @@ export default function NotificationSettings() {
     const [toggleState, setToggleState] = useState("idle");
     const [resubState, setResubState] = useState("idle");
 
-    // ── Toggle handler ─────────────────────────────────────────────────────────
+    const isAdmin = ["super_admin", "admin"].includes(user?.role);
+
     const handleToggle = async (checked) => {
         setToggleState("loading");
         try {
@@ -73,7 +293,6 @@ export default function NotificationSettings() {
         }
     };
 
-    // ── Re-subscribe (fix) handler ─────────────────────────────────────────────
     const handleResubscribe = async () => {
         setResubState("loading");
         try {
@@ -86,7 +305,6 @@ export default function NotificationSettings() {
         }
     };
 
-    // ── Sub-components ─────────────────────────────────────────────────────────
     const SectionTitle = ({ children }) => (
         <p className="text-[11px] font-semibold uppercase tracking-widest mb-3"
             style={{ color: "var(--color-text-weak)" }}>
@@ -130,9 +348,6 @@ export default function NotificationSettings() {
         </ol>
     );
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // RENDER: Browser doesn't support push at all
-    // ─────────────────────────────────────────────────────────────────────────────
     if (!browserSupportsPush) {
         return (
             <div className="flex flex-col gap-6">
@@ -159,13 +374,18 @@ export default function NotificationSettings() {
                         </div>
                     </div>
                 </Card>
+                {isAdmin && (
+                    <>
+                        <div className="border-t pt-6" style={{ borderColor: "var(--color-border)" }}>
+                            <SectionTitle>Notification Schedule</SectionTitle>
+                            <CronScheduleSettings />
+                        </div>
+                    </>
+                )}
             </div>
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // RENDER: Not installed as PWA (needs install first)
-    // ─────────────────────────────────────────────────────────────────────────────
     if (!isStandalone) {
         const reason = getInstallReason(isIOS);
         const Icon = reason.icon;
@@ -187,7 +407,6 @@ export default function NotificationSettings() {
                     </div>
                 </Card>
 
-                {/* For non-iOS, still allow browser-tab subscription as fallback */}
                 {!isIOS && isReady && (
                     <Card>
                         <div className="flex items-center justify-between gap-4">
@@ -207,13 +426,17 @@ export default function NotificationSettings() {
                         </div>
                     </Card>
                 )}
+
+                {isAdmin && (
+                    <div className="border-t pt-6" style={{ borderColor: "var(--color-border)" }}>
+                        <SectionTitle>Notification Schedule</SectionTitle>
+                        <CronScheduleSettings />
+                    </div>
+                )}
             </div>
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // RENDER: Permission blocked by browser/OS
-    // ─────────────────────────────────────────────────────────────────────────────
     if (permissionState === "denied") {
         return (
             <div className="flex flex-col gap-6">
@@ -244,18 +467,20 @@ export default function NotificationSettings() {
                         </div>
                     </div>
                 </Card>
+                {isAdmin && (
+                    <div className="border-t pt-6" style={{ borderColor: "var(--color-border)" }}>
+                        <SectionTitle>Notification Schedule</SectionTitle>
+                        <CronScheduleSettings />
+                    </div>
+                )}
             </div>
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // RENDER: Normal state — subscribed or not, with full controls
-    // ─────────────────────────────────────────────────────────────────────────────
     return (
         <div className="flex flex-col gap-6">
             <SectionTitle>Push Notifications</SectionTitle>
 
-            {/* ── Main toggle card ── */}
             <Card>
                 <div className="flex items-center gap-4">
                     <div
@@ -283,7 +508,6 @@ export default function NotificationSettings() {
                         </p>
                     </div>
 
-                    {/* Toggle with feedback */}
                     <div className="flex items-center gap-2 shrink-0">
                         {toggleState === "success" && (
                             <CheckCircle2 className="w-4 h-4" style={{ color: "var(--color-success, #22c55e)" }} />
@@ -301,12 +525,6 @@ export default function NotificationSettings() {
                 </div>
             </Card>
 
-            {/* ── Recovery card — only shown when subscribed ── */}
-            {/* 
-        This is the KEY product design decision:
-        Show "Fix notifications" even when subscribed — because a subscribed-but-broken
-        state is invisible to the user. They won't know unless they see this option.
-      */}
             {isSubscribed && (
                 <Card>
                     <div className="flex items-start gap-3">
@@ -348,6 +566,13 @@ export default function NotificationSettings() {
                         </div>
                     </div>
                 </Card>
+            )}
+
+            {isAdmin && (
+                <div className="border-t pt-6" style={{ borderColor: "var(--color-border)" }}>
+                    <SectionTitle>Notification Schedule</SectionTitle>
+                    <CronScheduleSettings />
+                </div>
             )}
         </div>
     );

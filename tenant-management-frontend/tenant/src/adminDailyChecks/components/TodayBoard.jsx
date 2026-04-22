@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { RefreshCw, Camera, Zap, Droplets, LayoutGrid, Car, Flame, Waves, ChevronRight, AlertTriangle, CheckCircle2, Clock, Loader2 } from "lucide-react";
+import { RefreshCw, Camera, Zap, Droplets, LayoutGrid, Car, Flame, Waves, ChevronRight, AlertTriangle, CheckCircle2, Clock, Loader2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import api from "../../../plugins/axios";
 import { useTodayBoard } from "../hooks/useTodayBoard.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -151,7 +153,61 @@ function ResultRow({ result, onClick }) {
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyToday({ onRefetch }) {
+function EmptyToday({ onRefetch, propertyId, onGenerated }) {
+    const [generating, setGenerating] = useState(false);
+
+    const handleGenerate = useCallback(async () => {
+        setGenerating(true);
+        try {
+            // 1. Fetch all active templates for this property
+            const tmplRes = await api.get("/api/checklists/templates", {
+                params: { propertyId, isActive: true },
+            });
+            const templates = tmplRes.data?.data ?? [];
+
+            if (!templates.length) {
+                toast.error("No active templates found. Create a template first.");
+                return;
+            }
+
+            // 2. Today's English date — what the backend expects as checkDate
+            const checkDate = new Date().toISOString().split("T")[0];
+
+            // 3. POST a result for each template (backend deduplicates via upsert)
+            const outcomes = await Promise.allSettled(
+                templates.map((t) =>
+                    api.post("/api/checklists/results", {
+                        templateId: t._id,
+                        checkDate,
+                    })
+                )
+            );
+
+            const created = outcomes.filter(
+                (o) => o.status === "fulfilled" && o.value.data?.success && !o.value.data?.alreadyExisted
+            ).length;
+            const existed = outcomes.filter(
+                (o) => o.status === "fulfilled" && o.value.data?.alreadyExisted
+            ).length;
+            const failed = outcomes.filter((o) => o.status === "rejected").length;
+
+            if (created > 0) {
+                toast.success(`${created} checklist${created !== 1 ? "s" : ""} created for today.`);
+            } else if (existed > 0) {
+                toast.info("Today's checklists already exist — refreshing.");
+            }
+            if (failed > 0) {
+                toast.error(`${failed} checklist${failed !== 1 ? "s" : ""} failed to create.`);
+            }
+
+            onGenerated?.();
+        } catch (e) {
+            toast.error(e.response?.data?.message ?? e.message ?? "Failed to generate checklists");
+        } finally {
+            setGenerating(false);
+        }
+    }, [propertyId, onGenerated]);
+
     return (
         <div className="flex flex-col items-center justify-center py-14 text-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">
@@ -160,12 +216,26 @@ function EmptyToday({ onRefetch }) {
             <div>
                 <p className="text-sm font-medium text-foreground">No checklists for today</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                    Results will appear once the daily cron runs.
+                    The daily cron hasn't run yet, or it was missed.
                 </p>
             </div>
-            <Button variant="outline" size="sm" onClick={onRefetch} className="text-xs h-8">
-                Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+                <Button
+                    size="sm"
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="h-8 text-xs gap-1.5"
+                >
+                    {generating
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <Plus className="h-3 w-3" />
+                    }
+                    {generating ? "Generating…" : "Generate today's checks"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={onRefetch} className="text-xs h-8">
+                    Refresh
+                </Button>
+            </div>
         </div>
     );
 }
@@ -293,7 +363,7 @@ function TodayBoard({ propertyId, nepaliDate: overrideDate, onCardClick, refresh
                     </Button>
                 </div>
             ) : results.length === 0 ? (
-                <EmptyToday onRefetch={refetch} />
+                <EmptyToday onRefetch={refetch} propertyId={propertyId} onGenerated={refetch} />
             ) : (
                 <div className="space-y-1.5">
                     {results.map((result) => (
