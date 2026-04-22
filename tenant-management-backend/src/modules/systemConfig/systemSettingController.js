@@ -92,6 +92,33 @@ export const getOwnershipConfig = async (req, res) => {
   }
 };
 
+// ── CRON SETTINGS ─────────────────────────────────────────────────────────────
+
+// GET /api/settings/cron
+export const getCronSettingsCtrl = async (req, res) => {
+  try {
+    const data = await settingsService.getCronSettings();
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// POST /api/settings/cron
+export const saveCronSettingsCtrl = async (req, res) => {
+  try {
+    const result = await settingsService.saveCronSettings(req.body, req.admin?.id);
+    if (result.success && result.data?.dailyChecklist) {
+      // Dynamically reschedule daily checklist crons with new times/enabled state
+      const { scheduleDailyChecklistCron } = await import("../../cron/service/dailyCheck.cron.js");
+      scheduleDailyChecklistCron(result.data.dailyChecklist);
+    }
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // PATCH /api/settings/system-mode
 export const updateSystemMode = async (req, res) => {
   try {

@@ -47,6 +47,7 @@ import {
 } from "../../utils/nepaliDateHelper.js";
 import { rebuildAllTenantBalances } from "../../modules/tenantBalance/tenantBalance.service.js";
 import { buildCarryForwardMap } from "../../modules/rents/rent.service.js";
+import { getCronSettings } from "../../modules/systemConfig/systemSetting.service.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -108,10 +109,10 @@ async function notifyAdmins({ type, title, message, data, adminIds }) {
 
 // ─── Nepali today ─────────────────────────────────────────────────────────────
 
-function getTodayNepali() {
+function getTodayNepali(daysBeforeMonthEnd = 7) {
   const { npToday, bsYear, bsMonth, bsDay } = getNepaliToday();
   const lastDayOfMonth = NepaliDate.getDaysOfMonth(bsYear, npToday.getMonth());
-  const reminderDay = lastDayOfMonth - 7;
+  const reminderDay = lastDayOfMonth - daysBeforeMonthEnd;
   return {
     today: npToday,
     todayDay: bsDay,
@@ -250,6 +251,14 @@ export async function masterCron({ forceRun = false } = {}) {
   isRunning = true;
 
   const startedAt = new Date();
+
+  // Read configurable cron settings from DB (falls back to defaults if not set)
+  const cronCfg = await getCronSettings().catch(() => null);
+  const daysBeforeMonthEnd = cronCfg?.rentReminder?.daysBeforeMonthEnd ?? 7;
+  const rentReminderEnabled = cronCfg?.rentReminder?.enabled ?? true;
+  const lateFeeNotifyEnabled = cronCfg?.lateFeeNotify?.enabled ?? true;
+  const loanEmiReminderEnabled = cronCfg?.loanEmiReminder?.enabled ?? true;
+
   const {
     today,
     todayDay,
@@ -257,7 +266,7 @@ export async function masterCron({ forceRun = false } = {}) {
     todayYear,
     lastDayOfMonth,
     reminderDay,
-  } = getTodayNepali();
+  } = getTodayNepali(daysBeforeMonthEnd);
 
   const isFirstDay = forceRun || todayDay === 1;
   const isReminderDay = forceRun || todayDay === reminderDay;
@@ -366,7 +375,7 @@ export async function masterCron({ forceRun = false } = {}) {
     }
 
     // Notify admins if fees were charged today
-    if (lateFeeResult.processed > 0 && adminIds.length > 0) {
+    if (lateFeeNotifyEnabled && lateFeeResult.processed > 0 && adminIds.length > 0) {
       await notifyAdmins({
         type: "LATE_FEE_APPLIED",
         title: "Late Fees Applied",
@@ -393,7 +402,9 @@ export async function masterCron({ forceRun = false } = {}) {
       );
     }
     console.log("\n  🏦 [6] Loan EMI reminder run...");
-    const loanEmiResult = await applyLoanEmiReminders(adminIds); // ← ADD
+    const loanEmiResult = loanEmiReminderEnabled
+      ? await applyLoanEmiReminders(adminIds)
+      : { processed: 0, failed: 0, message: "Disabled via cron settings" };
 
     if (loanEmiResult.processed > 0 || loanEmiResult.failed > 0) {
       await CronLog.create({
@@ -412,7 +423,7 @@ export async function masterCron({ forceRun = false } = {}) {
     console.log("\n  📊 [6] Rebuilding tenant balance snapshots...");
 
     // ── [5] Admin reminders (reminder day only) ───────────────────────────────
-    if (isReminderDay) {
+    if (rentReminderEnabled && isReminderDay) {
       console.log();
       const reminderResult = await sendRentReminders(adminIds);
       await CronLog.create({

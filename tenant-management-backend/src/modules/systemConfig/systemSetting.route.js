@@ -17,6 +17,8 @@ import {
   saveLateFee,
   getOwnershipConfig,
   updateSystemMode,
+  getCronSettingsCtrl,
+  saveCronSettingsCtrl,
 } from "./systemSettingController.js";
 
 const router = Router();
@@ -32,6 +34,10 @@ router.patch("/system/escalation/disable-all", protect, disableEscalationAll);
 
 // ── LATE FEE ──────────────────────────────────────────────────────────────────
 router.post("/system/late-fee", protect, saveLateFee);
+
+// ── CRON SETTINGS ─────────────────────────────────────────────────────────────
+router.get("/cron", protect, getCronSettingsCtrl);
+router.post("/cron", protect, authorize("super_admin", "admin"), saveCronSettingsCtrl);
 
 // ── OWNERSHIP CONFIG ──────────────────────────────────────────────────────────
 router.get("/ownership-config", protect, getOwnershipConfig);

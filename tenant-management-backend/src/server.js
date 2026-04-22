@@ -34,7 +34,12 @@ async function main() {
   // It self-registers its schedule on import.
   await import("./cron/service/master-cron.js");
   scheduleGeneratorCheckCron();
-  scheduleDailyChecklistCron();
+
+  // Load cron settings from DB so dynamic config is applied at startup
+  const { getCronSettings } = await import("./modules/systemConfig/systemSetting.service.js");
+  const cronCfg = await getCronSettings().catch(() => ({}));
+  scheduleDailyChecklistCron(cronCfg.dailyChecklist ?? {});
+
   scheduleMaintenanceCron();
   scheduleElectricityOverdueCron();
   server.listen(PORT, () => {

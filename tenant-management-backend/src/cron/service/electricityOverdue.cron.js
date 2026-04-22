@@ -14,12 +14,21 @@ import cron from "node-cron";
 import { Electricity } from "../../modules/electricity/Electricity.Model.js";
 import Admin from "../../modules/auth/admin.Model.js";
 import { createAndEmitNotification } from "../../modules/notifications/notification.service.js";
-
-const OVERDUE_DAYS = 30;
+import { getCronSettings } from "../../modules/systemConfig/systemSetting.service.js";
 
 // ─── Core job ─────────────────────────────────────────────────────────────────
 
 export async function markOverdueElectricityBills() {
+  // Read configurable overdue threshold from DB (defaults to 30 days)
+  const cronCfg = await getCronSettings().catch(() => null);
+  const OVERDUE_DAYS = cronCfg?.electricityOverdue?.overdueDays ?? 30;
+  const enabled = cronCfg?.electricityOverdue?.enabled ?? true;
+
+  if (!enabled) {
+    console.log("[ElectricityOverdueCron] Disabled via cron settings — skipping.");
+    return { count: 0 };
+  }
+
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - OVERDUE_DAYS);
 
@@ -49,7 +58,7 @@ export async function markOverdueElectricityBills() {
       await createAndEmitNotification({
         type:     "ELECTRICITY_BILLS_OVERDUE",
         title:    "Electricity Bills Overdue",
-        message:  `${count} electricity bill${count > 1 ? "s have" : " has"} been marked overdue (pending > ${OVERDUE_DAYS} days).`,
+        message:  `${count} electricity bill${count > 1 ? "s have" : " has"} been marked overdue (pending > ${OVERDUE_DAYS} day${OVERDUE_DAYS !== 1 ? "s" : ""}).`,
         data:     { count, cutoff: cutoff.toISOString() },
         adminIds,
       });

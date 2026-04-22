@@ -268,6 +268,64 @@ export async function saveLateFeeSettings(settings, adminId) {
   return { success: true, message: "Late fee policy saved" };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CRON SETTINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CRON_KEY = "cronSettings";
+
+export const CRON_DEFAULTS = {
+  rentReminder: { enabled: true, daysBeforeMonthEnd: 7 },
+  dailyChecklist: {
+    morning: { enabled: true, time: "07:30" },
+    escalation: { enabled: true, time: "10:30" },
+    eod: { enabled: true, time: "16:30" },
+  },
+  electricityOverdue: { enabled: true, overdueDays: 30 },
+  lateFeeNotify: { enabled: true },
+  loanEmiReminder: { enabled: true },
+};
+
+export async function getCronSettings() {
+  const doc = await SystemConfig.findOne({ key: CRON_KEY }).lean();
+  if (!doc) return CRON_DEFAULTS;
+  // Shallow-merge each top-level section so missing keys get defaults
+  const v = doc.value ?? {};
+  return {
+    rentReminder: { ...CRON_DEFAULTS.rentReminder, ...v.rentReminder },
+    dailyChecklist: {
+      morning: { ...CRON_DEFAULTS.dailyChecklist.morning, ...v.dailyChecklist?.morning },
+      escalation: { ...CRON_DEFAULTS.dailyChecklist.escalation, ...v.dailyChecklist?.escalation },
+      eod: { ...CRON_DEFAULTS.dailyChecklist.eod, ...v.dailyChecklist?.eod },
+    },
+    electricityOverdue: { ...CRON_DEFAULTS.electricityOverdue, ...v.electricityOverdue },
+    lateFeeNotify: { ...CRON_DEFAULTS.lateFeeNotify, ...v.lateFeeNotify },
+    loanEmiReminder: { ...CRON_DEFAULTS.loanEmiReminder, ...v.loanEmiReminder },
+  };
+}
+
+export async function saveCronSettings(settings, adminId) {
+  const current = await getCronSettings();
+  // Deep merge: incoming settings override current, fill gaps with defaults
+  const merged = {
+    rentReminder: { ...current.rentReminder, ...settings.rentReminder },
+    dailyChecklist: {
+      morning: { ...current.dailyChecklist.morning, ...settings.dailyChecklist?.morning },
+      escalation: { ...current.dailyChecklist.escalation, ...settings.dailyChecklist?.escalation },
+      eod: { ...current.dailyChecklist.eod, ...settings.dailyChecklist?.eod },
+    },
+    electricityOverdue: { ...current.electricityOverdue, ...settings.electricityOverdue },
+    lateFeeNotify: { ...current.lateFeeNotify, ...settings.lateFeeNotify },
+    loanEmiReminder: { ...current.loanEmiReminder, ...settings.loanEmiReminder },
+  };
+  await SystemConfig.findOneAndUpdate(
+    { key: CRON_KEY },
+    { key: CRON_KEY, value: merged, updatedBy: adminId ?? null },
+    { upsert: true, new: true },
+  );
+  return { success: true, message: "Cron settings saved", data: merged };
+}
+
 /**
  * Calculate the late fee paisa for a given overdue amount.
  * Used externally when you need a preview without running the cron.

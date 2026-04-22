@@ -460,21 +460,59 @@ export async function sendEndOfDayWarning() {
 }
 
 // ─── Scheduler ─────────────────────────────────────────────────────────────
-export function scheduleDailyChecklistCron() {
-  cron.schedule("30 7 * * *", createAndNotifyMorning, {
-    timezone: "Asia/Kathmandu",
-  });
-  cron.schedule("30 10 * * *", sendMidMorningEscalation, {
-    timezone: "Asia/Kathmandu",
-  });
-  cron.schedule("30 16 * * *", sendEndOfDayWarning, {
-    timezone: "Asia/Kathmandu",
-  });
+// Module-level task refs so we can stop/restart them dynamically.
+let _morningTask = null;
+let _escalationTask = null;
+let _eodTask = null;
+
+/**
+ * Schedule (or reschedule) daily checklist crons.
+ *
+ * @param {object} config  Shape: { morning, escalation, eod }
+ *   Each sub-object: { enabled: boolean, time: "HH:MM" }
+ *   Defaults: morning=07:30, escalation=10:30, eod=16:30 — all enabled.
+ *
+ * Safe to call multiple times (stops existing tasks first).
+ * Called at startup from app.js and re-called when admin saves cron settings.
+ */
+export function scheduleDailyChecklistCron(config = {}) {
+  const {
+    morning = { enabled: true, time: "07:30" },
+    escalation = { enabled: true, time: "10:30" },
+    eod = { enabled: true, time: "16:30" },
+  } = config;
+
+  // Stop existing tasks
+  _morningTask?.stop();
+  _escalationTask?.stop();
+  _eodTask?.stop();
+  _morningTask = null;
+  _escalationTask = null;
+  _eodTask = null;
+
+  const parseCron = (time) => {
+    const [h, m] = (time || "00:00").split(":").map(Number);
+    return `${m} ${h} * * *`;
+  };
+
+  if (morning.enabled) {
+    _morningTask = cron.schedule(parseCron(morning.time), createAndNotifyMorning, {
+      timezone: "Asia/Kathmandu",
+    });
+  }
+  if (escalation.enabled) {
+    _escalationTask = cron.schedule(parseCron(escalation.time), sendMidMorningEscalation, {
+      timezone: "Asia/Kathmandu",
+    });
+  }
+  if (eod.enabled) {
+    _eodTask = cron.schedule(parseCron(eod.time), sendEndOfDayWarning, {
+      timezone: "Asia/Kathmandu",
+    });
+  }
 
   console.log("✅ Daily checklist cron scheduled (Asia/Kathmandu):");
-  console.log(
-    "   07:30 — create results + morning push (1 notification/admin)",
-  );
-  console.log("   10:30 — mid-morning escalation (1 notification/admin)");
-  console.log("   16:30 — end-of-day warning (1 notification/admin)");
+  console.log(`   ${morning.enabled ? morning.time : "disabled"} — morning checklist creation`);
+  console.log(`   ${escalation.enabled ? escalation.time : "disabled"} — mid-morning escalation`);
+  console.log(`   ${eod.enabled ? eod.time : "disabled"} — end-of-day warning`);
 }
