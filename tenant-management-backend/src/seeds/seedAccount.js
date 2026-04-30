@@ -105,17 +105,14 @@ function getChartOfAccounts() {
       description: "Small cash held for day-to-day operational expenses.",
     },
     {
-      // CHEQUE_CLEARING = "1020"
-      // Cheques sit here from issuance/receipt until the bank processes them.
-      // DR on receipt (RECEIVED cheques), CR on issuance (ISSUED cheques).
-      // Clears to zero after deposit; reversal on bounce.
-      code: ACCOUNT_CODES.CHEQUE_CLEARING,
-      name: "Cheques in Transit",
+      // "1020" — kept in DB for historical ledger entries; no longer used by new journals.
+      // Cheques now post directly to the bank account ("what goes is gone").
+      code: "1020",
+      name: "Cheques in Transit (Legacy)",
       type: "ASSET",
       description:
-        "Cheques issued or received that have not yet been processed by the bank. " +
-        "First leg of every cheque journal posts here. Second leg (deposit) moves " +
-        "the balance to the actual bank sub-account. Net balance = sum of pending cheques.",
+        "Legacy clearing account for cheque payments. No longer used for new journals. " +
+        "Retained so historical ledger entries remain resolvable.",
     },
     {
       code: "1200",
@@ -211,6 +208,18 @@ function getChartOfAccounts() {
       description: "Income from occupied unit rent charges.",
     },
     {
+      // CAM_REVENUE = "4050"
+      // CAM income is kept separate from Rental Income so it can be reported
+      // independently on the P&L (total revenue = 4000 + 4050).
+      code: ACCOUNT_CODES.CAM_REVENUE,
+      name: "CAM Income",
+      type: "REVENUE",
+      description:
+        "Common Area Maintenance charges billed to tenants. " +
+        "DR Accounts Receivable / CR here on each CAM charge. " +
+        "Kept separate from Rental Income (4000) for independent P&L reporting.",
+    },
+    {
       code: "4100",
       name: "Other Income",
       type: "REVENUE",
@@ -222,6 +231,15 @@ function getChartOfAccounts() {
       name: "Late Fee Income",
       type: "REVENUE",
       description: "Penalty income from late rent payments.",
+    },
+    {
+      // EVENT_STALL_REVENUE = "4400"
+      code: ACCOUNT_CODES.EVENT_STALL_REVENUE,
+      name: "Event Stall / Kiosk Revenue",
+      type: "REVENUE",
+      description:
+        "Revenue from leasing stalls and kiosks during courtyard events (Sallyan House). " +
+        "DR Cash/Bank / CR here when a kiosk lessee makes a payment.",
     },
 
     // ── EXPENSES ─────────────────────────────────────────────────────────────
@@ -256,6 +274,16 @@ function getChartOfAccounts() {
       name: "Insurance",
       type: "EXPENSE",
       description: "Property insurance premiums.",
+    },
+    {
+      // EVENT_EXPENSE = "5450"
+      code: ACCOUNT_CODES.EVENT_EXPENSE,
+      name: "Event Operating Expenses",
+      type: "EXPENSE",
+      description:
+        "Costs incurred to run courtyard events (Sallyan House): stage setup, decorations, " +
+        "entertainment, event security, logistics, etc. " +
+        "DR here / CR Cash/Bank when event expenses are paid.",
     },
     {
       // FIX BUG 3: was "Property Tax" at 5400.
@@ -493,6 +521,15 @@ export function assertNoDuplicateCodes() {
         });
       }
       if (key === "TDS_VERIFIED_PAID" && !nameWords.includes("tds")) {
+        collisions.push({
+          code,
+          semanticMismatch: true,
+          accountCodesKey: key,
+          seededName: seeded,
+          error: `Code ${code} is ACCOUNT_CODES.${key} but seeded as "${seeded}"`,
+        });
+      }
+      if (key === "CAM_REVENUE" && !nameWords.includes("cam")) {
         collisions.push({
           code,
           semanticMismatch: true,

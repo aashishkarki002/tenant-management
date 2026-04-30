@@ -184,6 +184,8 @@ export async function getRentsService(filters = {}) {
           paidAmountPaisa: t.paidAmountPaisa,
           remainingAmountPaisa: t.remainingAmountPaisa,
           lateFeePaisa: t.lateFeePaisa,
+          latePaidAmountPaisa: t.latePaidAmountPaisa,
+          remainingLateFeePaisa: t.remainingLateFeePaisa,
           totalDuePaisa: t.totalDuePaisa,
           carryForwardBalancePaisa: t.carryForwardBalancePaisa,
           carryForwardFromRentId: t.carryForwardFromRentId,
@@ -195,6 +197,7 @@ export async function getRentsService(filters = {}) {
           paidAmount: formatMoney(t.paidAmountPaisa),
           remainingAmount: formatMoney(t.remainingAmountPaisa),
           lateFee: formatMoney(t.lateFeePaisa),
+          remainingLateFee: formatMoney(t.remainingLateFeePaisa),
           totalDue: formatMoney(t.totalDuePaisa),
           carryForwardBalance: formatMoney(t.carryForwardBalancePaisa),
           carryForwardFromRentId: t.carryForwardFromRentId,
@@ -255,6 +258,8 @@ export async function getRentByIdService(rentId) {
           paidAmountPaisa: t.paidAmountPaisa,
           remainingAmountPaisa: t.remainingAmountPaisa,
           lateFeePaisa: t.lateFeePaisa,
+          latePaidAmountPaisa: t.latePaidAmountPaisa,
+          remainingLateFeePaisa: t.remainingLateFeePaisa,
           totalDuePaisa: t.totalDuePaisa,
         },
         formatted: {
@@ -264,6 +269,7 @@ export async function getRentByIdService(rentId) {
           paidAmount: formatMoney(t.paidAmountPaisa),
           remainingAmount: formatMoney(t.remainingAmountPaisa),
           lateFee: formatMoney(t.lateFeePaisa),
+          remainingLateFee: formatMoney(t.remainingLateFeePaisa),
           totalDue: formatMoney(t.totalDuePaisa),
         },
       },
@@ -678,6 +684,9 @@ export async function handleMonthlyRents(adminId) {
 
     // Step 7: Post journal per rent — entity-tagged ← CHANGED
     const journalLog = { success: 0, failed: 0, errors: [] };
+    const tenantNameMap = new Map(
+      tenantsToProcess.map((t) => [t._id.toString(), t.name])
+    );
 
     for (const rent of insertedRents) {
       const entityId = entityByBlock.get(rent.block?.toString()) ?? null;
@@ -687,7 +696,10 @@ export async function handleMonthlyRents(adminId) {
         session.startTransaction();
 
         // 1. Rent charge: DR Accounts Receivable / CR Rent Revenue (gross)
-        const payload = buildRentChargeJournal(rent);
+        const payload = buildRentChargeJournal({
+          ...rent.toObject ? rent.toObject() : rent,
+          tenantName: tenantNameMap.get(rent.tenant?.toString()),
+        });
         await ledgerService.postJournalEntry(payload, session, entityId);
 
         // 2. TDS withheld (non-cash): DR TDS Recoverable / CR Accounts Receivable
@@ -896,7 +908,10 @@ export async function backfillTenantRents(tenantId, monthsToCreate, adminId) {
       try {
         session.startTransaction();
 
-        const payload = buildRentChargeJournal(rent);
+        const payload = buildRentChargeJournal({
+          ...rent.toObject ? rent.toObject() : rent,
+          tenantName: tenant.name,
+        });
         await ledgerService.postJournalEntry(payload, session, entityId);
 
         await recordTdsLedgerEntry(rent, session, entityId);

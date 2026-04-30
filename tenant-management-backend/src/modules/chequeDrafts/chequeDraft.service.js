@@ -140,7 +140,17 @@ export async function markDeposited(
     draft.depositedAt = depositedAt;
     draft.depositNotes = depositNotes ?? null;
 
-    // Build and post the deposit journal
+    if (draft.direction === "ISSUED") {
+      // ISSUED: journal (DR Expense / CR Bank) was already posted at issue time.
+      // Deposit is an administrative confirmation — no new journal, no balance change.
+      await draft.save({ session });
+
+      await session.commitTransaction();
+      session.endSession();
+      return { draft: draft.toObject() };
+    }
+
+    // RECEIVED: cheque deposited → post DR Bank / CR Revenue now + activate Revenue doc
     const draftForJournal = draft.toObject();
     draftForJournal.depositedAt = depositedAt;
     draftForJournal.depositedBy = depositedBy;
@@ -155,10 +165,7 @@ export async function markDeposited(
     draft.clearingTransactionId = transaction._id;
     await draft.save({ session });
 
-    // For RECEIVED cheques: the Revenue doc was created with status PENDING_CHEQUE
-    // at receipt time (no journal was posted then). Now that the cheque has cleared,
-    // activate the Revenue doc so it appears in revenue totals.
-    if (draft.direction === "RECEIVED" && draft.referenceType === "Revenue" && draft.referenceId) {
+    if (draft.referenceType === "Revenue" && draft.referenceId) {
       await Revenue.findByIdAndUpdate(
         draft.referenceId,
         { $set: { status: "RECORDED", transactionId: transaction._id } },
@@ -166,10 +173,8 @@ export async function markDeposited(
       );
     }
 
-    // Increment BankAccount.balancePaisa now that the cheque has physically cleared.
-    // applyPaymentToBank() skips this for cheque at receipt time so the bank widget
-    // does not show the amount until the cheque deposits (true transit behaviour).
-    if (draft.direction === "RECEIVED" && draft.bankAccountCode) {
+    // Increment bank balance now that the cheque has physically cleared.
+    if (draft.bankAccountCode) {
       const bankAccount = await BankAccount.findOne({
         accountCode: draft.bankAccountCode,
         isDeleted: { $ne: true },
@@ -262,8 +267,8 @@ async function _markReversed(id, newStatus, { actorId, reason }) {
         );
       }
     } else {
-      // ISSUED cheques: DR Expense / CR 1020 was posted at issue time.
-      // Reverse it: DR 1020 / CR Expense.
+      // ISSUED cheques: DR Expense / CR Bank was posted at issue time.
+      // Reverse it: DR Bank / CR Expense, and restore the bank balance.
       const draftForJournal = { ...draft.toObject(), status: newStatus };
       const journalPayload = buildChequeBounceJournal(draftForJournal);
       const { transaction } = await ledgerService.postJournalEntry(
@@ -272,6 +277,17 @@ async function _markReversed(id, newStatus, { actorId, reason }) {
         draft.entityId,
       );
       draft.reversalTransactionId = transaction._id;
+
+      if (draft.bankAccountCode) {
+        const bankAccount = await BankAccount.findOne({
+          accountCode: draft.bankAccountCode,
+          isDeleted: { $ne: true },
+        }).session(session);
+        if (bankAccount) {
+          bankAccount.balancePaisa += draft.amountPaisa;
+          await bankAccount.save({ session });
+        }
+      }
     }
 
     await draft.save({ session });

@@ -118,9 +118,9 @@ export async function applyPaymentToBank({
   }
 
   if (paymentMethod === "cheque") {
-    // Cheque in transit: the ledger posts DR CHEQUE_CLEARING (1020) / CR AR (1200)
-    // at receipt time. BankAccount.balancePaisa must NOT increase until the cheque
-    // physically clears — that second leg (DR bank / CR 1020) is posted by markDeposited().
+    // RECEIVED cheques: bank balance is updated by chequeDraft.service.js markDeposited()
+    // when the cheque physically clears. No update at receipt time.
+    // ISSUED cheques: balance is decremented by expense.service.js at issue time.
     return null;
   }
 

@@ -57,7 +57,7 @@ export function buildRentChargeJournal(rent) {
       : formatNepaliISO(new NepaliDate(transactionDate));
 
   const { nepaliMonth, nepaliYear } = rent;
-  const tenantName = rent.tenant?.name ?? "Tenant";
+  const tenantName = rent.tenantName ?? rent.tenant?.name ?? "Tenant";
 
   const billingFrequency = rent.rentFrequency ?? "monthly";
   const quarter =

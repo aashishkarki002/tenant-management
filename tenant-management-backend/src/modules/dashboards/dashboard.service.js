@@ -657,6 +657,9 @@ export async function getDashboardStatsData({ adminId } = {}) {
           quarterlyCount: {
             $sum: { $cond: [{ $eq: ["$rentFrequency", "quarterly"] }, 1, 0] },
           },
+          partiallyPaidCount: {
+            $sum: { $cond: [{ $gt: ["$paidAmountPaisa", 0] }, 1, 0] },
+          },
         },
       },
     ]),
@@ -691,6 +694,151 @@ export async function getDashboardStatsData({ adminId } = {}) {
       },
     ]),
   ]);
+  // Replace your two separate outstandingContextAgg + overdueCountAgg with this single $facet
+  const [collectionRiskAgg] = await Rent.aggregate([
+    {
+      $facet: {
+        // Pending this month — split by rent frequency group
+        pendingMonthly: [
+          {
+            $match: {
+              nepaliYear: npYear,
+              nepaliMonth: npMonth,
+              rentFrequency: "monthly",
+              $expr: {
+                $gt: [
+                  { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+                  0,
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalTenants: { $sum: 1 },
+              paidTenants: {
+                $sum: { $cond: [{ $eq: ["$paidAmountPaisa", 0] }, 0, 1] },
+              },
+              outstandingPaisa: {
+                $sum: {
+                  $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"],
+                },
+              },
+              earliestDueDate: { $min: "$englishDueDate" },
+            },
+          },
+        ],
+
+        pendingQuarterly: [
+          {
+            $match: {
+              nepaliYear: npYear,
+              nepaliMonth: npMonth,
+              rentFrequency: "quarterly",
+              $expr: {
+                $gt: [
+                  { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+                  0,
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalTenants: { $sum: 1 },
+              paidTenants: {
+                $sum: { $cond: [{ $eq: ["$paidAmountPaisa", 0] }, 0, 1] },
+              },
+              outstandingPaisa: {
+                $sum: {
+                  $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"],
+                },
+              },
+              earliestDueDate: { $min: "$englishDueDate" },
+            },
+          },
+        ],
+
+        overdueMonthlyGroup: [
+          {
+            $match: {
+              englishDueDate: { $lt: nepaliTodayDate },
+              rentFrequency: "monthly",
+              $expr: {
+                $gt: [
+                  { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+                  0,
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              count: { $sum: 1 },
+              outstandingPaisa: {
+                $sum: {
+                  $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"],
+                },
+              },
+            },
+          },
+        ],
+
+        overdueQuarterlyGroup: [
+          {
+            $match: {
+              englishDueDate: { $lt: nepaliTodayDate },
+              rentFrequency: "quarterly",
+              $expr: {
+                $gt: [
+                  { $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"] },
+                  0,
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              count: { $sum: 1 },
+              outstandingPaisa: {
+                $sum: {
+                  $subtract: ["$grossRentAmountPaisa", "$paidAmountPaisa"],
+                },
+              },
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  // Also get CAM outstanding separately (CAM has no rentFrequency field)
+  const [camOutstandingAgg] = await Cam.aggregate([
+    { $match: { nepaliYear: npYear, nepaliMonth: npMonth } },
+    {
+      $group: {
+        _id: null,
+        tenantsWithOutstanding: {
+          $sum: {
+            $cond: [
+              { $gt: [{ $subtract: ["$amountPaisa", "$paidAmountPaisa"] }, 0] },
+              1,
+              0,
+            ],
+          },
+        },
+        outstandingPaisa: {
+          $sum: {
+            $max: [{ $subtract: ["$amountPaisa", "$paidAmountPaisa"] }, 0],
+          },
+        },
+      },
+    },
+  ]);
 
   const pendingCtx = outstandingContextAgg[0] ?? {};
   const overdueCtx = overdueCountAgg[0] ?? {};
@@ -698,11 +846,20 @@ export async function getDashboardStatsData({ adminId } = {}) {
   const earliestDueDate = pendingCtx.earliestDueDate ?? null;
   const pendingMonthly = pendingCtx.monthlyCount ?? 0;
   const pendingQuarterly = pendingCtx.quarterlyCount ?? 0;
+  const partiallyPaidCount = pendingCtx.partiallyPaidCount ?? 0;
 
   const overdueCount = overdueCtx.count ?? 0;
   const overdueMonthly = overdueCtx.monthlyCount ?? 0;
   const overdueQuarterly = overdueCtx.quarterlyCount ?? 0;
   const overdueAmountPaisa = overdueCtx.totalOutstandingPaisa ?? 0;
+
+  // Per-frequency outstanding amounts from collectionRiskAgg facet
+  const riskFacet = collectionRiskAgg ?? {};
+  const monthlyRentOutstandingPaisa = riskFacet.pendingMonthly?.[0]?.outstandingPaisa ?? 0;
+  const quarterlyRentOutstandingPaisa = riskFacet.pendingQuarterly?.[0]?.outstandingPaisa ?? 0;
+  const overdueMonthlyPaisa = riskFacet.overdueMonthlyGroup?.[0]?.outstandingPaisa ?? 0;
+  const overdueQuarterlyPaisa = riskFacet.overdueQuarterlyGroup?.[0]?.outstandingPaisa ?? 0;
+  const camOutstandingPaisa = camOutstandingAgg?.outstandingPaisa ?? 0;
 
   // nepaliTodayDate = nepaliToday.getDateObject() from getNepaliMonthDates().
   // JS Date object — correct type for MongoDB $lt on a Date field.
@@ -1083,15 +1240,23 @@ export async function getDashboardStatsData({ adminId } = {}) {
       outstandingContext: {
         earliestDueDate, // JS Date | null
 
-        // Pending (unpaid, not yet overdue)
+        // Pending (unpaid, not yet overdue) — tenant counts
         pendingMonthly,
         pendingQuarterly,
+        partiallyPaid: partiallyPaidCount,
+
+        // Per-frequency outstanding amounts (paisa) — drives frequency rows in KPI card
+        monthlyRentOutstandingPaisa,
+        quarterlyRentOutstandingPaisa,
+        camOutstandingPaisa,
 
         // Overdue (past englishDueDate, balance > 0)
         trulyOverdueCount: overdueCount,
         trulyOverdueAmountPaisa: overdueAmountPaisa,
         overdueMonthly,
         overdueQuarterly,
+        overdueMonthlyPaisa,
+        overdueQuarterlyPaisa,
       },
 
       // ── Rent summary ──────────────────────────────────────────────────────

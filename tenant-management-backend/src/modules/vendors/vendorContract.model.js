@@ -71,6 +71,13 @@ const vendorContractSchema = new Schema(
 
     isActive: { type: Boolean, default: true },
     notes: { type: String, default: null },
+
+    // Internal staff (Operational Manager) responsible for overseeing this contract
+    managedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+    },
   },
   { timestamps: true },
 );

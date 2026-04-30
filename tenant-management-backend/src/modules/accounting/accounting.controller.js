@@ -4,6 +4,9 @@ import {
   getRevenueBreakdownSummary,
   getExpenseBreakdownSummary,
   getPortfolioHealth,
+  getProfitLossStatement,
+  getFinancialRatios,
+  getProjections,
 } from "./accounting.service.js";
 import { OwnershipEntity } from "../ownership/OwnershipEntity.Model.js";
 import { SystemConfig } from "../systemConfig/SystemConfig.Model.js";
@@ -151,6 +154,45 @@ export async function getPortfolioHealthController(req, res) {
   } catch (err) {
     console.error("[accounting] portfolio-health error:", err);
     res.status(500).json({ success: false, message: "Failed to fetch portfolio health" });
+  }
+}
+
+// ─── Profit & Loss ────────────────────────────────────────────────────────────
+
+export async function getProfitLossController(req, res) {
+  try {
+    const { quarter, month, startDate, endDate, fiscalYear, entityId } = extractFilters(req.query);
+    const data = await getProfitLossStatement({ quarter, month, startDate, endDate, fiscalYear, entityId });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("[accounting] profit-loss error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch profit & loss statement" });
+  }
+}
+
+// ─── Financial Ratios ─────────────────────────────────────────────────────────
+
+export async function getFinancialRatiosController(req, res) {
+  try {
+    const { quarter, month, startDate, endDate, fiscalYear, entityId } = extractFilters(req.query);
+    const data = await getFinancialRatios({ quarter, month, startDate, endDate, fiscalYear, entityId });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("[accounting] financial-ratios error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch financial ratios" });
+  }
+}
+
+// ─── Projections ──────────────────────────────────────────────────────────────
+
+export async function getProjectionsController(req, res) {
+  try {
+    const { fiscalYear, entityId } = extractFilters(req.query);
+    const data = await getProjections({ fiscalYear, entityId });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("[accounting] projections error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch projections" });
   }
 }
 

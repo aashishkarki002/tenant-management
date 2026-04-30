@@ -1341,3 +1341,401 @@ export async function getExpenseBreakdownSummary({
     transactions,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── 5. PROFIT & LOSS STATEMENT ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Structured Profit & Loss statement for the selected period.
+ *
+ *   Gross Revenue
+ *   − Operating Expenses  (MAINTENANCE + UTILITY + SALARY + other)
+ *   = Operating Profit (EBIT / NOI)
+ *   − Interest Expense    (LOAN_INTEREST)
+ *   = Net Income
+ *
+ * Includes YoY comparison when fiscalYear is provided.
+ */
+export async function getProfitLossStatement({
+  startDate,
+  endDate,
+  quarter,
+  month,
+  fiscalYear,
+  entityId = null,
+}) {
+  // ── Resolve date range ────────────────────────────────────────────────────
+  let resolvedStart = startDate;
+  let resolvedEnd   = endDate;
+
+  if (!resolvedStart && !resolvedEnd) {
+    if (month) {
+      ({ startDate: resolvedStart, endDate: resolvedEnd } = resolveMonthToDateRange(Number(month), fiscalYear));
+    } else if (quarter) {
+      const months = getQuarterMonths(Number(quarter), fiscalYear);
+      const first  = bsMonthToDateRange(months[0].year, months[0].month0);
+      const last   = bsMonthToDateRange(months[months.length - 1].year, months[months.length - 1].month0);
+      resolvedStart = first.startDate;
+      resolvedEnd   = last.endDate;
+    } else if (fiscalYear) {
+      const fyMonths = getFiscalYearMonths(fiscalYear);
+      const first    = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
+      const last     = bsMonthToDateRange(fyMonths[fyMonths.length - 1].year, fyMonths[fyMonths.length - 1].month0);
+      resolvedStart  = first.startDate;
+      resolvedEnd    = last.endDate;
+    }
+  }
+
+  const dateFilter   = buildDateFilter(resolvedStart, resolvedEnd);
+  const entityFilter = buildEntityFilter(entityId);
+
+  // ── Fetch current & previous period summaries in parallel ─────────────────
+  const prevFiscalYear = fiscalYear ? fiscalYear - 1 : null;
+  const [currentSummary, prevSummary] = await Promise.all([
+    getAccountingSummary({ startDate, endDate, quarter, month, fiscalYear, entityId }),
+    prevFiscalYear !== null
+      ? getAccountingSummary({ quarter, month, fiscalYear: prevFiscalYear, entityId })
+      : Promise.resolve(null),
+  ]);
+
+  // ── Aggregate expenses by referenceType ───────────────────────────────────
+  const expMatch = { ...entityFilter };
+  if (dateFilter) expMatch.englishDate = dateFilter;
+
+  const expByRefType = await Expense.aggregate([
+    { $match: expMatch },
+    {
+      $group: {
+        _id: { $ifNull: ["$referenceType", "OTHER"] },
+        totalPaisa: { $sum: "$amountPaisa" },
+        count:      { $sum: 1 },
+      },
+    },
+  ]);
+
+  const refMap = {};
+  for (const row of expByRefType) refMap[row._id] = row.totalPaisa;
+
+  const maintenancePaisa     = refMap.MAINTENANCE         ?? 0;
+  const utilityPaisa         = refMap.UTILITY             ?? 0;
+  const salaryPaisa          = refMap.SALARY              ?? 0;
+  const interestPaisa        = refMap.LOAN_INTEREST        ?? 0;
+  const electricityPaisa     = refMap.ELECTRICITY_NEA_COST ?? 0;
+  const manualPaisa          = refMap.MANUAL              ?? 0;
+
+  // Total cash expenses (excludes ELECTRICITY_NEA_COST which is a payable, not cash out)
+  const totalCashExpPaisa    = maintenancePaisa + utilityPaisa + salaryPaisa + interestPaisa + manualPaisa;
+  const operatingExpPaisa    = maintenancePaisa + utilityPaisa + salaryPaisa + manualPaisa;
+
+  const grossRevenuePaisa    = Math.round((currentSummary.totals.totalRevenue ?? 0) * 100);
+  const ebitPaisa            = grossRevenuePaisa - operatingExpPaisa;
+  const netIncomePaisa       = ebitPaisa - interestPaisa;
+
+  const ebitMarginPct        = grossRevenuePaisa > 0 ? +((ebitPaisa / grossRevenuePaisa) * 100).toFixed(1) : 0;
+  const netMarginPct         = grossRevenuePaisa > 0 ? +((netIncomePaisa / grossRevenuePaisa) * 100).toFixed(1) : 0;
+  const expenseRatioPct      = grossRevenuePaisa > 0 ? +((totalCashExpPaisa / grossRevenuePaisa) * 100).toFixed(1) : 0;
+
+  // ── Monthly trend (full fiscal year) ──────────────────────────────────────
+  const monthlyTrend = fiscalYear
+    ? await getMonthlyChartData({ fiscalYear, allYear: true, entityId })
+    : await getMonthlyChartData({ quarter, entityId });
+
+  // ── YoY comparison ────────────────────────────────────────────────────────
+  let comparison = null;
+  if (prevSummary) {
+    const prevRevPaisa = Math.round((prevSummary.totals.totalRevenue  ?? 0) * 100);
+    const prevExpPaisa = Math.round((prevSummary.totals.totalExpenses ?? 0) * 100);
+    const prevNetPaisa = Math.round((prevSummary.totals.netCashFlow   ?? 0) * 100);
+    comparison = {
+      prevFiscalYear,
+      prevRevenuePaisa:   prevRevPaisa,
+      prevExpensesPaisa:  prevExpPaisa,
+      prevNetIncomePaisa: prevNetPaisa,
+      revenuePct:  pctChange(prevSummary.totals.totalRevenue,  currentSummary.totals.totalRevenue),
+      expensesPct: pctChange(prevSummary.totals.totalExpenses, currentSummary.totals.totalExpenses),
+      netPct:      pctChange(prevSummary.totals.netCashFlow,   currentSummary.totals.netCashFlow),
+    };
+  }
+
+  return {
+    period: { fiscalYear, quarter, month, startDate: resolvedStart, endDate: resolvedEnd },
+    revenue: {
+      totalPaisa:   grossRevenuePaisa,
+      totalRupees:  paisaToRupees(grossRevenuePaisa),
+      breakdown:    currentSummary.incomeStreams?.breakdown ?? [],
+    },
+    expenses: {
+      totalCashPaisa:     totalCashExpPaisa,
+      totalCashRupees:    paisaToRupees(totalCashExpPaisa),
+      operatingPaisa:     operatingExpPaisa,
+      operatingRupees:    paisaToRupees(operatingExpPaisa),
+      interestPaisa,
+      interestRupees:     paisaToRupees(interestPaisa),
+      electricityPaisa,   // pending payable — shown separately
+      maintenancePaisa,
+      utilityPaisa,
+      salaryPaisa,
+      manualPaisa,
+      breakdown:          currentSummary.expensesBreakdown ?? [],
+    },
+    ebit: {
+      paisa:     ebitPaisa,
+      rupees:    paisaToRupees(ebitPaisa),
+      marginPct: ebitMarginPct,
+    },
+    netIncome: {
+      paisa:     netIncomePaisa,
+      rupees:    paisaToRupees(netIncomePaisa),
+      marginPct: netMarginPct,
+    },
+    expenseRatioPct,
+    comparison,
+    monthlyTrend,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── 6. FINANCIAL RATIOS ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Key financial ratios for the selected period with YoY comparison.
+ *
+ *   Profitability: Net Margin, Operating (NOI) Margin, Expense Ratio
+ *   Efficiency:    Collection Rate, Outstanding Ratio, Arrears Aging
+ *   Leverage:      Debt-to-Revenue, Total Liabilities
+ *   Activity:      Revenue trend, Expense trend
+ */
+export async function getFinancialRatios({
+  startDate,
+  endDate,
+  quarter,
+  month,
+  fiscalYear,
+  entityId = null,
+}) {
+  const prevFiscalYear = fiscalYear ? fiscalYear - 1 : null;
+
+  const [currentSummary, prevSummary, health] = await Promise.all([
+    getAccountingSummary({ startDate, endDate, quarter, month, fiscalYear, entityId }),
+    prevFiscalYear !== null
+      ? getAccountingSummary({ quarter, month, fiscalYear: prevFiscalYear, entityId })
+      : Promise.resolve(null),
+    getPortfolioHealth({ startDate, endDate, quarter, month, fiscalYear, entityId }),
+  ]);
+
+  const revPaisa  = Math.round((currentSummary.totals.totalRevenue    ?? 0) * 100);
+  const expPaisa  = Math.round((currentSummary.totals.totalExpenses   ?? 0) * 100);
+  const netPaisa  = Math.round((currentSummary.totals.netCashFlow     ?? 0) * 100);
+  const liabPaisa = Math.round((currentSummary.totals.totalLiabilities ?? 0) * 100);
+
+  // ── Profitability ─────────────────────────────────────────────────────────
+  const netMarginPct       = revPaisa > 0 ? +((netPaisa  / revPaisa) * 100).toFixed(2) : 0;
+  const operatingMarginPct = health.noi.noiMarginPct;
+  const expenseRatioPct    = revPaisa > 0 ? +((expPaisa  / revPaisa) * 100).toFixed(2) : 0;
+  const grossProfitPct     = revPaisa > 0 ? +((health.noi.noiPaisa / revPaisa) * 100).toFixed(2) : 0;
+
+  // ── Previous period ratios ────────────────────────────────────────────────
+  let prevRatios = null;
+  if (prevSummary) {
+    const pRev = Math.round((prevSummary.totals.totalRevenue  ?? 0) * 100);
+    const pExp = Math.round((prevSummary.totals.totalExpenses ?? 0) * 100);
+    const pNet = Math.round((prevSummary.totals.netCashFlow   ?? 0) * 100);
+    prevRatios = {
+      netMarginPct:    pRev > 0 ? +((pNet / pRev) * 100).toFixed(2) : 0,
+      expenseRatioPct: pRev > 0 ? +((pExp / pRev) * 100).toFixed(2) : 0,
+      revenuePaisa:    pRev,
+      expensesPaisa:   pExp,
+    };
+  }
+
+  // ── Leverage ──────────────────────────────────────────────────────────────
+  const debtToRevenuePct = revPaisa > 0 ? +((liabPaisa / revPaisa) * 100).toFixed(2) : 0;
+
+  // ── 12-month ratio trend ──────────────────────────────────────────────────
+  const monthlyData = fiscalYear
+    ? await getMonthlyChartData({ fiscalYear, allYear: true, entityId })
+    : await getMonthlyChartData({ quarter, entityId });
+
+  const ratioTrend = monthlyData.map((m) => {
+    const rev = m.revenue ?? 0;
+    const exp = m.expenses ?? 0;
+    const net = rev - exp;
+    return {
+      key:            m.key,
+      label:          m.label,
+      revenue:        rev,
+      expenses:       exp,
+      netMarginPct:   rev > 0 ? +((net / rev) * 100).toFixed(1) : 0,
+      expenseRatioPct: rev > 0 ? +((exp / rev) * 100).toFixed(1) : 0,
+    };
+  });
+
+  return {
+    profitability: {
+      netMarginPct,
+      operatingMarginPct,
+      expenseRatioPct,
+      grossProfitPct,
+      prev: prevRatios,
+    },
+    efficiency: {
+      collectionRatePct:   health.collection.ratePct,
+      outstandingRatioPct: health.collection.totalExpectedNetPaisa > 0
+        ? +((health.collection.outstandingPaisa / health.collection.totalExpectedNetPaisa) * 100).toFixed(1)
+        : 0,
+      outstandingPaisa: health.collection.outstandingPaisa,
+      paidCount:        health.collection.paidCount,
+      totalRents:       health.collection.totalRents,
+      arrearsAging:     health.arrearsAging,
+    },
+    leverage: {
+      debtToRevenuePct,
+      totalLiabilitiesPaisa: liabPaisa,
+      totalLiabilitiesRupees: paisaToRupees(liabPaisa),
+    },
+    noi: health.noi,
+    yoyDeltas: health.yoyDeltas,
+    ratioTrend,
+    summary: { revenuePaisa: revPaisa, expensesPaisa: expPaisa, netPaisa, liabPaisa },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── 7. FINANCIAL PROJECTIONS ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Simple linear regression — returns { slope, intercept } */
+function linearRegression(values) {
+  const n = values.length;
+  if (n === 0) return { slope: 0, intercept: 0 };
+  if (n === 1) return { slope: 0, intercept: values[0] };
+
+  const sumX  = (n * (n - 1)) / 2;
+  const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+  const sumY  = values.reduce((s, v) => s + v, 0);
+  const sumXY = values.reduce((s, v, i) => s + i * v, 0);
+
+  const denom = n * sumX2 - sumX * sumX;
+  if (denom === 0) return { slope: 0, intercept: sumY / n };
+
+  const slope     = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+  return { slope, intercept };
+}
+
+/** R² coefficient of determination (0–1). */
+function rSquared(values, slope, intercept) {
+  const mean   = values.reduce((s, v) => s + v, 0) / values.length;
+  const ssTot  = values.reduce((s, v) => s + (v - mean) ** 2, 0);
+  const ssRes  = values.reduce((s, v, i) => s + (v - (slope * i + intercept)) ** 2, 0);
+  return ssTot === 0 ? 1 : Math.max(0, 1 - ssRes / ssTot);
+}
+
+/**
+ * Revenue & expense projections for the next 6 months using linear regression
+ * over the last 12 months of actual data (from the two most recent fiscal years).
+ *
+ * Returns:
+ *   historical  — last N months of actuals
+ *   projected   — next 6 months (base / optimistic / pessimistic)
+ *   model       — regression stats (slope, intercept, r²) for transparency
+ */
+export async function getProjections({
+  fiscalYear,
+  entityId = null,
+}) {
+  const currentFY = fiscalYear ?? new NepaliDate().getYear();
+  const prevFY    = currentFY - 1;
+
+  // Fetch 2 full fiscal years to get up to 24 months of history
+  const [currentYearData, prevYearData] = await Promise.all([
+    getMonthlyChartData({ fiscalYear: currentFY, allYear: true, entityId }),
+    getMonthlyChartData({ fiscalYear: prevFY,    allYear: true, entityId }),
+  ]);
+
+  // Combine in fiscal year order: prevFY months first, then currentFY months
+  const historicalRaw = [...prevYearData, ...currentYearData];
+
+  // Drop leading zeros — only keep from first month with any activity
+  const firstActivity = historicalRaw.findIndex((m) => (m.revenue ?? 0) > 0 || (m.expenses ?? 0) > 0);
+  const historical     = firstActivity >= 0 ? historicalRaw.slice(firstActivity) : historicalRaw;
+  const last12         = historical.slice(-12); // cap at 12 months for projection
+
+  const revValues = last12.map((m) => m.revenue  ?? 0);
+  const expValues = last12.map((m) => m.expenses ?? 0);
+
+  const revModel = linearRegression(revValues);
+  const expModel = linearRegression(expValues);
+
+  const revR2 = rSquared(revValues, revModel.slope, revModel.intercept);
+  const expR2 = rSquared(expValues, expModel.slope, expModel.intercept);
+
+  // ── Generate next 6 months in BS fiscal calendar ─────────────────────────
+  const lastActual = last12[last12.length - 1];
+
+  // Parse the last actual key ("YYYY-MM" with 1-based nepali month)
+  const [lastYear, lastMonthStr] = (lastActual?.key ?? `${currentFY}-03`).split("-");
+  let projYear  = Number(lastYear);
+  let projMonth = Number(lastMonthStr); // 1-based nepali month
+
+  const projected = [];
+  for (let i = 0; i < 6; i++) {
+    projMonth += 1;
+    if (projMonth > 12) { projMonth = 1; projYear += 1; }
+
+    const idx   = last12.length + i; // x position in regression
+    const baseRev = Math.max(0, revModel.slope * idx + revModel.intercept);
+    const baseExp = Math.max(0, expModel.slope * idx + expModel.intercept);
+
+    const key   = `${projYear}-${String(projMonth).padStart(2, "0")}`;
+    const label = NEPALI_MONTH_NAMES[(projMonth - 1) % 12];
+
+    projected.push({
+      key,
+      label,
+      isProjected: true,
+      base: {
+        revenue:  +baseRev.toFixed(2),
+        expenses: +baseExp.toFixed(2),
+        net:      +(baseRev - baseExp).toFixed(2),
+      },
+      optimistic: {
+        revenue:  +(baseRev * 1.15).toFixed(2),
+        expenses: +(baseExp * 0.92).toFixed(2),
+        net:      +(baseRev * 1.15 - baseExp * 0.92).toFixed(2),
+      },
+      pessimistic: {
+        revenue:  +(baseRev * 0.85).toFixed(2),
+        expenses: +(baseExp * 1.08).toFixed(2),
+        net:      +(baseRev * 0.85 - baseExp * 1.08).toFixed(2),
+      },
+    });
+  }
+
+  // ── Summary stats ─────────────────────────────────────────────────────────
+  const avgMonthlyRev = revValues.length > 0 ? revValues.reduce((s, v) => s + v, 0) / revValues.length : 0;
+  const avgMonthlyExp = expValues.length > 0 ? expValues.reduce((s, v) => s + v, 0) / expValues.length : 0;
+
+  const revenueGrowthPct = revValues.length >= 2 && revValues[0] > 0
+    ? pctChange(revValues[0], revValues[revValues.length - 1])
+    : null;
+
+  return {
+    historical: last12,
+    projected,
+    model: {
+      revenue:  { slope: +revModel.slope.toFixed(2), intercept: +revModel.intercept.toFixed(2), r2: +revR2.toFixed(3) },
+      expenses: { slope: +expModel.slope.toFixed(2), intercept: +expModel.intercept.toFixed(2), r2: +expR2.toFixed(3) },
+      dataPoints: last12.length,
+    },
+    stats: {
+      avgMonthlyRevenue:  +avgMonthlyRev.toFixed(2),
+      avgMonthlyExpenses: +avgMonthlyExp.toFixed(2),
+      avgMonthlyNet:      +(avgMonthlyRev - avgMonthlyExp).toFixed(2),
+      projectedAnnualRev: +(projected.reduce((s, m) => s + m.base.revenue, 0) * 2).toFixed(2),
+      revenueGrowthPct,
+    },
+  };
+}

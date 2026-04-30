@@ -320,11 +320,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
   //   → net AR = GROSS - TDS = NET (what tenant pays in cash)
   const grossRentPeriodPaisa = totals.grossMonthlyPaisa * rentFrequencyCalc.periodMonths;
 
-  console.log("\n📊 Rent Record Payload:");
-  console.log(`├─ grossRentAmountPaisa: ${grossRentPeriodPaisa}`);
-  console.log(`├─ tdsAmountPaisa: ${periodTdsPaisa}`);
-  console.log(`├─ netRentAmountPaisa (gross-TDS): ${grossRentPeriodPaisa - periodTdsPaisa}`);
-  console.log(`└─ paidAmountPaisa: 0`);
+
 
   const rentResult = await createNewRent(
     {
@@ -365,7 +361,10 @@ export async function createTenantTransaction(body, files, adminId, session) {
 
   // ── Journal 1: Rent charge — DR AR (GROSS) / CR Revenue (GROSS) ─────────────
   await ledgerService.postJournalEntry(
-    buildRentChargeJournal(rentResult.data),
+    buildRentChargeJournal({
+      ...rentResult.data.toObject ? rentResult.data.toObject() : rentResult.data,
+      tenantName: tenant[0].name,
+    }),
     session,
     entityId,
   );

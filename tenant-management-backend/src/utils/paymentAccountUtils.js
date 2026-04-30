@@ -65,11 +65,16 @@ export function getDebitAccountForPayment(paymentMethod, bankAccountCode) {
       return bankAccountCode;
 
     case PAYMENT_METHODS.CHEQUE:
-      // Cheque payments go to the clearing account (1020), NOT directly to bank.
-      // The bankAccountCode is validated at the service layer and stored on the
-      // ChequeDraft document — it is used for the second (deposit) journal entry
-      // when the accountant marks the cheque as cleared.
-      return ACCOUNT_CODES.CHEQUE_CLEARING;
+      // Cheque payments post directly to the bank account ("what goes is gone").
+      // bankAccountCode is required — stored on ChequeDraft for reference.
+      if (!bankAccountCode) {
+        throw new Error(
+          `bankAccountCode is required for payment method "cheque". ` +
+            `Pass the chart-of-accounts code of the bank account ` +
+            `(e.g. "1010-NABIL"). No clearing account is used.`,
+        );
+      }
+      return bankAccountCode;
 
     case PAYMENT_METHODS.MOBILE_WALLET: {
       // Wallet float has its own Account document — no fallback to cash/bank

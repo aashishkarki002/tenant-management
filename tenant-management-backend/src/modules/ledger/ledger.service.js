@@ -49,7 +49,13 @@ function bsMonthToDateRange(year, month0) {
 
 function getQuarterMonths(quarter, fiscalYear) {
   const year = fiscalYear ?? new NepaliDate().getYear();
-  return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({ year, month0 }));
+  // Q4 months (Baisakh=0, Jestha=1, Ashadh=2) fall in the NEXT BS calendar year.
+  // e.g. FY 2081 Q4 → Baisakh 2082, Jestha 2082, Ashadh 2082.
+  // Must mirror the same logic used in accounting.service.js calendarYearForBsMonth.
+  return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({
+    year: month0 <= 2 ? year + 1 : year,
+    month0,
+  }));
 }
 
 function getFiscalYearMonths(fiscalYear) {
@@ -61,8 +67,9 @@ function getFiscalYearMonths(fiscalYear) {
 
 function resolveMonthToDateRange(month, fiscalYear) {
   const month0 = month - 1;
-  const year = fiscalYear ?? new NepaliDate().getYear();
-  return bsMonthToDateRange(year, month0);
+  const fy = fiscalYear ?? new NepaliDate().getYear();
+  const calendarYear = month0 <= 2 ? fy + 1 : fy;
+  return bsMonthToDateRange(calendarYear, month0);
 }
 
 /**
@@ -166,7 +173,12 @@ class LedgerService {
       throw new Error("Journal payload must have at least one entry");
 
     // ── Idempotency guard ───────────────────────────────────────────────────
+    // Must include `type` so a reversal (e.g. RENT_CHARGE_REVERSAL) can
+    // coexist with the original (RENT_CHARGE) on the same referenceId.
+    // Without `type`, the guard finds the original and silently returns it
+    // instead of posting the reversal — reversals would never be recorded.
     const existing = await Transaction.findOne({
+      type: transactionType,
       referenceType,
       referenceId,
       entityId: resolvedEntityId,
@@ -337,7 +349,17 @@ class LedgerService {
       }
 
       if (filters.type && filters.type !== "all") {
-        const accountType = filters.type === "revenue" ? "REVENUE" : "EXPENSE";
+        const TYPE_MAP = {
+          revenue: "REVENUE",
+          expense: "EXPENSE",
+          asset: "ASSET",
+          liability: "LIABILITY",
+          equity: "EQUITY",
+        };
+        const accountType = TYPE_MAP[filters.type.toLowerCase()];
+        if (!accountType) {
+          throw new Error(`getLedger: unknown type filter "${filters.type}". Use: revenue, expense, asset, liability, equity`);
+        }
         const typeFilter = { type: accountType };
         if (filters.entityId)
           typeFilter.entityId = new mongoose.Types.ObjectId(filters.entityId);
@@ -383,7 +405,15 @@ class LedgerService {
         const code = entry.account?.code ?? "UNKNOWN";
         const accountType = entry.account?.type;
 
-        if (runningBalances[code] === undefined) runningBalances[code] = 0;
+        // Key running balance by "code:entityId" so two entities sharing the
+        // same account code (e.g. both have "1200") don't bleed into each other
+        // when the ledger is fetched without an entity filter.
+        const entityKey = entry.entityId
+          ? String(entry.entityId._id ?? entry.entityId)
+          : "global";
+        const balanceKey = `${code}:${entityKey}`;
+
+        if (runningBalances[balanceKey] === undefined) runningBalances[balanceKey] = 0;
 
         const isDebitNormal =
           accountType === "ASSET" || accountType === "EXPENSE";
@@ -391,7 +421,7 @@ class LedgerService {
           ? entry.debitAmountPaisa - entry.creditAmountPaisa
           : entry.creditAmountPaisa - entry.debitAmountPaisa;
 
-        runningBalances[code] += change;
+        runningBalances[balanceKey] += change;
 
         return {
           _id: entry._id,
@@ -409,15 +439,15 @@ class LedgerService {
           paisa: {
             debit: entry.debitAmountPaisa,
             credit: entry.creditAmountPaisa,
-            runningBalance: runningBalances[code],
+            runningBalance: runningBalances[balanceKey],
           },
           debit: paisaToRupees(entry.debitAmountPaisa),
           credit: paisaToRupees(entry.creditAmountPaisa),
-          runningBalance: paisaToRupees(runningBalances[code]),
+          runningBalance: paisaToRupees(runningBalances[balanceKey]),
           formatted: {
             debit: formatMoney(entry.debitAmountPaisa),
             credit: formatMoney(entry.creditAmountPaisa),
-            runningBalance: formatMoney(runningBalances[code]),
+            runningBalance: formatMoney(runningBalances[balanceKey]),
           },
         };
       });

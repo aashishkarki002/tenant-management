@@ -95,7 +95,7 @@ export function buildSecurityDepositJournal(sd, options = {}, bankAccountCode) {
   // ── 4. Description ───────────────────────────────────────────────────────
   const tenantName =
     optTenantName ?? sd?.tenant?.name ?? (sd?.tenant ? "Tenant" : "Unknown");
-  const description = `Security deposit received from ${tenantName} for ${nepaliMonth}/${nepaliYear}`;
+  const description = `Security deposit received from ${tenantName}`;
 
   // ── 5. Payload ───────────────────────────────────────────────────────────
   return {

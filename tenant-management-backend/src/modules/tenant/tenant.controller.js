@@ -80,6 +80,25 @@ export const updateTenant = async (req, res) => {
   }
 };
 
+export const addUnitsToTenant = async (req, res) => {
+  try {
+    const adminId = req.admin_id ?? req.admin?.id;
+    const result = await tenantService.addUnitsToTenant(
+      req.params.id,
+      req.body,
+      adminId,
+    );
+    return res.status(result.statusCode ?? 500).json(
+      result.success
+        ? { success: true, message: result.message, data: result }
+        : { success: false, message: result.message, ...(result.error && { error: result.error }) },
+    );
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Error adding units to tenant", error: error.message });
+  }
+};
+
 export const deleteTenant = async (req, res) => {
   try {
     const result = await tenantService.deleteTenant(req.params.id);
@@ -201,7 +220,7 @@ export const searchTenants = async (req, res) => {
       const paymentArr = Array.isArray(normalizedQuery.paymentStatus)
         ? normalizedQuery.paymentStatus
         : [normalizedQuery.paymentStatus];
-      const validPayments = ["paid", "due_soon", "overdue"];
+      const validPayments = ["paid", "due_soon", "overdue", "partial"];
       const invalidPayment = paymentArr.filter(
         (p) => !validPayments.includes(p),
       );

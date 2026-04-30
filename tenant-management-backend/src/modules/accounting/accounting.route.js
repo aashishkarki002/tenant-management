@@ -6,6 +6,9 @@ import {
   getExpenseBreakdownController,
   getConsolidatedController,
   getPortfolioHealthController,
+  getProfitLossController,
+  getFinancialRatiosController,
+  getProjectionsController,
 } from "./accounting.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -60,5 +63,15 @@ router.get("/expense-summary", ...guard, getExpenseBreakdownController);
 // Consolidated P&L across all entities — only in merged/company mode
 // Returns per-entity summary + combined totals
 router.get("/consolidated", ...guard, getConsolidatedController);
+
+// Formal Profit & Loss statement with operating/interest/net breakdown
+router.get("/profit-loss", ...guard, getProfitLossController);
+
+// Financial ratios — profitability, efficiency, leverage
+router.get("/financial-ratios", ...guard, getFinancialRatiosController);
+
+// Revenue & expense projections for next 6 months via linear regression
+// Extra param: fiscalYear (base for historical data)
+router.get("/projections", ...guard, getProjectionsController);
 
 export default router;

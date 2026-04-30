@@ -80,7 +80,9 @@ export function buildCamChargeJournal(cam, options = {}) {
         description: `CAM receivable for ${nepaliMonth}/${nepaliYear} from ${tenantName}`,
       },
       {
-        accountCode: ACCOUNT_CODES.REVENUE,
+        // CAM income goes to its own revenue account (4050) — NOT Rental Income (4000).
+        // This keeps CAM income separately reportable from rent income on the P&L.
+        accountCode: ACCOUNT_CODES.CAM_REVENUE,
         debitAmountPaisa: 0,
         creditAmountPaisa: amountPaisa,
         description: `CAM income for ${nepaliMonth}/${nepaliYear} from ${tenantName}`,

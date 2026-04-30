@@ -5,12 +5,19 @@ import { Unit } from "../units/unit.model.js";
 import { sendWelcomeEmail } from "../../config/nodemailer.js";
 import { createTenantTransaction } from "./services/tenant.create.js";
 import { uploadSingleFile } from "./helpers/fileUploadHelper.js";
-import { paisaToRupees, rupeesToPaisa } from "../../utils/moneyUtil.js";
+import { paisaToRupees, rupeesToPaisa, divideMoney } from "../../utils/moneyUtil.js";
 import { calculateMultiUnitLease } from "./domain/rent.calculator.service.js";
 import { Rent } from "../rents/rent.Model.js";
 import { Cam } from "../cam/cam.model.js";
 import { SystemConfig } from "../systemConfig/SystemConfig.Model.js";
 import { enableEscalation } from "./escalation/rent.escalation.service.js";
+import { createNewRent, recordTdsLedgerEntry } from "../rents/rent.service.js";
+import { createCam } from "../cam/cam.service.js";
+import { ledgerService } from "../ledger/ledger.service.js";
+import { buildRentChargeJournal } from "../ledger/journal-builders/index.js";
+import { buildCamChargeJournal } from "../ledger/journal-builders/camCharge.js";
+import { resolveEntityFromBlock } from "../../helper/resolveEntity.js";
+import { getNepaliMonthDates, getRentCycleDates } from "../../utils/nepaliDateHelper.js";
 
 export async function createTenant(body, files, adminId) {
   const session = await mongoose.startSession();
@@ -136,45 +143,43 @@ export async function getTenantById(id) {
 
     if (!tenant) return null;
 
-    tenant.units = (tenant.units || []).filter((u) => u != null);
+    const populatedUnits = (tenant.units || []).filter((u) => u != null);
 
-    if (tenant.units.length > 0) {
-      tenant.units = tenant.units.map((unit) => ({
-        ...unit.toObject(),
-        currentLease: {
-          tenant: tenant._id,
-          leaseSquareFeet: tenant.leasedSquareFeet || unit.sqft || 0,
-          pricePerSqft: paisaToRupees(tenant.pricePerSqftPaisa),
-          camRatePerSqft: paisaToRupees(tenant.camRatePerSqftPaisa),
-          securityDeposit: paisaToRupees(tenant.securityDepositPaisa),
-          leaseStartDate: tenant.leaseStartDate,
-          leaseEndDate: tenant.leaseEndDate,
-          dateOfAgreementSigned: tenant.dateOfAgreementSigned,
-          keyHandoverDate: tenant.keyHandoverDate,
-          spaceHandoverDate: tenant.spaceHandoverDate,
-          spaceReturnedDate: tenant.spaceReturnedDate,
-          status: tenant.status || "active",
-          notes: tenant.notes || "",
-          tdsPercentage: tenant.tdsPercentage || 10,
-          securityDepositStatus: "held",
-          tds: paisaToRupees(tenant.tdsPaisa),
-          monthlyRent: paisaToRupees(tenant.totalRentPaisa),
-          monthlyCam: paisaToRupees(tenant.camChargesPaisa),
-          totalMonthly: paisaToRupees(tenant.monthlyTotalPaisa),
-          grossAmount: paisaToRupees(tenant.grossAmountPaisa),
-        },
-        isExpiringSoon: checkLeaseExpiringSoon(tenant.leaseEndDate),
-        leaseDurationMonths: calculateLeaseDuration(
-          tenant.leaseStartDate,
-          tenant.leaseEndDate,
-        ),
-      }));
-    }
+    const mappedUnits = populatedUnits.map((unit) => ({
+      ...unit.toObject(),
+      currentLease: {
+        tenant: tenant._id,
+        leaseSquareFeet: tenant.leasedSquareFeet || unit.sqft || 0,
+        pricePerSqft: paisaToRupees(tenant.pricePerSqftPaisa),
+        camRatePerSqft: paisaToRupees(tenant.camRatePerSqftPaisa),
+        securityDeposit: paisaToRupees(tenant.securityDepositPaisa),
+        leaseStartDate: tenant.leaseStartDate,
+        leaseEndDate: tenant.leaseEndDate,
+        dateOfAgreementSigned: tenant.dateOfAgreementSigned,
+        keyHandoverDate: tenant.keyHandoverDate,
+        spaceHandoverDate: tenant.spaceHandoverDate,
+        spaceReturnedDate: tenant.spaceReturnedDate,
+        status: tenant.status || "active",
+        notes: tenant.notes || "",
+        tdsPercentage: tenant.tdsPercentage || 10,
+        securityDepositStatus: "held",
+        tds: paisaToRupees(tenant.tdsPaisa),
+        monthlyRent: paisaToRupees(tenant.totalRentPaisa),
+        monthlyCam: paisaToRupees(tenant.camChargesPaisa),
+        totalMonthly: paisaToRupees(tenant.monthlyTotalPaisa),
+        grossAmount: paisaToRupees(tenant.grossAmountPaisa),
+      },
+      isExpiringSoon: checkLeaseExpiringSoon(tenant.leaseEndDate),
+      leaseDurationMonths: calculateLeaseDuration(
+        tenant.leaseStartDate,
+        tenant.leaseEndDate,
+      ),
+    }));
 
     const tenantJson = tenant.toJSON();
     return {
       ...tenantJson,
-      units: tenant.units,
+      units: mappedUnits,
       tds: paisaToRupees(tenant.tdsPaisa),
       rentalRate: paisaToRupees(tenant.rentalRatePaisa),
       grossAmount: paisaToRupees(tenant.grossAmountPaisa),
@@ -239,6 +244,23 @@ export async function updateTenant(tenantId, body, files) {
       if (body[f] !== undefined) updatedTenantData[f] = body[f];
     });
 
+    // Property assignment fields
+    if (body.block) updatedTenantData.block = body.block;
+    if (body.innerBlock) updatedTenantData.innerBlock = body.innerBlock;
+
+    // Units — accept repeated form keys (array) or comma-separated string
+    if (body.unitNumber !== undefined) {
+      let newUnits;
+      if (Array.isArray(body.unitNumber)) {
+        newUnits = body.unitNumber.filter(Boolean);
+      } else if (typeof body.unitNumber === "string" && body.unitNumber) {
+        newUnits = body.unitNumber.split(",").filter(Boolean);
+      }
+      if (newUnits && newUnits.length > 0) {
+        updatedTenantData.units = newUnits;
+      }
+    }
+
     // Financial recalculation
     const financialsChanged = hasFinancialChanges(body, existingTenant);
     let recalculationResult = null;
@@ -291,6 +313,27 @@ export async function updateTenant(tenantId, body, files) {
 
     if (updatedTenantData.units || updatedTenantData.status === "vacated") {
       const occupied = updatedTenantData.status !== "vacated";
+
+      if (updatedTenantData.units) {
+        // Release units that were removed
+        const oldUnitIds = (existingTenant.units || []).map((id) =>
+          id.toString()
+        );
+        const newUnitIds = updatedTenantData.units.map((id) => id.toString());
+        const removedUnitIds = oldUnitIds.filter(
+          (id) => !newUnitIds.includes(id)
+        );
+
+        if (removedUnitIds.length > 0) {
+          await Unit.updateMany(
+            { _id: { $in: removedUnitIds } },
+            { $set: { isOccupied: false } },
+            { session }
+          );
+        }
+      }
+
+      // Mark current (new) units with correct occupancy
       await Unit.updateMany(
         { _id: { $in: updatedTenant.units } },
         { $set: { isOccupied: occupied } },
@@ -637,65 +680,40 @@ export async function searchTenants(query) {
                 "overdue",
                 {
                   $cond: [
-                    // DUE SOON: unpaid and due within 7 days
+                    // PARTIAL: partially paid and not yet past due
                     {
                       $or: [
                         {
                           $and: [
                             { $ne: ["$$latestRent", null] },
-                            {
-                              $in: [
-                                "$$latestRent.status",
-                                ["pending", "partially_paid"],
-                              ],
-                            },
+                            { $eq: ["$$latestRent.status", "partially_paid"] },
                             { $gte: ["$$latestRent.englishDueDate", "$$now"] },
-                            {
-                              $lte: [
-                                "$$latestRent.englishDueDate",
-                                "$$sevenDaysFromNow",
-                              ],
-                            },
                           ],
                         },
                         {
                           $and: [
                             { $ne: ["$$latestCam", null] },
-                            {
-                              $in: [
-                                "$$latestCam.status",
-                                ["pending", "partially_paid"],
-                              ],
-                            },
+                            { $eq: ["$$latestCam.status", "partially_paid"] },
                             { $gte: ["$$latestCam.englishDueDate", "$$now"] },
-                            {
-                              $lte: [
-                                "$$latestCam.englishDueDate",
-                                "$$sevenDaysFromNow",
-                              ],
-                            },
                           ],
                         },
                       ],
                     },
-                    "due_soon",
-                    // UPCOMING: unpaid but due is still far away (e.g. quarterly
-                    // rent collected 3 months in advance). This is NOT "paid" —
-                    // the debt exists, payment is just not urgent yet.
-                    // Show as "due_soon" so the badge is honest.
-                    // Only fall through to "paid" when there are genuinely no
-                    // unpaid records at all.
+                    "partial",
                     {
                       $cond: [
+                        // DUE SOON: unpaid (pending only) and due within 7 days
                         {
                           $or: [
                             {
                               $and: [
                                 { $ne: ["$$latestRent", null] },
+                                { $eq: ["$$latestRent.status", "pending"] },
+                                { $gte: ["$$latestRent.englishDueDate", "$$now"] },
                                 {
-                                  $in: [
-                                    "$$latestRent.status",
-                                    ["pending", "partially_paid"],
+                                  $lte: [
+                                    "$$latestRent.englishDueDate",
+                                    "$$sevenDaysFromNow",
                                   ],
                                 },
                               ],
@@ -703,18 +721,42 @@ export async function searchTenants(query) {
                             {
                               $and: [
                                 { $ne: ["$$latestCam", null] },
+                                { $eq: ["$$latestCam.status", "pending"] },
+                                { $gte: ["$$latestCam.englishDueDate", "$$now"] },
                                 {
-                                  $in: [
-                                    "$$latestCam.status",
-                                    ["pending", "partially_paid"],
+                                  $lte: [
+                                    "$$latestCam.englishDueDate",
+                                    "$$sevenDaysFromNow",
                                   ],
                                 },
                               ],
                             },
                           ],
                         },
-                        "due_soon", // unpaid + future due date > 7 days → still due_soon
-                        "paid", // everything is genuinely paid
+                        "due_soon",
+                        // UPCOMING: pending but due is still far away
+                        {
+                          $cond: [
+                            {
+                              $or: [
+                                {
+                                  $and: [
+                                    { $ne: ["$$latestRent", null] },
+                                    { $eq: ["$$latestRent.status", "pending"] },
+                                  ],
+                                },
+                                {
+                                  $and: [
+                                    { $ne: ["$$latestCam", null] },
+                                    { $eq: ["$$latestCam.status", "pending"] },
+                                  ],
+                                },
+                              ],
+                            },
+                            "due_soon", // pending + future due date > 7 days → due_soon
+                            "paid",
+                          ],
+                        },
                       ],
                     },
                   ],
@@ -797,7 +839,7 @@ export async function searchTenants(query) {
     const paymentArr = Array.isArray(paymentStatus)
       ? paymentStatus
       : [paymentStatus];
-    const validPaymentStatuses = ["paid", "due_soon", "overdue"];
+    const validPaymentStatuses = ["paid", "due_soon", "overdue", "partial"];
     const sanitized = paymentArr.filter((p) =>
       validPaymentStatuses.includes(p),
     );
@@ -947,6 +989,284 @@ export async function searchTenants(query) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ADD UNITS TO EXISTING TENANT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Add one or more new units to an existing active tenant.
+ *
+ * Creates separate new Rent + CAM documents for the added units
+ * (does NOT modify existing Rent/CAM records), then recalculates
+ * the tenant's aggregate financial fields.
+ *
+ * @param {string} tenantId
+ * @param {Object} body
+ * @param {Array}  body.newUnitLeases  - [{ unitId, leasedSquareFeet, pricePerSqft, camRatePerSqft }]
+ * @param {string} adminId
+ */
+export async function addUnitsToTenant(tenantId, body, adminId) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const tenant = await Tenant.findById(tenantId).session(session);
+    if (!tenant) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 404, message: "Tenant not found" };
+    }
+
+    if (tenant.status === "vacated" || tenant.isDeleted) {
+      await session.abortTransaction();
+      session.endSession();
+      return {
+        success: false,
+        statusCode: 400,
+        message: "Cannot add units to a vacated or deleted tenant",
+      };
+    }
+
+    // ── Validate & parse new unit leases ──────────────────────────────────
+    const newUnitLeases = body.newUnitLeases;
+    if (!Array.isArray(newUnitLeases) || newUnitLeases.length === 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return {
+        success: false,
+        statusCode: 400,
+        message: "newUnitLeases must be a non-empty array",
+      };
+    }
+
+    const existingUnitIds = tenant.units.map((u) => u.toString());
+    const newUnitIds = newUnitLeases.map((ul) => {
+      if (!mongoose.Types.ObjectId.isValid(ul.unitId)) {
+        throw new Error(`Invalid unitId: ${ul.unitId}`);
+      }
+      return ul.unitId.toString();
+    });
+
+    // Prevent duplicates
+    const duplicates = newUnitIds.filter((id) => existingUnitIds.includes(id));
+    if (duplicates.length > 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return {
+        success: false,
+        statusCode: 400,
+        message: `Unit(s) already assigned to this tenant: ${duplicates.join(", ")}`,
+      };
+    }
+
+    // ── Fetch & occupation-check new units ────────────────────────────────
+    const newUnits = await Unit.find({
+      _id: { $in: newUnitIds },
+    }).session(session);
+
+    if (newUnits.length !== newUnitIds.length) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 404, message: "One or more new units not found" };
+    }
+
+    const occupiedUnits = newUnits.filter((u) => u.isOccupied);
+    if (occupiedUnits.length > 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return {
+        success: false,
+        statusCode: 400,
+        message: `Units already occupied: ${occupiedUnits.map((u) => u.name).join(", ")}`,
+      };
+    }
+
+    // ── Calculate financials for the NEW units only ───────────────────────
+    const tdsPercentage = tenant.tdsPercentage ?? 10;
+    const newCalc = calculateMultiUnitLease(newUnitLeases, tdsPercentage);
+    const { totals: newTotals, units: newCalcUnits } = newCalc;
+
+    const newTotalRentPaisa = rupeesToPaisa(newTotals.rentMonthly);
+    const newCamPaisa = rupeesToPaisa(newTotals.camMonthly);
+    const newGrossPaisa = rupeesToPaisa(newTotals.grossMonthly);
+    const newTdsPaisa = rupeesToPaisa(newTotals.totalTds);
+    const newSqft = newTotals.sqft;
+
+    // ── Determine billing period (use current Nepali date) ────────────────
+    const { npMonth, npYear, firstDayNepali, englishMonth, englishYear } =
+      getNepaliMonthDates();
+
+    const isQuarterly = tenant.rentPaymentFrequency === "quarterly";
+    const periodMonths = isQuarterly ? 3 : 1;
+
+    const { rentDueNp, rentDueDate } = getRentCycleDates({
+      startYear: npYear,
+      startMonth: npMonth,
+      frequencyMonths: periodMonths,
+    });
+
+    // ── Resolve entity for journal entries ────────────────────────────────
+    const entityId = await resolveEntityFromBlock(
+      tenant.block.toString(),
+      session,
+    );
+
+    // ── Create new Rent record for added units ────────────────────────────
+    const grossRentPeriodPaisa = newGrossPaisa * periodMonths;
+    const periodTdsPaisa = newTdsPaisa * periodMonths;
+
+    const rentResult = await createNewRent(
+      {
+        tenant: tenant._id,
+        innerBlock: tenant.innerBlock,
+        block: tenant.block,
+        property: tenant.property,
+        grossRentAmountPaisa: grossRentPeriodPaisa,
+        tdsAmountPaisa: periodTdsPaisa,
+        paidAmountPaisa: 0,
+        rentFrequency: tenant.rentPaymentFrequency,
+        status: "pending",
+        createdBy: adminId,
+        units: newUnitIds.map((id) => new mongoose.Types.ObjectId(id)),
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate: firstDayNepali,
+        englishMonth,
+        englishYear,
+        nepaliDueDate: rentDueNp,
+        englishDueDate: rentDueDate,
+        lateFee: 0,
+        useUnitBreakdown: true,
+        unitBreakdown: newCalcUnits.map((u) => ({
+          unit: new mongoose.Types.ObjectId(u.unitId),
+          grossRentAmountPaisa: rupeesToPaisa(u.grossMonthly) * periodMonths,
+          tdsAmountPaisa: rupeesToPaisa(u.totalTds) * periodMonths,
+          paidAmountPaisa: 0,
+        })),
+      },
+      session,
+    );
+    if (!rentResult.success) throw new Error(rentResult.message);
+
+    await ledgerService.postJournalEntry(
+      buildRentChargeJournal(rentResult.data),
+      session,
+      entityId,
+    );
+    await recordTdsLedgerEntry(rentResult.data, session, entityId);
+
+    // ── Create new CAM record for added units ─────────────────────────────
+    const camResult = await createCam(
+      {
+        tenant: tenant._id,
+        property: tenant.property,
+        block: tenant.block,
+        innerBlock: tenant.innerBlock,
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        nepaliDate: firstDayNepali,
+        amountPaisa: newCamPaisa,
+        amount: newTotals.camMonthly,
+        status: "pending",
+        year: englishYear,
+        month: englishMonth,
+        nepaliDueDate: rentDueDate,
+        englishDueDate: rentDueDate,
+      },
+      adminId,
+      session,
+    );
+    if (!camResult.success) throw new Error(camResult.message);
+
+    await ledgerService.postJournalEntry(
+      buildCamChargeJournal(camResult.data, { createdBy: adminId }),
+      session,
+      entityId,
+    );
+
+    // ── Occupy the new units ──────────────────────────────────────────────
+    for (let i = 0; i < newUnits.length; i++) {
+      const ul = newCalcUnits[i];
+      await newUnits[i].occupy({
+        tenant: tenant._id,
+        leaseSquareFeet: ul.sqft,
+        pricePerSqft: ul.pricePerSqft,
+        camRatePerSqft: ul.camRatePerSqft,
+        securityDeposit: ul.securityDeposit || 0,
+        leaseStartDate: tenant.leaseStartDate,
+        leaseEndDate: tenant.leaseEndDate,
+        dateOfAgreementSigned: tenant.dateOfAgreementSigned,
+        keyHandoverDate: tenant.keyHandoverDate,
+        spaceHandoverDate: tenant.spaceHandoverDate,
+        notes: "",
+      });
+      await newUnits[i].save({ session });
+    }
+
+    // ── Update tenant aggregate financials ────────────────────────────────
+    // Add the new unit amounts on top of existing amounts
+    const updatedTotalRentPaisa = tenant.totalRentPaisa + newTotalRentPaisa;
+    const updatedCamPaisa = tenant.camChargesPaisa + newCamPaisa;
+    const updatedGrossPaisa = tenant.grossAmountPaisa + newGrossPaisa;
+    const updatedTdsPaisa = tenant.tdsPaisa + newTdsPaisa;
+    const updatedSqft = tenant.leasedSquareFeet + newSqft;
+    const updatedNetPaisa = updatedTotalRentPaisa + updatedCamPaisa;
+
+    const updatedWeightedPricePerSqft = updatedGrossPaisa / updatedSqft;
+    const updatedWeightedCamRate = updatedCamPaisa / updatedSqft;
+
+    await Tenant.findByIdAndUpdate(
+      tenantId,
+      {
+        $push: { units: { $each: newUnitIds.map((id) => new mongoose.Types.ObjectId(id)) } },
+        $set: {
+          leasedSquareFeet: updatedSqft,
+          totalRentPaisa: updatedTotalRentPaisa,
+          camChargesPaisa: updatedCamPaisa,
+          grossAmountPaisa: updatedGrossPaisa,
+          tdsPaisa: updatedTdsPaisa,
+          netAmountPaisa: updatedNetPaisa,
+          rentalRatePaisa: divideMoney(updatedTotalRentPaisa, updatedSqft),
+          pricePerSqftPaisa: rupeesToPaisa(updatedWeightedPricePerSqft),
+          camRatePerSqftPaisa: rupeesToPaisa(updatedWeightedCamRate),
+          pricePerSqft: updatedWeightedPricePerSqft,
+          camRatePerSqft: updatedWeightedCamRate,
+          ...(isQuarterly && {
+            quarterlyRentAmountPaisa: updatedTotalRentPaisa * 3,
+          }),
+        },
+      },
+      { session },
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: `${newUnitIds.length} unit(s) added. New Rent and CAM records created.`,
+      addedUnits: newUnitIds,
+      newRentRecord: rentResult.data._id,
+      newCamRecord: camResult.data._id,
+      newMonthlyRent: paisaToRupees(newTotalRentPaisa),
+      newMonthlyCam: paisaToRupees(newCamPaisa),
+      updatedAggregateTotalRent: paisaToRupees(updatedTotalRentPaisa),
+      updatedAggregateCam: paisaToRupees(updatedCamPaisa),
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("addUnitsToTenant error:", error);
+    return {
+      success: false,
+      statusCode: 500,
+      message: "Failed to add units to tenant",
+      error: error.message,
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -984,33 +1304,36 @@ function hasFinancialChanges(updates, existing) {
 }
 
 function recalculateTenantFinancials(tenant, updates) {
-  const sqft = updates.leasedSquareFeet ?? tenant.leasedSquareFeet;
+  const totalSqft = updates.leasedSquareFeet ?? tenant.leasedSquareFeet;
   const pricePerSqft =
     updates.pricePerSqft ?? paisaToRupees(tenant.pricePerSqftPaisa);
   const camRate =
     updates.camRatePerSqft ?? paisaToRupees(tenant.camRatePerSqftPaisa);
   const tdsPct = updates.tdsPercentage ?? tenant.tdsPercentage ?? 10;
 
-  const calc = calculateMultiUnitLease(
-    [
-      {
-        unitId: tenant.units[0]?.toString() || tenant.units[0]?._id?.toString(),
-        leasedSquareFeet: sqft,
-        pricePerSqft,
-        camRatePerSqft: camRate,
-        securityDeposit:
-          updates.securityDeposit ?? paisaToRupees(tenant.securityDepositPaisa),
-      },
-    ],
-    tdsPct,
+  // Build one entry per unit; if the tenant has multiple units we spread the
+  // total sqft evenly across them (rate changes apply uniformly to all units).
+  const unitCount = Math.max(1, tenant.units?.length ?? 1);
+  const sqftPerUnit = totalSqft / unitCount;
+  const unitLeaseConfigs = (tenant.units?.length > 0 ? tenant.units : [{}]).map(
+    (u) => ({
+      unitId: u?._id?.toString() ?? u?.toString() ?? "unit",
+      leasedSquareFeet: sqftPerUnit,
+      pricePerSqft,
+      camRatePerSqft: camRate,
+      securityDeposit:
+        updates.securityDeposit ?? paisaToRupees(tenant.securityDepositPaisa),
+    }),
   );
+
+  const calc = calculateMultiUnitLease(unitLeaseConfigs, tdsPct);
 
   const { totals } = calc;
   return {
     pricePerSqftPaisa: rupeesToPaisa(pricePerSqft),
     camRatePerSqftPaisa: rupeesToPaisa(camRate),
     tdsPaisa: rupeesToPaisa(totals.totalTds),
-    rentalRatePaisa: rupeesToPaisa(totals.rentMonthly / sqft),
+    rentalRatePaisa: rupeesToPaisa(totals.rentMonthly / totalSqft),
     grossAmountPaisa: rupeesToPaisa(totals.grossMonthly),
     totalRentPaisa: rupeesToPaisa(totals.rentMonthly),
     camChargesPaisa: rupeesToPaisa(totals.camMonthly),
@@ -1018,7 +1341,7 @@ function recalculateTenantFinancials(tenant, updates) {
     pricePerSqft,
     camRatePerSqft: camRate,
     tdsPercentage: tdsPct,
-    leasedSquareFeet: sqft,
+    leasedSquareFeet: totalSqft,
   };
 }
 

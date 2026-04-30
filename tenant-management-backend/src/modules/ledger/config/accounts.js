@@ -26,7 +26,7 @@
  * Numbering convention:
  *   1000–1999  Assets
  *     1000   Cash on hand          (paymentMethod === "cash" only)
- *     1010–   Bank sub-accounts    (dynamic, created with BankAccount doc)
+ *     1010–  Bank sub-accounts     (dynamic, created with BankAccount doc)
  *     1050   Mobile wallet float   (must be seeded before use)
  *     1200   Accounts receivable   (tenant rent / CAM / electricity due)
  *   2000–2999  Liabilities
@@ -50,13 +50,6 @@ export const ACCOUNT_CODES = {
 
   /** Physical cash on hand. Use ONLY when paymentMethod === "cash". */
   CASH: "1000",
-
-  /**
-   * Cheques in transit — clearing account for cheque payments.
-   * DR on cheque receipt (first leg); CR when cheque is deposited to bank (second leg).
-   * Reversal posts here on bounce/cancel.
-   */
-  CHEQUE_CLEARING: "1020",
 
   /**
    * @deprecated  alias for CASH.
@@ -125,11 +118,42 @@ export const ACCOUNT_CODES = {
   /** Rental income from occupied units. */
   REVENUE: "4000",
 
+  /**
+   * Common Area Maintenance (CAM) income charged to tenants separately from rent.
+   * Keeps CAM income distinct from rental income on the P&L.
+   *
+   * CAM_CHARGE journal:
+   *   DR  1200  amountPaisa   (ASSET ↑ — tenant owes CAM)
+   *   CR  4050  amountPaisa   (REVENUE ↑ — CAM income earned)
+   *
+   * Must be seeded: Account code "4050" required for each OwnershipEntity.
+   */
+  CAM_REVENUE: "4050",
+
   /** Electricity and utility charges billed to tenants. */
   UTILITY_REVENUE: "4100",
 
   /** Late payment penalties. */
   LATE_FEE_REVENUE: "4200",
+
+  /**
+   * Revenue from event stall / kiosk leases (Sallyan House courtyard events).
+   * Posted when a kiosk lessee pays us for their space.
+   *
+   * Journal on kiosk payment received:
+   *   DR  Cash/Bank      amountPaisa   (ASSET ↑)
+   *   CR  4400           amountPaisa   (REVENUE ↑)
+   *
+   * Must be seeded: run seedAccount.js after adding this code.
+   */
+  EVENT_STALL_REVENUE: "4400",
+
+  /**
+   * Maintenance deductions withheld from security deposit and recognised as income.
+   * Posted when SD is settled with MAINTENANCE_ADJUSTMENT type.
+   * Must be seeded: Account code "4300" required for each OwnershipEntity.
+   */
+  MAINTENANCE_REVENUE: "4300",
 
   // ── Expenses ───────────────────────────────────────────────────────────────
 
@@ -161,8 +185,18 @@ export const ACCOUNT_CODES = {
    * @reserved do not use until Account "5400" is seeded.
    */
   BANK_CHARGES: "5400",
-  ELECTRICITY_EXPENSE_NEA: "5610", // or whatever code fits your chart
-  NEA_PAYABLE: "2050", // or whatever liability code fits
-  TDS_RECOVERABLE: "1300",
-  TDS_VERIFIED_PAID: "1350",
+
+  /**
+   * Event operating expenses (Sallyan House courtyard events).
+   * Covers stage setup, decorations, entertainment, event security, etc.
+   *
+   * Journal on event expense paid:
+   *   DR  5450           amountPaisa   (EXPENSE ↑)
+   *   CR  Cash/Bank      amountPaisa   (ASSET ↓)
+   *
+   * Must be seeded: run seedAccount.js after adding this code.
+   */
+  EVENT_EXPENSE: "5450",
+  ELECTRICITY_EXPENSE_NEA: "5610",
+  NEA_PAYABLE: "2050",
 };

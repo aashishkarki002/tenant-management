@@ -27,12 +27,131 @@ transporter.verify((error, success) => {
   }
 });
 
-/** Email templates: return { subject, html } from data only */
 const emailTemplates = {
-  welcome: ({ tenantName }) => ({
-    subject: "Welcome to our property management system",
-    html: `Welcome to our property management system${tenantName ? `, ${tenantName}` : ""}.
-You will receive a notification via this email for any updates regarding your units.`,
+  welcome: ({ tenantName, unitNumber, propertyName }) => ({
+    subject: `Welcome to ${propertyName || "Sallyan House"} — Your tenancy begins here`,
+    html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome to Sallyan House</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f4f7;font-family:'Georgia',serif;">
+
+  <!-- Outer wrapper -->
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f4f7;padding:40px 16px;">
+    <tr>
+      <td align="center">
+
+        <!-- Card -->
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:4px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+
+          <!-- Header bar -->
+          <tr>
+            <td style="background-color:#1A5276;padding:36px 48px 32px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td>
+                    <!-- Wordmark -->
+                    <p style="margin:0;font-family:'Georgia',serif;font-size:22px;font-weight:700;letter-spacing:0.5px;color:#ffffff;">
+                      Sallyan House
+                    </p>
+                    <p style="margin:4px 0 0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,0.55);">
+                      Property Management
+                    </p>
+                  </td>
+                  <td align="right" valign="middle">
+                    <!-- Decorative accent -->
+                    <table cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="width:6px;height:36px;background-color:rgba(255,255,255,0.15);border-radius:3px;"></td>
+                        <td style="width:4px;"></td>
+                        <td style="width:6px;height:24px;background-color:rgba(255,255,255,0.25);border-radius:3px;"></td>
+                        <td style="width:4px;"></td>
+                        <td style="width:6px;height:16px;background-color:rgba(255,255,255,0.4);border-radius:3px;"></td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Thin accent line -->
+          <tr>
+            <td style="height:3px;background:linear-gradient(90deg,#1A5276 0%,#2e86c1 60%,#aed6f1 100%);"></td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:48px 48px 36px;">
+
+              <!-- Greeting -->
+              <p style="margin:0 0 8px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:#1A5276;font-weight:600;">
+                Welcome
+              </p>
+              <h1 style="margin:0 0 28px;font-family:'Georgia',serif;font-size:28px;font-weight:700;color:#0d2137;line-height:1.25;">
+                ${tenantName ? `Good to have you,<br/>${tenantName}.` : "Good to have you."}
+              </h1>
+
+              <!-- Divider -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
+                <tr>
+                  <td style="height:1px;background-color:#e8eef3;"></td>
+                </tr>
+              </table>
+
+              <!-- Body copy -->
+              <p style="margin:0 0 20px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.7;color:#3d5166;">
+                Your tenancy has been registered on <strong style="color:#1A5276;">Sallyan House</strong>${unitNumber ? ` for unit <strong style="color:#1A5276;">${unitNumber}</strong>` : ""}. This inbox will be your primary channel for all official communications  rent notices, payment receipts, maintenance updates, and property announcements.
+              </p>
+              <p style="margin:0 0 32px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.7;color:#3d5166;">
+                Please keep this email address active and check it regularly. All notices delivered here are considered officially received.
+              </p>
+
+              <!-- Info card -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f6f9fc;border-left:3px solid #1A5276;border-radius:0 4px 4px 0;margin-bottom:36px;">
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <p style="margin:0 0 6px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#1A5276;font-weight:600;">
+                      What to expect
+                    </p>
+                    <ul style="margin:0;padding:0 0 0 18px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.9;color:#3d5166;">
+                      <li>Monthly rent invoices and due date reminders</li>
+                      <li>Payment confirmations and receipts</li>
+                      <li>Maintenance request updates</li>
+                      <li>Official notices from management</li>
+                    </ul>
+                  </td>
+                </tr>
+              </table>
+
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f6f9fc;border-top:1px solid #e8eef3;padding:24px 48px;">
+              <p style="margin:0 0 4px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#8fa3b1;line-height:1.6;">
+                This is an automated message from Sallyan House property management. Please do not reply directly to this email.
+              </p>
+              <p style="margin:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#8fa3b1;">
+                © ${new Date().getFullYear()} Sallyan House · <a href="https://app.sallyanhouse.com" style="color:#1A5276;text-decoration:none;">app.sallyanhouse.com</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+        <!-- End card -->
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>`,
   }),
 
   maintenanceAssignment: ({

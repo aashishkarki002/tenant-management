@@ -438,6 +438,17 @@ export async function createExpense(expenseData, externalSession = null) {
       if (!staffPayee?.staffId) {
         throw new Error("staffPayee.staffId is required for INTERNAL expense");
       }
+      const activeStaff = await StaffProfile.findOne({
+        admin: staffPayee.staffId,
+        leavingDate: null,
+      })
+        .session(session || null)
+        .lean();
+      if (!activeStaff) {
+        throw new Error(
+          "staffPayee.staffId must reference an active internal staff member. Vendor personnel are paid via VendorPayment, not as internal expenses.",
+        );
+      }
     }
 
     if (["SALARY", "ADVANCE"].includes(referenceType) && !referenceId) {
@@ -555,6 +566,10 @@ export async function createExpense(expenseData, externalSession = null) {
         ...journalDateFields,
         session,
       });
+      if (paymentMethod === PAYMENT_METHODS.CHEQUE) {
+        const bankAcc = await BankAccount.findOne({ accountCode: resolvedAccountCode, isDeleted: { $ne: true } }).session(session);
+        if (bankAcc) { bankAcc.balancePaisa -= finalAmountPaisa; await bankAcc.save({ session }); }
+      }
     } else if (scope === "head_office") {
       const resolvedAccountCode = await resolvePaymentAccountCodeForEntity({
         bankAccountCode,
@@ -573,6 +588,10 @@ export async function createExpense(expenseData, externalSession = null) {
         ...journalDateFields,
         session,
       });
+      if (paymentMethod === PAYMENT_METHODS.CHEQUE) {
+        const bankAcc = await BankAccount.findOne({ accountCode: resolvedAccountCode, isDeleted: { $ne: true } }).session(session);
+        if (bankAcc) { bankAcc.balancePaisa -= finalAmountPaisa; await bankAcc.save({ session }); }
+      }
     } else if (scope === "split") {
       // One journal per entity allocation
       // Validate allocation totals
@@ -611,6 +630,11 @@ export async function createExpense(expenseData, externalSession = null) {
 
         // Stamp the ledgerEntryId back onto the allocation for traceability
         allocation.ledgerEntryId = result.ledgerEntries[0]?._id ?? null;
+
+        if (paymentMethod === PAYMENT_METHODS.CHEQUE) {
+          const bankAcc = await BankAccount.findOne({ accountCode: resolvedAccountCode, isDeleted: { $ne: true } }).session(session);
+          if (bankAcc) { bankAcc.balancePaisa -= allocation.amountPaisa; await bankAcc.save({ session }); }
+        }
       }
 
       // Update the expense doc with the populated ledgerEntryIds

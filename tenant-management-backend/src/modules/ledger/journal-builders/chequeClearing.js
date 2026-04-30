@@ -3,21 +3,18 @@
  *
  * Journal builders for the cheque clearing lifecycle.
  *
- * ISSUED cheque lifecycle (expense / loan):
- *   On issue:    DR Expense (5xxx)   / CR 1020 (clearing)   ← posted by expense.js / loan.js
- *   On deposit:  DR 1020 (clearing)  / CR Bank              ← buildChequeDepositJournal (ISSUED)
- *   On bounce:   DR 1020 (clearing)  / CR Expense (5xxx)    ← buildChequeBounceJournal
+ * ISSUED cheque lifecycle (expense):
+ *   On issue:    DR Expense (5xxx)   / CR Bank              ← posted by expense.service.js
+ *   On deposit:  *(no journal)*  status → DEPOSITED         ← money already left bank at issue
+ *   On bounce:   DR Bank             / CR Expense (5xxx)    ← buildChequeBounceJournal
  *
  * RECEIVED cheque lifecycle (revenue):
  *   On receipt:  NO journal — Revenue doc created with status PENDING_CHEQUE
  *   On deposit:  DR Bank             / CR Revenue (4xxx)    ← buildChequeDepositJournal (RECEIVED)
  *                Revenue doc status → RECORDED
  *   On bounce:   NO journal — Revenue doc status → REVERSED
- *
- * 1020 (Cheques in Transit) is only used for the ISSUED direction.
  */
 
-import { ACCOUNT_CODES } from "../config/accounts.js";
 import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
 import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
 
@@ -28,9 +25,15 @@ import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
  * @returns {Object} Canonical journal payload
  */
 export function buildChequeDepositJournal(draft) {
+  if (draft.direction === "ISSUED") {
+    throw new Error(
+      `buildChequeDepositJournal must not be called for ISSUED cheques — ` +
+        `the journal was already posted at issue time (DR Expense / CR Bank).`,
+    );
+  }
+
   assertIntegerPaisa(draft.amountPaisa, "draft.amountPaisa");
 
-  const clearing = ACCOUNT_CODES.CHEQUE_CLEARING; // "1020"
   const bank = draft.bankAccountCode;
 
   if (!bank) {
@@ -39,34 +42,24 @@ export function buildChequeDepositJournal(draft) {
     );
   }
 
+  // RECEIVED: cheque deposited → money enters the bank AND revenue is recognised now
+  // DR Bank / CR Revenue (4xxx)
+  const revenueAccount = draft.referenceAccountCode;
+  if (!revenueAccount) {
+    throw new Error(
+      `ChequeDraft ${draft._id}: referenceAccountCode is required for RECEIVED deposit journal`,
+    );
+  }
+
   const description =
     `Cheque deposit — ${draft.direction} #${draft.chequeNumber}` +
     (draft.partyName ? ` (${draft.partyName})` : "") +
     ` — ${draft.amountPaisa / 100} NPR`;
 
-  let entries;
-  if (draft.direction === "ISSUED") {
-    // ISSUED: cheque clears → move from clearing liability to bank
-    // DR 1020 (clearing)  / CR Bank
-    entries = [
-      { accountCode: clearing, debitAmountPaisa: draft.amountPaisa, creditAmountPaisa: 0, description },
-      { accountCode: bank,     debitAmountPaisa: 0, creditAmountPaisa: draft.amountPaisa, description },
-    ];
-  } else {
-    // RECEIVED: cheque deposited → money enters the bank AND revenue is recognised now
-    // DR Bank / CR Revenue (4xxx)
-    // No clearing account involved — nothing was posted at receipt time.
-    const revenueAccount = draft.referenceAccountCode;
-    if (!revenueAccount) {
-      throw new Error(
-        `ChequeDraft ${draft._id}: referenceAccountCode is required for RECEIVED deposit journal`,
-      );
-    }
-    entries = [
-      { accountCode: bank,           debitAmountPaisa: draft.amountPaisa, creditAmountPaisa: 0, description },
-      { accountCode: revenueAccount, debitAmountPaisa: 0, creditAmountPaisa: draft.amountPaisa, description },
-    ];
-  }
+  const entries = [
+    { accountCode: bank,           debitAmountPaisa: draft.amountPaisa, creditAmountPaisa: 0, description },
+    { accountCode: revenueAccount, debitAmountPaisa: 0, creditAmountPaisa: draft.amountPaisa, description },
+  ];
 
   const payload = buildJournalPayload({
     transactionType: "CHEQUE_DEPOSIT",
@@ -98,8 +91,8 @@ export function buildChequeDepositJournal(draft) {
 export function buildChequeBounceJournal(draft) {
   assertIntegerPaisa(draft.amountPaisa, "draft.amountPaisa");
 
-  const clearing = ACCOUNT_CODES.CHEQUE_CLEARING; // "1020"
   const sourceAccount = draft.referenceAccountCode;
+  const bank = draft.bankAccountCode;
 
   if (!sourceAccount) {
     throw new Error(
@@ -113,17 +106,17 @@ export function buildChequeBounceJournal(draft) {
     (draft.partyName ? ` (${draft.partyName})` : "") +
     ` — ${draft.amountPaisa / 100} NPR`;
 
-  // ISSUED reversal: clearing had a CR balance → DR clearing to remove it, CR back to expense
-  // RECEIVED reversal: clearing had a DR balance → CR clearing to remove it, DR back to revenue
+  // ISSUED reversal: original was DR Expense / CR Bank → reverse: DR Bank / CR Expense
+  // RECEIVED reversal: no journal was ever posted, so this branch is unreachable in practice
   const entries =
     draft.direction === "ISSUED"
       ? [
-          { accountCode: clearing,       debitAmountPaisa: draft.amountPaisa, creditAmountPaisa: 0, description },
-          { accountCode: sourceAccount,  debitAmountPaisa: 0, creditAmountPaisa: draft.amountPaisa, description },
+          { accountCode: bank,          debitAmountPaisa: draft.amountPaisa, creditAmountPaisa: 0, description },
+          { accountCode: sourceAccount, debitAmountPaisa: 0, creditAmountPaisa: draft.amountPaisa, description },
         ]
       : [
-          { accountCode: sourceAccount,  debitAmountPaisa: draft.amountPaisa, creditAmountPaisa: 0, description },
-          { accountCode: clearing,       debitAmountPaisa: 0, creditAmountPaisa: draft.amountPaisa, description },
+          { accountCode: sourceAccount, debitAmountPaisa: draft.amountPaisa, creditAmountPaisa: 0, description },
+          { accountCode: bank,          debitAmountPaisa: 0, creditAmountPaisa: draft.amountPaisa, description },
         ];
 
   const payload = buildJournalPayload({
