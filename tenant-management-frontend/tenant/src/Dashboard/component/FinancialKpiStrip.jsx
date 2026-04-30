@@ -1,25 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { TrendingUp, TrendingDown, Wallet, DollarSign, CreditCard, AlertCircle } from "lucide-react";
-
-// ─── Formatters ───────────────────────────────────────────────────────────────
-
-function formatCurrency(val) {
-  if (val == null || val === "") return "RS 0";
-  const n = Number(val);
-  if (Number.isNaN(n)) return String(val);
-  return `RS ${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-}
-
-function formatCompact(val) {
-  if (val == null || val === "") return "RS 0";
-  const n = Number(val);
-  if (Number.isNaN(n)) return String(val);
-  if (n >= 10_000_000) return `RS ${(n / 10_000_000).toFixed(2)}Cr`;
-  if (n >= 100_000) return `RS ${(n / 100_000).toFixed(2)}L`;
-  if (n >= 1_000) return `RS ${(n / 1_000).toFixed(1)}k`;
-  return `RS ${n.toLocaleString("en-IN")}`;
-}
+import { formatRupees, formatRupeesCompact } from "@/lib/formatters";
 
 // ─── Animated Counter ─────────────────────────────────────────────────────────
 
@@ -51,7 +33,7 @@ function AnimatedCounter({ value, duration = 0.6 }) {
     return () => cancelAnimationFrame(animationFrame);
   }, [targetValue, duration]);
 
-  return formatCurrency(displayValue);
+  return formatRupees(displayValue);
 }
 
 // ─── Mini Sparkline ───────────────────────────────────────────────────────────
@@ -115,7 +97,7 @@ function DeltaIndicator({ value, percentage = true }) {
   const isPositive = value > 0;
   const displayValue = percentage
     ? `${Math.abs(value).toFixed(1)}%`
-    : formatCompact(Math.abs(value));
+    : formatRupeesCompact(Math.abs(value));
 
   return (
     <motion.div
@@ -300,7 +282,7 @@ export default function FinancialKpiStrip({ stats, loading }) {
     {
       label: "Net Cash Position",
       value: netCashPosition,
-      compactValue: formatCompact(netCashPosition),
+      compactValue: formatRupeesCompact(netCashPosition),
       delta: cashDelta,
       deltaPercentage: true,
       icon: Wallet,
@@ -310,7 +292,7 @@ export default function FinancialKpiStrip({ stats, loading }) {
     {
       label: "Total Revenue",
       value: totalRevenue,
-      compactValue: formatCompact(totalRevenue),
+      compactValue: formatRupeesCompact(totalRevenue),
       delta: revenueDelta,
       deltaPercentage: true,
       icon: TrendingUp,
@@ -320,7 +302,7 @@ export default function FinancialKpiStrip({ stats, loading }) {
     {
       label: "Total Expenses",
       value: totalExpenses,
-      compactValue: formatCompact(totalExpenses),
+      compactValue: formatRupeesCompact(totalExpenses),
       delta: expenseDelta,
       deltaPercentage: true,
       icon: CreditCard,
@@ -330,7 +312,7 @@ export default function FinancialKpiStrip({ stats, loading }) {
     {
       label: "Outstanding Liabilities",
       value: outstandingLiabilities,
-      compactValue: formatCompact(outstandingLiabilities),
+      compactValue: formatRupeesCompact(outstandingLiabilities),
       delta: liabilitiesDelta,
       deltaPercentage: true,
       icon: AlertCircle,

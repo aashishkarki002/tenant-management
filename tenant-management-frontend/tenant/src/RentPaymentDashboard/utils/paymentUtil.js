@@ -33,49 +33,46 @@ export const findMatchingCam = (cams, rent) => {
 export const getPaymentAmounts = (rent, cams) => {
   const matchingCam = findMatchingCam(cams, rent);
 
-  const tdsAmountPaisa = rent.tdsAmountPaisa || 0;
-  const grossRentAmountPaisa = rent.grossRentAmountPaisa || 0;
-  // Net rent = gross rent minus TDS withheld by tenant.
-  // TDS is not paid to the landlord (tenant remits it to govt directly),
-  // so the receivable and allocation must be based on the net amount.
-  const netRentAmountPaisa = grossRentAmountPaisa - tdsAmountPaisa;
-  const rentAmount = netRentAmountPaisa / 100;
+  // ── Rent — read backend-computed totals, no recalculation ─────────────────
+  const totals = rent.totals || {};
+  const tdsAmountPaisa = totals.tdsAmountPaisa ?? rent.tdsAmountPaisa ?? 0;
+  const grossRentAmountPaisa = totals.grossRentAmountPaisa ?? rent.grossRentAmountPaisa ?? 0;
+  // remainingAmountPaisa = net rent (gross − TDS) − already paid
+  const remainingRentPaisa = totals.remainingAmountPaisa ?? 0;
+  const rentAmount = remainingRentPaisa / 100;
 
-  // ── CAM ───────────────────────────────────────────────────────────────────
-  const camAmountPaisa =
-    matchingCam?.amountPaisa ||
-    (matchingCam?.amount ? matchingCam.amount * 100 : 0) ||
-    rent.tenant?.camChargesPaisa ||
-    (rent.tenant?.camCharges ? rent.tenant.camCharges * 100 : 0) ||
-    0;
-  const camAmount = camAmountPaisa / 100;
-  const lateFeePaisa = rent.lateFeePaisa || 0;
-  const latePaidAmountPaisa = rent.latePaidAmountPaisa || 0;
-  const remainingLateFeePaisa = Math.max(0, lateFeePaisa - latePaidAmountPaisa);
-  const lateFeeAmount = remainingLateFeePaisa / 100; // rupees
+  // ── CAM — remaining = charged − already paid ───────────────────────────────
+  const camTotalPaisa = matchingCam?.amountPaisa
+    ?? (matchingCam?.amount ? matchingCam.amount * 100 : 0);
+  const camPaidPaisa = matchingCam?.paidAmountPaisa ?? 0;
+  const camRemainingPaisa = Math.max(0, camTotalPaisa - camPaidPaisa);
+  const camAmount = camRemainingPaisa / 100;
 
-  // ── Totals ────────────────────────────────────────────────────────────────
-  const totalDuePaisa =
-    netRentAmountPaisa + camAmountPaisa + remainingLateFeePaisa;
+  // ── Late fee — remaining = charged − already paid ──────────────────────────
+  const lateFeePaisa = totals.lateFeePaisa ?? rent.lateFeePaisa ?? 0;
+  const remainingLateFeePaisa = totals.remainingLateFeePaisa
+    ?? Math.max(0, lateFeePaisa - (rent.latePaidAmountPaisa ?? 0));
+  const lateFeeAmount = remainingLateFeePaisa / 100;
+
+  // ── Total ─────────────────────────────────────────────────────────────────
+  const totalDuePaisa = remainingRentPaisa + camRemainingPaisa + remainingLateFeePaisa;
   const totalDue = totalDuePaisa / 100;
 
   return {
-    // Rupees (for display)
+    // Rupees (display only — paisa / 100)
     rentAmount,
     camAmount,
     lateFeeAmount,
     totalDue,
-    // Paisa (for allocation calculations)
+    // Paisa (allocation calculations)
     tdsAmountPaisa,
     grossRentAmountPaisa,
-    netRentAmountPaisa,
-    camAmountPaisa,
+    camAmountPaisa: camRemainingPaisa,
     lateFeePaisa,
-    latePaidAmountPaisa,
     remainingLateFeePaisa,
     totalDuePaisa,
-    // Convenience flags
-    hasLateFee: lateFeePaisa > 0,
+    // Flags
+    hasLateFee: remainingLateFeePaisa > 0,
   };
 };
 

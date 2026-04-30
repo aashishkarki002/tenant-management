@@ -117,14 +117,10 @@ export const generateWorkOrderId = (item) =>
 export const transformUnitsToOptions = (units) => {
   const safeUnits = Array.isArray(units) ? units.filter(Boolean) : [];
   return safeUnits.map((u) => ({
-    value: u._id,
-    label: u.name ?? u.unitName ?? u._id,
+    value: String(u._id),          // ← fix: coerce to string
+    label: u.name ?? u.unitName ?? String(u._id),
     blockName: u.blockName ?? u.block?.name ?? undefined,
-    floor: u.floor ?? u.floorName ?? undefined,
-    isOccupied:
-      Boolean(u.currentLease) ||
-      Boolean(u.tenantId) ||
-      Boolean(u.tenant?._id) ||
-      Boolean(u.tenant),
+    floor: u.floor ?? u.innerBlock?.name ?? u.floorName ?? undefined,  // also add innerBlock.name fallback
+    isOccupied: u.isOccupied ?? Boolean(u.currentLease?.tenant),       // use the actual model field
   }));
 };

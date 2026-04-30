@@ -323,7 +323,7 @@ export const DocumentUploadSection = ({ formik, requiredTypes = new Set() }) => 
                     <span style={{
                         fontSize: "11px",
                         fontWeight: 600,
-                        background: "var(--color-text-strong)",
+                        background: "var(--color-primary)",
                         color: "var(--color-bg)",
                         padding: "3px 10px",
                         borderRadius: "20px",

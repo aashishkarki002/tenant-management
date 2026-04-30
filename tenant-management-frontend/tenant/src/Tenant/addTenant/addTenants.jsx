@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ClipboardListIcon } from "lucide-react";
@@ -121,6 +121,29 @@ function AddTenants() {
 
   const handleSuccess = () => navigate("/tenants");
   const { formik, isLoading } = useTenantForm(property, handleSuccess);
+
+  // Prefill sqft from unit.actualSquareFeet when a unit is selected
+  const prevUnitIdsRef = useRef([]);
+  useEffect(() => {
+    const selectedIds = Array.isArray(formik.values.unitNumber) ? formik.values.unitNumber : [];
+    const prevIds = prevUnitIdsRef.current;
+    const newlyAdded = selectedIds.filter((id) => !prevIds.includes(id));
+
+    if (newlyAdded.length > 0 && units) {
+      const patch = { ...formik.values.unitFinancials };
+      let changed = false;
+      newlyAdded.forEach((unitId) => {
+        const unit = units.find((u) => u._id === unitId);
+        if (unit?.actualSquareFeet && !patch[unitId]?.sqft) {
+          patch[unitId] = { ...patch[unitId], sqft: String(unit.actualSquareFeet) };
+          changed = true;
+        }
+      });
+      if (changed) formik.setFieldValue("unitFinancials", patch);
+    }
+
+    prevUnitIdsRef.current = selectedIds;
+  }, [formik.values.unitNumber]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Step error state for the progress bar ───────────────────────────────
   // Build a map of stepKey → boolean for visited steps that currently fail validation

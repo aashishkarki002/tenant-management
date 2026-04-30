@@ -1,5 +1,24 @@
-import { Card, DarkCard, Lbl, Skeleton } from "../AccountingPrimitives";
+import { Skeleton } from "../AccountingPrimitives";
 import { useFundPositions } from "../../hooks/useFundPositions";
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const T = {
+    border:  "var(--color-border)",
+    surface: "var(--color-surface-raised)",
+    sub:     "var(--color-text-sub)",
+    body:    "var(--color-text-body)",
+    strong:  "var(--color-text-strong)",
+    info:    "var(--color-info)",
+    success: "var(--color-success)",
+};
+
+function SectionLabel({ children }) {
+    return (
+        <div className="text-[10px] font-bold tracking-[0.12em] uppercase mb-3" style={{ color: T.sub }}>
+            {children}
+        </div>
+    );
+}
 
 export default function BankingTab({ entityId }) {
     const { data, loading, error, refetch } = useFundPositions(entityId);
@@ -8,89 +27,113 @@ export default function BankingTab({ entityId }) {
 
     if (error) {
         return (
-            <p className="text-sm text-[var(--color-danger)] py-4">{error}</p>
+            <p className="text-[12px]" style={{ color: "var(--color-danger)", paddingTop: 16 }}>{error}</p>
         );
     }
 
     const { cashInHand, bankAccounts = [], totalFundsFormatted } = data ?? {};
 
     return (
-        <div className="flex flex-col gap-6">
-            {/* Auto-update note */}
-            <div className="text-xs text-[var(--color-text-sub)] border-l-2 border-[var(--color-info)] pl-3 bg-[var(--color-info-bg)] py-2 pr-3 rounded-r-md">
+        <div className="flex flex-col gap-4">
+
+            {/* ── Info note ─────────────────────────────────────────────────── */}
+            <div
+                className="rounded-xl px-4 py-2.5 border-l-2 text-[11px]"
+                style={{
+                    background: "var(--color-info-bg)",
+                    borderLeftColor: T.info,
+                    color: T.sub,
+                }}
+            >
                 Balances update automatically when payments and expenses are recorded.
             </div>
 
-            {/* Total funds strip */}
+            {/* ── Summary strip ─────────────────────────────────────────────── */}
             {data && (
-                <p className="text-sm text-[var(--color-text-sub)]">
-                    Total funds:{" "}
-                    <span className="font-bold text-[var(--color-text-strong)]">
+                <div
+                    className="rounded-2xl border px-5 py-4 flex items-center justify-between"
+                    style={{ background: T.surface, borderColor: T.border }}
+                >
+                    <span className="text-[11px] font-medium" style={{ color: T.sub }}>
+                        Total funds
+                    </span>
+                    <span className="text-[20px] font-bold tabular-nums" style={{ color: T.strong, letterSpacing: "-0.02em" }}>
                         {totalFundsFormatted}
                     </span>
-                </p>
+                </div>
             )}
 
-            {/* Cash in hand */}
-            <section>
-                <Lbl>Cash in Hand</Lbl>
-                <DarkCard>
-                    <p className="text-xs mb-1" style={{ color: "var(--color-surface-invert-sub)" }}>Cash on Hand</p>
-                    <p className="text-2xl font-bold" style={{ color: "var(--color-surface-invert-text)" }}>
+            {/* ── Cash in hand ──────────────────────────────────────────────── */}
+            <div>
+                <SectionLabel>Cash in Hand</SectionLabel>
+                <div
+                    className="rounded-2xl border px-5 py-4"
+                    style={{ background: "var(--color-surface-invert)" }}
+                >
+                    <div className="text-[11px] font-medium mb-1" style={{ color: "var(--color-surface-invert-sub)" }}>
+                        Cash on Hand
+                    </div>
+                    <div className="text-[28px] font-bold tabular-nums leading-none" style={{ color: "var(--color-surface-invert-text)", letterSpacing: "-0.02em" }}>
                         {cashInHand?.balanceFormatted ?? "Rs. 0.00"}
-                    </p>
+                    </div>
                     {cashInHand && !cashInHand.hasLedgerAccount && (
-                        <p className="text-xs text-yellow-300 mt-2">
-                            No ledger account found — run rebuildAccountBalances script to initialize.
-                        </p>
+                        <div className="text-[11px] mt-2" style={{ color: "var(--color-warning)" }}>
+                            No ledger account found — run rebuildAccountBalances to initialize.
+                        </div>
                     )}
-                </DarkCard>
-            </section>
+                </div>
+            </div>
 
-            {/* Bank accounts */}
+            {/* ── Bank accounts ─────────────────────────────────────────────── */}
             {bankAccounts.length > 0 && (
-                <section>
-                    <Lbl>Bank Accounts</Lbl>
+                <div>
+                    <SectionLabel>Bank Accounts</SectionLabel>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {bankAccounts.map((b) => (
-                            <Card key={String(b._id)}>
-                                <p className="text-xs text-[var(--color-text-sub)] mb-0.5">
+                            <div
+                                key={String(b._id)}
+                                className="rounded-2xl border px-5 py-4"
+                                style={{ background: T.surface, borderColor: T.border }}
+                            >
+                                <div className="text-[11px] font-medium mb-0.5" style={{ color: T.sub }}>
                                     {b.bankName}
-                                </p>
-                                <p className="text-sm font-semibold text-[var(--color-text-strong)] mb-2">
+                                </div>
+                                <div className="text-[13px] font-semibold mb-3" style={{ color: T.body }}>
                                     {b.accountName}
-                                </p>
-                                <p className="text-xl font-bold text-[var(--color-text-strong)]">
+                                </div>
+                                <div className="text-[22px] font-bold tabular-nums leading-none" style={{ color: T.strong, letterSpacing: "-0.02em" }}>
                                     {b.balanceFormatted}
-                                </p>
-                                <p className="text-xs text-[var(--color-text-sub)] mt-1">
+                                </div>
+                                <div className="text-[11px] mt-1" style={{ color: T.sub }}>
                                     {b.accountCode}
-                                </p>
+                                </div>
                                 {!b.hasLedgerAccount && (
-                                    <p className="text-xs text-yellow-500 mt-2">
-                                        Balance may be 0 — run rebuildAccountBalances script.
-                                    </p>
+                                    <div className="text-[11px] mt-2" style={{ color: "var(--color-warning)" }}>
+                                        Balance may be 0 — run rebuildAccountBalances.
+                                    </div>
                                 )}
-                            </Card>
+                            </div>
                         ))}
                     </div>
-                </section>
+                </div>
             )}
 
-            {bankAccounts.length === 0 && !loading && (
-                <p className="text-sm text-[var(--color-text-sub)]">
+            {bankAccounts.length === 0 && (
+                <p className="text-[12px]" style={{ color: T.sub }}>
                     No bank accounts configured. Add them in{" "}
-                    <span className="font-medium">Settings → Bank Accounts</span>.
+                    <span className="font-semibold" style={{ color: T.body }}>Settings → Bank Accounts</span>.
                 </p>
             )}
 
-            {/* Refresh */}
+            {/* ── Refresh ───────────────────────────────────────────────────── */}
             <button
                 onClick={refetch}
-                className="self-start text-xs text-[var(--color-text-sub)] hover:text-[var(--color-text-body)] underline underline-offset-2"
+                className="self-start text-[11px] font-semibold bg-transparent border-none cursor-pointer hover:opacity-75 transition-opacity underline underline-offset-2"
+                style={{ color: T.sub }}
             >
                 Refresh balances
             </button>
+
         </div>
     );
 }

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { AlertTriangle, MoreHorizontal } from "lucide-react";
 import { TableRow, TableCell } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { ArrearsPaymentDialog } from "./ArrearsPaymentDialog";
@@ -18,24 +17,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import api from "../../../plugins/axios";
-
-const STATUS_CLASS = {
-  paid: "bg-emerald-50/90 text-emerald-800 border-emerald-200/70 font-medium dark:bg-emerald-950/35 dark:text-emerald-200 dark:border-emerald-800/50",
-  pending: "bg-orange-50/90 text-orange-800 border-orange-200/70 font-medium dark:bg-orange-950/35 dark:text-orange-200 dark:border-orange-800/50",
-  overdue: "bg-red-50/90 text-red-800 border-red-200/70 font-medium dark:bg-red-950/35 dark:text-red-200 dark:border-red-800/50",
-  partially_paid: "bg-yellow-50/90 text-yellow-900 border-yellow-200/70 font-medium dark:bg-yellow-950/35 dark:text-yellow-100 dark:border-yellow-800/50",
-  partial: "bg-yellow-50/90 text-yellow-900 border-yellow-200/70 font-medium dark:bg-yellow-950/35 dark:text-yellow-100 dark:border-yellow-800/50",
-};
-
-const STATUS_LABEL = {
-  paid: "Paid",
-  pending: "Pending",
-  overdue: "Overdue",
-  partially_paid: "Partial",
-  partial: "Partial",
-};
+import { STATUS_LABEL, STATUS_BADGE_STYLES } from "../constants/paymentConstants";
 
 const fmtRs = (n) => `Rs ${Number(n).toLocaleString("en-IN")}`;
+
+/** Minimal status pill — very low contrast, no heavy borders */
+const StatusPill = ({ status }) => (
+  <span
+    className={cn(
+      "inline-flex items-center h-5 px-2 rounded-full text-[11px] font-normal border",
+      STATUS_BADGE_STYLES[status] ??
+      "bg-muted text-muted-foreground border-transparent",
+    )}
+  >
+    {STATUS_LABEL[status] ?? status}
+  </span>
+);
 
 export const RentTableRow = ({
   rent,
@@ -62,14 +59,18 @@ export const RentTableRow = ({
         `/api/rent/tds/certificate/${tenantId}?nepaliYear=${year}`,
         { responseType: "blob" },
       );
-      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const url = URL.createObjectURL(
+        new Blob([res.data], { type: "application/pdf" }),
+      );
       const a = document.createElement("a");
       a.href = url;
       a.download = `TDS-Certificate-${rent.tenant.name.replace(/\s+/g, "-")}-${year}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to generate TDS certificate");
+      toast.error(
+        err?.response?.data?.message || "Failed to generate TDS certificate",
+      );
     } finally {
       setCertLoading(false);
     }
@@ -94,14 +95,10 @@ export const RentTableRow = ({
   const subtitle =
     [propertyName || null, unitNames !== "—" ? unitNames : null]
       .filter(Boolean)
-      .join(" • ") || "—";
+      .join(" · ") || "—";
 
   const tenantId = rent.tenant?._id;
 
-  // Only show the arrears badge when the oldest unpaid balance is from a
-  // PREVIOUS Nepali month. If oldestOverdueNepaliYear/Month equals the current
-  // month the tenant simply hasn't paid yet this cycle — the due date may not
-  // have arrived, so labelling it "overdue" is misleading.
   const todayNp = getTodayNepali();
   const pb = rent.prevBalance;
   const pbYear = pb?.oldestOverdueNepaliYear;
@@ -112,11 +109,8 @@ export const RentTableRow = ({
     pbMonth != null &&
     (pbYear < todayNp.year ||
       (pbYear === todayNp.year && pbMonth < todayNp.month));
-  // Show arrears badge only when confirmed to be from a previous cycle
   const showPrevBalance = prevBalanceIsFromPastCycle;
 
-  // Single pay handler — routes to arrears dialog only for genuine past-cycle
-  // arrears; current-month pending rents go through the normal payment dialog.
   const handlePay = () => {
     if (showPrevBalance) {
       setArrearsOpen(true);
@@ -128,19 +122,20 @@ export const RentTableRow = ({
   const payLabel =
     rent.status === "paid" && hasOutstandingLateFee ? "Pay fee" : "Pay";
 
-  // Dropdown has secondary actions only — primary "Pay" is now an inline button
   const hasDropdownItems = !!tenantId || hasTds;
 
   return (
     <TableRow
       className={cn(
-        "group border-b border-border/80 transition-colors",
-        status === "overdue" && "bg-red-50/35 hover:bg-red-50/50 dark:bg-red-950/15 dark:hover:bg-red-950/25",
-        status !== "overdue" && "hover:bg-muted/35",
+        "group border-b border-border/50 last:border-0 transition-colors",
+        status === "overdue"
+          ? "bg-red-50/20 hover:bg-red-50/40 dark:bg-red-950/10 dark:hover:bg-red-950/20"
+          : "hover:bg-muted/25",
       )}
       data-state={selected ? "selected" : undefined}
     >
-      <TableCell className="w-10 px-2 py-2.5 align-middle">
+      {/* Checkbox */}
+      <TableCell className="w-10 px-3 py-3 align-middle">
         <input
           type="checkbox"
           checked={selected}
@@ -150,82 +145,73 @@ export const RentTableRow = ({
         />
       </TableCell>
 
-      <TableCell className="min-w-[140px] max-w-[220px] py-2.5 align-top">
-        <p className="font-semibold text-sm text-foreground leading-snug">
+      {/* Tenant */}
+      <TableCell className="min-w-[140px] max-w-[200px] py-3 align-top">
+        <p className="text-sm font-medium text-foreground leading-snug">
           {rent.tenant ? rent.tenant.name : "No tenant"}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">
+        <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-1">
           {subtitle}
         </p>
         {showPrevBalance && (
-          <div className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-orange-200/80 bg-orange-50/80 px-2 py-0.5 dark:bg-orange-950/40 dark:border-orange-800/50">
-            <AlertTriangle className="size-3 shrink-0 text-orange-600" />
-            <span className="text-[10px] font-semibold text-orange-800 tabular-nums dark:text-orange-200">
+          <div className="mt-1.5 inline-flex items-center gap-1 rounded border border-orange-200/60 bg-orange-50/70 px-1.5 py-0.5 dark:bg-orange-950/30 dark:border-orange-800/40">
+            <AlertTriangle className="size-3 shrink-0 text-orange-500" />
+            <span className="text-[10px] font-medium text-orange-700 tabular-nums dark:text-orange-300">
               +{pb.formatted.prevBalance} arrears
-            </span>
-            <span className="text-[10px] text-orange-700 dark:text-orange-300">
-              since {pbMonth != null
-                ? `${pbYear}/${String(pbMonth).padStart(2, "0")}`
-                : pbYear}
             </span>
           </div>
         )}
       </TableCell>
 
-      <TableCell className="min-w-[72px] py-2.5 text-xs text-muted-foreground align-top">
+      {/* Unit */}
+      <TableCell className="min-w-[72px] py-3 text-xs text-muted-foreground align-top">
         {unitNames}
       </TableCell>
 
-      <TableCell className="whitespace-nowrap py-2.5 tabular-nums text-sm text-foreground">
+      {/* Rent */}
+      <TableCell className="whitespace-nowrap py-3 tabular-nums text-sm text-right text-foreground">
         {fmtRs(rentAmount)}
       </TableCell>
 
-      <TableCell className="whitespace-nowrap py-2.5 tabular-nums text-sm text-foreground">
-        <div className="flex flex-col gap-0.5">
+      {/* CAM */}
+      <TableCell className="whitespace-nowrap py-3 tabular-nums text-sm text-right text-foreground">
+        <div className="flex flex-col items-end gap-0.5">
           <span>{fmtRs(camAmount)}</span>
           {hasLateFee && (
             <span className="text-[10px] text-muted-foreground font-normal">
-              Late fee {fmtRs(lateFeeAmount)}
-              {lateFeePaid ? " · paid" : " · due"}
+              +{fmtRs(lateFeeAmount)} fee{lateFeePaid ? " · paid" : ""}
             </span>
           )}
         </div>
       </TableCell>
 
-      <TableCell className="whitespace-nowrap py-2.5">
+      {/* Total */}
+      <TableCell className="whitespace-nowrap py-3 text-right">
         <span className="tabular-nums text-sm font-semibold text-foreground">
           {fmtRs(totalDue)}
         </span>
       </TableCell>
 
-      <TableCell className="whitespace-nowrap py-2.5">
+      {/* Due date */}
+      <TableCell className="whitespace-nowrap py-3">
         <span className="text-xs text-muted-foreground">
           {formatNepaliDueDate(rent)}
         </span>
       </TableCell>
 
-      <TableCell className="whitespace-nowrap py-2.5">
-        <Badge
-          variant="outline"
-          className={cn(
-            "text-[11px] font-medium border",
-            STATUS_CLASS[status] ?? "bg-muted text-muted-foreground border-border",
-          )}
-        >
-          {STATUS_LABEL[status] ?? status}
-        </Badge>
+      {/* Status */}
+      <TableCell className="whitespace-nowrap py-3">
+        <StatusPill status={status} />
       </TableCell>
 
-      {/* Actions cell: visible Pay button + secondary actions in dropdown */}
-      <TableCell className="whitespace-nowrap py-2.5 text-right">
-        <div className="flex items-center justify-end gap-1">
+      {/* Actions */}
+      <TableCell className="whitespace-nowrap py-3 text-right">
+        <div className="flex items-center justify-end gap-0.5">
           {!isFullySettled && (
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 px-2.5 text-xs font-medium border-border hover:bg-muted/60"
               onClick={handlePay}
+              className="h-6 px-2 rounded text-xs font-medium   transition-colors"
             >
               {payLabel}
             </Button>
@@ -238,10 +224,10 @@ export const RentTableRow = ({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="h-6 w-6 text-muted-foreground/60 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                   aria-label="More actions"
                 >
-                  <MoreHorizontal className="size-4" />
+                  <MoreHorizontal className="size-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">

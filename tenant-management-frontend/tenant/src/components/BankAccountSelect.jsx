@@ -73,7 +73,7 @@ export default function BankAccountSelect({
           const bal = showBalance ? rupeesFromBank(bank) : null;
           const metaRow = secondary || showBalance;
           return (
-            <SelectItem key={bank._id} value={String(bank._id)} className="py-2.5">
+            <SelectItem key={bank._id} value={String(bank._id)} data-entity={bank.entityId?.type ?? 'private'} className="py-2.5">
               <div className="flex flex-col gap-0.5 text-left min-w-0">
                 <span className="text-sm font-medium leading-tight truncate">
                   {primary}
@@ -81,7 +81,7 @@ export default function BankAccountSelect({
                 {metaRow && (
                   <div className="flex items-start justify-between gap-2">
                     {secondary ? (
-                      <span className="text-[11px] text-muted-foreground leading-snug">
+                      <span className="text-[11px] text-entity bg-entity leading-snug">
                         {secondary}
                       </span>
                     ) : (
@@ -89,7 +89,7 @@ export default function BankAccountSelect({
                     )}
                     {showBalance && (
                       <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
-                        रू {bal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                        Rs {bal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                       </span>
                     )}
                   </div>

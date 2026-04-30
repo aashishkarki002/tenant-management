@@ -1,7 +1,6 @@
 // src/pages/rent/RentPayment.jsx
 import React, { useState, useMemo, useCallback } from "react";
 import { useRentData } from "./hooks/useRentData";
-import { usePaymentForm } from "./hooks/usePaymentForm";
 import { RentTable } from "./components/RentTable";
 import { PaymentsTable } from "./components/PaymentsTable";
 import { PaymentFilters } from "./components/PaymentFilters";
@@ -29,58 +28,77 @@ import { Button } from "@/components/ui/button";
 
 const SearchInput = ({ value, onChange, placeholder }) => (
   <div className="relative w-full">
-    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
     <input
       type="text"
       placeholder={placeholder}
       value={value}
       onChange={onChange}
       className={cn(
-        "w-full h-9 pl-8 pr-3 text-xs rounded-md border outline-none",
-        "bg-background border-border text-foreground placeholder:text-muted-foreground",
-        "transition-colors focus:border-ring focus:ring-2 focus:ring-ring/30",
+        "w-full h-8 pl-7 pr-3 text-xs rounded-md border outline-none",
+        "bg-background border-border/60 text-foreground placeholder:text-muted-foreground",
+        "transition-colors focus:border-border focus:ring-0",
       )}
     />
   </div>
 );
 
 const LoadingSkeleton = () => (
-  <div className="space-y-4 animate-pulse">
-    <div className="h-16 rounded-lg bg-muted/50 border border-border" />
-    <div className="h-10 rounded-lg bg-muted/50 border border-border" />
-    <div className="h-24 rounded-lg bg-muted/50 border border-border" />
-    <div className="space-y-2">
-      {Array.from({ length: 6 }).map((_, i) => (
+  <div className="space-y-5 px-4 py-5 animate-pulse">
+    <div className="h-12 rounded bg-muted/40 w-2/3" />
+    <div className="h-7 rounded bg-muted/30 w-full" />
+    <div className="h-4 rounded bg-muted/20 w-1/3" />
+    <div className="space-y-px">
+      <div className="h-9 rounded-t bg-muted/30" />
+      {Array.from({ length: 5 }).map((_, i) => (
         <div
           key={i}
-          className="h-12 rounded-md bg-muted/50 border border-border"
-          style={{ opacity: 1 - i * 0.13 }}
+          className="h-11 bg-muted/20"
+          style={{ opacity: 1 - i * 0.15 }}
         />
       ))}
     </div>
   </div>
 );
 
+/** Minimal inline overdue callout */
 const OverdueBanner = ({ count, monthName, year, onShowOverdue }) => (
-  <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200/80 bg-red-50/50 px-4 py-2.5 dark:bg-red-950/25 dark:border-red-900/50">
-    <div className="flex items-center gap-2.5 min-w-0">
-      <span className="h-2 w-2 rounded-full bg-red-500 shrink-0 animate-pulse" />
-      <p className="text-xs font-medium text-red-800 dark:text-red-200 whitespace-nowrap">
-        {count} overdue rent{count !== 1 ? "s" : ""} need attention
+  <div className="flex items-center justify-between gap-3 rounded-md border border-red-200/60 bg-red-50/40 px-3 py-2 dark:bg-red-950/15 dark:border-red-900/40">
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
+      <p className="text-xs text-red-700 dark:text-red-300">
+        <span className="font-medium">{count}</span> overdue rent
+        {count !== 1 ? "s" : ""} · {monthName} {year}
       </p>
-      <span className="hidden sm:inline text-xs text-red-700/70 dark:text-red-300/70">
-        · {monthName} {year}
-      </span>
     </div>
     <button
       type="button"
       onClick={onShowOverdue}
-      className="shrink-0 rounded-md border border-red-200 bg-background px-2.5 py-1 text-xs font-medium text-red-800 hover:bg-red-50 dark:border-red-800 dark:text-red-200 dark:hover:bg-red-950/40 transition-colors"
+      className="shrink-0 text-xs text-red-600 hover:text-red-700 font-medium transition-colors dark:text-red-400"
     >
-      Show overdue
+      Show →
     </button>
   </div>
 );
+
+const PaymentsMetricsStrip = ({ payments }) => {
+  if (!payments.length) return null;
+  const total = payments.reduce((s, p) => s + (p.amount || 0), 0);
+  const fmt = (n) =>
+    `Rs ${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+  return (
+    <p className="text-xs text-muted-foreground tabular-nums">
+      <span className="text-foreground font-medium">{payments.length}</span>{" "}
+      payments ·{" "}
+      <span className="text-foreground font-medium">{fmt(total)}</span> total ·{" "}
+      <span className="text-foreground font-medium">
+        {fmt(total / payments.length)}
+      </span>{" "}
+      avg.
+    </p>
+  );
+};
 
 function rowFullySettled(rent) {
   const hasOutstandingLateFee =
@@ -89,42 +107,6 @@ function rowFullySettled(rent) {
     rent.lateFeeStatus !== "paid";
   return rent.status === "paid" && !hasOutstandingLateFee;
 }
-
-const PaymentsMetricsStrip = ({ payments }) => {
-  if (!payments.length) return null;
-  const total = payments.reduce((s, p) => s + (p.amount || 0), 0);
-  const fmt = (n) =>
-    `Rs ${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-
-  const items = [
-    { label: "Total collected", value: fmt(total) },
-    { label: "Payments", value: String(payments.length) },
-    { label: "Avg. payment", value: fmt(total / payments.length) },
-  ];
-
-  return (
-    <div className="flex flex-wrap items-stretch gap-y-2 rounded-lg border border-border bg-background px-3 py-2.5 sm:px-4 sm:py-3">
-      {items.map((item, i) => (
-        <React.Fragment key={item.label}>
-          {i > 0 && (
-            <div
-              className="hidden sm:block h-8 w-px shrink-0 bg-border self-center"
-              aria-hidden
-            />
-          )}
-          <div className="flex flex-col gap-0.5 min-w-0 px-3 sm:px-4 first:pl-0 last:pr-0">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              {item.label}
-            </span>
-            <span className="text-sm font-semibold tabular-nums text-foreground">
-              {item.value}
-            </span>
-          </div>
-        </React.Fragment>
-      ))}
-    </div>
-  );
-};
 
 const RentPayment = () => {
   const {
@@ -186,7 +168,10 @@ const RentPayment = () => {
   }, [frequencyFilteredRents, searchQuery]);
 
   const overdueCount = useMemo(
-    () => frequencyFilteredRents.filter((r) => (r.status || "").toLowerCase() === "overdue").length,
+    () =>
+      frequencyFilteredRents.filter(
+        (r) => (r.status || "").toLowerCase() === "overdue",
+      ).length,
     [frequencyFilteredRents],
   );
 
@@ -214,9 +199,7 @@ const RentPayment = () => {
 
   const tenantsPaidStats = useMemo(() => {
     const total = frequencyFilteredRents.length;
-    const paid = frequencyFilteredRents.filter((r) =>
-      rowFullySettled(r),
-    ).length;
+    const paid = frequencyFilteredRents.filter((r) => rowFullySettled(r)).length;
     return { paid, total };
   }, [frequencyFilteredRents]);
 
@@ -247,13 +230,6 @@ const RentPayment = () => {
     await Promise.all([getRents(), getPayments(), getCams()]);
   }, [getRents, getPayments, getCams]);
 
-  const paymentForm = usePaymentForm({ rents, cams, onSuccess: handlePaymentSuccess });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    paymentForm.formik.handleSubmit();
-  };
-
   const handleClearPaymentFilters = () => {
     setFilterStartDate("");
     setFilterEndDate("");
@@ -280,10 +256,15 @@ const RentPayment = () => {
       setExportingPdf(true);
       const params = { nepaliYear: filterRentYear };
       if (filterRentMonth != null) params.nepaliMonth = filterRentMonth;
-      const response = await api.get("/api/rent/export/pdf", { params, responseType: "blob" });
+      const response = await api.get("/api/rent/export/pdf", {
+        params,
+        responseType: "blob",
+      });
       const month = filterRentMonth ? `-Month${filterRentMonth}` : "";
       const filename = `Rent-Roll-${filterRentYear}${month}.pdf`;
-      const url = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+      const url = URL.createObjectURL(
+        new Blob([response.data], { type: "application/pdf" }),
+      );
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
@@ -302,6 +283,17 @@ const RentPayment = () => {
     frequencyView === "quarterly"
       ? `${NEPALI_QUARTERS[filterQuarter]?.label ?? ""} ${filterRentYear}`
       : `${currentMonthName} ${filterRentYear}`;
+
+  const selectedProperty = properties.find((p) => p._id === filterPropertyId);
+
+  // Inline context: "Baisakh 2083 · Monthly · All Properties"
+  const contextLine = [
+    currentPeriodLabel,
+    frequencyView === "quarterly" ? "Quarterly" : "Monthly",
+    selectedProperty?.name ?? "All Properties",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   useHeaderSlot(
     () => (
@@ -370,7 +362,8 @@ const RentPayment = () => {
   if (loading) return <LoadingSkeleton />;
 
   return (
-    <form onSubmit={handleSubmit}>
+    <>
+      {/* Mobile search */}
       {activeTab === "rent" && (
         <div className="sm:hidden sticky top-14 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur border-b border-border mb-4">
           <SearchInput
@@ -381,15 +374,17 @@ const RentPayment = () => {
         </div>
       )}
 
+      {/* ── Rent tab ─────────────────────────────────────────────────────── */}
       {activeTab === "rent" && (
-        <div className="space-y-5 p-4">
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between border-b border-border pb-5">
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">
+        <div className="space-y-4 px-4 py-5">
+          {/* Header: title + context + primary action */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold text-foreground tracking-tight">
                 Rent Collection
               </h1>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {currentPeriodLabel}
+              <p className="text-xs text-muted-foreground mt-0.5 select-none">
+                {contextLine}
               </p>
             </div>
             <AdminRentAction
@@ -402,24 +397,9 @@ const RentPayment = () => {
               onExportPdf={handleExportPdf}
               exportingPdf={exportingPdf}
             />
-          </header>
+          </div>
 
-          {overdueCount > 0 && filterStatus !== "overdue" && (
-            <OverdueBanner
-              count={overdueCount}
-              monthName={frequencyView === "quarterly" ? NEPALI_QUARTERS[filterQuarter]?.label : currentMonthName}
-              year={filterRentYear}
-              onShowOverdue={() => setFilterStatus("overdue")}
-            />
-          )}
-
-          <RentMetricsStrip
-            totalCollected={frequencyTotalCollected}
-            totalDue={frequencyTotalDue}
-            tenantsPaid={tenantsPaidStats.paid}
-            tenantsTotal={tenantsPaidStats.total}
-          />
-
+          {/* Compact filter bar (desktop) */}
           <div className="hidden sm:block">
             <RentFilter
               search={searchQuery}
@@ -444,30 +424,41 @@ const RentPayment = () => {
             />
           </div>
 
-          <div className="rounded-lg border border-border bg-background overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/20">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground tabular-nums">
-                {displayRents.length} record
-                {displayRents.length !== 1 ? "s" : ""}
+          {/* Overdue callout */}
+          {overdueCount > 0 && filterStatus !== "overdue" && (
+            <OverdueBanner
+              count={overdueCount}
+              monthName={
+                frequencyView === "quarterly"
+                  ? NEPALI_QUARTERS[filterQuarter]?.label
+                  : currentMonthName
+              }
+              year={filterRentYear}
+              onShowOverdue={() => setFilterStatus("overdue")}
+            />
+          )}
+
+          {/* Muted inline metrics summary */}
+          <RentMetricsStrip
+            totalCollected={frequencyTotalCollected}
+            totalDue={frequencyTotalDue}
+            tenantsPaid={tenantsPaidStats.paid}
+            tenantsTotal={tenantsPaidStats.total}
+          />
+
+          {/* Table */}
+          <div className="rounded-md border border-border/60 bg-background overflow-hidden">
+            {/* Record count bar */}
+            <div className="flex items-center px-3 py-2 border-b border-border/50">
+              <span className="text-[11px] text-muted-foreground tabular-nums select-none">
+                {displayRents.length}{" "}
+                {displayRents.length === 1 ? "record" : "records"}
               </span>
             </div>
             <RentTable
               rents={displayRents}
               cams={cams}
               bankAccounts={bankAccounts}
-              formik={paymentForm.formik}
-              allocationMode={paymentForm.allocationMode}
-              setAllocationMode={paymentForm.setAllocationMode}
-              rentAllocation={paymentForm.rentAllocation}
-              setRentAllocation={paymentForm.setRentAllocation}
-              camAllocation={paymentForm.camAllocation}
-              setCamAllocation={paymentForm.setCamAllocation}
-              lateFeeAllocation={paymentForm.lateFeeAllocation}
-              setLateFeeAllocation={paymentForm.setLateFeeAllocation}
-              selectedBankAccountId={paymentForm.selectedBankAccountId}
-              setSelectedBankAccountId={paymentForm.setSelectedBankAccountId}
-              handleOpenDialog={paymentForm.handleOpenDialog}
-              handleAmountChange={paymentForm.handleAmountChange}
               onRefresh={handlePaymentSuccess}
               sendRentReminders={adminRent.sendRentReminders}
               sendingEmails={adminRent.sendingEmails}
@@ -476,21 +467,22 @@ const RentPayment = () => {
         </div>
       )}
 
+      {/* ── Payments tab ─────────────────────────────────────────────────── */}
       {activeTab === "payments" && (
-        <div className="space-y-5 p-4">
-          <header className="border-b border-border pb-5">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">
+        <div className="space-y-4 px-4 py-5">
+          <div>
+            <h2 className="text-base font-semibold text-foreground tracking-tight">
               Payment history
             </h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               All recorded payments across tenants and billing periods
             </p>
-          </header>
+          </div>
 
           {!paymentsLoading && <PaymentsMetricsStrip payments={payments} />}
 
-          <div className="rounded-lg border border-border bg-background overflow-hidden">
-            <div className="px-4 sm:px-5 pt-4 pb-2 border-b border-border">
+          <div className="rounded-md border border-border/60 bg-background overflow-hidden">
+            <div className="px-4 pt-3 pb-2 border-b border-border/50">
               <PaymentFilters
                 filterStartDate={filterStartDate}
                 filterEndDate={filterEndDate}
@@ -504,20 +496,21 @@ const RentPayment = () => {
             </div>
 
             {paymentsLoading ? (
-              <div className="px-4 sm:px-5 pt-4 pb-5 space-y-2 animate-pulse">
+              <div className="px-4 py-5 space-y-1.5 animate-pulse">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-12 rounded-md bg-muted/50"
+                    className="h-10 rounded bg-muted/30"
                     style={{ opacity: 1 - i * 0.15 }}
                   />
                 ))}
               </div>
             ) : (
-              <div className="px-4 sm:px-5 pt-2 pb-4">
-                <div className="flex items-center justify-between py-2 border-b border-border mb-2">
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground tabular-nums">
-                    {payments.length} payment{payments.length !== 1 ? "s" : ""}
+              <div className="px-4 py-3">
+                <div className="flex items-center py-2 border-b border-border/50 mb-1">
+                  <span className="text-[11px] text-muted-foreground tabular-nums select-none">
+                    {payments.length}{" "}
+                    {payments.length === 1 ? "payment" : "payments"}
                   </span>
                 </div>
                 <PaymentsTable payments={payments} />
@@ -527,21 +520,22 @@ const RentPayment = () => {
         </div>
       )}
 
+      {/* ── TDS tab ──────────────────────────────────────────────────────── */}
       {activeTab === "tds" && <TdsTab />}
 
+      {/* Mobile filter sheet */}
       <Sheet open={isFilterDrawerOpen} onOpenChange={setIsFilterDrawerOpen}>
         <SheetContent side="bottom" className="h-[85vh] p-0 rounded-t-2xl">
           <div className="flex flex-col h-full">
             <SheetHeader className="px-5 pt-5 pb-4 border-b border-border">
               <SheetTitle className="text-base font-semibold text-foreground">
                 Filters
+                {activeFilterCount > 0 && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {activeFilterCount} active
+                  </span>
+                )}
               </SheetTitle>
-              {activeFilterCount > 0 && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {activeFilterCount} filter{activeFilterCount !== 1 ? "s" : ""}{" "}
-                  active
-                </p>
-              )}
             </SheetHeader>
 
             <div className="flex-1 overflow-y-auto px-5 py-5">
@@ -571,14 +565,14 @@ const RentPayment = () => {
                 variant="outline"
                 onClick={handleClearRentFilters}
                 disabled={!activeFilterCount && !searchQuery.trim()}
-                className="flex-1 h-11 text-sm font-medium"
+                className="flex-1 h-10 text-sm font-medium"
               >
                 Clear all
               </Button>
               <Button
                 type="button"
                 onClick={() => setIsFilterDrawerOpen(false)}
-                className="flex-1 h-11 text-sm font-medium"
+                className="flex-1 h-10 text-sm font-medium"
               >
                 Done
               </Button>
@@ -586,7 +580,7 @@ const RentPayment = () => {
           </div>
         </SheetContent>
       </Sheet>
-    </form>
+    </>
   );
 };
 

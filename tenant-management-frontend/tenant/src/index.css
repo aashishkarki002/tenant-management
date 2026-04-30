@@ -60,8 +60,18 @@
   --color-surface: #f5f4f0; /* Cards, panels, sidebar */
   --color-surface-raised: #ffffff; /* Modals, dropdowns (elevated) */
   --color-surface-invert: #0d2535; /* Inverted card (dark on light) — DarkCard, ChartTip */
-  --color-surface-invert-text: rgba(255, 255, 255, 0.9); /* Text on --color-surface-invert */
-  --color-surface-invert-sub: rgba(255, 255, 255, 0.45); /* Secondary text on inverted surface */
+  --color-surface-invert-text: rgba(
+    255,
+    255,
+    255,
+    0.9
+  ); /* Text on --color-surface-invert */
+  --color-surface-invert-sub: rgba(
+    255,
+    255,
+    255,
+    0.45
+  ); /* Secondary text on inverted surface */
   --color-border: #e7e5e0; /* All borders, dividers */
   --color-muted-fill: #d6d3cc; /* Progress fills, skeleton loaders */
 
@@ -102,9 +112,9 @@
   --color-private-bg: #ededfa;
   --color-private-border: #c8c6f0;
 
-  --color-sallyan: #b54b2a;
-  --color-sallyan-bg: #fbede8;
-  --color-sallyan-border: #f2c3b2;
+  --color-company: #b54b2a;
+  --color-company-bg: #fbede8;
+  --color-company-border: #f2c3b2;
 
   --color-headoffice: #1a6644;
   --color-headoffice-bg: #e6f4ed;
@@ -844,4 +854,60 @@
 /* Smooth scrolling behavior */
 .scrollbar-thin {
   scroll-behavior: smooth;
+}
+@layer utilities {
+  .text-company {
+    color: var(--color-company);
+  }
+  .text-private {
+    color: var(--color-private);
+  }
+  .text-headoffice {
+    color: var(--color-headoffice);
+  }
+
+  .bg-company {
+    background-color: var(--color-sallyan-bg);
+  }
+  .bg-private {
+    background-color: var(--color-private-bg);
+  }
+  .bg-headoffice {
+    background-color: var(--color-headoffice-bg);
+  }
+
+  .border-company {
+    border-color: var(--color-company-border);
+  }
+  .border-private {
+    border-color: var(--color-private-border);
+  }
+  .border-headoffice {
+    border-color: var(--color-headoffice-border);
+  }
+  .text-entity {
+    color: var(--entity-color);
+  }
+  .bg-entity {
+    background-color: var(--entity-bg);
+  }
+  .border-entity {
+    border-color: var(--entity-border);
+  }
+}
+/* Entity theme cascade — maps data-entity to your existing ownership tokens */
+[data-entity="private"] {
+  --entity-color: var(--color-private);
+  --entity-bg: var(--color-private-bg);
+  --entity-border: var(--color-private-border);
+}
+[data-entity="company"] {
+  --entity-color: var(--color-company);
+  --entity-bg: var(--color-company-bg);
+  --entity-border: var(--color-company-border);
+}
+[data-entity="head_office"] {
+  --entity-color: var(--color-headoffice);
+  --entity-bg: var(--color-headoffice-bg);
+  --entity-border: var(--color-headoffice-border);
 }

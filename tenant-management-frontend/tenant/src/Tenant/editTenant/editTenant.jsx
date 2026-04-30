@@ -24,14 +24,13 @@ import * as Yup from "yup";
 import { toast } from "sonner";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -44,13 +43,23 @@ import {
   DollarSign,
   Calendar,
   User,
+  Building2,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Import sub-components (we'll create these)
 import TenantBasicInfo from "./components/TenantBasicInfo";
 import TenantLeaseInfo from "./components/TenantLeaseInfo";
 import TenantFinancials from "./components/TenantFinancials";
 import TenantDocuments from "./components/TenantDocument";
+import TenantPropertyAssignment from "./components/TenantPropertyAssignment";
 import Breadcrumb from "./components/Breadcrumb";
 
 // Import custom hooks
@@ -142,9 +151,9 @@ function EditTenant() {
       securityDeposit: paisaToRupees(tenant?.securityDepositPaisa) || "",
 
       // Property relationships
-      unitNumber: tenant?.units?.[0]?._id || "",
-      block: tenant?.block?._id || "",
-      innerBlock: tenant?.innerBlock?._id || "",
+      unitNumber: tenant?.units?.map((u) => String(u._id || u)) || [],
+      block: tenant?.block?._id || tenant?.block || "",
+      innerBlock: tenant?.innerBlock?._id || tenant?.innerBlock || "",
 
       // Documents
       documents: {},
@@ -252,7 +261,11 @@ function EditTenant() {
           <Card className="p-3">
             <div className="text-sm text-muted-foreground">Monthly Total</div>
             <div className="text-xl font-bold">
-              Rs {(financialSummary.monthlyTotal)}
+              Rs.{" "}
+              {(financialSummary.monthlyTotal || 0).toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </div>
           </Card>
           <Card className="p-3">
@@ -299,7 +312,28 @@ function EditTenant() {
           </CardContent>
         </Card>
 
-        {/* Section 2: Lease Information */}
+        {/* Section 2: Property Assignment */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              <CardTitle>Property Assignment</CardTitle>
+            </div>
+            <CardDescription>
+              Which building, floor, and units this tenant occupies — changes here affect billing
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TenantPropertyAssignment
+              formik={formik}
+              originalTenant={originalTenant}
+              showComparison={showComparison}
+              changedFields={changedFields}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Section 3: Lease Information */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -320,7 +354,7 @@ function EditTenant() {
           </CardContent>
         </Card>
 
-        {/* Section 3: Financial Details */}
+        {/* Section 4: Financial Details */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -342,7 +376,7 @@ function EditTenant() {
           </CardContent>
         </Card>
 
-        {/* Section 4: Documents */}
+        {/* Section 5: Documents */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -376,7 +410,7 @@ function EditTenant() {
           <div className="flex gap-3">
             {hasChanges(formik.values) && (
               <Badge variant="secondary">
-                {Object.keys(changedFields).length} field(s) changed
+                {Object.values(changedFields).filter(Boolean).length} field(s) changed
               </Badge>
             )}
 
@@ -392,29 +426,26 @@ function EditTenant() {
       </form>
 
       {/* Unsaved Changes Warning Dialog */}
-      {showUnsavedWarning && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="max-w-md">
-            <CardHeader>
-              <CardTitle>Unsaved Changes</CardTitle>
-              <CardDescription>
-                You have unsaved changes. Are you sure you want to leave?
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setShowUnsavedWarning(false)}
-              >
-                Continue Editing
-              </Button>
-              <Button variant="destructive" onClick={handleConfirmCancel}>
-                Discard Changes
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <Dialog open={showUnsavedWarning} onOpenChange={setShowUnsavedWarning}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard unsaved changes?</DialogTitle>
+            <DialogDescription>
+              You have{" "}
+              {Object.values(changedFields).filter(Boolean).length} unsaved change(s).
+              Leaving now will discard all of them.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUnsavedWarning(false)}>
+              Continue Editing
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmCancel}>
+              Discard Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

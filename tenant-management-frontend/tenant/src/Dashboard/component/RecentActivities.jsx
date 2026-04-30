@@ -1,8 +1,3 @@
-// src/pages/component/RecentActivities.jsx
-//
-// Ledger activity feed + Upcoming tab.
-// All colors use CSS variables from index.css — no orange-800 hardcodes.
-
 import React, { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -14,10 +9,7 @@ import {
   tryParseNepaliISO,
   formatNepaliDisplayNoComma,
 } from "@/utils/nepaliDate";
-
-// ─── Color maps ───────────────────────────────────────────────────────────────
-// Semantic-only: green (paid), red (overdue/expense), yellow (pending),
-// neutral stones for everything else.
+import { formatRupees } from "@/lib/formatters";
 
 const DOT_MAP = {
   payment: "bg-[color-mix(in_oklch,var(--success)_80%,transparent)]",
@@ -106,10 +98,6 @@ function daysLabel(d) {
   return `In ${n}d`;
 }
 
-function fmtAmount(n) {
-  if (n == null) return null;
-  return `Rs. ${Number(n).toLocaleString("en-NP")}`;
-}
 
 // ─── Data normalisers ─────────────────────────────────────────────────────────
 
@@ -225,7 +213,7 @@ function RentRow({ r }) {
       </div>
       {r.amount != null && (
         <span className="text-sm font-semibold tabular-nums text-foreground shrink-0 ml-2">
-          {fmtAmount(r.amount)}
+          {formatRupees(r.amount)}
         </span>
       )}
     </Link>
@@ -463,7 +451,7 @@ export default function RecentActivities({ stats, loading, error }) {
                             className="text-xs font-semibold tabular-nums"
                             style={{ color: amountColor }}
                           >
-                            {fmtAmount(activity.amount)}
+                            {formatRupees(activity.amount)}
                           </span>
                         </div>
                       )}

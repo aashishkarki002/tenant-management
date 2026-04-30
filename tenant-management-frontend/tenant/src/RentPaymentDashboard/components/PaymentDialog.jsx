@@ -1,36 +1,30 @@
 import React from "react";
 import {
-  Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DualCalendarTailwind from "../../components/dualDate";
-import { getPaymentAmounts, normalizeStatus } from "../utils/paymentUtil";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { getPaymentAmounts } from "../utils/paymentUtil";
 import {
   getLedgerPaymentMethodSelectOptions,
   normalizeLedgerPaymentMethod,
   paymentMethodRequiresBankAccount,
 } from "@/constants/paymentMethods.js";
 import BankAccountSelect from "@/components/BankAccountSelect.jsx";
+import { toast } from "sonner";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function resolveId(val) {
   if (!val) return null;
   if (val._id) return val._id.toString();
   return val.toString();
 }
-
 
 function proportionalAllocate(unitBreakdown, totalRupees) {
   const totalEffectiveRemainingPaisa = unitBreakdown.reduce((sum, u) => {
@@ -70,19 +64,6 @@ function proportionalAllocate(unitBreakdown, totalRupees) {
 
   return result;
 }
-
-// ─── Section Label ────────────────────────────────────────────────────────────
-
-function SectionLabel({ children }) {
-  return (
-    <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-2.5 text-muted-foreground">
-      {children}
-    </p>
-  );
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export const PaymentDialog = ({
   rent,
   cams,
@@ -100,10 +81,8 @@ export const PaymentDialog = ({
   setSelectedBankAccountId,
   handleAmountChange,
   onClose,
-  onTdsVerified, // New prop for TDS verification callback
+  onTdsVerified,
 }) => {
-  const isMobile = useIsMobile();
-
   const {
     rentAmount, camAmount, lateFeeAmount, totalDue,
     tdsAmountPaisa, hasLateFee, remainingLateFeePaisa,
@@ -138,10 +117,11 @@ export const PaymentDialog = ({
       return rent.unitBreakdown.map((ub, index) => {
         const unit = ub.unit;
         const id = resolveId(unit);
-        const effectivePaisa = ub.grossRentAmountPaisa || 0;
-        const rentDue = effectivePaisa / 100;
-        const paidSoFar = (ub.paidAmountPaisa || 0) / 100;
-        const remaining = rentDue - paidSoFar;
+        // All raw paisa values from backend — only divide to get rupees
+        const grossPaisa = ub.grossRentAmountPaisa || 0;
+        const tdsPaisa = ub.tdsAmountPaisa || 0;
+        const paidPaisa = ub.paidAmountPaisa || 0;
+        const remainingPaisa = grossPaisa - tdsPaisa - paidPaisa;
 
         return {
           id,
@@ -152,29 +132,36 @@ export const PaymentDialog = ({
           label: unit?.block?.name
             ? `${unit.block.name} – ${unit.innerBlock?.name || ""}`.trim()
             : "",
-          rentDue,
-          paidSoFar,
-          remaining,
-          hasOutstanding: remaining > 0,
+          gross: grossPaisa / 100,
+          tds: tdsPaisa / 100,
+          paidSoFar: paidPaisa / 100,
+          remaining: remainingPaisa / 100,
+          hasOutstanding: remainingPaisa > 0,
           _breakdownRef: ub,
         };
       });
     }
 
-    const paidSoFar = (rent?.paidAmountPaisa || 0) / 100;
+    // Non-breakdown: read backend totals directly
+    const totals = rent?.totals || {};
+    const grossPaisa = totals.grossRentAmountPaisa ?? rent?.grossRentAmountPaisa ?? 0;
+    const tdsPaisa = totals.tdsAmountPaisa ?? rent?.tdsAmountPaisa ?? 0;
+    const paidPaisa = totals.paidAmountPaisa ?? rent?.paidAmountPaisa ?? 0;
+    const remainingPaisa = totals.remainingAmountPaisa ?? (grossPaisa - tdsPaisa - paidPaisa);
     return [
       {
         id: resolveId(rent?.units?.[0]) || rent?._id || "primary",
         name: rent?.units?.[0]?.name || "Primary Unit",
         label: `${rent?.innerBlock?.name || ""} ${rent?.block?.name || ""}`.trim(),
-        rentDue: rentAmount,
-        paidSoFar,
-        remaining: rentAmount - paidSoFar,
-        hasOutstanding: rentAmount - paidSoFar > 0,
+        gross: grossPaisa / 100,
+        tds: tdsPaisa / 100,
+        paidSoFar: paidPaisa / 100,
+        remaining: remainingPaisa / 100,
+        hasOutstanding: remainingPaisa > 0,
         _breakdownRef: null,
       },
     ];
-  }, [rent, rentAmount]);
+  }, [rent]);
 
   // ── Selected units ────────────────────────────────────────────────────────
   const [selectedUnitIds, setSelectedUnitIds] = React.useState(
@@ -283,9 +270,7 @@ export const PaymentDialog = ({
   }
 
   // ── Validation ────────────────────────────────────────────────────────────
-  const needsBankAccount = paymentMethodRequiresBankAccount(
-    formik.values?.paymentMethod,
-  );
+  const needsBankAccount = paymentMethodRequiresBankAccount(formik.values?.paymentMethod);
 
   const isSubmitDisabled =
     !selectedUnits.length ||
@@ -306,221 +291,132 @@ export const PaymentDialog = ({
 
   const portalContainerRef = React.useRef(null);
 
-  // ── Inline style tokens ───────────────────────────────────────────────────
-  const S = {
-    surface: { backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)" },
-    surfaceRaised: { backgroundColor: "var(--color-surface-raised)", border: "1px solid var(--color-border)" },
-    textStrong: { color: "var(--color-text-strong)" },
-    textBody: { color: "var(--color-text-body)" },
-    textSub: { color: "var(--color-text-sub)" },
-    textWeak: { color: "var(--color-text-weak)" },
-    accentText: { color: "var(--color-accent)" },
-    accentBg: { backgroundColor: "var(--color-accent-light)", border: "1px solid var(--color-accent-mid)" },
-    danger: { color: "var(--color-danger)" },
-    dangerBg: { backgroundColor: "var(--color-danger-bg)", border: "1px solid var(--color-danger-border)" },
-    warning: { color: "var(--color-warning)" },
-    warningBg: { backgroundColor: "var(--color-warning-bg)", border: "1px solid var(--color-warning-border)" },
-    success: { color: "var(--color-success)" },
-    successBg: { backgroundColor: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" },
-    border: { border: "1px solid var(--color-border)" },
-    divider: { borderTop: "1px solid var(--color-border)" },
-  };
-
   return (
-    <DialogContent
-      style={{
-        maxWidth: "860px",
-        width: "100%",
-        padding: 0,
-        overflow: "hidden",
-        maxHeight: isMobile ? "100dvh" : "90vh",
-        height: isMobile ? "100dvh" : "auto",
-        margin: isMobile ? "0" : undefined,
-        borderRadius: isMobile ? "0" : undefined,
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "var(--color-bg)",
-      }}
-    >
+    <DialogContent className="max-w-full sm:max-w-[720px] lg:max-w-[860px] p-0 overflow-hidden max-h-dvh sm:max-h-[90vh] flex flex-col bg-background rounded-none sm:rounded-lg">
       <div ref={portalContainerRef} />
 
-      {/* ── Dialog Header ─────────────────────────────────────────────────── */}
-      <div style={{
-        padding: isMobile ? "14px 16px 12px" : "20px 24px 16px",
-        borderBottom: "1px solid var(--color-border)",
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "space-between",
-        flexShrink: 0,
-        backgroundColor: "var(--color-surface-raised)",
-      }}>
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="px-4 py-3.5 sm:px-6 sm:py-5 border-b border-border flex items-start justify-between shrink-0 bg-muted/30">
         <div>
-          <h2 style={{ ...S.textStrong, fontSize: "18px", fontWeight: 700, margin: 0 }}>
-            Record Payment
-          </h2>
-          <p style={{ ...S.textSub, fontSize: "13px", marginTop: "2px" }}>
+          <h2 className="text-[18px] font-bold text-foreground">Record Payment</h2>
+          <p className="text-[13px] text-muted-foreground mt-0.5">
             {rent.nepaliMonth} {rent.nepaliYear}
             {rent?.tenant?.name && (
-              <span style={{ ...S.textWeak }}> · {rent.tenant.name}</span>
+              <span className="text-muted-foreground/60"> · {rent.tenant.name}</span>
             )}
           </p>
         </div>
       </div>
 
-      {/* ── Two-column body (desktop) / single-column body (mobile) ─────── */}
-      <div style={{ display: "flex", flex: 1, overflow: isMobile ? "auto" : "hidden", minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
+      {/* ── Two-column body ─────────────────────────────────────────────────── */}
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
 
-        {/* ════════════════════════════════════════════════════════════════
-            LEFT COLUMN — What you're paying
-        ════════════════════════════════════════════════════════════════ */}
-        <div style={{
-          flex: isMobile ? "none" : "1 1 0",
-          overflowY: isMobile ? "visible" : "auto",
-          padding: isMobile ? "16px" : "20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px",
-          borderRight: isMobile ? "none" : "1px solid var(--color-border)",
-          borderBottom: isMobile ? "1px solid var(--color-border)" : "none",
-        }}>
+        {/* ════ LEFT COLUMN — What you're paying ════ */}
+        <div className="flex-none sm:flex-1 overflow-visible sm:overflow-y-auto p-4 sm:p-5 flex flex-col gap-4 border-b sm:border-b-0 sm:border-r border-border">
 
-          {/* ── Due Summary strip ──────────────────────────────────────── */}
-          <div style={{
-            ...S.surfaceRaised,
-            borderRadius: "var(--radius-lg)",
-            padding: "16px",
-            boxShadow: "var(--shadow-card)",
-          }}>
-            <SectionLabel>Amount Due</SectionLabel>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: hasLateFee
-                ? (isMobile ? "1fr 1fr" : "1fr 1fr 1fr")
-                : "1fr 1fr",
-              gap: isMobile ? "8px" : "4px",
-            }}>
+          {/* ── Due Summary strip ──────────────────────────────────────────── */}
+          <div className="bg-muted/30 border border-border rounded-lg p-4">
+            <Label>Amount Due</Label>
+            <div className={cn(
+              "grid gap-2",
+              hasLateFee ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"
+            )}>
               {/* Rent */}
-              <div style={{ padding: "8px 0" }}>
-                <p style={{ ...S.textWeak, fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>
+              <div className="py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 mb-1">
                   Rent {tdsAmountPaisa > 0 ? "(net TDS)" : ""}
                 </p>
-                <p style={{ ...S.textStrong, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
+                <p className="text-[20px] font-bold text-foreground leading-none">
                   RS {rentAmount.toLocaleString()}
                 </p>
                 {tdsAmountPaisa > 0 && (
-                  <p style={{ ...S.warning, fontSize: "10px", marginTop: "3px" }}>
+                  <p className="text-[10px] text-amber-600 mt-0.5">
                     TDS RS {(tdsAmountPaisa / 100).toLocaleString()} withheld
                   </p>
                 )}
               </div>
 
               {/* CAM */}
-              <div style={{ padding: "8px 0", borderLeft: "1px solid var(--color-border)", paddingLeft: "12px" }}>
-                <p style={{ ...S.textWeak, fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>
-                  CAM
-                </p>
-                <p style={{ ...S.textStrong, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
+              <div className="py-2 border-l border-border pl-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 mb-1">CAM</p>
+                <p className="text-[20px] font-bold text-foreground leading-none">
                   RS {camAmount.toLocaleString()}
                 </p>
               </div>
 
               {/* Late Fee */}
               {hasLateFee && (
-                <div style={{
-                  padding: "8px 0",
-                  borderLeft: "1px solid var(--color-danger-border)",
-                  paddingLeft: "12px",
-                  backgroundColor: "var(--color-danger-bg)",
-                  borderRadius: "0 var(--radius-md) var(--radius-md) 0",
-                  paddingRight: "8px",
-                  gridColumn: isMobile ? "1 / -1" : "auto",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-                    <p style={{ ...S.danger, fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Late Fee
-                    </p>
-                    <span style={{
-                      backgroundColor: "var(--color-danger-bg)",
-                      color: "var(--color-danger)",
-                      border: "1px solid var(--color-danger-border)",
-                      borderRadius: "var(--radius-sm)",
-                      fontSize: "9px",
-                      fontWeight: 600,
-                      padding: "1px 5px",
-                    }}>
+                <div className="col-span-2 sm:col-span-1 py-2 pl-3 pr-2 border-l border-destructive/30 bg-destructive/5 rounded-r-md">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-destructive">Late Fee</p>
+                    <span className="bg-destructive/10 text-destructive border border-destructive/20 rounded text-[9px] font-semibold px-1.5 py-px">
                       Penalty
                     </span>
                   </div>
-                  <p style={{ ...S.danger, fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>
+                  <p className="text-[20px] font-bold text-destructive leading-none">
                     RS {lateFeeAmount.toLocaleString()}
                   </p>
-                  <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "3px" }}>Full payment required</p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">Full payment required</p>
                 </div>
               )}
             </div>
 
-            <div style={{ ...S.divider, marginTop: "12px", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <p style={{ ...S.textSub, fontSize: "12px" }}>Total Due</p>
-              <p style={{ ...S.textStrong, fontSize: "17px", fontWeight: 700 }}>RS {totalDue.toLocaleString()}</p>
+            <div className="border-t border-border mt-3 pt-3 flex justify-between items-center">
+              <p className="text-[12px] text-muted-foreground">Total Due</p>
+              <p className="text-[17px] font-bold text-foreground">RS {totalDue.toLocaleString()}</p>
             </div>
 
-            {/* ── TDS Verification ──────────────────────────────────────────── */}
+            {/* ── TDS Verification ───────────────────────────────────────────── */}
             {tdsAmountPaisa > 0 && (
-              <div style={{
-                marginTop: "16px",
-                padding: "12px",
-                backgroundColor: rent?.tdsPaidToGovernment ? "var(--color-success-bg)" : "rgb(254, 252, 232)",
-                border: `1px solid ${rent?.tdsPaidToGovernment ? "var(--color-success-border)" : "rgb(254, 240, 138)"}`,
-                borderRadius: "var(--radius-md)",
-              }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-                      <p style={{ fontSize: "13px", fontWeight: 600, color: rent?.tdsPaidToGovernment ? "var(--color-success)" : "rgb(161, 98, 7)" }}>
+              <div className={cn(
+                "mt-4 p-3 rounded-md border",
+                rent?.tdsPaidToGovernment
+                  ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
+                  : "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
+              )}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <p className={cn(
+                        "text-[13px] font-semibold",
+                        rent?.tdsPaidToGovernment ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"
+                      )}>
                         TDS Payment to Government
                       </p>
                       {rent?.tdsPaidToGovernment && (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"></polyline>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
+                          <polyline points="20 6 9 17 4 12" />
                         </svg>
                       )}
                     </div>
-                    <p style={{ fontSize: "11px", color: rent?.tdsPaidToGovernment ? "var(--color-success)" : "rgb(161, 98, 7)", opacity: 0.9 }}>
+                    <p className={cn(
+                      "text-[11px] opacity-90",
+                      rent?.tdsPaidToGovernment ? "text-emerald-600" : "text-amber-600"
+                    )}>
                       {rent?.tdsPaidToGovernment
                         ? `Verified on ${rent.tdsPaidDate ? new Date(rent.tdsPaidDate).toLocaleDateString() : "N/A"}`
-                        : "Tenant must pay RS" + (tdsAmountPaisa / 100).toLocaleString() + " to government"}
+                        : `Tenant must pay RS${(tdsAmountPaisa / 100).toLocaleString()} to government`}
                     </p>
                   </div>
 
                   {!rent?.tdsPaidToGovernment && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }}>
-                        <input
-                          type="checkbox"
-                          checked={tdsPaidToGovt}
-                          onChange={(e) => setTdsPaidToGovt(e.target.checked)}
-                          style={{
-                            width: "16px",
-                            height: "16px",
-                            cursor: "pointer",
-                            accentColor: "var(--color-accent)",
-                          }}
-                        />
-                        <span style={{ fontSize: "12px", fontWeight: 500 }}>
-                          Verified Paid
-                        </span>
-                      </label>
-                    </div>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={tdsPaidToGovt}
+                        onChange={(e) => setTdsPaidToGovt(e.target.checked)}
+                        className="w-4 h-4 cursor-pointer accent-primary"
+                      />
+                      <span className="text-[12px] font-medium">Verified Paid</span>
+                    </label>
                   )}
                 </div>
 
                 {tdsPaidToGovt && !rent?.tdsPaidToGovernment && (
-                  <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid rgb(254, 240, 138)" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--color-text-weak)", marginBottom: "6px" }}>
-                          Payment Date
-                        </label>
+                  <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Payment Date</Label>
                         <DualCalendarTailwind
                           value={tdsPaidDate}
                           nepaliValue={tdsNepaliDate}
@@ -531,29 +427,25 @@ export const PaymentDialog = ({
                           placeholder="Select date"
                         />
                       </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--color-text-weak)", marginBottom: "6px" }}>
-                          Receipt / Reference (optional)
-                        </label>
+                      <div className="space-y-1.5">
+                        <Label>Receipt / Reference <span className="font-normal">(optional)</span></Label>
                         <Input
                           placeholder="Receipt number or reference"
                           value={tdsNotes}
                           onChange={(e) => setTdsNotes(e.target.value)}
-                          style={{ fontSize: "13px" }}
+                          className="text-[13px]"
                         />
                       </div>
                     </div>
-                    <div style={{ marginTop: "12px" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--color-text-weak)", marginBottom: "6px" }}>
-                        Upload TDS Receipt (optional)
-                      </label>
+                    <div className="space-y-1.5">
+                      <Label>Upload TDS Receipt <span className="font-normal">(optional)</span></Label>
                       <Input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            const maxSize = 10 * 1024 * 1024; // 10MB
+                            const maxSize = 10 * 1024 * 1024;
                             if (file.size > maxSize) {
                               setTdsDocumentError("File size must be less than 10MB");
                               setTdsDocument(null);
@@ -569,22 +461,18 @@ export const PaymentDialog = ({
                             setTdsUploadedPath("");
                           }
                         }}
-                        style={{ fontSize: "12px" }}
+                        className="text-[12px]"
                       />
                       {tdsDocumentError && (
-                        <p style={{ ...S.danger, fontSize: "10px", marginTop: "4px" }}>
-                          {tdsDocumentError}
-                        </p>
+                        <p className="text-[10px] text-destructive mt-1">{tdsDocumentError}</p>
                       )}
                       {tdsDocument && !tdsDocumentError && (
-                        <p style={{ ...S.textSub, fontSize: "10px", marginTop: "4px" }}>
+                        <p className="text-[10px] text-muted-foreground mt-1">
                           Selected: {tdsDocument.name} ({(tdsDocument.size / 1024).toFixed(1)} KB)
                         </p>
                       )}
                       {tdsUploadedPath && (
-                        <p style={{ ...S.success, fontSize: "10px", marginTop: "4px" }}>
-                          Uploaded receipt attached successfully.
-                        </p>
+                        <p className="text-[10px] text-emerald-600 mt-1">Uploaded receipt attached successfully.</p>
                       )}
                     </div>
                   </div>
@@ -593,29 +481,24 @@ export const PaymentDialog = ({
             )}
           </div>
 
-          {/* ── Unit Selector ──────────────────────────────────────────── */}
-          <div style={{
-            ...S.surfaceRaised,
-            borderRadius: "var(--radius-lg)",
-            padding: "16px",
-            boxShadow: "var(--shadow-card)",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-              <SectionLabel style={{ margin: 0 }}>Units</SectionLabel>
-              <label style={{ display: "flex", alignItems: "center", gap: "6px", ...S.textSub, fontSize: "11px", fontWeight: 500, cursor: "pointer" }}>
-                <input
+          {/* ── Unit Selector ──────────────────────────────────────────────── */}
+          <div className="bg-muted/30 border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Label>Units</Label>
+              <Label className="flex items-center gap-1.5 text-muted-foreground text-[11px] font-medium cursor-pointer">
+                <Input
                   type="checkbox"
-                  style={{ accentColor: "var(--color-accent)", width: "13px", height: "13px", cursor: "pointer" }}
+                  className="w-3.5 h-3.5 cursor-pointer accent-primary"
                   checked={allSelected}
                   onChange={(e) =>
                     setSelectedUnitIds(e.target.checked ? units.map((u) => u.id) : [])
                   }
                 />
                 Select all
-              </label>
+              </Label>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div className="flex flex-col gap-1.5">
               {units.map((unit) => {
                 const selected = selectedUnitIds.includes(unit.id);
                 return (
@@ -629,55 +512,69 @@ export const PaymentDialog = ({
                           : [...prev, unit.id],
                       )
                     }
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      borderRadius: "var(--radius-md)",
-                      border: selected
-                        ? "1.5px solid var(--color-accent)"
-                        : "1.5px solid var(--color-border)",
-                      backgroundColor: selected
-                        ? "var(--color-accent-light)"
-                        : "var(--color-surface)",
-                      padding: isMobile ? "14px 14px" : "10px 12px",
-                      cursor: "pointer",
-                      transition: "all 0.1s",
-                    }}
+                    className={cn(
+                      "w-full text-left rounded-md border px-3 py-2.5 transition-all cursor-pointer",
+                      selected
+                        ? "border-primary/60 bg-primary/5"
+                        : "border-border bg-background hover:bg-muted/40",
+                    )}
                   >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        {/* Radio dot */}
-                        <div style={{
-                          width: "16px", height: "16px", borderRadius: "50%",
-                          border: selected ? "2px solid var(--color-accent)" : "2px solid var(--color-muted)",
-                          backgroundColor: selected ? "var(--color-accent)" : "transparent",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          flexShrink: 0,
-                        }}>
-                          {selected && <div style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#fff" }} />}
+                    <div className="flex items-center justify-between py-2">
+                      {/* LEFT: selection + identity */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={cn(
+                            "size-4 rounded-full border-2 flex items-center justify-center shrink-0 transition",
+                            selected
+                              ? "border-primary bg-primary"
+                              : "border-muted-foreground/40"
+                          )}
+                        >
+                          {selected && (
+                            <div className="size-1.5 rounded-full bg-primary-foreground" />
+                          )}
                         </div>
-                        <div>
-                          <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 600 }}>{unit.name}</p>
-                          {unit.label && <p style={{ ...S.textWeak, fontSize: "11px" }}>{unit.label}</p>}
+
+                        <div className="truncate">
+                          <p className="text-[13px] font-medium text-foreground truncate">
+                            {unit.name}
+                          </p>
+
+                          {/* subtle metadata */}
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
+                            {unit.label && <span>{unit.label}</span>}
+
+                            {unit.hasOutstanding && (
+                              <span className="text-amber-600 font-medium">
+                                • Outstanding
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div style={{ textAlign: "right" }}>
-                        {unit.hasOutstanding && (
-                          <span style={{
-                            ...S.warningBg, ...S.warning,
-                            borderRadius: "var(--radius-sm)",
-                            fontSize: "9px", fontWeight: 600,
-                            padding: "2px 6px",
-                            textTransform: "uppercase", letterSpacing: "0.05em",
-                            display: "block", marginBottom: "2px",
-                          }}>
-                            Outstanding
-                          </span>
-                        )}
-                        <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 700 }}>
+
+                      {/* RIGHT: financials */}
+                      <div className="text-right">
+                        {/* PRIMARY: net payable */}
+                        <p className="text-[14px] font-semibold text-foreground">
                           RS {unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </p>
-                        <p style={{ ...S.textWeak, fontSize: "10px" }}>remaining</p>
+                        <p className="text-[10px] text-muted-foreground/70">
+                          net payable
+                        </p>
+
+                        {/* SECONDARY: breakdown */}
+                        <div className="text-[10px] text-muted-foreground/60 mt-0.5 space-y-[1px]">
+                          <p>
+                            Gross RS {unit.gross?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? "-"}
+                          </p>
+
+                          {unit.tds > 0 && (
+                            <p className="text-amber-600">
+                              TDS RS {unit.tds.toLocaleString(undefined, { maximumFractionDigits: 0 })} withheld
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </button>
@@ -686,437 +583,294 @@ export const PaymentDialog = ({
             </div>
 
             {!selectedUnits.length && (
-              <p style={{ ...S.danger, fontSize: "11px", marginTop: "8px" }}>
+              <p className="text-[11px] text-destructive mt-2">
                 Select at least one unit to continue.
               </p>
             )}
           </div>
 
-          {/* ── Allocation ─────────────────────────────────────────────── */}
-          <div style={{
-            ...S.surfaceRaised,
-            borderRadius: "var(--radius-lg)",
-            padding: "16px",
-            boxShadow: "var(--shadow-card)",
-          }}>
-            <SectionLabel>Allocation</SectionLabel>
+          {/* ── Allocation ─────────────────────────────────────────────────── */}
+          <div className="bg-muted/30 border border-border rounded-lg p-4">
+            <Label>Allocation</Label>
 
-            <Tabs value={allocationMode} onValueChange={setAllocationMode}>
-              {/* Tab toggle */}
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                backgroundColor: "var(--color-surface)",
-                borderRadius: "var(--radius-md)",
-                padding: "3px",
-                marginBottom: "16px",
-                border: "1px solid var(--color-border)",
-              }}>
-                {[
-                  { value: "auto", label: "Quick Payment" },
-                  { value: "manual", label: "Custom Allocation" },
-                ].map((tab) => (
-                  <button
-                    key={tab.value}
-                    type="button"
-                    onClick={() => setAllocationMode(tab.value)}
-                    style={{
-                      borderRadius: "var(--radius-sm)",
-                      padding: "6px 0",
-                      fontSize: "12px",
-                      fontWeight: allocationMode === tab.value ? 600 : 400,
-                      cursor: "pointer",
-                      border: "none",
-                      backgroundColor: allocationMode === tab.value
-                        ? "var(--color-surface-raised)"
-                        : "transparent",
-                      color: allocationMode === tab.value
-                        ? "var(--color-accent)"
-                        : "var(--color-text-sub)",
-                      boxShadow: allocationMode === tab.value
-                        ? "var(--shadow-card)"
-                        : "none",
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+            {/* Tab toggle */}
+            <div className="grid grid-cols-2 bg-background border border-border rounded-md p-0.5 mb-4">
+              {[
+                { value: "auto", label: "Quick Payment" },
+                { value: "manual", label: "Custom Allocation" },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setAllocationMode(tab.value)}
+                  className={cn(
+                    "rounded-sm py-1.5 text-[12px] cursor-pointer border-0 transition-all",
+                    allocationMode === tab.value
+                      ? "bg-card text-primary font-semibold shadow-sm"
+                      : "bg-transparent text-muted-foreground font-normal hover:text-foreground",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-              {/* ── Auto tab ─────────────────────────────────── */}
-              {allocationMode === "auto" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <div>
-                    <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                      Amount to Pay (Rs)
-                    </label>
-                    <Input
-                      type="number"
-                      placeholder={`Full due: RS ${totalDue.toLocaleString()}`}
-                      value={formik.values?.amount || ""}
-                      onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
-                      onBlur={(e) => { if (!e.target.value) handleAmountChange(totalDue, rent); }}
-                      style={{ fontSize: "16px", fontWeight: 600 }}
-                    />
-                  </div>
-
-                  {/* Auto allocation breakdown */}
-                  <div style={{
-                    ...S.border,
-                    borderRadius: "var(--radius-md)",
-                    overflow: "hidden",
-                    backgroundColor: "var(--color-surface)",
-                  }}>
-                    {/* Rent row */}
-                    <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>Rent</p>
-                        <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                          Due RS {rentAmount.toLocaleString()}
-                        </p>
-                      </div>
-                      <p style={{ fontSize: "13px", fontWeight: 700, color: rentAllocation > 0 ? "var(--color-text-strong)" : "var(--color-muted)" }}>
-                        RS {rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </p>
-                    </div>
-
-                    {camAmount > 0 && (
-                      <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--color-border)" }}>
-                        <div>
-                          <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>CAM</p>
-                          <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                            Due RS {camAmount.toLocaleString()}
-                          </p>
-                        </div>
-                        <p style={{ fontSize: "13px", fontWeight: 700, color: camAllocation > 0 ? "var(--color-text-strong)" : "var(--color-muted)" }}>
-                          RS {camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </p>
-                      </div>
-                    )}
-
-                    {hasLateFee && (
-                      <div style={{
-                        padding: "10px 14px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        borderTop: "1px solid var(--color-border)",
-                        backgroundColor: "var(--color-danger-bg)",
-                      }}>
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <p style={{ ...S.danger, fontSize: "12px", fontWeight: 600 }}>Late Fee</p>
-                            <span style={{
-                              backgroundColor: "var(--color-danger-bg)",
-                              color: "var(--color-danger)",
-                              border: "1px solid var(--color-danger-border)",
-                              borderRadius: "var(--radius-sm)",
-                              fontSize: "9px", fontWeight: 600,
-                              padding: "1px 5px",
-                            }}>
-                              Separate
-                            </span>
-                          </div>
-                          <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                            Due RS {lateFeeAmount.toLocaleString()} · full only
-                          </p>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <p style={{ fontSize: "13px", fontWeight: 700, color: (lateFeeAllocation || 0) > 0 ? "var(--color-danger)" : "var(--color-muted)" }}>
-                            RS {(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </p>
-                          {(lateFeeAllocation || 0) === 0 && paymentAmount > 0 && (
-                            <p style={{ ...S.textWeak, fontSize: "10px" }}>
-                              +RS {lateFeeAmount.toLocaleString()} to cover
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Per-unit breakdown */}
-                    {autoUnitAllocations.length > 0 && (
-                      <div style={{
-                        padding: "10px 14px",
-                        borderTop: "1px solid var(--color-border)",
-                        backgroundColor: "var(--color-surface)",
-                      }}>
-                        <p style={{ ...S.textWeak, fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>
-                          Unit breakdown
-                        </p>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          {autoUnitAllocations.map((alloc) => {
-                            const unit = units.find((u) => u.id === alloc.unitId);
-                            return (
-                              <div key={alloc.unitId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ ...S.textSub, fontSize: "11px" }}>{unit?.name || alloc.unitId}</span>
-                                <span style={{ ...S.textBody, fontSize: "11px", fontWeight: 600 }}>
-                                  RS {alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Total */}
-                    <div style={{
-                      padding: "10px 14px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      borderTop: "1px solid var(--color-border)",
-                      backgroundColor: "var(--color-surface)",
-                    }}>
-                      <p style={{ ...S.textSub, fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                        Total Allocated
-                      </p>
-                      <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 700 }}>
-                        RS {totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </p>
-                    </div>
-                  </div>
+            {/* ── Auto tab ──────────────────────────────────────────────────── */}
+            {allocationMode === "auto" && (
+              <div className="flex flex-col gap-3">
+                <div className="space-y-1.5">
+                  <Label>Amount to Pay (Rs)</Label>
+                  <Input
+                    type="number"
+                    placeholder={`Full due: RS ${totalDue.toLocaleString()}`}
+                    value={formik.values?.amount || ""}
+                    onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
+                    onBlur={(e) => { if (!e.target.value) handleAmountChange(totalDue, rent); }}
+                    className="text-base font-semibold"
+                  />
                 </div>
-              )}
 
-              {/* ── Manual tab ───────────────────────────────── */}
-              {allocationMode === "manual" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <div>
-                    <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                      Total Amount to Pay (Rs)
-                    </label>
-                    <Input
-                      type="number"
-                      placeholder="Enter total payment amount"
-                      value={formik.values?.amount || ""}
-                      onChange={(e) => formik.setFieldValue("amount", parseFloat(e.target.value) || 0)}
-                      style={{ fontSize: "16px", fontWeight: 600 }}
-                    />
+                <div className="border border-border rounded-md overflow-hidden bg-background">
+                  {/* Rent row */}
+                  <div className="px-3.5 py-2.5 flex justify-between items-center">
+                    <div>
+                      <p className="text-[12px] font-semibold text-foreground/80">Rent</p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-px">Due RS {rentAmount.toLocaleString()}</p>
+                    </div>
+                    <p className={cn("text-[13px] font-bold", rentAllocation > 0 ? "text-foreground" : "text-muted-foreground/40")}>
+                      RS {rentAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
                   </div>
 
-                  <div style={{
-                    ...S.border,
-                    borderRadius: "var(--radius-md)",
-                    overflow: "hidden",
-                    backgroundColor: "var(--color-surface)",
-                  }}>
-                    {/* Rent */}
-                    <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>Rent</p>
-                        <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                          Due RS {rentAmount.toLocaleString()}
-                        </p>
-                      </div>
-                      <div style={{ width: "130px" }}>
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={rentAllocation || ""}
-                          onChange={(e) => setRentAllocation(parseFloat(e.target.value) || 0)}
-                          style={{ textAlign: "right", fontSize: "13px" }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* CAM */}
-                    <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: "12px", borderTop: "1px solid var(--color-border)" }}>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 600 }}>CAM</p>
-                        <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                          Due RS {camAmount.toLocaleString()}
-                        </p>
-                      </div>
-                      <div style={{ width: "130px" }}>
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={camAllocation || ""}
-                          onChange={(e) => setCamAllocation(parseFloat(e.target.value) || 0)}
-                          style={{ textAlign: "right", fontSize: "13px" }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Late Fee */}
-                    {hasLateFee && (
-                      <div style={{
-                        padding: "10px 14px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
-                        borderTop: "1px solid var(--color-border)",
-                        backgroundColor: "var(--color-danger-bg)",
-                      }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <p style={{ ...S.danger, fontSize: "12px", fontWeight: 600 }}>Late Fee</p>
-                            <span style={{
-                              backgroundColor: "var(--color-danger-bg)",
-                              color: "var(--color-danger)",
-                              border: "1px solid var(--color-danger-border)",
-                              borderRadius: "var(--radius-sm)",
-                              fontSize: "9px", fontWeight: 600,
-                              padding: "1px 5px",
-                            }}>
-                              All or nothing
-                            </span>
-                          </div>
-                          <p style={{ ...S.textWeak, fontSize: "10px", marginTop: "1px" }}>
-                            Due RS {lateFeeAmount.toLocaleString()}
-                          </p>
-                          {isPartialLateFee && (
-                            <p style={{ ...S.danger, fontSize: "10px", marginTop: "2px", fontWeight: 500 }}>
-                              Enter RS {lateFeeAmount.toLocaleString()} or 0
-                            </p>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
-                          <div style={{ width: "130px" }}>
-                            <Input
-                              type="number"
-                              placeholder="0"
-                              value={lateFeeAllocation || ""}
-                              onChange={(e) => setLateFeeAllocation(parseFloat(e.target.value) || 0)}
-                              style={{
-                                textAlign: "right",
-                                fontSize: "13px",
-                                borderColor: isPartialLateFee ? "var(--color-danger)" : undefined,
-                              }}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setLateFeeAllocation(lateFeeAmount)}
-                            style={{
-                              ...S.danger,
-                              background: "none",
-                              border: "none",
-                              fontSize: "10px",
-                              cursor: "pointer",
-                              textDecoration: "underline",
-                              padding: 0,
-                            }}
-                          >
-                            Fill RS {lateFeeAmount.toLocaleString()}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Running total */}
-                    <div style={{
-                      padding: "10px 14px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      borderTop: "1px solid var(--color-border)",
-                      backgroundColor: "var(--color-surface)",
-                    }}>
+                  {camAmount > 0 && (
+                    <div className="px-3.5 py-2.5 flex justify-between items-center border-t border-border">
                       <div>
-                        <p style={{ ...S.textSub, fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                          Total Allocated
+                        <p className="text-[12px] font-semibold text-foreground/80">CAM</p>
+                        <p className="text-[10px] text-muted-foreground/70 mt-px">Due RS {camAmount.toLocaleString()}</p>
+                      </div>
+                      <p className={cn("text-[13px] font-bold", camAllocation > 0 ? "text-foreground" : "text-muted-foreground/40")}>
+                        RS {camAllocation.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  )}
+
+                  {hasLateFee && (
+                    <div className="px-3.5 py-2.5 flex justify-between items-center border-t border-border bg-destructive/5">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[12px] font-semibold text-destructive">Late Fee</p>
+                          <span className="bg-destructive/10 text-destructive border border-destructive/20 rounded text-[9px] font-semibold px-1.5 py-px">
+                            Separate
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground/70 mt-px">
+                          Due RS {lateFeeAmount.toLocaleString()} · full only
                         </p>
-                        {totalAllocated !== (formik.values?.amount || 0) && (formik.values?.amount || 0) > 0 && (
-                          <p style={{
-                            fontSize: "10px",
-                            marginTop: "1px",
-                            color: isOverAllocated ? "var(--color-danger)" : "var(--color-warning)",
-                          }}>
-                            {isOverAllocated
-                              ? `RS ${(totalAllocated - (formik.values?.amount || 0)).toLocaleString()} over`
-                              : `RS ${((formik.values?.amount || 0) - totalAllocated).toLocaleString()} unallocated`}
+                      </div>
+                      <div className="text-right">
+                        <p className={cn("text-[13px] font-bold", (lateFeeAllocation || 0) > 0 ? "text-destructive" : "text-muted-foreground/40")}>
+                          RS {(lateFeeAllocation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </p>
+                        {(lateFeeAllocation || 0) === 0 && paymentAmount > 0 && (
+                          <p className="text-[10px] text-muted-foreground/70">
+                            +RS {lateFeeAmount.toLocaleString()} to cover
                           </p>
                         )}
                       </div>
-                      <p style={{
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        color: isOverAllocated ? "var(--color-danger)" : "var(--color-text-strong)",
-                      }}>
-                        RS {totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </p>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Per-unit allocations */}
-                  {rent?.useUnitBreakdown && selectedUnits.length > 0 && (
-                    <div style={{
-                      ...S.border,
-                      borderRadius: "var(--radius-md)",
-                      padding: "12px 14px",
-                      backgroundColor: "var(--color-surface)",
-                    }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                        <p style={{ ...S.textStrong, fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                          Per-unit rent
-                        </p>
-                        <p style={{
-                          fontSize: "10px",
-                          fontWeight: 500,
-                          color: unitAllocationMismatch ? "var(--color-danger)" : "var(--color-text-sub)",
-                        }}>
-                          {unitAllocationMismatch
-                            ? `Total RS ${manualUnitRentTotal.toFixed(0)} ≠ rent RS ${rentAllocation.toFixed(0)}`
-                            : `Must sum to Rs${rentAllocation.toLocaleString()}`}
-                        </p>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        {selectedUnits.map((unit) => (
-                          <div key={unit.id} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <div style={{ flex: 1 }}>
-                              <p style={{ ...S.textBody, fontSize: "12px", fontWeight: 500 }}>{unit.name}</p>
-                              <p style={{ ...S.textWeak, fontSize: "10px" }}>
-                                Remaining RS {unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                              </p>
+                  {/* Per-unit breakdown */}
+                  {autoUnitAllocations.length > 0 && (
+                    <div className="px-3.5 py-2.5 border-t border-border">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-1.5">
+                        Unit breakdown
+                      </p>
+                      <div className="flex flex-col gap-1">
+                        {autoUnitAllocations.map((alloc) => {
+                          const unit = units.find((u) => u.id === alloc.unitId);
+                          return (
+                            <div key={alloc.unitId} className="flex justify-between items-center">
+                              <span className="text-[11px] text-muted-foreground">{unit?.name || alloc.unitId}</span>
+                              <span className="text-[11px] font-semibold text-foreground/80">
+                                RS {alloc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                              </span>
                             </div>
-                            <Input
-                              type="number"
-                              style={{ width: "130px", textAlign: "right", fontSize: "12px" }}
-                              value={unitRentAllocations[unit.id] ?? ""}
-                              placeholder="0"
-                              max={unit.remaining}
-                              onChange={(e) =>
-                                setUnitRentAllocations((prev) => ({
-                                  ...prev,
-                                  [unit.id]: parseFloat(e.target.value) || 0,
-                                }))
-                              }
-                            />
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
+
+                  {/* Total */}
+                  <div className="px-3.5 py-2.5 flex justify-between items-center border-t border-border">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      Total Allocated
+                    </p>
+                    <p className="text-[13px] font-bold text-foreground">
+                      RS {totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
                 </div>
-              )}
-            </Tabs>
+              </div>
+            )}
+
+            {/* ── Manual tab ────────────────────────────────────────────────── */}
+            {allocationMode === "manual" && (
+              <div className="flex flex-col gap-3">
+                <div className="space-y-1.5">
+                  <Label>Total Amount to Pay (Rs)</Label>
+                  <Input
+                    type="number"
+                    placeholder="Enter total payment amount"
+                    value={formik.values?.amount || ""}
+                    onChange={(e) => formik.setFieldValue("amount", parseFloat(e.target.value) || 0)}
+                    className="text-base font-semibold"
+                  />
+                </div>
+
+                <div className="border border-border rounded-md overflow-hidden bg-background">
+                  {/* Rent */}
+                  <div className="px-3.5 py-2.5 flex items-center gap-3">
+                    <div className="flex-1">
+                      <p className="text-[12px] font-semibold text-foreground/80">Rent</p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-px">Due RS {rentAmount.toLocaleString()}</p>
+                    </div>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={rentAllocation || ""}
+                      onChange={(e) => setRentAllocation(parseFloat(e.target.value) || 0)}
+                      className="w-[130px] text-right text-[13px]"
+                    />
+                  </div>
+
+                  {/* CAM */}
+                  <div className="px-3.5 py-2.5 flex items-center gap-3 border-t border-border">
+                    <div className="flex-1">
+                      <p className="text-[12px] font-semibold text-foreground/80">CAM</p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-px">Due RS {camAmount.toLocaleString()}</p>
+                    </div>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={camAllocation || ""}
+                      onChange={(e) => setCamAllocation(parseFloat(e.target.value) || 0)}
+                      className="w-[130px] text-right text-[13px]"
+                    />
+                  </div>
+
+                  {/* Late Fee */}
+                  {hasLateFee && (
+                    <div className="px-3.5 py-2.5 flex items-center gap-3 border-t border-border bg-destructive/5">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[12px] font-semibold text-destructive">Late Fee</p>
+                          <span className="bg-destructive/10 text-destructive border border-destructive/20 rounded text-[9px] font-semibold px-1.5 py-px">
+                            All or nothing
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground/70 mt-px">Due RS {lateFeeAmount.toLocaleString()}</p>
+                        {isPartialLateFee && (
+                          <p className="text-[10px] text-destructive mt-0.5 font-medium">
+                            Enter RS {lateFeeAmount.toLocaleString()} or 0
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          value={lateFeeAllocation || ""}
+                          onChange={(e) => setLateFeeAllocation(parseFloat(e.target.value) || 0)}
+                          className={cn("w-[130px] text-right text-[13px]", isPartialLateFee && "border-destructive")}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setLateFeeAllocation(lateFeeAmount)}
+                          className="text-[10px] text-destructive underline cursor-pointer bg-transparent border-0 p-0"
+                        >
+                          Fill RS {lateFeeAmount.toLocaleString()}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Running total */}
+                  <div className="px-3.5 py-2.5 flex justify-between items-center border-t border-border">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                        Total Allocated
+                      </p>
+                      {totalAllocated !== (formik.values?.amount || 0) && (formik.values?.amount || 0) > 0 && (
+                        <p className={cn("text-[10px] mt-px", isOverAllocated ? "text-destructive" : "text-amber-600")}>
+                          {isOverAllocated
+                            ? `RS ${(totalAllocated - (formik.values?.amount || 0)).toLocaleString()} over`
+                            : `RS ${((formik.values?.amount || 0) - totalAllocated).toLocaleString()} unallocated`}
+                        </p>
+                      )}
+                    </div>
+                    <p className={cn("text-[13px] font-bold", isOverAllocated ? "text-destructive" : "text-foreground")}>
+                      RS {totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Per-unit allocations */}
+                {rent?.useUnitBreakdown && selectedUnits.length > 0 && (
+                  <div className="border border-border rounded-md p-3.5 bg-background">
+                    <div className="flex justify-between items-center mb-2.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-foreground">
+                        Per-unit rent
+                      </p>
+                      <p className={cn("text-[10px] font-medium", unitAllocationMismatch ? "text-destructive" : "text-muted-foreground")}>
+                        {unitAllocationMismatch
+                          ? `Total RS ${manualUnitRentTotal.toFixed(0)} ≠ rent RS ${rentAllocation.toFixed(0)}`
+                          : `Must sum to Rs${rentAllocation.toLocaleString()}`}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {selectedUnits.map((unit) => (
+                        <div key={unit.id} className="flex items-center gap-2.5">
+                          <div className="flex-1">
+                            <p className="text-[12px] font-medium text-foreground/80">{unit.name}</p>
+                            <p className="text-[10px] text-muted-foreground/70">
+                              Remaining RS {unit.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </p>
+                          </div>
+                          <Input
+                            type="number"
+                            className="w-[130px] text-right text-[12px]"
+                            value={unitRentAllocations[unit.id] ?? ""}
+                            placeholder="0"
+                            max={unit.remaining}
+                            onChange={(e) =>
+                              setUnitRentAllocations((prev) => ({
+                                ...prev,
+                                [unit.id]: parseFloat(e.target.value) || 0,
+                              }))
+                            }
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* ════════════════════════════════════════════════════════════════
-            RIGHT COLUMN — How you're paying + sticky submit
-        ════════════════════════════════════════════════════════════════ */}
-        <div style={{
-          width: isMobile ? "100%" : "300px",
-          flexShrink: 0,
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "var(--color-surface-raised)",
-          overflowY: isMobile ? "visible" : "auto",
-        }}>
+        {/* ════ RIGHT COLUMN — How you're paying + sticky submit ════ */}
+        <div className="w-full lg:w-[320px] shrink-0 flex flex-col bg-muted/20 overflow-visible sm:overflow-y-auto">
+
           {/* Scrollable form fields */}
-          <div style={{ flex: 1, padding: isMobile ? "16px" : "20px", display: "flex", flexDirection: "column", gap: "16px", overflowY: isMobile ? "visible" : "auto" }}>
-            <SectionLabel>Payment Details</SectionLabel>
+          <div className="flex-1 p-4 sm:p-5 flex flex-col gap-4 overflow-visible sm:overflow-y-auto">
+            <Label className="font-bold">Payment Details</Label>
 
             {/* Method */}
-            <div>
-              <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                Payment Method
-              </label>
+            <div className="space-y-1.5">
+              <Label className="font-bold">Payment Method</Label>
               <Select
                 value={formik.values?.paymentMethod || ""}
                 onValueChange={(v) => {
@@ -1128,14 +882,12 @@ export const PaymentDialog = ({
                   }
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select method…" />
                 </SelectTrigger>
                 <SelectContent>
                   {getLedgerPaymentMethodSelectOptions().map(({ value, label }) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1143,17 +895,13 @@ export const PaymentDialog = ({
 
             {/* Bank Account */}
             {needsBankAccount && (
-              <div>
-                <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                  Deposit To *
-                </label>
+              <div className="space-y-1.5">
+                <Label>Deposit To *</Label>
                 <BankAccountSelect
                   bankAccounts={bankAccounts}
                   value={selectedBankAccountId ? String(selectedBankAccountId) : ""}
                   onValueChange={(id) => {
-                    const bank = bankAccounts.find(
-                      (b) => String(b._id) === String(id),
-                    );
+                    const bank = bankAccounts.find((b) => String(b._id) === String(id));
                     setSelectedBankAccountId(id);
                     formik.setFieldValue("bankAccountId", id);
                     formik.setFieldValue("bankAccountCode", bank?.accountCode || "");
@@ -1162,18 +910,14 @@ export const PaymentDialog = ({
                   triggerClassName="w-full"
                 />
                 {needsBankAccount && !formik.values?.bankAccountCode && (
-                  <p style={{ ...S.danger, fontSize: "11px", marginTop: "6px" }}>
-                    Select a bank account to continue.
-                  </p>
+                  <p className="text-[11px] text-destructive">Select a bank account to continue.</p>
                 )}
               </div>
             )}
 
             {/* Payment Date */}
-            <div>
-              <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                Payment Date
-              </label>
+            <div className="space-y-1.5">
+              <Label>Payment Date</Label>
               <DualCalendarTailwind
                 container={portalContainerRef.current}
                 onChange={(english, nepali) => {
@@ -1189,87 +933,68 @@ export const PaymentDialog = ({
             </div>
 
             {/* Transaction Ref */}
-            <div>
-              <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                Txn Reference{" "}
-                <span style={{ ...S.textWeak, fontWeight: 400 }}>(optional)</span>
-              </label>
+            <div className="space-y-1.5">
+              <Label>
+                Txn Reference <span className="font-normal">(optional)</span>
+              </Label>
               <Input
                 placeholder="e.g., CHQ-12345"
                 value={formik.values?.transactionRef || ""}
                 onChange={(e) => formik.setFieldValue("transactionRef", e.target.value)}
-                style={{ fontSize: "12px" }}
+                className="text-[12px]"
               />
             </div>
 
             {/* Note */}
-            <div>
-              <label style={{ ...S.textBody, fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                Note{" "}
-                <span style={{ ...S.textWeak, fontWeight: 400 }}>(optional)</span>
-              </label>
+            <div className="space-y-1.5">
+              <Label>
+                Note <span className="font-normal">(optional)</span>
+              </Label>
               <Input
                 placeholder="e.g., Payment for Unit A"
                 value={formik.values?.note || ""}
                 onChange={(e) => formik.setFieldValue("note", e.target.value)}
-                style={{ fontSize: "12px" }}
+                className="text-[12px]"
               />
             </div>
           </div>
 
-          {/* ── Sticky footer: totals + errors + buttons ─────────────── */}
-          <div style={{
-            borderTop: "1px solid var(--color-border)",
-            padding: isMobile ? "12px 16px" : "16px 20px",
-            backgroundColor: "var(--color-surface-raised)",
-            flexShrink: 0,
-            position: isMobile ? "sticky" : "static",
-            bottom: 0,
-            zIndex: 10,
-          }}>
+          {/* ── Sticky footer: totals + errors + buttons ──────────────────── */}
+          <div className="border-t border-border px-4 py-3 sm:px-5 sm:py-4 bg-muted/20 shrink-0 sticky bottom-0 sm:static z-10">
+
             {/* Summary totals */}
-            <div style={{
-              borderRadius: "var(--radius-md)",
-              padding: "12px 14px",
-              marginBottom: "12px",
-              backgroundColor:
-                summaryState === "full" ? "var(--color-success-bg)"
-                  : summaryState === "over" ? "var(--color-danger-bg)"
-                    : "var(--color-warning-bg)",
-              border:
-                summaryState === "full" ? "1px solid var(--color-success-border)"
-                  : summaryState === "over" ? "1px solid var(--color-danger-border)"
-                    : "1px solid var(--color-warning-border)",
-            }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: isMobile ? "8px" : "4px", marginBottom: "8px" }}>
+            <div className={cn(
+              "rounded-md p-3 mb-3 border",
+              summaryState === "full"
+                ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
+                : summaryState === "over"
+                  ? "bg-destructive/10 border-destructive/20"
+                  : "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
+            )}>
+              <div className="grid grid-cols-3 gap-2 mb-2">
                 {[
                   { label: "Due", value: `RS${totalDue.toLocaleString()}` },
                   { label: "Allocated", value: `RS${totalAllocated.toLocaleString()}` },
                   { label: "Remaining", value: `RS ${balanceOwed.toLocaleString()}` },
                 ].map((item) => (
-                  <div key={item.label} style={{ textAlign: "center" }}>
-                    <p style={{ ...S.textWeak, fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  <div key={item.label} className="text-center">
+                    <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/70">
                       {item.label}
                     </p>
-                    <p style={{ ...S.textStrong, fontSize: "13px", fontWeight: 700, marginTop: "2px" }}>
-                      {item.value}
-                    </p>
+                    <p className="text-[13px] font-bold text-foreground mt-0.5">{item.value}</p>
                   </div>
                 ))}
               </div>
-              <p style={{
-                fontSize: "10px",
-                fontWeight: 500,
-                textAlign: "center",
-                color:
-                  summaryState === "full" ? "var(--color-success)"
-                    : summaryState === "over" ? "var(--color-danger)"
-                      : "var(--color-warning)",
-              }}>
+              <p className={cn(
+                "text-[10px] font-medium text-center",
+                summaryState === "full" ? "text-emerald-600"
+                  : summaryState === "over" ? "text-destructive"
+                    : "text-amber-600"
+              )}>
                 {balanceOwed < 0
                   ? "Allocation exceeds total due."
                   : balanceOwed === 0
-                    ? "✓ Fully allocated — clears selected dues."
+                    ? " Fully allocated — clears selected dues."
                     : "Partial payment — balance stays outstanding."}
               </p>
             </div>
@@ -1277,62 +1002,43 @@ export const PaymentDialog = ({
             {/* Validation errors */}
             {(!selectedUnits.length || isOverAllocated || isPartialLateFee || unitAllocationMismatch ||
               (needsBankAccount && !formik.values?.bankAccountCode)) && (
-                <div style={{
-                  ...S.dangerBg,
-                  borderRadius: "var(--radius-sm)",
-                  padding: "8px 10px",
-                  marginBottom: "10px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "2px",
-                }}>
+                <div className="bg-destructive/10 border border-destructive/20 rounded flex flex-col gap-0.5 px-2.5 py-2 mb-2.5">
                   {!selectedUnits.length && (
-                    <p style={{ ...S.danger, fontSize: "11px" }}>Select at least one unit.</p>
+                    <p className="text-[11px] text-destructive">Select at least one unit.</p>
                   )}
                   {isOverAllocated && (
-                    <p style={{ ...S.danger, fontSize: "11px" }}>Allocation exceeds payment amount.</p>
+                    <p className="text-[11px] text-destructive">Allocation exceeds payment amount.</p>
                   )}
                   {isPartialLateFee && (
-                    <p style={{ ...S.danger, fontSize: "11px" }}>
+                    <p className="text-[11px] text-destructive">
                       Late fee must be RS {lateFeeAmount.toLocaleString()} or 0.
                     </p>
                   )}
                   {unitAllocationMismatch && (
-                    <p style={{ ...S.danger, fontSize: "11px" }}>
+                    <p className="text-[11px] text-destructive">
                       Unit allocations must sum to RS {rentAllocation.toFixed(2)}.
                     </p>
                   )}
                   {needsBankAccount && !formik.values?.bankAccountCode && (
-                    <p style={{ ...S.danger, fontSize: "11px" }}>Select a bank account.</p>
+                    <p className="text-[11px] text-destructive">Select a bank account.</p>
                   )}
                 </div>
               )}
 
             {/* Action buttons */}
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
+            <div className="flex gap-2">
+              <Button
                 type="button"
+                variant="outline"
+                className="flex-1 text-[13px]"
                 onClick={onClose}
-                style={{
-                  flex: 1,
-                  backgroundColor: "transparent",
-                  color: "var(--color-text-body)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: "var(--radius-md)",
-                  padding: isMobile ? "12px 0" : "9px 0",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  transition: "border-color 0.1s",
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.borderColor = "var(--color-text-sub)")}
-                onMouseOut={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 disabled={isSubmitDisabled}
+                className="flex-[2] text-[13px]"
                 onClick={async (e) => {
                   e.preventDefault();
                   const payload = buildPayload();
@@ -1340,10 +1046,8 @@ export const PaymentDialog = ({
 
                   try {
                     const api = (await import("../../../plugins/axios")).default;
-                    const toast = (await import("sonner")).toast;
 
-                    // Same pattern as checklist image upload:
-                    // upload file first, then submit primary payload.
+
                     if (
                       tdsPaidToGovt &&
                       !rent?.tdsPaidToGovernment &&
@@ -1399,31 +1103,9 @@ export const PaymentDialog = ({
                     setTdsUploading(false);
                   }
                 }}
-                style={{
-                  flex: 2,
-                  backgroundColor: isSubmitDisabled
-                    ? "var(--color-muted)"
-                    : "var(--color-accent)",
-                  color: isSubmitDisabled
-                    ? "var(--color-text-weak)"
-                    : "#ffffff",
-                  border: "none",
-                  borderRadius: "var(--radius-md)",
-                  padding: isMobile ? "12px 0" : "9px 0",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: isSubmitDisabled ? "not-allowed" : "pointer",
-                  transition: "background-color 0.15s",
-                }}
-                onMouseOver={(e) => {
-                  if (!isSubmitDisabled) e.currentTarget.style.backgroundColor = "var(--color-accent-hover)";
-                }}
-                onMouseOut={(e) => {
-                  if (!isSubmitDisabled) e.currentTarget.style.backgroundColor = "var(--color-accent)";
-                }}
               >
                 {tdsUploading ? "Uploading TDS..." : "Submit Payment"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

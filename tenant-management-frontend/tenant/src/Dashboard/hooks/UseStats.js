@@ -192,14 +192,21 @@ function normalizeDashboardStats(raw) {
   const trulyOverdueAmount = (oc.trulyOverdueAmountPaisa ?? 0) / 100;
 
   // Frequency splits — monthly vs quarterly pending/overdue counts
-  // Used only for sub-label copy; never the hero number.
   const pendingMonthly = oc.pendingMonthly ?? 0;
   const pendingQuarterly = oc.pendingQuarterly ?? 0;
+  const partiallyPaid = oc.partiallyPaid ?? 0;
   const overdueMonthly = oc.overdueMonthly ?? 0;
   const overdueQuarterly = oc.overdueQuarterly ?? 0;
   const hasMixedBilling =
     (pendingMonthly > 0 && pendingQuarterly > 0) ||
     (overdueMonthly > 0 && overdueQuarterly > 0);
+
+  // Per-frequency outstanding amounts (rupees) — drives frequency rows in KPI card 2
+  const monthlyRentOutstanding = (oc.monthlyRentOutstandingPaisa ?? 0) / 100;
+  const quarterlyRentOutstanding = (oc.quarterlyRentOutstandingPaisa ?? 0) / 100;
+  const camOutstandingApi = (oc.camOutstandingPaisa ?? 0) / 100;
+  const overdueMonthlyAmt = (oc.overdueMonthlyPaisa ?? 0) / 100;
+  const overdueQuarterlyAmt = (oc.overdueQuarterlyPaisa ?? 0) / 100;
 
   // Parse earliestDueDate safely — backend sends a JS Date (serialised as ISO
   // string over JSON). null means no unpaid rents exist this month (all clear).
@@ -282,12 +289,22 @@ function normalizeDashboardStats(raw) {
     trulyOverdueCount, // real overdue headcount, not the capped top-3 sample
     trulyOverdueAmount, // total outstanding on overdue rents (rupees)
 
-    // Billing frequency splits — for sub-label copy only, never hero numbers
-    pendingMonthly, // unpaid monthly tenants this cycle
-    pendingQuarterly, // unpaid quarterly tenants this cycle
-    overdueMonthly, // overdue monthly tenants
-    overdueQuarterly, // overdue quarterly tenants
-    hasMixedBilling, // true when both billing types are present
+    // Billing frequency splits — tenant counts
+    pendingMonthly,
+    pendingQuarterly,
+    overdueMonthly,
+    overdueQuarterly,
+    hasMixedBilling,
+    partiallyPaid,
+
+    // Per-frequency outstanding amounts (rupees) — frequency rows in KPI card 2
+    // monthly row = monthlyRentOutstanding + camOutstanding (CAM is always monthly)
+    // quarterly row = quarterlyRentOutstanding only
+    monthlyRentOutstanding,
+    quarterlyRentOutstanding,
+    camOutstandingApi, // CAM outstanding from backend; falls back to camOutstanding if 0
+    overdueMonthlyAmt,
+    overdueQuarterlyAmt,
   };
 
   const maintenanceList = Array.isArray(raw.maintenance) ? raw.maintenance : [];

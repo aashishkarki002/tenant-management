@@ -45,6 +45,7 @@ const ESSENTIAL_FILTERS = [
     icon: DollarSign,
     options: [
       { value: "paid", label: "Paid", dot: "bg-[var(--color-success)]" },
+      { value: "partial", label: "Partial", dot: "bg-[var(--color-info)]" },
       { value: "due_soon", label: "Due Soon", dot: "bg-[var(--color-warning)]" },
       { value: "overdue", label: "Overdue", dot: "bg-[var(--color-danger)]" },
     ],

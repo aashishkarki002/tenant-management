@@ -179,9 +179,7 @@ export default function Dashboard() {
 
             {/* Alerts + health sidebar — 50% on lg, 33% on xl+ */}
             <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2 flex flex-col gap-3 sm:gap-4 lg:gap-5">
-              <div className="flex-shrink-0">
-                <NeedsAttentionPanel stats={stats} loading={loading || arrearsLoading} arrears={arrears} />
-              </div>
+
               <div className="flex-shrink-0">
                 <BuildingHealthPanel stats={stats} loading={loading} />
               </div>

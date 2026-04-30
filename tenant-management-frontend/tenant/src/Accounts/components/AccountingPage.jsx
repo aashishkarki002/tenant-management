@@ -1,23 +1,5 @@
-/**
- * AccountingPage.jsx (refactored)
- *
- * Key changes from the original 1 767-line monolith:
- *   1. All date/month constants & helpers deleted — imported from nepaliCalendar.js
- *      (single source of truth shared with every other accounting component).
- *   2. The six inline chart-component definitions (RevExpChart, CashFlowArea,
- *      CompareChart, CompareStatStrip, RevenueStreamTable, Scorecard) extracted
- *      into their own files under ./components/accounting/.
- *   3. FilterControlBar + MobileFilterBar moved to ./FilterControlBar.jsx.
- *   4. AccountingHeaderSlot moved to ./AccountingHeaderSlot.jsx.
- *   5. CompareTrigger + PeriodBPicker moved to ./CompareTrigger.jsx.
- *   6. Primitive UI atoms (Card, DarkCard, Lbl, Delta, ProgBar, Spark, Gauge,
- *      ChartTip, Skeleton) moved to ./AccountingPrimitives.jsx.
- *   7. Tab content (OverviewTab, RevenueTab, ExpensesTab, LedgerTab) extracted
- *      to ./tabs/*.jsx so each render branch is independently readable.
- *   8. No business logic was changed — only structural decomposition.
- */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react"; // eslint-disable-line no-unused-vars
 import { cn } from "@/lib/utils";
 import {
@@ -39,7 +21,6 @@ import {
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
 import { useMonthlyChart } from "../hooks/useMonthlyChart";
-import { usePortfolioHealth } from "../hooks/usePortfolioHealth";
 import { useEntity } from "../../context/EntityContext";
 
 // ── Sub-components (extracted from this file) ─────────────────────────────────
@@ -86,7 +67,7 @@ export function buildCompareLabel(granularity, { year, quarter, month } = {}) {
     if (granularity === "year" && year)
         return `FY ${year}/${String(year + 1).slice(2)}`;
     if (granularity === "quarter" && quarter && year)
-        return `Q${quarter} · ${QUARTER_LABELS[quarter]} · FY ${year}/${String(year + 1).slice(2)}`;
+        return `Q${quarter} · ${QUARTER_LABELS[quarter]} · FY ${year}`;
     if (granularity === "month" && month && year)
         return `${NEPALI_MONTH_NAMES[month - 1]} ${month <= 3 ? year + 1 : year}`;
     return null;
@@ -132,6 +113,37 @@ export default function AccountingPage() {
         setCompareMonth(null);
     }, []);
 
+    // ── Tab overflow — pinned (always-visible) + More dropdown ───────────────
+    const [pinnedTabs, setPinnedTabs] = useState(["overview", "revenue", "expenses"]);
+    const [moreOpen, setMoreOpen] = useState(false);
+    const moreRef = useRef(null);
+
+    useEffect(() => {
+        if (!moreOpen) return;
+        const handle = (e) => {
+            if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
+        };
+        document.addEventListener("mousedown", handle);
+        return () => document.removeEventListener("mousedown", handle);
+    }, [moreOpen]);
+
+    const handleTabClick = useCallback((tabId) => {
+        setActiveTab(tabId);
+        if (!pinnedTabs.includes(tabId)) {
+            // Swap the last slot (index 2); overview at index 0 is never displaced
+            setPinnedTabs(prev => {
+                const next = [...prev];
+                next[next.length - 1] = tabId;
+                return next;
+            });
+            setMoreOpen(false);
+        }
+    }, [pinnedTabs]);
+
+    const visibleTabs = TABS.filter(t => pinnedTabs.includes(t.id))
+        .sort((a, b) => pinnedTabs.indexOf(a.id) - pinnedTabs.indexOf(b.id));
+    const hiddenTabs = TABS.filter(t => !pinnedTabs.includes(t.id));
+
     // ── Entity scope — shared via EntityContext so filter persists across navigation
     const { entities, activeEntityId, setActiveEntityId } = useEntity();
     const resolvedEntityId = activeEntityId ?? null;
@@ -161,10 +173,6 @@ export default function AccountingPage() {
         resolvedEntityId,
     );
     useBankAccounts(); // keeps bank account context warm for dialogs
-    const { health, loading: healthLoading, refetch: refetchHealth } = usePortfolioHealth(
-        resolvedFilter.quarter, resolvedFilter.startDate, resolvedFilter.endDate,
-        resolvedFilter.month, resolvedFilter.fiscalYear, resolvedEntityId,
-    );
     const { chartData, compareData, comparisonStats, loadingChart } = useMonthlyChart(
         chartQuarter, activeCompareQtr,
         selectedFiscalYear, chartAllYear, resolvedEntityId,
@@ -183,7 +191,7 @@ export default function AccountingPage() {
         if (filterGranularity === "month" && selectedMonth)
             return `${NEPALI_MONTH_NAMES[selectedMonth - 1]} ${selectedMonth <= 3 ? selectedFiscalYear + 1 : selectedFiscalYear}`;
         if (filterGranularity === "quarter" && selectedQuarter)
-            return `Q${selectedQuarter} · ${QUARTER_LABELS[selectedQuarter]} · FY ${selectedFiscalYear}/${String(selectedFiscalYear + 1).slice(2)}`;
+            return `Q${selectedQuarter} · ${QUARTER_LABELS[selectedQuarter]} · FY ${selectedFiscalYear}`;
         return `FY ${selectedFiscalYear}/${String(selectedFiscalYear + 1).slice(2)}`;
     }, [filterGranularity, selectedQuarter, selectedMonth, selectedFiscalYear, customStart, customEnd]);
 
@@ -239,7 +247,7 @@ export default function AccountingPage() {
             {/* Tab bar — dropdown on mobile, pill row on sm+ */}
 
             <div className="no-print sm:hidden flex-shrink-0 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
-                <Select value={activeTab} onValueChange={setActiveTab}>
+                <Select value={activeTab} onValueChange={handleTabClick}>
                     <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select tab" />
                     </SelectTrigger>
@@ -257,17 +265,17 @@ export default function AccountingPage() {
                 </Select>
             </div>
 
-            {/* Desktop: scrollable pill tabs */}
+            {/* Desktop: pinned tabs + More ▾ overflow */}
             <div
                 role="tablist"
-                className="no-print hidden sm:flex flex-shrink-0 items-center gap-0.5 px-4 sm:px-7 pt-3 pb-0 border-b border-[var(--color-border)] bg-[var(--color-bg)] overflow-x-auto [&::-webkit-scrollbar]:hidden"
+                className="no-print hidden sm:flex flex-shrink-0 items-center gap-0.5 px-4 sm:px-7 pt-3 pb-0 border-b border-[var(--color-border)] bg-[var(--color-bg)]"
             >
-                {TABS.map(t => (
+                {visibleTabs.map(t => (
                     <button
                         key={t.id}
                         role="tab"
                         aria-selected={activeTab === t.id}
-                        onClick={() => setActiveTab(t.id)}
+                        onClick={() => handleTabClick(t.id)}
                         className={cn(
                             "px-4 py-2 text-[13px] font-semibold cursor-pointer transition-all border-b-2 -mb-px whitespace-nowrap",
                             activeTab === t.id
@@ -282,6 +290,49 @@ export default function AccountingPage() {
                         )}
                     </button>
                 ))}
+
+                {/* More ▾ overflow trigger */}
+                <div ref={moreRef} className="relative ml-1 -mb-px">
+                    <button
+                        onClick={() => setMoreOpen(o => !o)}
+                        className={cn(
+                            "flex items-center gap-1 px-3 py-2 text-[13px] font-semibold cursor-pointer transition-all border-b-2 whitespace-nowrap",
+                            hiddenTabs.some(t => t.id === activeTab)
+                                ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+                                : "border-transparent text-[var(--color-text-sub)] hover:text-[var(--color-text-body)]",
+                        )}>
+                        More
+                        <svg
+                            width="12" height="12" viewBox="0 0 12 12" fill="none"
+                            className={cn("transition-transform duration-150", moreOpen && "rotate-180")}
+                        >
+                            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </button>
+
+                    {moreOpen && (
+                        <div className="absolute left-0 top-full mt-1 z-50 min-w-[160px] rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] shadow-lg py-1">
+                            {hiddenTabs.map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => handleTabClick(t.id)}
+                                    className={cn(
+                                        "w-full text-left px-4 py-2 text-[13px] font-semibold transition-colors whitespace-nowrap",
+                                        activeTab === t.id
+                                            ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]"
+                                            : "text-[var(--color-text-sub)] hover:text-[var(--color-text-body)] hover:bg-[var(--color-surface)]",
+                                    )}>
+                                    {t.label}
+                                    {t.id === "ledger" && ledgerEntries.length > 0 && (
+                                        <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-[var(--color-surface)] text-[var(--color-text-sub)]">
+                                            {ledgerEntries.length}
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Tab content — this div owns the scroll, everything above stays pinned */}
@@ -298,6 +349,7 @@ export default function AccountingPage() {
                     >
                         {activeTab === "overview" && (
                             <OverviewTab
+                                summary={summary}
                                 loadingSummary={loadingSummary}
                                 totals={totals}
                                 netMargin={netMargin}
@@ -313,8 +365,6 @@ export default function AccountingPage() {
                                 loadingLedger={loadingLedger}
                                 onViewLedger={() => setActiveTab("ledger")}
                                 currentBSMonth={getCurrentBSMonthName()}
-                                health={health}
-                                healthLoading={healthLoading}
                             />
                         )}
 
@@ -369,11 +419,7 @@ export default function AccountingPage() {
                         )}
 
                         {activeTab === "balance-sheet" && (
-                            <BalanceSheetTab
-                                entityId={resolvedEntityId}
-                                filterProps={filterProps}
-                                filterLabel={filterLabel}
-                            />
+                            <BalanceSheetTab entityId={resolvedEntityId} />
                         )}
                     </motion.div>
                 </AnimatePresence>
@@ -399,18 +445,18 @@ function TabContextStrip({ totals, filterLabel }) {
                         "text-[14px] font-bold",
                         totals.netCashFlow >= 0 ? "text-[var(--color-success)]" : "text-[var(--color-danger)]",
                     )}>
-                        {totals.netCashFlow >= 0 ? "+" : "−"}RS {fmtK(Math.abs(totals.netCashFlow))}
+                        {totals.netCashFlow >= 0 ? "+" : "−"}₹{fmtK(Math.abs(totals.netCashFlow))}
                     </span>
                 </div>
                 <div className="w-px h-4 bg-[var(--color-border)]" />
                 <div className="flex items-center gap-1.5">
                     <span className="text-[11px] text-[var(--color-text-sub)]">Revenue</span>
-                    <span className="text-[13px] font-semibold text-[var(--color-info)]">RS {fmtK(totals.totalRevenue)}</span>
+                    <span className="text-[13px] font-semibold text-[var(--color-info)]">₹{fmtK(totals.totalRevenue)}</span>
                 </div>
                 <div className="w-px h-4 bg-[var(--color-border)]" />
                 <div className="flex items-center gap-1.5">
                     <span className="text-[11px] text-[var(--color-text-sub)]">Expenses</span>
-                    <span className="text-[13px] font-semibold text-[var(--color-warning)]">RS {fmtK(totals.totalExpenses)}</span>
+                    <span className="text-[13px] font-semibold text-[var(--color-warning)]">₹{fmtK(totals.totalExpenses)}</span>
                 </div>
             </div>
             <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)]">

@@ -9,7 +9,7 @@ import {
   formatPaymentStatus,
   normalizeStatus,
 } from "../utils/paymentUtil";
-import { statusStyles } from "../constants/paymentConstants";
+
 
 /**
  * Component for rendering a single payment table row
@@ -31,7 +31,7 @@ export const PaymentTableRow = ({ payment, showBillingPeriod = false }) => {
       <TableCell className="whitespace-nowrap">{formatPaymentMethod(payment.paymentMethod)}</TableCell>
       <TableCell className="whitespace-nowrap">
         <Badge
-          className={`capitalize border ${statusStyles[normalizeStatus(payment.paymentStatus)] ||
+          className={`capitalize border ${[normalizeStatus(payment.paymentStatus)] ||
             "bg-muted text-muted-foreground border-border"
             }`}
         >

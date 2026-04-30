@@ -24,10 +24,10 @@ import {
  * @returns {UseUnitsResult}
  */
 function useUnitBase(fetcher, filters = {}) {
-  const { propertyId, blockId } = filters;
+  const { propertyId, blockId, skip = false } = filters;
 
   const [units, setUnits] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!skip);
   const [error, setError] = useState(null);
 
   // A counter we can increment to force a re-fetch (refetch pattern).
@@ -35,6 +35,12 @@ function useUnitBase(fetcher, filters = {}) {
   const refetch = () => setTick((t) => t + 1);
 
   useEffect(() => {
+    if (skip) {
+      setUnits(null);
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -58,7 +64,7 @@ function useUnitBase(fetcher, filters = {}) {
 
     // Cleanup: cancel in-flight request on unmount or dep change.
     return () => controller.abort();
-  }, [propertyId, blockId, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [propertyId, blockId, skip, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   // `fetcher` is a module-level reference — stable, intentionally omitted from deps.
 
   return { units, loading, error, refetch };

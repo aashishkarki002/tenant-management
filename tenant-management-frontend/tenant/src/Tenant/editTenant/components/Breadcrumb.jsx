@@ -1,34 +1,48 @@
 import { Link } from "react-router-dom";
-import { Home, ChevronRight } from "lucide-react";
+import { Home } from "lucide-react";
+import {
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbLink,
+    BreadcrumbList,
+    BreadcrumbPage,
+    BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
-function Breadcrumb({ tenantName }) {
+function TenantBreadcrumb({ tenantName }) {
     return (
-        <nav aria-label="breadcrumb" className="flex items-center text-sm text-gray-500 mb-3">
-            {/* Home */}
-            <Link to="/" className="flex items-center hover:text-gray-700">
-                <Home className="w-4 h-4 mr-1" />
-                Home
-            </Link>
+        <Breadcrumb className="mb-3">
+            <BreadcrumbList>
+                <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                        <Link to="/" className="flex items-center gap-1">
+                            <Home className="h-3.5 w-3.5" />
+                            Home
+                        </Link>
+                    </BreadcrumbLink>
+                </BreadcrumbItem>
 
-            {/* Separator */}
-            <ChevronRight className="w-3 h-3 mx-1" />
+                <BreadcrumbSeparator />
 
-            {/* Tenants */}
-            <Link to="/tenants" className="hover:text-gray-700">
-                Tenants
-            </Link>
+                <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                        <Link to="/tenants">Tenants</Link>
+                    </BreadcrumbLink>
+                </BreadcrumbItem>
 
-            {/* Tenant Name */}
-            {tenantName && (
-                <>
-                    <ChevronRight className="w-3 h-3 mx-1" />
-                    <span className="font-medium text-gray-800 truncate max-w-[150px]">
-                        {tenantName}
-                    </span>
-                </>
-            )}
-        </nav>
+                {tenantName && (
+                    <>
+                        <BreadcrumbSeparator />
+                        <BreadcrumbItem>
+                            <BreadcrumbPage className="max-w-[240px] truncate font-medium">
+                                {tenantName}
+                            </BreadcrumbPage>
+                        </BreadcrumbItem>
+                    </>
+                )}
+            </BreadcrumbList>
+        </Breadcrumb>
     );
 }
 
-export default Breadcrumb;
+export default TenantBreadcrumb;

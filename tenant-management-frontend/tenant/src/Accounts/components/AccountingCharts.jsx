@@ -1,24 +1,3 @@
-/**
- * AccountingCharts.jsx
- *
- * All chart and data-display components that were previously defined inline
- * inside AccountingPage.jsx. Extracted to this file so:
- *   • AccountingPage stays under 250 lines
- *   • Each chart can be tested and iterated independently
- *   • OverviewTab imports from one predictable location
- *
- * Exports:
- *   RevExpChart         — composed bar+line chart (revenue / expenses / net)
- *   CompareChart        — grouped bar chart for period A vs period B
- *   CashFlowArea        — area chart showing cumulative cash flow position
- *   CompareStatStrip    — 3-card stat strip shown below CompareChart
- *   RevenueStreamTable  — tabular breakdown of income streams with progress bars
- *   BreakdownPills      — compact dot-list used inside KPI cards
- *   Scorecard           — gauge + health metrics panel
- *
- * No date logic lives here. All components are purely presentational.
- */
-
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import {

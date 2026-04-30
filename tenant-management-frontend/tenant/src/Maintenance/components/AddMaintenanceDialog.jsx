@@ -22,6 +22,7 @@ import { Spinner } from '@/components/ui/spinner';
 import DualCalendarTailwind from '@/components/dualDate';
 import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import { UnitCombobox } from '@/components/UnitComboBox';
+import { useUnitOptions } from '@/hooks/useUnitoptions';
 
 import {
   PRIORITY_OPTIONS,
@@ -32,7 +33,6 @@ import {
   SCHEDULE_PRESETS,
 } from '../constants/maintenance.constants';
 
-import { transformUnitsToOptions } from '../utils/maintenance.utils';
 import { cn } from '@/lib/utils';
 import { addDays, format } from 'date-fns';
 
@@ -139,7 +139,6 @@ function ContractorSection({ formik }) {
 // ── Main dialog ───────────────────────────────────────────────────────────────
 export const AddMaintenanceDialog = ({
   formik,
-  units = [],
   blocks = [],
   staffs = [],
   selectedTenant = null,
@@ -147,8 +146,9 @@ export const AddMaintenanceDialog = ({
   compact = false,
   label,
 }) => {
-  const buttonLabel = label || 'New Repair';
-  const unitOptions = useMemo(() => transformUnitsToOptions(units), [units]);
+  const buttonLabel = label || 'New Repair'
+
+  const { options: unitOptions, loading: unitsLoading } = useUnitOptions({ mode: 'all' });
   const currentScope = formik?.values?.scope || 'UNIT';
 
   if (!formik) return null;
@@ -172,7 +172,7 @@ export const AddMaintenanceDialog = ({
       <DialogContent
         className="
           p-0 w-[95vw] max-w-4xl max-h-[90vh]
-          overflow-hidden flex flex-col
+          overflow-visible flex flex-col
         "
       >
         {/* Header */}
@@ -364,8 +364,8 @@ export const AddMaintenanceDialog = ({
                       value={formik.values.unit || ''}
                       onChange={(v) => formik.setFieldValue('unit', v)}
                       placeholder="Select unit"
-                      loading={isLoading}
-                      disabled={isLoading || unitOptions.length === 0}
+                      loading={unitsLoading}
+                      disabled={isLoading}
                     />
                   </div>
                   {/* Common area hint */}

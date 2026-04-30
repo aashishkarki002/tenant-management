@@ -1,5 +1,11 @@
 import React, { useMemo, useState, useCallback } from "react";
-import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Dialog } from "@/components/ui/dialog";
 import { RentTableRow } from "./RentTableRow";
 import { PaymentDialog } from "./PaymentDialog";
@@ -14,6 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { usePaymentForm } from "../hooks/usePaymentForm";
 import { sortRents } from "../utils/rentSort";
 import { exportRentsToCsv } from "../utils/rentExport";
 import { cn } from "@/lib/utils";
@@ -31,38 +38,46 @@ function rowFullySettled(rent) {
 const SORT_COLS = [
   { key: "tenant", label: "Tenant" },
   { key: "unit", label: "Unit" },
-  { key: "rent", label: "Rent" },
-  { key: "cam", label: "CAM" },
-  { key: "total", label: "Total" },
+  { key: "rent", label: "Rent", right: true },
+  { key: "cam", label: "CAM", right: true },
+  { key: "total", label: "Total", right: true },
   { key: "dueDate", label: "Due date" },
   { key: "status", label: "Status" },
 ];
 
 function SortHead({ col, sortKey, sortDir, onSort }) {
   const active = sortKey === col.key;
-  const ariaSort = active ? (sortDir === "asc" ? "ascending" : "descending") : "none";
   return (
     <TableHead
-      className="whitespace-nowrap bg-background"
-      aria-sort={col.key ? ariaSort : undefined}
+      className={cn(
+        "whitespace-nowrap bg-transparent py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+        col.right && "text-right",
+      )}
+      aria-sort={
+        col.key ? (active ? (sortDir === "asc" ? "ascending" : "descending") : "none") : undefined
+      }
     >
       {col.key ? (
         <button
           type="button"
           onClick={() => onSort(col.key)}
           className={cn(
-            "inline-flex items-center gap-0.5 font-medium text-foreground hover:text-foreground/80 -mx-1 px-1 rounded",
+            "inline-flex items-center gap-0.5 hover:text-foreground transition-colors -mx-1 px-1 rounded",
+            active && "text-foreground",
           )}
         >
           {col.label}
           {active ? (
             sortDir === "asc" ? (
-              <ChevronUp className="size-3.5 opacity-70" />
+              <ChevronUp className="size-3 opacity-60" />
             ) : (
-              <ChevronDown className="size-3.5 opacity-70" />
+              <ChevronDown className="size-3 opacity-60" />
             )
           ) : (
-            <span className="inline-flex flex-col leading-none opacity-25 text-[8px] select-none" aria-hidden="true">
+            <span
+              className="inline-flex flex-col leading-none opacity-20 text-[7px] select-none ml-0.5"
+              aria-hidden="true"
+            >
               <span>▲</span>
               <span>▼</span>
             </span>
@@ -75,27 +90,70 @@ function SortHead({ col, sortKey, sortDir, onSort }) {
   );
 }
 
+/** Minimal floating action bar that appears when rows are selected */
+const BulkActionBar = ({ count, onRemind, sendingEmails, onExport, onMarkPaid, onClear }) => (
+  <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/20 text-xs">
+    <span className="text-muted-foreground tabular-nums font-medium">
+      {count} selected
+    </span>
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        disabled={sendingEmails}
+        onClick={onRemind}
+        className="h-6 px-2 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+      >
+        Send reminders
+      </button>
+      <button
+        type="button"
+        onClick={onExport}
+        className="h-6 px-2 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+      >
+        Export
+      </button>
+      <button
+        type="button"
+        onClick={onMarkPaid}
+        className="h-6 px-2 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+      >
+        Mark paid
+      </button>
+      <button
+        type="button"
+        onClick={onClear}
+        className="h-6 px-2 rounded text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+      >
+        Clear
+      </button>
+    </div>
+  </div>
+);
+
 export const RentTable = ({
   rents,
   cams,
   bankAccounts,
-  formik,
-  allocationMode,
-  setAllocationMode,
-  rentAllocation,
-  setRentAllocation,
-  camAllocation,
-  setCamAllocation,
-  lateFeeAllocation,
-  setLateFeeAllocation,
-  selectedBankAccountId,
-  setSelectedBankAccountId,
-  handleOpenDialog,
-  handleAmountChange,
   onRefresh,
-  sendRentReminders, // used for bulk action bar only
-  sendingEmails,     // used for bulk action bar only
+  sendRentReminders,
+  sendingEmails,
 }) => {
+  const {
+    formik,
+    allocationMode,
+    setAllocationMode,
+    rentAllocation,
+    setRentAllocation,
+    camAllocation,
+    setCamAllocation,
+    lateFeeAllocation,
+    setLateFeeAllocation,
+    selectedBankAccountId,
+    setSelectedBankAccountId,
+    handleOpenDialog,
+    handleAmountChange,
+  } = usePaymentForm({ cams, onSuccess: onRefresh });
+
   const [selectedRent, setSelectedRent] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sortKey, setSortKey] = useState("tenant");
@@ -121,14 +179,17 @@ export const RentTable = ({
     return next;
   }, [selectedIds, visibleIdSet]);
 
-  const handleSort = useCallback((key) => {
-    if (key === sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  }, [sortKey]);
+  const handleSort = useCallback(
+    (key) => {
+      if (key === sortKey) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortKey(key);
+        setSortDir("asc");
+      }
+    },
+    [sortKey],
+  );
 
   const toggleOne = useCallback((id) => {
     setSelectedIds((prev) => {
@@ -203,51 +264,16 @@ export const RentTable = ({
 
   return (
     <>
+      {/* Bulk action bar */}
       {activeSelectedIds.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 px-3 py-2.5 border-b border-border bg-muted/30 text-xs">
-          <span className="font-medium text-muted-foreground tabular-nums">
-            {activeSelectedIds.size} selected
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              disabled={sendingEmails}
-              onClick={() => setBulkRemindOpen(true)}
-            >
-              Send reminders
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={handleBulkExport}
-            >
-              Export
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={handleBulkMarkPaid}
-            >
-              Mark paid
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-muted-foreground"
-              onClick={() => setSelectedIds(new Set())}
-            >
-              Clear
-            </Button>
-          </div>
-        </div>
+        <BulkActionBar
+          count={activeSelectedIds.size}
+          sendingEmails={sendingEmails}
+          onRemind={() => setBulkRemindOpen(true)}
+          onExport={handleBulkExport}
+          onMarkPaid={handleBulkMarkPaid}
+          onClear={() => setSelectedIds(new Set())}
+        />
       )}
 
       <AlertDialog open={bulkRemindOpen} onOpenChange={setBulkRemindOpen}>
@@ -255,9 +281,8 @@ export const RentTable = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Send rent reminders</AlertDialogTitle>
             <AlertDialogDescription>
-              This sends reminder emails to all tenants with unpaid or overdue rent.
-              Selected rows are used for export and payment only — reminders always
-              go to all tenants with outstanding dues. Continue?
+              This sends reminder emails to all tenants with unpaid or overdue
+              rent. Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -274,84 +299,66 @@ export const RentTable = ({
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="relative rounded-md border border-border bg-background">
-        <div className="max-h-[min(70vh,800px)] overflow-auto">
-          <table className="w-full caption-bottom text-sm min-w-[920px]">
-            <TableHeader className="sticky top-0 z-10 bg-background [&_tr]:border-b">
-              <TableRow className="hover:bg-transparent border-b border-border bg-background shadow-[inset_0_-1px_0_0_hsl(var(--border))]">
-                <TableHead className="w-10 px-2 bg-background">
-                  <input
-                    ref={headerCheckboxRef}
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAllVisible}
-                    className={cn(
-                      "size-3.5 rounded border border-input accent-primary cursor-pointer",
-                    )}
-                    aria-label="Select all rows"
-                  />
-                </TableHead>
-                {SORT_COLS.map((col) => (
-                  <SortHead
-                    key={col.key || col.label}
-                    col={col}
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={handleSort}
-                  />
-                ))}
-                <TableHead className="whitespace-nowrap text-right bg-background">
-                  Actions
-                </TableHead>
+      {/* Clean border-light table */}
+      <div className="max-h-[min(70vh,820px)] overflow-auto">
+        <table className="w-full caption-bottom text-sm min-w-[860px]">
+          <TableHeader className="sticky top-0 z-10 bg-background">
+            <TableRow className="border-b border-border/60 hover:bg-transparent">
+              <TableHead className="w-10 px-3 py-2.5 bg-background">
+                <input
+                  ref={headerCheckboxRef}
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAllVisible}
+                  className="size-3.5 rounded border border-input accent-primary cursor-pointer"
+                  aria-label="Select all rows"
+                />
+              </TableHead>
+              {SORT_COLS.map((col) => (
+                <SortHead
+                  key={col.key || col.label}
+                  col={col}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                />
+              ))}
+              <TableHead className="py-2.5 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground bg-transparent">
+                Action
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedRents.length === 0 ? (
+              <TableRow className="hover:bg-transparent border-0">
+                <TableCell
+                  colSpan={10}
+                  className="py-20 text-center"
+                >
+                  <p className="text-sm text-muted-foreground">
+                    No rents for this view
+                  </p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">
+                    Try a different period, frequency, or status filter.
+                  </p>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedRents.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={10}
-                    className="py-16 text-center text-muted-foreground"
-                  >
-                    <div className="flex flex-col items-center gap-2">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-10 w-10 text-muted-foreground/40"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={1.5}
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M9 17v-2a4 4 0 014-4h0a4 4 0 014 4v2M3 21h18M12 3a4 4 0 100 8 4 4 0 000-8z"
-                        />
-                      </svg>
-                      <p className="text-sm font-medium">No rents for this view</p>
-                      <p className="text-xs text-muted-foreground/70">
-                        Try another period, frequency, or status filter.
-                      </p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                sortedRents.map((rent, idx) => (
-                  <RentTableRow
-                    key={rent._id || idx}
-                    rent={rent}
-                    cams={cams}
-                    bankAccounts={bankAccounts}
-                    onOpenPaymentDialog={handleOpen}
-                    onRefresh={onRefresh}
-                    selected={!!(rent._id && activeSelectedIds.has(rent._id))}
-                    onToggleSelected={() => rent._id && toggleOne(rent._id)}
-                  />
-                ))
-              )}
-            </TableBody>
-          </table>
-        </div>
+            ) : (
+              sortedRents.map((rent, idx) => (
+                <RentTableRow
+                  key={rent._id || idx}
+                  rent={rent}
+                  cams={cams}
+                  bankAccounts={bankAccounts}
+                  onOpenPaymentDialog={handleOpen}
+                  onRefresh={onRefresh}
+                  selected={!!(rent._id && activeSelectedIds.has(rent._id))}
+                  onToggleSelected={() => rent._id && toggleOne(rent._id)}
+                />
+              ))
+            )}
+          </TableBody>
+        </table>
       </div>
 
       {selectedRent && (
@@ -373,9 +380,7 @@ export const RentTable = ({
             setSelectedBankAccountId={setSelectedBankAccountId}
             handleAmountChange={handleAmountChange}
             onClose={() => setDialogOpen(false)}
-            onTdsVerified={() => {
-              setDialogOpen(false);
-            }}
+            onTdsVerified={() => setDialogOpen(false)}
           />
         </Dialog>
       )}

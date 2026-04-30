@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 import { useFormik } from 'formik';
 import { toast } from 'sonner';
 import api from '../../plugins/axios';
-import { useUnits } from '../hooks/use-units';
 import { useBankAccounts } from '../Accounts/hooks/useAccounting';
 import { parseNepaliFields } from '@/hooks/useNepaliDate';
 import MaintenanceCard from './components/MaintenanceCard';
@@ -31,7 +30,6 @@ import {
 } from "@/components/ui/tabs";
 
 export default function MaintenancePage() {
-  const { units = [] } = useUnits();
   const { bankAccounts = [] } = useBankAccounts();
 
   const {
@@ -243,7 +241,6 @@ export default function MaintenancePage() {
             rightContent={
               <AddMaintenanceDialog
                 formik={formik}
-                units={units}
                 staffs={staffs}
                 selectedTenant={selectedTenant}
                 isLoading={isLoading}
@@ -285,7 +282,6 @@ export default function MaintenancePage() {
             emptyAction={
               <AddMaintenanceDialog
                 formik={formik}
-                units={units}
                 staffs={staffs}
                 selectedTenant={selectedTenant}
                 isLoading={isLoading}

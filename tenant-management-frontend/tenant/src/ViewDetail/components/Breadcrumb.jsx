@@ -1,30 +1,35 @@
 import { Link } from "react-router-dom";
-import { ChevronRight, LayoutDashboard } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 function Breadcrumb({ tenantName }) {
   return (
-    <nav aria-label="breadcrumb" className="flex items-center mt-1 text-xs text-muted-foreground mb-4">
+    <nav
+      aria-label="breadcrumb"
+      className="flex items-center gap-0.5 text-xs mb-5 mt-1"
+      style={{ color: "var(--color-text-weak)" }}
+    >
       <Link
         to="/"
-        className="flex items-center gap-1 hover:text-foreground transition-colors duration-150 cursor-pointer"
+        className="hover:underline transition-colors duration-150"
+        style={{ color: "inherit" }}
       >
-        <LayoutDashboard className="w-3.5 h-3.5" />
-        <span>Dashboard</span>
+        Dashboard
       </Link>
-
-      <ChevronRight className="w-3 h-3 opacity-40" />
-
+      <ChevronRight className="w-3 h-3 opacity-40 mx-0.5" />
       <Link
         to="/tenants"
-        className="hover:text-foreground transition-colors duration-150 cursor-pointer"
+        className="hover:underline transition-colors duration-150"
+        style={{ color: "inherit" }}
       >
         Tenants
       </Link>
-
       {tenantName && (
         <>
-          <ChevronRight className="w-3 h-3 opacity-40" />
-          <span className="font-medium text-foreground truncate max-w-[160px]">
+          <ChevronRight className="w-3 h-3 opacity-40 mx-0.5" />
+          <span
+            className="truncate max-w-[160px]"
+            style={{ color: "var(--color-text-body)" }}
+          >
             {tenantName}
           </span>
         </>

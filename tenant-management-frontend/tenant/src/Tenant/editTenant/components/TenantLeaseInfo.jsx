@@ -1,19 +1,15 @@
-/**
- * TENANT LEASE INFO COMPONENT
- * 
- * Displays lease-related dates with:
- * - Visual indication of changed dates
- * - Comparison with original dates
- * - Date validation
- * - Clear labeling
- */
-
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FieldError } from "@/components/ui/field";
 import { formatDate } from "../utils/formatting.js";
+
+// Max date: 50 years from now, to prevent obviously-wrong entries
+const MAX_DATE = new Date(Date.now() + 50 * 365.25 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 
 function DateFieldWithComparison({
     label,
@@ -22,7 +18,10 @@ function DateFieldWithComparison({
     originalValue,
     showComparison,
     isChanged,
-    helperText = "",
+    helperText,
+    min,
+    max,
+    required,
 }) {
     const error = formik.touched[name] && formik.errors[name];
     const hasChanged = isChanged && originalValue !== formik.values[name];
@@ -30,23 +29,22 @@ function DateFieldWithComparison({
     return (
         <div
             className={cn(
-                "space-y-2 p-3 rounded-lg transition-colors",
-                hasChanged && "bg-yellow-50 border border-yellow-200"
+                "space-y-1.5 rounded-lg p-3 transition-colors",
+                hasChanged && "border border-amber-200 bg-amber-50/50"
             )}
         >
-            <div className="flex items-center justify-between">
-                <Label htmlFor={name} className="text-sm font-medium flex items-center gap-2">
-                    <CalendarIcon className="h-4 w-4" />
+            <div className="flex items-center justify-between gap-2">
+                <Label htmlFor={name} className="flex items-center gap-1.5 text-sm font-medium">
+                    <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
                     {label}
+                    {required && <span className="text-destructive">*</span>}
                     {hasChanged && (
-                        <span className="text-xs text-yellow-600 font-normal">
-                            (Modified)
-                        </span>
+                        <span className="text-xs font-normal text-amber-600">Modified</span>
                     )}
                 </Label>
 
                 {showComparison && hasChanged && originalValue && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="shrink-0 text-xs text-muted-foreground">
                         Was: <span className="font-medium">{formatDate(originalValue)}</span>
                     </span>
                 )}
@@ -56,131 +54,131 @@ function DateFieldWithComparison({
                 id={name}
                 name={name}
                 type="date"
-                value={formik.values[name]}
+                value={formik.values[name] || ""}
                 onChange={formik.handleChange}
                 onBlur={formik.handleBlur}
-                className={cn(
-                    error && "border-red-500 focus:ring-red-500",
-                    hasChanged && "bg-white"
-                )}
+                min={min}
+                max={max ?? MAX_DATE}
+                aria-invalid={!!error}
+                className={cn(hasChanged && "bg-white")}
             />
 
             {helperText && (
                 <p className="text-xs text-muted-foreground">{helperText}</p>
             )}
 
-            {error && (
-                <p className="text-sm text-red-600 flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {error}
-                </p>
-            )}
+            {error && <FieldError>{error}</FieldError>}
         </div>
     );
 }
 
-function TenantLeaseInfo({
-    formik,
-    originalTenant,
-    showComparison,
-    changedFields,
-}) {
+function TenantLeaseInfo({ formik, originalTenant, showComparison, changedFields }) {
+    const startDate = formik.values.leaseStartDate;
+    const endDate = formik.values.leaseEndDate;
+
+    // Only compare dates when both are valid strings
+    const startValid = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate);
+    const endValid = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate);
+    const endBeforeStart =
+        startValid && endValid && new Date(endDate) < new Date(startDate);
+
     return (
         <div className="space-y-4">
             <Alert>
+                <AlertCircle className="h-4 w-4" />
                 <AlertDescription className="text-sm">
-                    <strong>Note:</strong> All dates are in English calendar format. Ensure
-                    lease dates are accurate for rent calculations.
+                    All dates are in English (AD) calendar format. Lease start and end dates
+                    directly affect rent charge calculations.
                 </AlertDescription>
             </Alert>
 
-            {/* Critical Dates */}
-            <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase">
+            {/* Critical dates */}
+            <div className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Critical Dates
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                     <DateFieldWithComparison
-                        label="Lease Start Date"
+                        label="Lease Start"
                         name="leaseStartDate"
                         formik={formik}
                         originalValue={originalTenant?.leaseStartDate}
                         showComparison={showComparison}
                         isChanged={changedFields?.leaseStartDate}
                         helperText="When the lease officially begins"
+                        required
                     />
 
                     <DateFieldWithComparison
-                        label="Lease End Date"
+                        label="Lease End"
                         name="leaseEndDate"
                         formik={formik}
                         originalValue={originalTenant?.leaseEndDate}
                         showComparison={showComparison}
                         isChanged={changedFields?.leaseEndDate}
                         helperText="When the lease officially ends"
+                        min={startDate || undefined}
+                        required
                     />
                 </div>
+
+                {endBeforeStart && (
+                    <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                            Lease end date cannot be before lease start date.
+                        </AlertDescription>
+                    </Alert>
+                )}
             </div>
 
-            {/* Agreement & Handover Dates */}
-            <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase">
-                    Agreement & Handover
+            {/* Agreement & handover dates */}
+            <div className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Agreement &amp; Handover
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                     <DateFieldWithComparison
-                        label="Agreement Signed Date"
+                        label="Agreement Signed"
                         name="dateOfAgreementSigned"
                         formik={formik}
                         originalValue={originalTenant?.dateOfAgreementSigned}
                         showComparison={showComparison}
                         isChanged={changedFields?.dateOfAgreementSigned}
-                        helperText="Date when lease was signed"
+                        helperText="Date the lease agreement was signed"
                     />
 
                     <DateFieldWithComparison
-                        label="Key Handover Date"
+                        label="Key Handover"
                         name="keyHandoverDate"
                         formik={formik}
                         originalValue={originalTenant?.keyHandoverDate}
                         showComparison={showComparison}
                         isChanged={changedFields?.keyHandoverDate}
-                        helperText="When keys were given to tenant"
+                        helperText="When keys were handed over to tenant"
                     />
 
                     <DateFieldWithComparison
-                        label="Space Handover Date"
+                        label="Space Handover"
                         name="spaceHandoverDate"
                         formik={formik}
                         originalValue={originalTenant?.spaceHandoverDate}
                         showComparison={showComparison}
                         isChanged={changedFields?.spaceHandoverDate}
-                        helperText="When space was handed over (optional)"
+                        helperText="When physical space was handed over (optional)"
                     />
 
                     <DateFieldWithComparison
-                        label="Space Returned Date"
+                        label="Space Returned"
                         name="spaceReturnedDate"
                         formik={formik}
                         originalValue={originalTenant?.spaceReturnedDate}
                         showComparison={showComparison}
                         isChanged={changedFields?.spaceReturnedDate}
-                        helperText="When tenant returned space (optional)"
+                        helperText="When tenant returned the space (optional)"
                     />
                 </div>
             </div>
-
-            {/* Date Validation Alert */}
-            {formik.values.leaseStartDate &&
-                formik.values.leaseEndDate &&
-                new Date(formik.values.leaseEndDate) < new Date(formik.values.leaseStartDate) && (
-                    <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>
-                            Lease end date cannot be before lease start date
-                        </AlertDescription>
-                    </Alert>
-                )}
         </div>
     );
 }

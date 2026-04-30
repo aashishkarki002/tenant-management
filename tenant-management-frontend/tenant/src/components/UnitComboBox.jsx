@@ -32,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Check, ChevronsUpDown, Home, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCallback } from "react";
 
 // ─── Occupancy badge ──────────────────────────────────────────────────────────
 
@@ -72,6 +73,7 @@ function OccupancyBadge({ isOccupied }) {
  *   className?: string;
  * }} props
  */
+
 export function UnitCombobox({
   options = [],
   value,
@@ -82,25 +84,36 @@ export function UnitCombobox({
   showOccupancyBadge = false,
   className,
 }) {
+  console.log("UnitCombobox props:", {
+    options,
+    value,
+    loading,
+    disabled,
+  });
   const [open, setOpen] = useState(false);
+  console.log("open:", open)
 
-  const selected = useMemo(
-    () => options.find((o) => o.value === value) ?? null,
-    [options, value],
-  );
+  const selected = useMemo(() => {
+    const found = options.find((o) => o.value === value) ?? null;
+    console.log("Selected computed:", { value, found });
+    return found;
+  }, [options, value]);
 
   // Command's built-in filter works on the `value` prop of CommandItem.
   // Since we use the unit _id as value (needed for onSelect), we override
   // the filter to match against the human-readable label + metadata instead.
-  const commandFilter = (itemValue, search) => {
-    const opt = options.find((o) => o.value === itemValue);
-    if (!opt) return 0;
-    const haystack = [opt.label, opt.blockName, opt.floor]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(search.toLowerCase()) ? 1 : 0;
-  };
+  const commandFilter = useCallback(
+    (itemValue, search) => {
+      const opt = options.find((o) => o.value.toLowerCase() === itemValue.toLowerCase());
+      if (!opt) return 0;
+      const haystack = [opt.label, opt.blockName, opt.floor]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(search.toLowerCase()) ? 1 : 0;
+    },
+    [options], // ← re-create when options change
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -112,12 +125,14 @@ export function UnitCombobox({
           role="combobox"
           aria-expanded={open}
           disabled={disabled || loading}
+          onClick={() => console.log("BUTTON CLICKED")}
           className={cn(
             "w-full justify-between font-normal h-9 text-sm px-3",
             "border-border bg-surface hover:bg-surface-raised",
             "transition-colors duration-150",
             !selected && "text-muted-foreground",
             className,
+
           )}
         >
           <span className="flex items-center gap-2 min-w-0">
@@ -136,78 +151,29 @@ export function UnitCombobox({
 
       {/* ── Dropdown ── */}
       <PopoverContent
-        className="p-0"
-        // Width matches the trigger button exactly
-        style={{ width: "var(--radix-popover-trigger-width)" }}
+        className="z-[9999] w-[300px] p-0 bg-white border shadow-lg"
+        side="bottom"
         align="start"
-        // Keep focus inside the Command for keyboard navigation
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        sideOffset={6}
       >
         <Command filter={commandFilter}>
-          <CommandInput
-            placeholder="Search by name, floor, building…"
-            className="h-9 text-sm"
-            // autoFocus so user can type immediately after opening
-            autoFocus
-          />
-          <CommandList>
-            <CommandEmpty>
-              <div className="flex flex-col items-center py-6 gap-1.5">
-                <Home className="w-5 h-5 opacity-25" />
-                <p className="text-sm text-muted-foreground">No units found.</p>
-              </div>
-            </CommandEmpty>
+          <CommandInput placeholder="Search..." />
+          <CommandList className="max-h-60 overflow-y-auto">
+            <CommandEmpty>No results</CommandEmpty>
             <CommandGroup>
-              {options.map((opt) => {
-                const isSelected = value === opt.value;
-                return (
-                  <CommandItem
-                    key={opt.value}
-                    value={opt.value}
-                    onSelect={(val) => {
-                      onChange(val);
-                      setOpen(false);
-                    }}
-                    className="flex items-center gap-2.5 py-2 px-2 cursor-pointer"
-                  >
-                    {/* Checkmark — holds space even when unchecked */}
-                    <Check
-                      className={cn(
-                        "w-4 h-4 shrink-0 transition-opacity",
-                        isSelected ? "opacity-100" : "opacity-0",
-                      )}
-                      style={{ color: "var(--color-accent)" }}
-                    />
-
-                    {/* Label + sub-label */}
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span
-                        className="text-sm font-medium leading-tight truncate"
-                        style={{
-                          color: isSelected
-                            ? "var(--color-accent)"
-                            : "var(--color-text-strong)",
-                        }}
-                      >
-                        {opt.label}
-                      </span>
-                      {(opt.blockName || opt.floor) && (
-                        <span
-                          className="text-[11px] leading-tight truncate mt-0.5"
-                          style={{ color: "var(--color-text-weak)" }}
-                        >
-                          {[opt.blockName, opt.floor].filter(Boolean).join(" · ")}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Optional occupancy badge */}
-                    {showOccupancyBadge && (
-                      <OccupancyBadge isOccupied={opt.isOccupied} />
-                    )}
-                  </CommandItem>
-                );
-              })}
+              {options.map((opt) => (
+                <CommandItem
+                  key={opt.value}
+                  value={opt.value}
+                  onSelect={(val) => {
+                    console.log("SELECTED:", val);
+                    onChange(val);
+                    setOpen(false);
+                  }}
+                >
+                  {opt.label}
+                </CommandItem>
+              ))}
             </CommandGroup>
           </CommandList>
         </Command>

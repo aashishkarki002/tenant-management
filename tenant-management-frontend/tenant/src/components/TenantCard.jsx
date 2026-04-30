@@ -78,6 +78,11 @@ export const PAYMENT_BADGE = {
     className: "bg-green-50 text-green-700 border-green-200",
     style: { background: "var(--color-success-bg)", color: "var(--color-success)", borderColor: "var(--color-success-border)" },
   },
+  partial: {
+    label: "Partial",
+    className: "bg-blue-50 text-blue-700 border-blue-200",
+    style: { background: "var(--color-info-bg)", color: "var(--color-info)", borderColor: "var(--color-info-border, var(--color-info))" },
+  },
   due_soon: {
     label: "Due Soon",
     className: "bg-amber-50 text-amber-700 border-amber-200",

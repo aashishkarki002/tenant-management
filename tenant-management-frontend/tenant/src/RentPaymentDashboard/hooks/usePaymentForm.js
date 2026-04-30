@@ -8,7 +8,7 @@ import {
   paymentMethodRequiresBankAccount,
 } from "@/constants/paymentMethods.js";
 
-export const usePaymentForm = ({ rents, cams, onSuccess }) => {
+export const usePaymentForm = ({ cams, onSuccess }) => {
   const [allocationMode, setAllocationMode] = useState("auto");
   const [rentAllocation, setRentAllocation] = useState(0);
   const [camAllocation, setCamAllocation] = useState(0);

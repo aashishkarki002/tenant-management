@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { AlertTriangle, CalendarClock, Wrench, Zap } from "lucide-react";
+import { formatRupeesCompact } from "@/lib/formatters";
 
 // ─── Reduced-motion preference ────────────────────────────────────────────────
 function usePrefersReducedMotion() {
     const [reduced, setReduced] = useState(
-        () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        () =>
+            typeof window !== "undefined" &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
     );
     useEffect(() => {
         const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -20,6 +24,7 @@ const KPI_STYLE = [
     "@keyframes kpi-pulse{0%,100%{opacity:1}50%{opacity:.55}}",
     "@keyframes kpi-tick-in{0%{opacity:0;transform:scaleY(0.3) scaleX(0.7)}60%{opacity:1;transform:scaleY(1.12) scaleX(1)}100%{opacity:1;transform:scaleY(1) scaleX(1)}}",
 ].join("");
+
 function KpiStyleOnce() {
     useEffect(() => {
         if (document.getElementById("kpi-strip-style")) return;
@@ -31,40 +36,17 @@ function KpiStyleOnce() {
     return null;
 }
 
-// ─── Formatters ────────────────────────────────────────────────────────────────
-
-function fmt(val) {
-    if (val == null || val === "") return "—";
-    const n = Number(val);
-    if (Number.isNaN(n)) return String(val);
-    if (n >= 1_000_000) return `Rs. ${(n / 1_000_000).toFixed(2)}M`;
-    if (n >= 100_000)   return `Rs. ${(n / 100_000).toFixed(1)}L`;
-    if (n >= 1_000)     return `Rs. ${(n / 1_000).toFixed(0)}k`;
-    return `Rs. ${n.toLocaleString()}`;
-}
-
 // ─── Trend pill ────────────────────────────────────────────────────────────────
+const TREND_CLS = {
+    up: "text-[color:var(--color-success)] bg-[color:var(--color-success-bg)] border border-[color:var(--color-success-border)]",
+    down: "text-[color:var(--color-danger)] bg-[color:var(--color-danger-bg)] border border-[color:var(--color-danger-border)]",
+    flat: "text-[color:var(--color-text-sub)] bg-[color:var(--color-surface-raised)] border border-[color:var(--color-border)]",
+};
 
 function TrendPill({ dir = "flat", children }) {
-    const styles = {
-        up:   { color: "var(--color-success)",  background: "var(--color-success-bg)",  border: "1px solid var(--color-success-border)" },
-        down: { color: "var(--color-danger)",   background: "var(--color-danger-bg)",   border: "1px solid var(--color-danger-border)"  },
-        flat: { color: "var(--color-text-sub)", background: "var(--color-surface-raised)", border: "1px solid var(--color-border)"     },
-    };
     return (
         <span
-            style={{
-                ...styles[dir],
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 3,
-                padding: "3px 7px",
-                borderRadius: 999,
-                fontSize: 10,
-                fontWeight: 600,
-                lineHeight: 1,
-                whiteSpace: "nowrap",
-            }}
+            className={`inline-flex items-center gap-[3px] px-[7px] py-[3px] rounded-full text-[10px] font-semibold leading-none whitespace-nowrap ${TREND_CLS[dir]}`}
         >
             {dir === "up" && (
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
@@ -81,8 +63,7 @@ function TrendPill({ dir = "flat", children }) {
     );
 }
 
-// ─── Animated bar base ─────────────────────────────────────────────────────────
-
+// ─── Animated bar pct hook ─────────────────────────────────────────────────────
 function useAnimatedPct(target) {
     const reduced = usePrefersReducedMotion();
     const [pct, setPct] = useState(0);
@@ -98,219 +79,160 @@ function useAnimatedPct(target) {
     return pct;
 }
 
-// ─── Segmented bar (Collected card) ───────────────────────────────────────────
-
-function SegmentedBar({ segments }) {
-    // segments: [{ pct, color }]
-    const total = Math.min(100, segments.reduce((s, x) => s + x.pct, 0));
-    const [display, setDisplay] = useState(false);
-    const raf = useRef(null);
-    useEffect(() => {
-        setDisplay(false);
-        raf.current = requestAnimationFrame(() => {
-            raf.current = requestAnimationFrame(() => setDisplay(true));
-        });
-        return () => cancelAnimationFrame(raf.current);
-    }, [total]);
-
+// ─── Simple animated bar ───────────────────────────────────────────────────────
+function SimpleBar({ pct, colorVar }) {
+    const display = useAnimatedPct(Math.min(100, pct));
     return (
-        <div style={{
-            height: 6, borderRadius: 999, overflow: "hidden", display: "flex",
-            background: "var(--color-muted-fill)",
-        }}>
-            {segments.map((seg, i) => (
-                <span
-                    key={i}
-                    style={{
-                        display: "block",
-                        height: "100%",
-                        width: display ? `${seg.pct}%` : "0%",
-                        background: seg.color,
-                        transition: `width 750ms cubic-bezier(0.22, 1, 0.36, 1) ${i * 60}ms`,
-                    }}
-                />
-            ))}
+        <div className="h-[6px] rounded-full overflow-hidden bg-[color:var(--color-muted-fill)]">
+            <span
+                className="block h-full rounded-full transition-[width] duration-[750ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                style={{ width: `${display}%`, background: colorVar ?? "var(--color-accent)" }}
+            />
         </div>
     );
 }
 
-function SegLegend({ items }) {
-    return (
-        <div style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "4px 10px",
-            fontSize: 10.5,
-            fontWeight: 500,
-            color: "var(--color-text-sub)",
-            lineHeight: 1.2,
-        }}>
-            {items.map((item, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: 0 }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: 999, background: item.color, flexShrink: 0 }} />
-                        <span style={{ color: "var(--color-text-body)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {item.label}
-                        </span>
-                    </span>
-                    <span style={{ fontFamily: "var(--font-mono, monospace)", fontVariantNumeric: "tabular-nums", fontWeight: 600, color: "var(--color-text-strong)", whiteSpace: "nowrap", marginLeft: 6 }}>
-                        {item.value}
-                    </span>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-// ─── Aging ladder (Outstanding card) ──────────────────────────────────────────
-
-function AgingLadder({ buckets }) {
-    // buckets: [{ label, color, count, amount, flex }]
-    return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
-            <div style={{ display: "flex", gap: 2, borderRadius: 6, overflow: "hidden", height: 26 }}>
-                {buckets.map((b, i) => (
-                    <div
-                        key={i}
-                        style={{
-                            flex: b.flex ?? 1,
-                            position: "relative",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "flex-end",
-                            padding: "0 6px",
-                            background: b.color,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            fontFamily: "var(--font-mono, monospace)",
-                            fontVariantNumeric: "tabular-nums",
-                            color: "#fff",
-                        }}
-                    >
-                        {b.count != null && (
-                            <span style={{
-                                position: "absolute",
-                                top: -2,
-                                left: 4,
-                                fontSize: 9,
-                                fontWeight: 600,
-                                fontFamily: "var(--font-sans, sans-serif)",
-                                background: "var(--color-surface)",
-                                color: "var(--color-text-strong)",
-                                padding: "2px 5px",
-                                borderRadius: 999,
-                                border: "1px solid var(--color-border)",
-                            }}>
-                                {b.count}
-                            </span>
-                        )}
-                        {b.amount}
-                    </div>
-                ))}
-            </div>
-            <div style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${buckets.length}, 1fr)`,
-                fontSize: 9.5,
-                fontWeight: 500,
-                color: "var(--color-text-sub)",
-                letterSpacing: "0.04em",
-            }}>
-                {buckets.map((b, i) => (
-                    <span key={i} style={{
-                        textAlign: i === 0 ? "left" : "right",
-                        paddingRight: i === 0 ? 0 : 6,
-                        paddingLeft: i === 0 ? 2 : 0,
-                    }}>
-                        {b.label}
-                    </span>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-// ─── Occupancy bar (Occupancy card) ───────────────────────────────────────────
-
+// ─── Occupancy bar ─────────────────────────────────────────────────────────────
 function OccBar({ pct }) {
     const display = useAnimatedPct(Math.min(100, pct));
     return (
-        <div style={{ height: 6, background: "var(--color-muted-fill)", borderRadius: 999, overflow: "hidden" }}>
-            <span style={{
-                display: "block",
-                height: "100%",
-                width: `${display}%`,
-                background: "var(--color-accent)",
-                borderRadius: 999,
-                transition: "width 750ms cubic-bezier(0.22, 1, 0.36, 1)",
-            }} />
+        <div className="h-[6px] rounded-full overflow-hidden bg-[color:var(--color-muted-fill)]">
+            <span
+                className="block h-full rounded-full transition-[width] duration-[750ms] ease-[cubic-bezier(0.22,1,0.36,1)] bg-[color:var(--color-accent)]"
+                style={{ width: `${display}%` }}
+            />
         </div>
     );
 }
 
-// ─── Fulfillment Ring (Collected card) ────────────────────────────────────────
+// ─── Tenant status row ─────────────────────────────────────────────────────────
+function TenantStatusRow({ label, count, total, colorVar, sub }) {
+    const pct = total > 0 ? (count / total) * 100 : 0;
+    const display = useAnimatedPct(pct);
+    if (count <= 0) return null;
+    return (
+        <div className="flex flex-col gap-[4px]">
+            <div className="flex items-center justify-between text-[10.5px]">
+                <span className="flex items-center gap-[5px] font-medium text-[color:var(--color-text-sub)]">
+                    <span className="w-[7px] h-[7px] rounded-full shrink-0" style={{ background: colorVar }} />
+                    {label}
+                </span>
+                <span className="font-mono font-semibold tabular-nums text-[color:var(--color-text-strong)]">
+                    {count}
+                    {sub && (
+                        <span className="font-sans font-normal text-[9.5px] text-[color:var(--color-text-sub)] ml-[5px]">
+                            {sub}
+                        </span>
+                    )}
+                </span>
+            </div>
+            <div className="h-[5px] rounded-full overflow-hidden bg-[color:var(--color-muted-fill)]">
+                <span
+                    className="block h-full rounded-full transition-[width] duration-[750ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                    style={{ width: `${display}%`, background: colorVar }}
+                />
+            </div>
+        </div>
+    );
+}
 
+// ─── Tenant status viz ─────────────────────────────────────────────────────────
+function TenantStatusViz({ activeTenants, tenantsPaid, partiallyPaid, trulyOverdueCount, daysUntilDue, oldestOverdueDays, pendingCheques }) {
+    const pending = Math.max(0, activeTenants - tenantsPaid - partiallyPaid - trulyOverdueCount);
+    const dueSub = daysUntilDue != null && daysUntilDue > 0 ? `due in ${Math.round(daysUntilDue)}d` : null;
+    const overdueSub = oldestOverdueDays > 0 ? `${oldestOverdueDays}d longest` : null;
+    return (
+        <div className="flex flex-col gap-[8px]">
+            <TenantStatusRow
+                label="Paid"
+                count={tenantsPaid}
+                total={activeTenants}
+                colorVar="var(--color-success)"
+            />
+            <TenantStatusRow
+                label="Partial"
+                count={partiallyPaid}
+                total={activeTenants}
+                colorVar="var(--color-warning)"
+            />
+            <TenantStatusRow
+                label="Pending"
+                count={pending}
+                total={activeTenants}
+                colorVar="var(--color-accent)"
+                sub={dueSub}
+            />
+            <TenantStatusRow
+                label="Overdue"
+                count={trulyOverdueCount}
+                total={activeTenants}
+                colorVar="var(--color-danger)"
+                sub={overdueSub}
+            />
+            {pendingCheques > 0 && (
+                <div className="flex items-center gap-[5px] text-[9.5px] font-medium text-[color:var(--color-text-sub)] pt-[3px] border-t border-[color:var(--color-border)]">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                        <rect x="2" y="5" width="20" height="14" rx="2" />
+                        <path d="M2 10h20" />
+                    </svg>
+                    {pendingCheques} cheque{pendingCheques !== 1 ? "s" : ""} pending clearance
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Fulfillment Ring ──────────────────────────────────────────────────────────
 const RING_R = 34;
-const RING_C = 2 * Math.PI * RING_R; // ≈ 213.63
+const RING_C = 2 * Math.PI * RING_R;
+
+const ARC = {
+    mRent: "var(--color-accent)",
+    mCam: "var(--color-info, #38bdf8)",
+    qRent: "var(--color-warning)",
+    qCam: "var(--color-success)",
+};
+
+function RingGroupHeader({ label }) {
+    return (
+        <div className="text-[9px] font-bold tracking-[0.1em] uppercase text-[color:var(--color-text-sub)] pt-[3px]">
+            {label}
+        </div>
+    );
+}
 
 function RingRow({ swColor, label, value, weak }) {
     return (
-        <div style={{
-            display: "grid", gridTemplateColumns: "auto 1fr auto",
-            alignItems: "center", gap: 6,
-            fontSize: 11, fontWeight: 500, fontFamily: "var(--font-sans, sans-serif)",
-            lineHeight: 1.2,
-        }}>
-            <span style={{ width: 7, height: 7, borderRadius: 2, background: swColor, flexShrink: 0 }} />
-            <span style={{ color: "var(--color-text-sub)" }}>{label}</span>
-            <span style={{
-                fontFamily: "var(--font-mono, monospace)", fontVariantNumeric: "tabular-nums",
-                color: weak ? "var(--color-text-sub)" : "var(--color-text-strong)",
-                fontWeight: 600,
-            }}>
+        <div className="grid items-center gap-[6px] text-[11px] font-medium leading-[1.2]" style={{ gridTemplateColumns: "auto 1fr auto" }}>
+            <span className="w-[7px] h-[7px] rounded-[2px] shrink-0" style={{ background: swColor }} />
+            <span className="text-[color:var(--color-text-sub)]">{label}</span>
+            <span
+                className={`font-mono tabular-nums font-semibold ${weak ? "text-[color:var(--color-text-sub)]" : "text-[color:var(--color-text-strong)]"}`}
+            >
                 {value}
             </span>
         </div>
     );
 }
 
-// Arc colors: monthly=blue family, quarterly=warm family
-const ARC = {
-    mRent: "var(--color-accent)",
-    mCam:  "var(--color-info, #38bdf8)",
-    qRent: "var(--color-warning)",
-    qCam:  "var(--color-success)",
-};
-
-function RingGroupHeader({ label }) {
-    return (
-        <div style={{
-            fontSize: 9, fontWeight: 700, letterSpacing: "0.1em",
-            textTransform: "uppercase", color: "var(--color-text-sub)",
-            paddingTop: 3,
-        }}>
-            {label}
-        </div>
-    );
-}
-
-function FulfillmentRing({ totalBilled, monthlyRent, monthlyCam, quarterlyRent, quarterlyCam, totalReceived, collectionRate }) {
+function FulfillmentRing({
+    totalBilled, monthlyRent, monthlyCam, quarterlyRent, quarterlyCam,
+    totalReceived, collectionRate,
+}) {
     const reduced = usePrefersReducedMotion();
     const safeTotal = totalBilled > 0 ? totalBilled : 1;
     const toArc = (v) => Math.max(0, Math.min(RING_C, (v / safeTotal) * RING_C));
 
     const mRentArc = toArc(monthlyRent);
-    const mCamArc  = toArc(monthlyCam);
+    const mCamArc = toArc(monthlyCam);
     const qRentArc = toArc(quarterlyRent);
-    const qCamArc  = toArc(quarterlyCam);
+    const qCamArc = toArc(quarterlyCam);
 
-    // Cumulative start offsets (negative = advance clockwise)
     const off0 = 0;
     const off1 = -(mRentArc);
     const off2 = -(mRentArc + mCamArc);
     const off3 = -(mRentArc + mCamArc + qRentArc);
 
-    // Draw-in animation: animate stroke-dasharray from "0 C" → "arc C"
     const [drawn, setDrawn] = useState(false);
     const drawRaf = useRef(null);
     useEffect(() => {
@@ -322,302 +244,97 @@ function FulfillmentRing({ totalBilled, monthlyRent, monthlyCam, quarterlyRent, 
         return () => cancelAnimationFrame(drawRaf.current);
     }, [mRentArc, mCamArc, qRentArc, qCamArc, reduced]);
 
-    const da  = (arc) => `${drawn ? arc : 0} ${RING_C}`;
-    const tr  = (delay) => reduced ? "none" : `stroke-dasharray 750ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms`;
+    const da = (arc) => `${drawn ? arc : 0} ${RING_C}`;
+    const tr = (delay) =>
+        reduced ? "none" : `stroke-dasharray 750ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms`;
 
     const remaining = Math.max(0, totalBilled - totalReceived);
     const hasQuarterly = quarterlyRent > 0 || quarterlyCam > 0;
 
     return (
-        <div style={{ display: "grid", gridTemplateColumns: "86px 1fr", gap: 12, alignItems: "center" }}>
-            {/* Donut ring — 4 arcs draw in clockwise, staggered */}
-            <div style={{ position: "relative", width: 86, height: 86, flexShrink: 0 }}>
+        <div className="grid items-center gap-3" style={{ gridTemplateColumns: "86px 1fr" }}>
+            {/* Donut */}
+            <div className="relative w-[86px] h-[86px] shrink-0">
                 <svg width="86" height="86" viewBox="0 0 80 80" style={{ transform: "rotate(-90deg)" }}>
-                    <circle cx="40" cy="40" r={RING_R}
-                        stroke="var(--color-muted-fill)" strokeWidth={10} fill="none" />
+                    <circle cx="40" cy="40" r={RING_R} stroke="var(--color-muted-fill)" strokeWidth={10} fill="none" />
                     {mRentArc > 0 && (
-                        <circle cx="40" cy="40" r={RING_R}
-                            stroke={ARC.mRent} strokeWidth={10} fill="none"
-                            strokeLinecap="butt"
-                            strokeDasharray={da(mRentArc)}
-                            strokeDashoffset={`${off0}`}
+                        <circle cx="40" cy="40" r={RING_R} stroke={ARC.mRent} strokeWidth={10} fill="none"
+                            strokeLinecap="butt" strokeDasharray={da(mRentArc)} strokeDashoffset={`${off0}`}
                             style={{ transition: tr(0) }} />
                     )}
                     {mCamArc > 0 && (
-                        <circle cx="40" cy="40" r={RING_R}
-                            stroke={ARC.mCam} strokeWidth={10} fill="none"
-                            strokeLinecap="butt"
-                            strokeDasharray={da(mCamArc)}
-                            strokeDashoffset={`${off1}`}
+                        <circle cx="40" cy="40" r={RING_R} stroke={ARC.mCam} strokeWidth={10} fill="none"
+                            strokeLinecap="butt" strokeDasharray={da(mCamArc)} strokeDashoffset={`${off1}`}
                             style={{ transition: tr(80) }} />
                     )}
                     {qRentArc > 0 && (
-                        <circle cx="40" cy="40" r={RING_R}
-                            stroke={ARC.qRent} strokeWidth={10} fill="none"
-                            strokeLinecap="butt"
-                            strokeDasharray={da(qRentArc)}
-                            strokeDashoffset={`${off2}`}
+                        <circle cx="40" cy="40" r={RING_R} stroke={ARC.qRent} strokeWidth={10} fill="none"
+                            strokeLinecap="butt" strokeDasharray={da(qRentArc)} strokeDashoffset={`${off2}`}
                             style={{ transition: tr(160) }} />
                     )}
                     {qCamArc > 0 && (
-                        <circle cx="40" cy="40" r={RING_R}
-                            stroke={ARC.qCam} strokeWidth={10} fill="none"
-                            strokeLinecap="butt"
-                            strokeDasharray={da(qCamArc)}
-                            strokeDashoffset={`${off3}`}
+                        <circle cx="40" cy="40" r={RING_R} stroke={ARC.qCam} strokeWidth={10} fill="none"
+                            strokeLinecap="butt" strokeDasharray={da(qCamArc)} strokeDashoffset={`${off3}`}
                             style={{ transition: tr(240) }} />
                     )}
                 </svg>
-                <div style={{
-                    position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-                    alignItems: "center", justifyContent: "center", textAlign: "center",
-                    pointerEvents: "none",
-                }}>
-                    <span style={{
-                        fontSize: 19, fontWeight: 700, lineHeight: 1,
-                        fontFamily: "var(--font-mono, monospace)",
-                        fontVariantNumeric: "tabular-nums",
-                        color: "var(--color-text-strong)",
-                    }}>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                    <span className="text-[19px] font-bold leading-none font-mono tabular-nums text-[color:var(--color-text-strong)]">
                         {collectionRate}%
                     </span>
-                    <span style={{
-                        fontSize: 8.5, fontWeight: 600, letterSpacing: "0.08em",
-                        textTransform: "uppercase", color: "var(--color-text-sub)", marginTop: 3,
-                    }}>
-                        of {fmt(totalBilled)}
+                    <span className="text-[8.5px] font-semibold tracking-[0.08em] uppercase text-[color:var(--color-text-sub)] mt-[3px]">
+                        of {formatRupeesCompact(totalBilled)}
                     </span>
                 </div>
             </div>
 
-            {/* Grouped legend: Monthly → Rent + CAM, Quarterly → Rent + CAM */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+            {/* Legend */}
+            <div className="flex flex-col gap-[3px] min-w-0">
                 <RingGroupHeader label="Monthly" />
-                {monthlyRent > 0 && <RingRow swColor={ARC.mRent} label="Rent" value={fmt(monthlyRent)} />}
-                {monthlyCam  > 0 && <RingRow swColor={ARC.mCam}  label="CAM"  value={fmt(monthlyCam)}  />}
-
+                {monthlyRent > 0 && <RingRow swColor={ARC.mRent} label="Rent" value={formatRupeesCompact(monthlyRent)} />}
+                {monthlyCam > 0 && <RingRow swColor={ARC.mCam} label="CAM" value={formatRupeesCompact(monthlyCam)} />}
                 {hasQuarterly && (
                     <>
                         <RingGroupHeader label="Quarterly" />
-                        {quarterlyRent > 0 && <RingRow swColor={ARC.qRent} label="Rent" value={fmt(quarterlyRent)} />}
-                        {quarterlyCam  > 0 && <RingRow swColor={ARC.qCam}  label="CAM"  value={fmt(quarterlyCam)}  />}
+                        {quarterlyRent > 0 && <RingRow swColor={ARC.qRent} label="Rent" value={formatRupeesCompact(quarterlyRent)} />}
+                        {quarterlyCam > 0 && <RingRow swColor={ARC.qCam} label="CAM" value={formatRupeesCompact(quarterlyCam)} />}
                     </>
                 )}
-
                 {remaining > 0 && (
-                    <RingRow swColor="var(--color-muted-fill)" label="Remaining" value={fmt(remaining)} weak />
+                    <RingRow swColor="var(--color-muted-fill)" label="Remaining" value={formatRupeesCompact(remaining)} weak />
                 )}
             </div>
         </div>
     );
 }
 
-// ─── Cycle Strip (Pending card) ───────────────────────────────────────────────
-
-function CycleLane({ title, subtitle, cells, type, paidCount, nowIdx, closingLabel, sweepDelay = 0 }) {
-    const reduced = usePrefersReducedMotion();
-    const [animPaid, setAnimPaid] = useState(reduced ? paidCount : 0);
-    // tick phases: "hidden" → "entering" (kpi-tick-in, 300ms) → "pulsing" (kpi-pulse ∞)
-    const [tickPhase, setTickPhase] = useState(reduced ? "pulsing" : "hidden");
-    const raf = useRef(null);
-    const timers = useRef([]);
-
-    useEffect(() => {
-        timers.current.forEach(clearTimeout);
-        cancelAnimationFrame(raf.current);
-
-        if (reduced) {
-            setAnimPaid(paidCount);
-            setTickPhase("pulsing");
-            return;
-        }
-
-        setAnimPaid(0);
-        setTickPhase("hidden");
-
-        const SWEEP_MS = 520;
-        const startDelay = sweepDelay;
-
-        const t0 = setTimeout(() => {
-            const t = performance.now();
-            function frame(now) {
-                const progress = Math.min(1, (now - t) / SWEEP_MS);
-                // ease-out quad: decelerates as it approaches nowIdx
-                const eased = 1 - (1 - progress) * (1 - progress);
-                setAnimPaid(Math.round(eased * paidCount));
-                if (progress < 1) {
-                    raf.current = requestAnimationFrame(frame);
-                } else {
-                    // Sweep done — pop the tick in
-                    setTickPhase("entering");
-                    const t1 = setTimeout(() => setTickPhase("pulsing"), 320);
-                    timers.current.push(t1);
-                }
-            }
-            raf.current = requestAnimationFrame(frame);
-        }, startDelay);
-        timers.current = [t0];
-
-        return () => {
-            timers.current.forEach(clearTimeout);
-            cancelAnimationFrame(raf.current);
-        };
-    }, [paidCount, nowIdx, reduced, sweepDelay]);
-
+// ─── Attention chip ────────────────────────────────────────────────────────────
+function AttentionChip({ count, label, colorVar, Icon }) {
     return (
-        <div style={{ display: "grid", gridTemplateColumns: "68px 1fr auto", alignItems: "center", gap: 8 }}>
-            {/* Lane label */}
-            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", display: "flex", flexDirection: "column", gap: 2 }}>
-                <b style={{ color: "var(--color-text-strong)", fontWeight: 700 }}>{title}</b>
-                <span style={{ fontSize: 9.5, fontWeight: 500, color: "var(--color-text-sub)", letterSpacing: "0.04em", textTransform: "none" }}>
-                    {subtitle}
-                </span>
-            </div>
-
-            {/* Cell track */}
-            <div style={{
-                display: "flex", gap: 2, height: 18, padding: 2, borderRadius: 5,
-                background: "var(--color-bg)", border: "1px solid var(--color-border)", overflow: "hidden",
-            }}>
-                {Array.from({ length: cells }, (_, i) => {
-                    const isPaid = i < animPaid;
-                    const isNow = tickPhase !== "hidden" && i === nowIdx;
-                    const tickAnim =
-                        tickPhase === "entering" ? "kpi-tick-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both"
-                        : tickPhase === "pulsing"  ? "kpi-pulse 1.6s ease-in-out infinite"
-                        : "none";
-                    return (
-                        <div
-                            key={i}
-                            style={{
-                                flex: 1, borderRadius: 2, minWidth: 0, position: "relative",
-                                background: isPaid
-                                    ? (type === "q" ? "var(--color-warning)" : "var(--color-accent)")
-                                    : "var(--color-muted-fill)",
-                                boxShadow: isNow ? "0 0 0 1.5px var(--color-text-strong)" : "none",
-                                animation: isNow ? tickAnim : "none",
-                                zIndex: isNow ? 1 : 0,
-                            }}
-                        />
-                    );
-                })}
-            </div>
-
-            {/* Closing label */}
-            <div style={{ fontSize: 10, fontWeight: 500, color: "var(--color-text-sub)", textAlign: "right", minWidth: 48, lineHeight: 1.2 }}>
-                {closingLabel && (
-                    <>
-                        <b style={{ display: "block", fontSize: 12, fontWeight: 700, fontFamily: "var(--font-mono, monospace)", color: "var(--color-text-strong)", fontVariantNumeric: "tabular-nums" }}>
-                            {closingLabel}
-                        </b>
-                        to close
-                    </>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function CycleStrip({ collectionRate, daysUntilDue, tenantsPaid, activeTenants, pendingQuarterly }) {
-    const MONTHLY = 30;
-    const QUARTERLY = 12;
-
-    // Estimate current day in the monthly cycle
-    const nowIdx = daysUntilDue != null && daysUntilDue >= 0
-        ? Math.max(0, Math.min(MONTHLY - 1, MONTHLY - Math.round(daysUntilDue) - 1))
-        : Math.round((collectionRate / 100) * (MONTHLY - 1));
-
-    const tenantRate = activeTenants > 0 ? tenantsPaid / activeTenants : collectionRate / 100;
-    const mPaid = Math.round(tenantRate * (nowIdx + 1));
-
-    // Quarterly: 12-week cycle, progresses at 1/3 pace of monthly
-    const qNowIdx = Math.min(QUARTERLY - 1, Math.round(nowIdx / (MONTHLY / QUARTERLY)));
-    const qPaid   = pendingQuarterly > 0 ? Math.max(0, qNowIdx - 1) : qNowIdx;
-
-    const mClosedPct = Math.round(tenantRate * 100);
-
-    return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            <CycleLane
-                title="Monthly"
-                subtitle="30-day cycle"
-                cells={MONTHLY}
-                type="m"
-                paidCount={mPaid}
-                nowIdx={nowIdx}
-                sweepDelay={0}
-                closingLabel={daysUntilDue != null && daysUntilDue > 0 ? `${Math.round(daysUntilDue)}d` : null}
-            />
-            <CycleLane
-                title="Quarterly"
-                subtitle="12-week cycle"
-                cells={QUARTERLY}
-                type="q"
-                paidCount={qPaid}
-                nowIdx={qNowIdx}
-                sweepDelay={160}
-                closingLabel={daysUntilDue != null && daysUntilDue > 0 ? `${Math.round(daysUntilDue * 3)}d` : null}
-            />
-            <div style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                paddingTop: 6, borderTop: "1px dashed var(--color-border)",
-                fontSize: 10.5, fontWeight: 500, color: "var(--color-text-sub)",
-            }}>
-                <span>
-                    Monthly <b style={{ fontFamily: "var(--font-mono, monospace)", fontVariantNumeric: "tabular-nums", color: "var(--color-text-strong)" }}>
-                        {mClosedPct}%
-                    </b> closed
-                </span>
-                <span style={{ color: "var(--color-text-weak)" }}>▲ = today</span>
-            </div>
-        </div>
-    );
-}
-
-// ─── Simple animated bar ───────────────────────────────────────────────────────
-
-function SimpleBar({ pct, colorVar }) {
-    const display = useAnimatedPct(Math.min(100, pct));
-    return (
-        <div style={{ height: 6, background: "var(--color-muted-fill)", borderRadius: 999, overflow: "hidden" }}>
-            <span style={{
-                display: "block",
-                height: "100%",
-                width: `${display}%`,
-                background: colorVar ?? "var(--color-accent)",
-                borderRadius: 999,
-                transition: "width 750ms cubic-bezier(0.22, 1, 0.36, 1)",
-            }} />
-        </div>
+        <span
+            className="inline-flex items-center gap-[3px] pl-[5px] pr-[7px] py-[3px] rounded-full text-[10px] font-semibold whitespace-nowrap"
+            style={{
+                background: `color-mix(in srgb, ${colorVar} 10%, transparent)`,
+                border: `1px solid color-mix(in srgb, ${colorVar} 25%, transparent)`,
+                color: colorVar,
+            }}
+        >
+            <Icon style={{ width: 9, height: 9 }} />
+            {count} {label}
+        </span>
     );
 }
 
 // ─── KPI card shell ────────────────────────────────────────────────────────────
-
 function KpiCard({ to, loading, label, trend, value, valueSuffix, children, borderColor }) {
     const inner = (
-        <div style={{
-            background: "var(--color-surface-raised)",
-            border: `1px solid ${borderColor ?? "var(--color-border)"}`,
-            borderRadius: 14,
-            padding: "12px 14px 11px",
-            boxShadow: "var(--shadow-card)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            minWidth: 0,
-            height: "100%",
-            boxSizing: "border-box",
-        }}>
+        <div
+            className="bg-[color:var(--color-surface-raised)] rounded-[14px] p-[12px_14px_11px] shadow-[var(--shadow-card)] flex flex-col gap-2 min-w-0 h-full box-border"
+            style={{ border: `1px solid ${borderColor ?? "var(--color-border)"}` }}
+        >
             {/* Top row */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <span style={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    color: "var(--color-text-sub)",
-                }}>
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--color-text-sub)]">
                     {label}
                 </span>
                 {trend}
@@ -625,39 +342,19 @@ function KpiCard({ to, loading, label, trend, value, valueSuffix, children, bord
 
             {/* Hero value */}
             {loading ? (
-                <div style={{
-                    height: 24,
-                    width: 120,
-                    borderRadius: 6,
-                    background: "var(--color-muted-fill)",
-                    animation: "pulse 1.5s ease-in-out infinite",
-                }} />
+                <div className="h-6 w-[120px] rounded-md bg-[color:var(--color-muted-fill)] animate-pulse" />
             ) : (
-                <span style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    lineHeight: 1.05,
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontVariantNumeric: "tabular-nums",
-                    letterSpacing: "-0.01em",
-                    color: "var(--color-text-strong)",
-                }}>
+                <span className="text-[22px] font-bold leading-[1.05] font-mono tabular-nums tracking-[-0.01em] text-[color:var(--color-text-strong)]">
                     {value}
                     {valueSuffix && (
-                        <small style={{
-                            fontSize: 11,
-                            fontWeight: 500,
-                            fontFamily: "var(--font-sans, sans-serif)",
-                            color: "var(--color-text-weak)",
-                            marginLeft: 4,
-                        }}>
+                        <small className="text-[11px] font-medium font-sans text-[color:var(--color-text-weak)] ml-1">
                             {valueSuffix}
                         </small>
                     )}
                 </span>
             )}
 
-            {/* Slot for chart / bar / legend */}
+            {/* Slot */}
             {!loading && children}
         </div>
     );
@@ -666,8 +363,7 @@ function KpiCard({ to, loading, label, trend, value, valueSuffix, children, bord
     return (
         <Link
             to={to}
-            style={{ textDecoration: "none", display: "block", height: "100%" }}
-            className="transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-[14px]"
+            className="no-underline block h-full transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-[14px]"
         >
             {inner}
         </Link>
@@ -675,190 +371,97 @@ function KpiCard({ to, loading, label, trend, value, valueSuffix, children, bord
 }
 
 // ─── KpiStrip ─────────────────────────────────────────────────────────────────
-
 export default function KpiStrip({ stats, loading }) {
     const kpi = stats?.kpi ?? {};
     const attention = stats?.attention ?? {};
 
-    // ── Card 1: Collected ─────────────────────────────────────────────────────
-    const totalReceived  = kpi.totalReceived  ?? 0;
-    const rentCollected  = kpi.rentCollected  ?? 0;
-    const camCollected   = kpi.camCollected   ?? 0;
+    // ── Card 1: Collected ───────────────────────────────────────────────────────
+    const totalReceived = kpi.totalReceived ?? 0;
+    const rentCollected = kpi.rentCollected ?? 0;
+    const camCollected = kpi.camCollected ?? 0;
     const lateFeeCollected = kpi.lateFeeCollected ?? kpi.lateFeeOutstanding ?? 0;
-    const otherCollected = Math.max(0, totalReceived - rentCollected - camCollected - lateFeeCollected);
-    const totalBilled    = kpi.totalBilled    ?? 0;
+    const totalBilled = kpi.totalBilled ?? 0;
     const collectionRate = kpi.collectionRate ?? 0;
 
-    // Granular monthly / quarterly breakdown for the ring
-    // Falls back to treating all rent as monthly and all CAM as quarterly
-    const monthlyRent   = kpi.monthlyRent   ?? rentCollected;
-    const monthlyCam    = kpi.monthlyCam    ?? 0;
+    const monthlyRent = kpi.monthlyRent ?? rentCollected;
+    const monthlyCam = kpi.monthlyCam ?? 0;
     const quarterlyRent = kpi.quarterlyRent ?? 0;
-    // Only fall back to camCollected for quarterly if no monthly CAM was explicitly provided,
-    // otherwise we'd double-count the same CAM in both monthly and quarterly arcs.
-    const quarterlyCam  = kpi.quarterlyCam  ?? (kpi.monthlyCam != null ? 0 : camCollected);
+    const quarterlyCam = kpi.quarterlyCam ?? (kpi.monthlyCam != null ? 0 : camCollected);
 
     const cRate = collectionRate >= 80 ? "up" : collectionRate >= 50 ? "flat" : "down";
 
-    // segment widths relative to totalReceived
-    const toSeg = (v) => totalReceived > 0 ? Math.round((v / totalReceived) * 100) : 0;
-    const collectedSegments = [
-        { pct: toSeg(rentCollected),    color: "var(--color-accent)"   },
-        { pct: toSeg(camCollected),     color: "var(--color-success)"  },
-        { pct: toSeg(lateFeeCollected), color: "var(--color-warning)"  },
-        { pct: toSeg(otherCollected),   color: "var(--color-info)"     },
-    ].filter(s => s.pct > 0);
-
-    const collectedLegend = [
-        { label: "Rent",       color: "var(--color-accent)",   value: fmt(rentCollected)    },
-        { label: "CAM",        color: "var(--color-success)",  value: fmt(camCollected)     },
-        { label: "Late fees",  color: "var(--color-warning)",  value: fmt(lateFeeCollected) },
-        { label: "Other",      color: "var(--color-info)",     value: fmt(otherCollected)   },
-    ].filter((_, i) => [rentCollected, camCollected, lateFeeCollected, otherCollected][i] > 0);
-
-    // ── Card 2: Outstanding / Aging ───────────────────────────────────────────
-    const allClear         = kpi.allClear         ?? false;
-    const outstanding      = kpi.totalRemaining   ?? null;
-    const collectionPhase  = kpi.collectionPhase  ?? "overdue";
-    const daysUntilDue     = kpi.daysUntilDue     ?? null;
-    const activeTenants    = kpi.activeTenants    ?? 0;
-    const tenantsPaid      = kpi.tenantsPaid      ?? 0;
-    const tenantCoverageRate = kpi.tenantCoverageRate ?? 0;
-    const tenantsWithBalance = kpi.tenantsWithBalance ?? 0;
-    const trulyOverdueCount  = kpi.trulyOverdueCount  ?? attention.overdueCount ?? 0;
-    const dueSoonCount     = kpi.dueSoonCount     ?? 0;
-    const pendingMonthly   = kpi.pendingMonthly   ?? 0;
-    const pendingQuarterly = kpi.pendingQuarterly ?? 0;
+    // ── Card 2: Tenant Status ───────────────────────────────────────────────────
+    const allClear = kpi.allClear ?? false;
+    const collectionPhase = kpi.collectionPhase ?? "overdue";
+    const daysUntilDue = kpi.daysUntilDue ?? null;
+    const activeTenants = kpi.activeTenants ?? 0;
+    const tenantsPaid = kpi.tenantsPaid ?? 0;
+    const trulyOverdueCount = kpi.trulyOverdueCount ?? attention.overdueCount ?? 0;
+    const partiallyPaid = kpi.partiallyPaid ?? 0;
+    const oldestOverdueDays = kpi.oldestOverdueDays ?? 0;
+    const pendingCheques = kpi.pendingCheques ?? 0;
 
     const tilePhase = allClear ? "all_clear" : collectionPhase;
+    const pendingCount = Math.max(0, activeTenants - tenantsPaid - partiallyPaid - trulyOverdueCount);
+    const paidRatio = activeTenants > 0 ? `${tenantsPaid}/${activeTenants}` : "—";
+    const paidPct = activeTenants > 0 ? Math.round((tenantsPaid / activeTenants) * 100) : 0;
 
-    let outLabel, outValue, outTrend, outBorderColor, outViz;
+    let outLabel, outTrend, outBorderColor;
 
     if (tilePhase === "all_clear") {
-        outLabel  = "Collection Coverage";
-        outValue  = activeTenants > 0 ? `${tenantsPaid}/${activeTenants}` : "—";
-        outTrend  = <TrendPill dir="up">All paid</TrendPill>;
-        outBorderColor = "var(--color-border)";
-        outViz = (
-            <>
-                <SimpleBar pct={tenantCoverageRate} colorVar="var(--color-success)" />
-                <span style={{ fontSize: 10.5, color: "var(--color-text-sub)" }}>
-                    All tenants paid this cycle
-                </span>
-            </>
-        );
+        outLabel = "Tenant Status";
+        outTrend = <TrendPill dir="up">All paid</TrendPill>;
+        outBorderColor = "var(--color-success-border)";
     } else if (tilePhase === "pending") {
-        const pendingCount = activeTenants - tenantsPaid;
-        const allPaidEarly = activeTenants > 0 && tenantsPaid >= activeTenants;
-
-        // Fraction of billing cycle elapsed (0 = start, 1 = due date)
-        const cycleElapsed = daysUntilDue != null && daysUntilDue >= 0
-            ? Math.max(0, 1 - daysUntilDue / 30)
-            : 0.5;
-        // On track = collected at least 85 % of what the elapsed fraction predicts
-        const expectedRate = cycleElapsed * 100;
-        const isOnTrack    = allPaidEarly || collectionRate >= expectedRate * 0.85;
-
-        if (allPaidEarly) {
-            outLabel       = "Collected · Ahead";
-            outTrend       = <TrendPill dir="up">All paid early</TrendPill>;
-            outBorderColor = "var(--color-success-border)";
-        } else if (isOnTrack) {
-            outLabel       = "Collection · On Track";
-            outTrend       = <TrendPill dir="up">{pendingCount > 0 ? `${pendingCount} pending` : daysUntilDue != null && daysUntilDue > 0 ? `${Math.round(daysUntilDue)}d left` : "on track"}</TrendPill>;
-            outBorderColor = "var(--color-success-border)";
-        } else {
-            outLabel       = "Collection · Lagging";
-            outTrend       = <TrendPill dir="flat">{pendingCount > 0 ? `${pendingCount} tenants` : "behind pace"}</TrendPill>;
-            outBorderColor = "var(--color-warning-border)";
-        }
-
-        outValue = outstanding != null ? fmt(outstanding) : "—";
-        outViz = (
-            <CycleStrip
-                collectionRate={collectionRate}
-                daysUntilDue={daysUntilDue}
-                tenantsPaid={tenantsPaid}
-                activeTenants={activeTenants}
-                pendingQuarterly={pendingQuarterly}
-            />
-        );
+        outLabel = "Tenant Status";
+        outTrend = pendingCount > 0
+            ? <TrendPill dir="flat">{pendingCount} pending{daysUntilDue != null ? ` · ${Math.round(daysUntilDue)}d` : ""}</TrendPill>
+            : <TrendPill dir="up">All on track</TrendPill>;
+        outBorderColor = pendingCount > 0 ? "var(--color-border)" : "var(--color-success-border)";
     } else if (tilePhase === "due_soon") {
-        const pendingCount = activeTenants - tenantsPaid;
-        outLabel  = "Due Soon";
-        outValue  = outstanding != null ? fmt(outstanding) : "—";
-        outTrend  = <TrendPill dir="down">{pendingCount} tenants</TrendPill>;
+        outLabel = "Tenant Status · Due Soon";
+        outTrend = <TrendPill dir="down">{pendingCount} pending · {Math.round(daysUntilDue ?? 0)}d</TrendPill>;
         outBorderColor = "var(--color-warning-border)";
-        outViz = (
-            <>
-                <SimpleBar pct={collectionRate} colorVar={collectionRate >= 60 ? "var(--color-warning)" : "var(--color-danger)"} />
-                <span style={{ fontSize: 10.5, color: "var(--color-text-sub)" }}>
-                    {daysUntilDue != null && daysUntilDue > 0 ? `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}` : "Due today"} · {collectionRate}% collected
-                </span>
-            </>
-        );
     } else {
-        // overdue — aging-ladder style using whatever split we have
-        const overdueAmt   = outstanding ?? 0;
-        // build 2–3 buckets from what we know
-        const overdueMonthly  = kpi.overdueMonthly  ?? 0;
-        const overdueQuarterly = kpi.overdueQuarterly ?? 0;
-        const dueSoonAmt   = kpi.dueSoonAmount   ?? 0;
-        const criticalAmt  = kpi.criticalAmount  ?? 0;
-
-        // Fallback: split total into rough thirds if no granular data
-        const b1Count = Math.max(0, trulyOverdueCount - Math.ceil(trulyOverdueCount / 2));
-        const b2Count = Math.ceil(trulyOverdueCount / 2);
-        const b1Amt   = overdueAmt > 0 ? overdueAmt * 0.4 : 0;
-        const b2Amt   = overdueAmt > 0 ? overdueAmt * 0.6 : 0;
-
-        const agingBuckets = [
-            {
-                label: "1–30d",
-                color: "color-mix(in srgb, var(--color-warning) 60%, var(--color-surface))",
-                count: b1Count > 0 ? b1Count : null,
-                amount: fmt(b1Amt),
-                flex: 1.2,
-            },
-            {
-                label: "30d+",
-                color: "var(--color-danger)",
-                count: b2Count > 0 ? b2Count : null,
-                amount: fmt(b2Amt),
-                flex: 1.8,
-            },
-        ].filter(b => Number(b.flex) > 0);
-
-        outLabel  = "Outstanding · Aging";
-        outValue  = outstanding != null ? fmt(outstanding) : "—";
-        outTrend  = <TrendPill dir="down">{trulyOverdueCount} tenants</TrendPill>;
+        outLabel = "Tenant Status · Overdue";
+        outTrend = <TrendPill dir="down">{trulyOverdueCount} overdue</TrendPill>;
         outBorderColor = "var(--color-danger-border)";
-        outViz = <AgingLadder buckets={agingBuckets} />;
     }
 
-    // ── Card 3: Occupancy ─────────────────────────────────────────────────────
-    const occupancyRate  = kpi.occupancyRate  ?? 0;
-    const totalUnits     = kpi.totalUnits     ?? 0;
-    const occupiedUnits  = kpi.occupiedUnits  ?? 0;
-    const vacantUnits    = kpi.vacantUnits    ?? 0;
-    const underNotice    = kpi.underNotice    ?? attention.expiringLeases ?? 0;
-    const fullyOccupied  = kpi.fullyOccupied  ?? false;
-
+    // ── Card 3: Occupancy ───────────────────────────────────────────────────────
+    const occupancyRate = kpi.occupancyRate ?? 0;
+    const totalUnits = kpi.totalUnits ?? 0;
+    const occupiedUnits = kpi.occupiedUnits ?? 0;
+    const vacantUnits = kpi.vacantUnits ?? 0;
+    const underNotice = kpi.underNotice ?? attention.expiringLeases ?? 0;
+    const fullyOccupied = kpi.fullyOccupied ?? false;
     const occDir = fullyOccupied ? "up" : occupancyRate >= 80 ? "flat" : "down";
 
-    // ── Card 4: Late Fees ─────────────────────────────────────────────────────
-    const hasActiveFees       = kpi.hasActiveFees       ?? false;
-    const lateFeeOutstanding  = kpi.lateFeeOutstanding  ?? 0;
-    const lateFeeTenantsCharged = kpi.lateFeeTenantsCharged ?? 0;
-    const feeCollectionRate   = kpi.feeCollectionRate   ?? 0;
+    // ── Card 4: Needs Attention ─────────────────────────────────────────────────
+    const overdueAlerts = kpi.trulyOverdueCount ?? attention.overdueCount ?? 0;
+    const expiringLeases = Array.isArray(stats?.contractsEndingSoon)
+        ? stats.contractsEndingSoon.filter((c) => (c.daysUntilEnd ?? 999) <= 45).length
+        : attention.expiringLeases ?? 0;
+    const openMaintenance = Array.isArray(stats?.maintenance)
+        ? stats.maintenance.filter((m) =>
+            ["OPEN", "IN_PROGRESS"].includes((m.status ?? "").toUpperCase())
+        ).length
+        : 0;
+    const generatorAlerts = Array.isArray(stats?.generatorsDueService)
+        ? stats.generatorsDueService.length
+        : 0;
 
-    const feeDir  = hasActiveFees ? (feeCollectionRate >= 60 ? "flat" : "down") : "up";
-    const feeBorderColor = hasActiveFees && feeCollectionRate < 40
-        ? "var(--color-danger-border)"
-        : "var(--color-border)";
+    const totalAttention = overdueAlerts + expiringLeases + openMaintenance + generatorAlerts;
+    const allGood = totalAttention === 0;
+    const attDir = allGood ? "up" : overdueAlerts > 0 ? "down" : "flat";
+    const attBorderColor = allGood
+        ? "var(--color-border)"
+        : overdueAlerts > 0
+            ? "var(--color-danger-border)"
+            : "var(--color-warning-border)";
 
     return (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, alignItems: "stretch" }}>
+        <div className="grid gap-[10px] items-stretch grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <KpiStyleOnce />
 
             {/* 1 · Collected */}
@@ -867,7 +470,7 @@ export default function KpiStrip({ stats, loading }) {
                 loading={loading}
                 label="Collected · MTD"
                 trend={<TrendPill dir={cRate}>{collectionRate}%</TrendPill>}
-                value={fmt(totalReceived)}
+                value={formatRupeesCompact(totalReceived)}
             >
                 <FulfillmentRing
                     totalBilled={totalBilled}
@@ -880,16 +483,25 @@ export default function KpiStrip({ stats, loading }) {
                 />
             </KpiCard>
 
-            {/* 2 · Outstanding / Aging */}
+            {/* 2 · Tenant Status */}
             <KpiCard
                 to="/dashboard/transactions"
                 loading={loading}
                 label={outLabel}
                 trend={outTrend}
-                value={outValue}
+                value={paidRatio}
+                valueSuffix={activeTenants > 0 ? `· ${paidPct}% paid` : undefined}
                 borderColor={outBorderColor}
             >
-                {outViz}
+                <TenantStatusViz
+                    activeTenants={activeTenants}
+                    tenantsPaid={tenantsPaid}
+                    partiallyPaid={partiallyPaid}
+                    trulyOverdueCount={trulyOverdueCount}
+                    daysUntilDue={daysUntilDue}
+                    oldestOverdueDays={oldestOverdueDays}
+                    pendingCheques={pendingCheques}
+                />
             </KpiCard>
 
             {/* 3 · Occupancy */}
@@ -897,51 +509,88 @@ export default function KpiStrip({ stats, loading }) {
                 to="/dashboard/units"
                 loading={loading}
                 label="Occupancy"
-                trend={<TrendPill dir={occDir}>{fullyOccupied ? "Full" : `${occupancyRate}%`}</TrendPill>}
+                trend={
+                    <TrendPill dir={occDir}>
+                        {fullyOccupied ? "Full" : `${occupancyRate}%`}
+                    </TrendPill>
+                }
                 value={totalUnits > 0 ? `${occupiedUnits}/${totalUnits}` : `${occupancyRate}%`}
                 valueSuffix={totalUnits > 0 ? `· ${occupancyRate}% occupied` : undefined}
                 borderColor={occupancyRate < 70 ? "var(--color-warning-border)" : "var(--color-border)"}
             >
                 <OccBar pct={occupancyRate} />
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, fontWeight: 500, color: "var(--color-text-sub)" }}>
+                <div className="flex justify-between text-[10.5px] font-medium text-[color:var(--color-text-sub)]">
                     <span>{vacantUnits} vacant</span>
                     {underNotice > 0 && (
                         <span>
-                            <b style={{ color: "var(--color-text-strong)", fontWeight: 600 }}>{underNotice}</b> under notice
+                            <b className="text-[color:var(--color-text-strong)] font-semibold">{underNotice}</b>{" "}
+                            under notice
                         </span>
                     )}
                 </div>
             </KpiCard>
 
-            {/* 4 · Late Fees */}
+            {/* 4 · Needs Attention */}
             <KpiCard
-                to="/rent-payment"
+                to="/dashboard"
                 loading={loading}
-                label="Late Fees"
+                label="Needs Attention"
                 trend={
-                    hasActiveFees
-                        ? <TrendPill dir={feeDir}>{lateFeeTenantsCharged} tenant{lateFeeTenantsCharged !== 1 ? "s" : ""}</TrendPill>
-                        : <TrendPill dir="up">None</TrendPill>
+                    allGood ? (
+                        <TrendPill dir="up">All clear</TrendPill>
+                    ) : (
+                        <TrendPill dir={attDir}>
+                            {totalAttention} item{totalAttention !== 1 ? "s" : ""}
+                        </TrendPill>
+                    )
                 }
-                value={hasActiveFees ? fmt(lateFeeOutstanding) : "Clear"}
-                borderColor={feeBorderColor}
+                value={allGood ? "Clear" : String(totalAttention)}
+                borderColor={attBorderColor}
             >
-                <SimpleBar
-                    pct={hasActiveFees ? feeCollectionRate : 100}
-                    colorVar={
-                        !hasActiveFees ? "var(--color-success)"
-                            : feeCollectionRate >= 80 ? "var(--color-success)"
-                            : feeCollectionRate >= 40 ? "var(--color-warning)"
-                            : "var(--color-danger)"
-                    }
-                />
-                <span style={{ fontSize: 10.5, color: "var(--color-text-sub)" }}>
-                    {hasActiveFees
-                        ? `${feeCollectionRate}% cleared · ${lateFeeTenantsCharged} being charged`
-                        : "All tenants paying on time"}
-                </span>
+                {allGood ? (
+                    <>
+                        <SimpleBar pct={100} colorVar="var(--color-success)" />
+                        <span className="text-[10.5px] text-[color:var(--color-text-sub)]">
+                            No overdue rents, expiring leases, or open maintenance
+                        </span>
+                    </>
+                ) : (
+                    <div className="flex flex-wrap gap-[5px]">
+                        {overdueAlerts > 0 && (
+                            <AttentionChip
+                                count={overdueAlerts}
+                                label="overdue"
+                                colorVar="var(--color-danger)"
+                                Icon={AlertTriangle}
+                            />
+                        )}
+                        {expiringLeases > 0 && (
+                            <AttentionChip
+                                count={expiringLeases}
+                                label={expiringLeases === 1 ? "lease" : "leases"}
+                                colorVar="var(--color-warning)"
+                                Icon={CalendarClock}
+                            />
+                        )}
+                        {openMaintenance > 0 && (
+                            <AttentionChip
+                                count={openMaintenance}
+                                label="maint."
+                                colorVar="var(--color-text-sub)"
+                                Icon={Wrench}
+                            />
+                        )}
+                        {generatorAlerts > 0 && (
+                            <AttentionChip
+                                count={generatorAlerts}
+                                label={generatorAlerts === 1 ? "generator" : "generators"}
+                                colorVar="var(--color-warning)"
+                                Icon={Zap}
+                            />
+                        )}
+                    </div>
+                )}
             </KpiCard>
-
         </div>
     );
 }

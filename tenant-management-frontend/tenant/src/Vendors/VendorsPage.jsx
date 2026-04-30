@@ -174,7 +174,7 @@ export default function VendorsPage() {
   const handleSubmitTransaction = async (transactionData) => {
     try {
       // TODO: Replace with actual API call
-      // await api.post(`/api/vendors/${selectedVendorForTransaction._id}/transactions`, transactionData);
+      await api.post(`/api/vendors/${selectedVendorForTransaction._id}/transactions`, transactionData);
 
       toast.success("Transaction added successfully");
       setIsTransactionFormOpen(false);

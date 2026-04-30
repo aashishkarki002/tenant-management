@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { formatOverdueSince } from "../hooks/useArrearsData";
 import { getTodayNepali } from "@/utils/nepaliDate";
+import { formatRupeesCompact } from "@/lib/formatters";
 
 // ─── Severity tokens ──────────────────────────────────────────────────────────
 const SEV = {
@@ -56,13 +57,6 @@ const SEV = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtAmt(n) {
-    if (!n || isNaN(n)) return null;
-    if (n >= 100_000) return `Rs. ${(n / 100_000).toFixed(1)}L`;
-    if (n >= 1_000) return `Rs. ${(n / 1_000).toFixed(0)}k`;
-    return `Rs. ${n}`;
-}
 
 function fmtDate(dateStr) {
     if (!dateStr) return null;
@@ -155,7 +149,7 @@ function buildAlerts(stats, arrears) {
         if (!isGenuinelyOverdue) return;
 
         const name = a.tenant?.name ?? `Tenant ${i + 1}`;
-        const total = a.totalDuePaisa > 0 ? fmtAmt(a.totalDuePaisa / 100) : null;
+        const total = a.totalDuePaisa > 0 ? formatRupeesCompact(a.totalDuePaisa / 100) : null;
         const overdueSince = formatOverdueSince(odYear, odMonth);
         const unitName = a.units?.[0]?.name ?? a.units?.[0]?.unitNumber ?? null;
 

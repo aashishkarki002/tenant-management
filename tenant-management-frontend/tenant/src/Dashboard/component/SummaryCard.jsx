@@ -4,17 +4,9 @@ import {
   TrendingUp, CheckCircle2, Clock, AlertTriangle,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { formatRupees, formatRupeesCompact } from '@/lib/formatters';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmt(val) {
-  if (val == null || val === '') return '—';
-  const n = Number(val);
-  if (Number.isNaN(n)) return String(val);
-  if (n >= 1_000_000) return `RS ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1000) return `RS ${(n / 1000).toFixed(0)}k`;
-  return `RS ${n.toLocaleString()}`;
-}
 
 function pct(a, b) {
   if (!b || !a) return 0;
@@ -65,8 +57,8 @@ function RevenueCard({ stats, loading }) {
           {loading ? <Bone dark w="w-32" h="h-10" /> : (
             <p className="text-4xl font-bold tabular-nums leading-none" style={{ color: 'white' }}>
               {view === 'month'
-                ? (display != null ? `RS ${Number(display).toLocaleString()}` : '—')
-                : `RS ${Number(ytd).toLocaleString()}`}
+                ? (display != null ? formatRupees(display) : '—')
+                : formatRupees(ytd)}
             </p>
           )}
           {!loading && <p className="text-xs mt-1.5" style={{ color: '#C47272' }}>
@@ -90,7 +82,7 @@ function RevenueCard({ stats, loading }) {
               style={{ width: `${view === 'month' ? collPct : ytdPct}%`, background: '#DDA8A8' }} />
           </div>
           <p className="text-[11px]" style={{ color: '#C47272' }}>
-            {view === 'month' ? `${collPct}% of ${fmt(target)} target` : `${ytdPct}% of ${fmt(ytdTarget)} prorated`}
+            {view === 'month' ? `${collPct}% of ${formatRupeesCompact(target)} target` : `${ytdPct}% of ${formatRupeesCompact(ytdTarget)} prorated`}
           </p>
         </div>
       )}
@@ -110,7 +102,7 @@ function RevenueCard({ stats, loading }) {
                     <span className="text-xs truncate" style={{ color: '#DDA8A8' }}>{item.name}</span>
                   </span>
                   <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: '#F0DADA' }}>
-                    {fmt(item.amount)}
+                    {formatRupeesCompact(item.amount)}
                   </span>
                 </div>
               ))}
@@ -120,7 +112,7 @@ function RevenueCard({ stats, loading }) {
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2 border-t pt-3" style={{ borderColor: '#521C1C' }}>
               {[
-                { val: fmt(avgMonthly), label: 'Avg / mo', color: '#F0DADA' },
+                { val: formatRupeesCompact(avgMonthly), label: 'Avg / mo', color: '#F0DADA' },
                 { val: hitMonths, label: 'Months hit', color: '#6EE7B7' },
                 { val: missedMonths, label: 'Missed', color: missedMonths > 0 ? '#FCA5A5' : '#F0DADA' },
               ].map((s, i) => (
@@ -146,7 +138,7 @@ function RevenueCard({ stats, loading }) {
                     </span>
                     <span className="text-xs font-medium tabular-nums shrink-0"
                       style={{ color: has ? '#F0DADA' : '#521C1C' }}>
-                      {has ? `RS ${Number(m.total).toLocaleString()}` : 'no data'}
+                      {has ? formatRupees(m.total) : 'no data'}
                     </span>
                   </div>
                 );
@@ -190,7 +182,7 @@ function MoneyRiskCard({ stats, loading }) {
             {loading ? <Bone w="w-28" h="h-10" /> : (
               <p className="text-4xl font-bold tabular-nums leading-none"
                 style={{ color: allClear ? '#2E7A4A' : '#B02020' }}>
-                {outstanding != null ? `RS ${Number(outstanding).toLocaleString()}` : '—'}
+                {outstanding != null ? formatRupees(outstanding) : '—'}
               </p>
             )}
             {!loading && <p className="text-xs mt-1.5" style={{ color: '#948472' }}>
@@ -215,8 +207,8 @@ function MoneyRiskCard({ stats, loading }) {
                 }} />
             </div>
             <div className="flex justify-between text-[11px]" style={{ color: '#948472' }}>
-              <span>{collectedPct}% collected of {fmt(target)}</span>
-              <span style={{ color: outstanding > 0 ? '#B02020' : '#2E7A4A' }}>{fmt(outstanding)} left</span>
+              <span>{collectedPct}% collected of {formatRupeesCompact(target)}</span>
+              <span style={{ color: outstanding > 0 ? '#B02020' : '#2E7A4A' }}>{formatRupeesCompact(outstanding)} left</span>
             </div>
           </div>
         )}
@@ -245,7 +237,7 @@ function MoneyRiskCard({ stats, loading }) {
                 </div>
                 <div className="text-right shrink-0 ml-2">
                   <p className="text-sm font-bold tabular-nums" style={{ color: '#B02020' }}>
-                    {fmt(t.amount ?? t.outstanding)}
+                    {formatRupeesCompact(t.amount ?? t.outstanding)}
                   </p>
                   {t.daysOverdue != null && (
                     <p className="text-[10px]" style={{ color: '#C47272' }}>{t.daysOverdue}d overdue</p>
@@ -404,13 +396,13 @@ function ActionCard({ stats, loading }) {
     {
       id: 'overdue', route: '/dashboard/transactions',
       label: overdueCount > 0 ? `${overdueCount} overdue payment${overdueCount !== 1 ? 's' : ''}` : 'Payments up to date',
-      sub: overdueCount > 0 ? `${fmt(overdueAmount)} total pending` : 'No overdue rent',
+      sub: overdueCount > 0 ? `${formatRupeesCompact(overdueAmount)} total pending` : 'No overdue rent',
       icon: AlertCircle, urgent: overdueCount > 0,
       urgentBg: 'rgba(176,32,32,0.07)', urgentBorder: 'rgba(176,32,32,0.22)',
       iconBg: overdueCount > 0 ? '#F5D5D5' : '#EEE9E5',
       iconColor: overdueCount > 0 ? '#B02020' : '#948472',
       labelColor: overdueCount > 0 ? '#5C1414' : '#413D38',
-      amount: overdueCount > 0 ? fmt(overdueAmount) : null,
+      amount: overdueCount > 0 ? formatRupeesCompact(overdueAmount) : null,
       amountColor: '#B02020',
       cta: overdueCount > 0 ? 'Collect' : null,
       ctaStyle: { background: '#F5D5D5', color: '#B02020' },

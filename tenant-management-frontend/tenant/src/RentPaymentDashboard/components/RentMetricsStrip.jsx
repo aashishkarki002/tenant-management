@@ -3,31 +3,9 @@ import { cn } from "@/lib/utils";
 const fmtRs = (n) =>
   `Rs ${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
-const MetricItem = ({ label, value, valueClass }) => (
-  <div className="flex flex-col gap-0.5 min-w-0 px-3 sm:px-4 first:pl-0 last:pr-0">
-    <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-      {label}
-    </span>
-    <span
-      className={cn(
-        "text-sm font-semibold tabular-nums tracking-tight text-foreground",
-        valueClass,
-      )}
-    >
-      {value}
-    </span>
-  </div>
-);
-
-const Divider = () => (
-  <div
-    className="hidden sm:block h-8 w-px shrink-0 bg-border"
-    aria-hidden
-  />
-);
-
 /**
- * Compact inline KPI strip (Stripe-style) — no large cards.
+ * Single-line muted summary strip — no cards, minimal visual weight.
+ * Example: "0% collected · Rs 0 received · Rs 24,011 outstanding · 0/1 tenants paid"
  */
 export const RentMetricsStrip = ({
   totalCollected,
@@ -37,36 +15,36 @@ export const RentMetricsStrip = ({
 }) => {
   if (totalDue === 0) {
     return (
-      <div className="rounded-lg border border-border bg-background px-4 py-3">
-        <p className="text-xs text-muted-foreground">
-          No rents in this period for the selected frequency. Use{" "}
-          <span className="font-medium text-foreground">Process Rent</span> to
-          generate records.
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        No rents in this period.{" "}
+        <span className="text-foreground font-medium">Process Rent</span>{" "}
+        to generate records.
+      </p>
     );
   }
 
-  const progressPct = Math.min((totalCollected / totalDue) * 100, 100);
-  const pct = Math.round(progressPct);
+  const pct = Math.round(Math.min((totalCollected / totalDue) * 100, 100));
   const outstanding = Math.max(0, totalDue - totalCollected);
 
   return (
-    <div className="flex flex-wrap items-stretch gap-y-2 sm:gap-y-0 rounded-lg border border-border bg-background px-3 py-2.5 sm:px-4 sm:py-3">
-      <MetricItem label="Collection rate" value={`${pct}%`} />
-      <Divider />
-      <MetricItem label="Collected" value={fmtRs(totalCollected)} />
-      <Divider />
-      <MetricItem
-        label="Outstanding"
-        value={fmtRs(outstanding)}
-        valueClass={outstanding > 0 ? "text-destructive" : undefined}
-      />
-      <Divider />
-      <MetricItem
-        label="Tenants paid"
-        value={`${tenantsPaid} / ${tenantsTotal}`}
-      />
-    </div>
+    <p className="text-xs text-muted-foreground tabular-nums select-none">
+      <span className="text-foreground font-medium">{pct}%</span>
+      {" collected · "}
+      <span className="text-foreground font-medium">{fmtRs(totalCollected)}</span>
+      {" received · "}
+      <span
+        className={cn(
+          "font-medium",
+          outstanding > 0 ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {fmtRs(outstanding)}
+      </span>
+      {" outstanding · "}
+      <span className="text-foreground font-medium">
+        {tenantsPaid}/{tenantsTotal}
+      </span>
+      {" tenants paid"}
+    </p>
   );
 };

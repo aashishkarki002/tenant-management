@@ -13,7 +13,7 @@ import { PAYMENT_METHODS, SECURITY_DEPOSIT_MODES } from "../constants/tenant.con
 import { getLedgerPaymentMethodSelectOptions } from "../../../constants/paymentMethods";
 import { FinancialTotalsDisplay } from "./FinancialTotalsDisplay";
 import { EscalationSection } from "./EscalationSection";
-import { getOwnershipLabel } from "@/utils/ownershipEntityDisplay.js";
+import BankAccountSelect from "../../../components/BankAccountSelect";
 
 export const FinancialTab = ({
     formik,
@@ -150,7 +150,7 @@ export const FinancialTab = ({
                                         const uf = formik.values.unitFinancials?.[unit._id] || {};
                                         return (
                                             <TableRow key={unit._id}>
-                                                <TableCell className="font-medium">{unit.unitNumber}</TableCell>
+                                                <TableCell className="font-medium">{unit.name ?? unit.unitNumber}</TableCell>
                                                 <TableCell>
                                                     <Input type="number" step="0.01" placeholder="Sqft"
                                                         value={uf.sqft || ""}
@@ -189,7 +189,7 @@ export const FinancialTab = ({
                                 return (
                                     <div key={unit._id} className="border rounded-lg p-4 bg-gray-50 space-y-3">
                                         <p className="text-sm font-semibold text-gray-800">
-                                            Unit {unit.unitNumber}
+                                            {unit.name ?? `Unit ${unit.unitNumber}`}
                                         </p>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1">
@@ -275,30 +275,18 @@ export const FinancialTab = ({
                     {sdNeedsBankDetails && (
                         <div className="space-y-2">
                             <Label>Bank Account *</Label>
-                            <Select
+                            <BankAccountSelect
+                                bankAccounts={bankAccounts}
                                 value={formik.values.sdBankAccountId || ""}
                                 onValueChange={(value) => {
                                     const bank = Array.isArray(bankAccounts)
-                                        ? bankAccounts.find((b) => b._id === value)
+                                        ? bankAccounts.find((b) => String(b._id) === String(value))
                                         : null;
                                     formik.setFieldValue("sdBankAccountId", bank?._id || "");
                                     formik.setFieldValue("sdBankAccountCode", bank?.accountCode || "");
                                 }}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select bank account" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Array.isArray(bankAccounts) &&
-                                        bankAccounts.map((bank) => (
-                                            <SelectItem key={bank._id} value={bank._id}>
-                                                {getOwnershipLabel(bank.entityId)
-                                                    ? `${getOwnershipLabel(bank.entityId)} — ${bank.bankName} — ${bank.accountName}`
-                                                    : `${bank.bankName} — ${bank.accountName}`}
-                                            </SelectItem>
-                                        ))}
-                                </SelectContent>
-                            </Select>
+                                showBalance
+                            />
                         </div>
                     )}
 

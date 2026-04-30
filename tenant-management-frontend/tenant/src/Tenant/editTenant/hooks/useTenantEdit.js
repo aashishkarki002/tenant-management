@@ -108,6 +108,9 @@ export function useTenantEdit(tenantId) {
             ) {
               formData.append(`${key}Paisa`, rupeesToPaisa(value));
               formData.append(key, value); // Keep rupees for backward compat
+            } else if (Array.isArray(value)) {
+              // Append each array element separately so backend gets repeated keys
+              value.forEach((item) => formData.append(key, item));
             } else {
               formData.append(key, value);
             }
@@ -190,9 +193,11 @@ export function useTenantEdit(tenantId) {
         "pricePerSqft",
         "camRatePerSqft",
         "securityDeposit",
+        "block",
+        "innerBlock",
       ];
 
-      return fieldsToCompare.some((field) => {
+      const scalarChanged = fieldsToCompare.some((field) => {
         const original = originalTenant[field];
         const current = currentValues[field];
 
@@ -203,6 +208,17 @@ export function useTenantEdit(tenantId) {
 
         return original !== current;
       });
+
+      // Compare unitNumber arrays
+      const originalUnits = (originalTenant.units || []).map((u) =>
+        String(u._id || u),
+      );
+      const currentUnits = (currentValues.unitNumber || []).map(String);
+      const unitsChanged =
+        originalUnits.length !== currentUnits.length ||
+        originalUnits.some((id) => !currentUnits.includes(id));
+
+      return scalarChanged || unitsChanged;
     },
     [originalTenant],
   );
@@ -230,6 +246,8 @@ export function useTenantEdit(tenantId) {
       "pricePerSqft",
       "camRatePerSqft",
       "securityDeposit",
+      "block",
+      "innerBlock",
     ];
 
     fields.forEach((field) => {
@@ -242,6 +260,15 @@ export function useTenantEdit(tenantId) {
         changes[field] = original !== current;
       }
     });
+
+    // Compare unitNumber arrays separately
+    const originalUnits = (originalTenant.units || []).map((u) =>
+      String(u._id || u),
+    );
+    const currentUnits = (tenant.units || []).map((u) => String(u._id || u));
+    changes.unitNumber =
+      originalUnits.length !== currentUnits.length ||
+      originalUnits.some((id) => !currentUnits.includes(id));
 
     return changes;
   }, [originalTenant, tenant]);

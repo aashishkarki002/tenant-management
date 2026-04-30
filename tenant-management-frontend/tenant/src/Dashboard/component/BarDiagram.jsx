@@ -10,6 +10,7 @@ import {
     getCurrentFYMonths,
     getFYLabel,
 } from "@/utils/nepaliDate";
+import { formatRupees, formatRupeesCompact } from "@/lib/formatters";
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
@@ -26,18 +27,6 @@ const C = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtCompact(n) {
-    if (n == null) return '—';
-    if (n >= 10_00_000) return `${(n / 10_00_000).toFixed(1)}Cr`;
-    if (n >= 1_00_000) return `${(n / 1_00_000).toFixed(1)}L`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
-    return `${n}`;
-}
-
-function fmtFull(n) {
-    return `RS ${Number(n).toLocaleString('en-IN')}`;
-}
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
 
@@ -155,7 +144,7 @@ function HeaderMeta({ monthlyData, currentMonth, currentYear }) {
                         {mthName}
                     </span>
                     <span className="text-[13px] font-bold tabular-nums" style={{ color: C.axisStrong, fontFamily: 'var(--font-serif)' }}>
-                        {fmtFull(currentPoint.revenue)}
+                        {formatRupees(currentPoint.revenue)}
                     </span>
                     {currentPoint.momChange != null && (
                         <span
@@ -214,9 +203,9 @@ function SummaryStrip({ data }) {
 
     const items = [
         { label: 'FY', value: `${recorded.length}/12 mo` },
-        { label: 'YTD', value: `RS ${fmtCompact(ytdTotal)}` },
-        { label: 'Avg', value: `RS ${fmtCompact(avg)}/mo` },
-        peakName ? { label: 'Peak', value: `${peakName} · RS ${fmtCompact(peak.revenue)}` } : null,
+        { label: 'YTD', value: formatRupeesCompact(ytdTotal) },
+        { label: 'Avg', value: `${formatRupeesCompact(avg)}/mo` },
+        peakName ? { label: 'Peak', value: `${peakName} · ${formatRupeesCompact(peak.revenue)}` } : null,
     ].filter(Boolean);
 
     return (
@@ -272,14 +261,14 @@ function CustomTooltip({ active, payload, label }) {
                     <div className="flex items-center justify-between gap-4 mb-1">
                         <span style={{ color: C.axisText }}>Revenue</span>
                         <span className="font-bold tabular-nums" style={{ color: C.barHighlight }}>
-                            {fmtFull(d.revenue)}
+                            {formatRupees(d.revenue)}
                         </span>
                     </div>
                     {trendVal != null && (
                         <div className="flex items-center justify-between gap-4 mb-1">
                             <span style={{ color: C.axisText }}>3-mo avg</span>
                             <span className="font-semibold tabular-nums" style={{ color: C.trendLine }}>
-                                {fmtFull(Math.round(trendVal))}
+                                {formatRupees(Math.round(trendVal))}
                             </span>
                         </div>
                     )}

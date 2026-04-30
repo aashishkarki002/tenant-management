@@ -23,6 +23,7 @@ import {
     BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Link } from "react-router-dom";
+import { formatRupees } from "@/lib/formatters";
 
 // ─── Status badge styles — semantic (green / yellow / red / neutral) ─────────
 const STATUS_STYLES = {
@@ -77,9 +78,6 @@ function mapTransactionToRow(tx) {
     };
 }
 
-function formatAmount(amount) {
-    return `Rs. ${Number(amount).toLocaleString("en-NP")}`;
-}
 
 function formatDate(date) {
     if (!date) return "—";
@@ -244,7 +242,7 @@ export default function Transaction() {
                                         </TableCell>
                                         <TableCell className="text-sm text-muted-foreground">{formatDate(row.date)}</TableCell>
                                         <TableCell className="font-semibold text-sm tabular-nums text-foreground">
-                                            {formatAmount(row.amount)}
+                                            {formatRupees(row.amount)}
                                         </TableCell>
                                         <TableCell className="text-sm text-muted-foreground">{row.account}</TableCell>
                                         <TableCell><StatusBadge status={row.status} /></TableCell>

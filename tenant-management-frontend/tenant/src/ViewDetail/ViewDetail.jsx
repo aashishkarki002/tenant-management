@@ -3,7 +3,6 @@ import api from "../../plugins/axios";
 import { useParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   Building2,
   UserCircle2,
@@ -14,7 +13,6 @@ import {
   AlertTriangle,
   ShieldCheck,
   CalendarDays,
-  MapPin,
 } from "lucide-react";
 import { OverviewLeaseTab } from "./components/OverviewLeaseTab";
 import { DocumentsTab } from "./components/DocumentsTab";
@@ -26,48 +24,13 @@ import { SecurityDepositTab } from "./components/SecurityDepositTab";
 import Breadcrumb from "./components/Breadcrumb";
 
 const DEFAULT_TABS = [
-  {
-    value: "personalInfo",
-    label: "Overview",
-    component: OverviewLeaseTab,
-    icon: UserCircle2,
-  },
-  {
-    value: "documents",
-    label: "Documents",
-    component: DocumentsTab,
-    icon: FileText,
-  },
-  {
-    value: "propertyDetails",
-    label: "Maintenance",
-    component: MaintenanceTab,
-    icon: Wrench,
-  },
-  {
-    value: "electricity",
-    label: "Electricity",
-    component: ElectricityTab,
-    icon: Zap,
-  },
-  {
-    value: "paymentHistory",
-    label: "Payments",
-    component: PaymentHistoryTab,
-    icon: CreditCard,
-  },
-  {
-    value: "escalation",
-    label: "Escalation",
-    component: EscalationTab,
-    icon: AlertTriangle,
-  },
-  {
-    value: "securityDeposit",
-    label: "Security",
-    component: SecurityDepositTab,
-    icon: ShieldCheck,
-  },
+  { value: "personalInfo", label: "Overview", component: OverviewLeaseTab, icon: UserCircle2 },
+  { value: "documents", label: "Documents", component: DocumentsTab, icon: FileText },
+  { value: "propertyDetails", label: "Maintenance", component: MaintenanceTab, icon: Wrench },
+  { value: "electricity", label: "Electricity", component: ElectricityTab, icon: Zap },
+  { value: "paymentHistory", label: "Payments", component: PaymentHistoryTab, icon: CreditCard },
+  { value: "escalation", label: "Escalation", component: EscalationTab, icon: AlertTriangle },
+  { value: "securityDeposit", label: "Security", component: SecurityDepositTab, icon: ShieldCheck },
 ];
 
 function ViewDetail({ tabs: tabsProp }) {
@@ -93,9 +56,7 @@ function ViewDetail({ tabs: tabsProp }) {
     }
   };
 
-  useEffect(() => {
-    getTenant();
-  }, [id]);
+  useEffect(() => { getTenant(); }, [id]);
 
   useEffect(() => {
     if (tenant?.documents?.length > 0) {
@@ -108,9 +69,7 @@ function ViewDetail({ tabs: tabsProp }) {
   }, [tenant]);
 
   const calculateLeaseProgress = () => {
-    if (!tenant?.leaseStartDate || !tenant?.leaseEndDate) {
-      return { progress: 0, remainingMonths: 0 };
-    }
+    if (!tenant?.leaseStartDate || !tenant?.leaseEndDate) return { progress: 0, remainingMonths: 0 };
     const startDate = new Date(tenant.leaseStartDate);
     const endDate = new Date(tenant.leaseEndDate);
     const now = new Date();
@@ -136,18 +95,17 @@ function ViewDetail({ tabs: tabsProp }) {
     }
   };
 
-  useEffect(() => {
-    getMaintenanceHistory();
-  }, [id]);
+  useEffect(() => { getMaintenanceHistory(); }, [id]);
 
   const tenantMaintenance = maintenanceHistory ?? [];
   const { progress, remainingMonths } = calculateLeaseProgress();
 
   const getUnitLabel = () => {
-    if (!tenant?.units || tenant.units.length === 0) return "—";
+    if (!tenant?.units || tenant.units.length === 0) return null;
+    console.log(tenant.units);
     const firstUnit = tenant.units[0];
     if (typeof firstUnit === "object" && firstUnit !== null) {
-      return tenant.units.map((unit) => unit.name).join(", ");
+      return tenant.units.map((u) => u.name).join(", ");
     }
     return tenant.units.join(", ");
   };
@@ -156,123 +114,146 @@ function ViewDetail({ tabs: tabsProp }) {
     ? tenant.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
     : "T";
 
+  const locationParts = [
+    tenant?.block?.name,
+    tenant?.innerBlock?.name,
+    getUnitLabel(),
+  ].filter(Boolean);
+
   return (
-    <div className="px-2 sm:px-4 md:px-6 pb-8">
+    <div className="px-2 sm:px-4 md:px-6 pb-12">
       <Breadcrumb tenantName={tenant?.name} />
 
-      {/* ── Tenant Profile Card ─────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-border bg-background shadow-sm overflow-hidden mb-4">
-        {/* Accent top strip */}
-        <div className="h-1 w-full " />
+      {/* ── Tenant Header ──────────────────────────────────────────────────────── */}
+      <div className="mb-6 pb-6 border-b border-border">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6">
 
-        <div className="p-4 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-
-            {/* Left: avatar + identity */}
-            <div className="flex items-start gap-3 sm:gap-4">
-              <div className="relative shrink-0">
-                <Avatar className="w-12 h-12 sm:w-14 sm:h-14 ring-2 ring-primary ring-offset-2">
-                  <AvatarImage src="https://github.com/shadcn.png" alt={tenant?.name} />
-                  <AvatarFallback className="text-sm font-bold bg-primary-50 text-blue-700">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                {tenant?.status === "active" && (
-                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 ring-2 ring-background" />
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <h1 className="text-lg sm:text-xl font-semibold leading-tight text-foreground">
-                    {tenant?.name ?? "—"}
-                  </h1>
-                  <StatusBadge status={tenant?.status} />
-                  {tenant?.rentPaymentFrequency && (
-                    <Badge
-                      variant="outline"
-                      className="text-xs font-normal border-amber-300 text-amber-700 bg-amber-50"
-                    >
-                      {tenant.rentPaymentFrequency === "monthly" ? "Monthly" : "Quarterly"}
-                    </Badge>
-                  )}
-                </div>
-
-                <p className="text-xs text-muted-foreground mb-2">
-                  ID #{tenant?._id?.slice(-8) ?? "—"}
-                </p>
-
-                <div className="flex flex-col gap-1">
-                  {(tenant?.block?.name || tenant?.innerBlock?.name) && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Building2 className="w-3.5 h-3.5 shrink-0" />
-                      <span>
-                        {[tenant?.block?.name, tenant?.innerBlock?.name]
-                          .filter(Boolean)
-                          .join(", ")}
-                        {getUnitLabel() !== "—" ? ` — ${getUnitLabel()}` : ""}
-                      </span>
-                    </div>
-                  )}
-                  {tenant?.leaseStartDateNepali && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <CalendarDays className="w-3.5 h-3.5 shrink-0" />
-                      <span>Since {tenant.leaseStartDateNepali} BS</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Right: lease progress */}
-            {tenant?.leaseStartDate && tenant?.leaseEndDate && (
-              <div className="sm:min-w-[200px] sm:max-w-[240px] w-full">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs text-muted-foreground">Lease Progress</span>
-                  <span className="text-xs font-semibold tabular-nums text-foreground">
-                    {Math.round(progress)}%
-                  </span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all duration-500"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {remainingMonths === 0
-                    ? "Lease completed"
-                    : remainingMonths === 1
-                      ? "1 month remaining"
-                      : `${remainingMonths} months remaining`}
-                </p>
-              </div>
+          {/* Avatar */}
+          <div className="relative shrink-0 self-start">
+            <Avatar className="w-14 h-14 sm:w-16 sm:h-16">
+              <AvatarImage src="https://github.com/shadcn.png" alt={tenant?.name} />
+              <AvatarFallback
+                className="text-base font-semibold"
+                style={{ background: "var(--color-accent-light)", color: "var(--color-accent)" }}
+              >
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            {tenant?.status === "active" && (
+              <span
+                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-background"
+                style={{ background: "var(--color-success)" }}
+              />
             )}
           </div>
+
+          {/* Identity */}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <h1
+                className="text-xl sm:text-2xl font-semibold leading-tight"
+                style={{ color: "var(--color-text-strong)" }}
+              >
+                {tenant?.name ?? "—"}
+              </h1>
+              <StatusPill status={tenant?.status} />
+            </div>
+
+            {/* Meta row */}
+            <div
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+              style={{ color: "var(--color-text-sub)" }}
+            >
+              {tenant?._id && (
+                <span>#{tenant._id.slice(-8)}</span>
+              )}
+              {locationParts.length > 0 && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <span className="flex items-center gap-1">
+                    <Building2 className="w-3 h-3 shrink-0" />
+                    {locationParts.join(" · ")}
+                  </span>
+                </>
+              )}
+              {tenant?.leaseStartDateNepali && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <span className="flex items-center gap-1">
+                    <CalendarDays className="w-3 h-3 shrink-0" />
+                    Since {tenant.leaseStartDateNepali} BS
+                  </span>
+                </>
+              )}
+              {tenant?.rentPaymentFrequency && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <span className="capitalize">{tenant.rentPaymentFrequency}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Lease progress — right-aligned on sm+ */}
+          {tenant?.leaseStartDate && tenant?.leaseEndDate && (
+            <div className="sm:min-w-[180px] sm:text-right">
+              <div className="flex sm:justify-end items-center gap-2 mb-2">
+                <span className="text-xs" style={{ color: "var(--color-text-sub)" }}>
+                  Lease progress
+                </span>
+                <span
+                  className="text-xs font-semibold tabular-nums"
+                  style={{ color: "var(--color-text-strong)" }}
+                >
+                  {Math.round(progress)}%
+                </span>
+              </div>
+              <div
+                className="h-1 w-full rounded-full overflow-hidden"
+                style={{ background: "var(--color-muted-fill)" }}
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${progress}%`, background: "var(--color-accent)" }}
+                />
+              </div>
+              <p
+                className="text-xs mt-1.5 sm:text-right"
+                style={{ color: "var(--color-text-weak)" }}
+              >
+                {remainingMonths === 0
+                  ? "Lease completed"
+                  : remainingMonths === 1
+                    ? "1 month remaining"
+                    : `${remainingMonths} months remaining`}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Tab Navigation ──────────────────────────────────────────────────── */}
+      {/* ── Tabs ───────────────────────────────────────────────────────────────── */}
       <Tabs defaultValue={tabs[0]?.value ?? "personalInfo"} className="gap-0">
-        <div className="mb-4">
-          <TabsList className="w-full h-auto bg-background border border-border rounded-xl p-1 overflow-x-auto flex gap-0.5">
+        {/* Tab list — underline style */}
+        <div className="mb-6 border-b border-border overflow-x-auto">
+          <TabsList className="h-auto bg-transparent rounded-none p-0 gap-0 flex w-max min-w-full">
             {tabs.map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
                 className="
-                  flex-1 min-w-[64px] flex items-center justify-center gap-1.5
-                  px-2 py-2 text-xs sm:text-sm rounded-lg
-                  text-muted-foreground font-medium
-                  transition-all duration-150 cursor-pointer
-                  data-[state=active]:bg-primary data-[state=active]:text-primary-foreground
-                  data-[state=active]:shadow-sm hover:bg-muted/60
+                  relative flex items-center gap-1.5 px-3 sm:px-4 py-2.5
+                  text-xs sm:text-sm font-medium rounded-none bg-transparent border-0
+                  text-muted-foreground
+                  cursor-pointer whitespace-nowrap
+                  transition-colors duration-150
                 "
+                style={{
+                  "--tw-text-opacity": 1,
+                }}
               >
                 {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
-                <span className="hidden xs:inline sm:inline whitespace-nowrap">
-                  {tab.label}
-                </span>
+                <span>{tab.label}</span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -321,27 +302,41 @@ function ViewDetail({ tabs: tabsProp }) {
   );
 }
 
-function StatusBadge({ status }) {
+function StatusPill({ status }) {
   if (!status) return null;
   const s = status.toLowerCase();
-  if (s === "active") {
-    return (
-      <Badge variant="outline" className="text-xs font-medium border-green-300 text-success bg-success-light">
-        Active
-      </Badge>
-    );
-  }
-  if (s === "inactive" || s === "vacated") {
-    return (
-      <Badge variant="outline" className="text-xs font-medium border-border text-muted-foreground bg-muted">
-        {status}
-      </Badge>
-    );
-  }
+
+  const styles = {
+    active: {
+      background: "var(--color-success-light)",
+      color: "var(--color-success)",
+      border: "1px solid var(--color-success-border)",
+    },
+    inactive: {
+      background: "var(--color-surface)",
+      color: "var(--color-text-sub)",
+      border: "1px solid var(--color-border)",
+    },
+    vacated: {
+      background: "var(--color-surface)",
+      color: "var(--color-text-sub)",
+      border: "1px solid var(--color-border)",
+    },
+  };
+
+  const style = styles[s] ?? {
+    background: "var(--color-accent-light)",
+    color: "var(--color-accent)",
+    border: "1px solid var(--color-accent-mid)",
+  };
+
   return (
-    <Badge variant="outline" className="text-xs capitalize">
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize"
+      style={style}
+    >
       {status}
-    </Badge>
+    </span>
   );
 }
 

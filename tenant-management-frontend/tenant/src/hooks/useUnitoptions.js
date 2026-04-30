@@ -1,14 +1,3 @@
-/**
- * useUnitOptions.js
- *
- * Thin adapter over the existing useUnits / useOccupiedUnits / useVacantUnits hooks.
- * Owns the client-side filter logic (block, innerBlock) and the shape
- * transformation into UnitCombobox-ready options.
- *
- * Usage:
- *   const { options, loading } = useUnitOptions({ blockId, mode: "vacant" });
- */
-
 import { useMemo } from "react";
 import { useUnits, useOccupiedUnits, useVacantUnits } from "@/hooks/use-units";
 
@@ -72,7 +61,7 @@ export function useUnitOptions({
         label: u.name ?? u.unitName ?? u._id,
         blockName: u.block?.name ?? null,
         floor: u.innerBlock?.name ?? null,
-        isOccupied: !!u.currentTenant,
+    isOccupied: u.isOccupied ?? !!u.currentLease?.tenant,
       }));
   }, [units, blockId, innerBlockId]);
 
