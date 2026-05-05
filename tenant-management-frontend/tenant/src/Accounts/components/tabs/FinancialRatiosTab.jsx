@@ -17,7 +17,7 @@ import {
 import { TrendingUp, TrendingDown, Minus, AlertCircle, Info } from "lucide-react";
 import { useFinancialRatios } from "../../hooks/useFinancialRatios";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK, fmtN } from "../AccountingPage";
+import { fmtK } from "../../utils/formatter";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -358,8 +358,42 @@ export default function FinancialRatiosTab({ filterProps, filterLabel }) {
                             inverse
                             loading={loading}
                         />
+                        {/* DSCR — Debt Service Coverage Ratio */}
+                        {loading ? <Skeleton h={64} className="mt-3" /> : (
+                            <div className="mt-3 pt-3 border-t flex flex-col gap-2" style={{ borderColor: C.border }}>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: C.sub }}>DSCR</div>
+                                        <div className="text-[9px]" style={{ color: C.sub }}>NOI ÷ Debt service</div>
+                                    </div>
+                                    {lev.dscr == null ? (
+                                        <span className="text-[11px] font-semibold" style={{ color: C.sub }}>No debt</span>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[20px] font-black tabular-nums" style={{
+                                                color: lev.dscr >= 1.25 ? C.good : lev.dscr >= 1.0 ? C.warn : C.bad,
+                                            }}>
+                                                {lev.dscr.toFixed(2)}×
+                                            </span>
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{
+                                                background: lev.dscr >= 1.25 ? "var(--color-success-bg)" : lev.dscr >= 1.0 ? "var(--color-warning-bg)" : "var(--color-danger-bg)",
+                                                color: lev.dscr >= 1.25 ? C.good : lev.dscr >= 1.0 ? C.warn : C.bad,
+                                            }}>
+                                                {lev.dscr >= 1.25 ? "Healthy" : lev.dscr >= 1.0 ? "Watch" : "Distress"}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                                {lev.dscr != null && (
+                                    <div className="text-[11px] flex justify-between" style={{ color: C.body }}>
+                                        <span>Debt service (period)</span>
+                                        <span className="font-bold tabular-nums" style={{ color: C.bad }}>RS {fmtK(lev.annualDebtServiceRupees ?? 0)}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         {!loading && (
-                            <div className="mt-3 text-[11px] flex justify-between" style={{ color: C.body }}>
+                            <div className="mt-2 text-[11px] flex justify-between" style={{ color: C.body }}>
                                 <span>Total Liabilities</span>
                                 <span className="font-bold tabular-nums" style={{ color: C.bad }}>RS {fmtK(lev.totalLiabilitiesRupees ?? 0)}</span>
                             </div>

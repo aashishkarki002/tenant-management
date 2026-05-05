@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   CalendarDays,
+  BookOpen,
 } from "lucide-react";
 import { OverviewLeaseTab } from "./components/OverviewLeaseTab";
 import { DocumentsTab } from "./components/DocumentsTab";
@@ -21,6 +22,7 @@ import { PaymentHistoryTab } from "./components/PaymentHistoryTab";
 import { ElectricityTab } from "./components/ElectricityTab";
 import { EscalationTab } from "./components/EscalationTab";
 import { SecurityDepositTab } from "./components/SecurityDepositTab";
+import { TenantLedgerTab } from "./components/TenantLedgerTab";
 import Breadcrumb from "./components/Breadcrumb";
 
 const DEFAULT_TABS = [
@@ -31,6 +33,7 @@ const DEFAULT_TABS = [
   { value: "paymentHistory", label: "Payments", component: PaymentHistoryTab, icon: CreditCard },
   { value: "escalation", label: "Escalation", component: EscalationTab, icon: AlertTriangle },
   { value: "securityDeposit", label: "Security", component: SecurityDepositTab, icon: ShieldCheck },
+  { value: "ledger", label: "Ledger", component: TenantLedgerTab, icon: BookOpen },
 ];
 
 function ViewDetail({ tabs: tabsProp }) {
@@ -289,6 +292,8 @@ function ViewDetail({ tabs: tabsProp }) {
               blockId: tenant?.block?._id ?? tenant?.block,
               sdId: tenant?.securityDepositId ?? null,
             };
+          } else if (tab.value === "ledger") {
+            tabProps = { tenantId: id, tenant };
           }
 
           return (

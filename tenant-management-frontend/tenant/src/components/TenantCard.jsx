@@ -133,7 +133,7 @@ export function getTenantRentDisplay(tenant) {
 }
 
 // ─── TenantCard ────────────────────────────────────────────────────────────────
-export default function TenantCard({ tenant, onTenantMutated }) {
+export default function TenantCard({ tenant, onTenantMutated, onTerminate }) {
   const navigate = useNavigate();
   const attention = needsAttention(tenant);
   const paymentStatus = getPaymentStatus(tenant);
@@ -260,7 +260,7 @@ export default function TenantCard({ tenant, onTenantMutated }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 style={{ color: "var(--color-danger)" }}
-                onClick={deleteTenant}
+                onClick={() => onTerminate ? onTerminate(tenant) : deleteTenant()}
               >
                 <XCircle className="w-3.5 h-3.5 mr-2" /> Terminate Lease
               </DropdownMenuItem>

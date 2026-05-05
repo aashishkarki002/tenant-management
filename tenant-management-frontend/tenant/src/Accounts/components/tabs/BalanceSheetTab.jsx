@@ -213,11 +213,11 @@ function SectionCard({ title, accentColor, accounts, extraRows = [], totalLabel,
           </p>
         ) : (
           <>
-            {accounts.map((acc) => (
-              <AccountRow key={`acc-${acc.code}`} account={acc} />
+            {accounts.map((acc, i) => (
+              <AccountRow key={`acc-${acc.code}-${i}`} account={acc} />
             ))}
-            {extraRows.map((acc) => (
-              <AccountRow key={`extra-${acc.code}`} account={acc} />
+            {extraRows.map((acc, i) => (
+              <AccountRow key={`extra-${acc.code}-${i}`} account={acc} />
             ))}
           </>
         )}

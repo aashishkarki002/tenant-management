@@ -120,9 +120,9 @@ export const RentTableRow = ({
   };
 
   const payLabel =
-    rent.status === "paid" && hasOutstandingLateFee ? "Pay fee" : "Pay";
+    rent.status === "paid" && hasOutstandingLateFee ? "Record fee payment" : "Record payment";
 
-  const hasDropdownItems = !!tenantId || hasTds;
+const [dropdownOpen, setDropdownOpen] = useState(false);
 
   return (
     <TableRow
@@ -217,14 +217,17 @@ export const RentTableRow = ({
             </Button>
           )}
 
-          {hasDropdownItems && (
-            <DropdownMenu>
+     
+            <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-muted-foreground/60 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  className={cn(
+  "h-6 w-6 text-muted-foreground/60 hover:text-foreground transition-opacity",
+  dropdownOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+)}
                   aria-label="More actions"
                 >
                   <MoreHorizontal className="size-3.5" />
@@ -251,7 +254,7 @@ export const RentTableRow = ({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-          )}
+      
         </div>
 
         {showPrevBalance && (

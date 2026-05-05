@@ -2,12 +2,17 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import qs from "qs";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
+import {
   Search, Plus, ArrowDown,
   Users, CheckCircle2, X,
-  ChevronDown, Filter, Banknote, CalendarClock,
+  Filter, Banknote, CalendarClock,
   AlertTriangle, DollarSign,
   MoreVertical, Eye, CreditCard, Bell, Pencil, XCircle,
   Phone, Mail, Upload, SlidersHorizontal, LayoutGrid, List as ListIcon,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent,
@@ -216,64 +221,11 @@ function FilterChip({ label, dot, onRemove }) {
   );
 }
 
-// ─── Filter Group Button ───────────────────────────────────────────────────────
-function FilterGroupButton({ group, selectedValues, onToggle }) {
-  const Icon = group.icon;
-  const activeCount = selectedValues.length;
 
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors shrink-0 outline-none"
-          style={activeCount > 0 ? {
-            background: "var(--color-accent)",
-            color: "#ffffff",
-            borderColor: "var(--color-accent)",
-          } : {
-            background: "var(--color-surface)",
-            color: "var(--color-text-body)",
-            borderColor: "var(--color-border)",
-          }}
-        >
-          <Icon className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden md:inline">{group.label}</span>
-          {activeCount > 0 && (
-            <span className="bg-white/30 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">
-              {activeCount}
-            </span>
-          )}
-          <ChevronDown className="w-3 h-3 shrink-0" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[160px] p-1">
-        {group.options.map(opt => {
-          const isSelected = selectedValues.includes(opt.value);
-          return (
-            <DropdownMenuItem
-              key={opt.value}
-              onSelect={(e) => { e.preventDefault(); onToggle(group.key, opt.value); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs cursor-pointer"
-              style={isSelected ? {
-                background: "var(--color-accent-light)",
-                color: "var(--color-accent)",
-                fontWeight: 500,
-              } : { color: "var(--color-text-body)" }}
-            >
-              {opt.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dot}`} />}
-              <span className="flex-1">{opt.label}</span>
-              {isSelected && <span className="ml-auto text-xs" style={{ color: "var(--color-accent)" }}>✓</span>}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-// ─── Advanced Filters Popover ──────────────────────────────────────────────────
-function AdvancedFiltersPopover({ filters, onFilterToggle }) {
-  const advancedActiveCount = ADVANCED_FILTERS.reduce(
+// ─── Unified Filters Popover ───────────────────────────────────────────────────
+// All filter groups (Status, Payment, Billing Frequency, Lease Status) in one button.
+function AllFiltersPopover({ filters, onFilterToggle, onClearAll }) {
+  const totalActive = FILTER_GROUPS.reduce(
     (count, group) => count + (filters[group.key]?.length ?? 0),
     0
   );
@@ -283,7 +235,7 @@ function AdvancedFiltersPopover({ filters, onFilterToggle }) {
       <DropdownMenuTrigger asChild>
         <button
           className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border text-xs font-medium transition-colors shrink-0 outline-none"
-          style={advancedActiveCount > 0 ? {
+          style={totalActive > 0 ? {
             background: "var(--color-accent)",
             color: "#ffffff",
             borderColor: "var(--color-accent)",
@@ -294,21 +246,30 @@ function AdvancedFiltersPopover({ filters, onFilterToggle }) {
           }}
         >
           <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden md:inline whitespace-nowrap">More Filters</span>
-          {advancedActiveCount > 0 && (
+          <span className="hidden md:inline whitespace-nowrap">Filters</span>
+          {totalActive > 0 && (
             <span className="bg-white/30 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">
-              {advancedActiveCount}
+              {totalActive}
             </span>
           )}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64 p-0 overflow-hidden">
-        <div className="px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-          <h3 className="text-xs font-semibold" style={{ color: "var(--color-text-strong)" }}>Advanced Filters</h3>
+        <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: "var(--color-border)" }}>
+          <h3 className="text-xs font-semibold" style={{ color: "var(--color-text-strong)" }}>Filters</h3>
+          {totalActive > 0 && (
+            <button
+              onClick={(e) => { e.preventDefault(); onClearAll(); }}
+              className="text-[10px] font-medium transition-opacity hover:opacity-60"
+              style={{ color: "var(--color-text-sub)" }}
+            >
+              Clear all
+            </button>
+          )}
         </div>
 
-        <div className="p-3 space-y-3 max-h-80 overflow-y-auto">
-          {ADVANCED_FILTERS.map(group => {
+        <div className="p-3 space-y-4 max-h-96 overflow-y-auto">
+          {FILTER_GROUPS.map(group => {
             const Icon = group.icon;
             const selectedValues = filters[group.key] ?? [];
             return (
@@ -320,25 +281,27 @@ function AdvancedFiltersPopover({ filters, onFilterToggle }) {
                   <Icon className="w-3 h-3" />
                   {group.label}
                 </label>
-                <div className="space-y-1">
+                <div className="flex flex-wrap gap-1.5">
                   {group.options.map(opt => {
                     const isSelected = selectedValues.includes(opt.value);
                     return (
-                      <DropdownMenuItem
+                      <button
                         key={opt.value}
-                        onSelect={(e) => { e.preventDefault(); onFilterToggle(group.key, opt.value); }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs cursor-pointer"
+                        onClick={(e) => { e.preventDefault(); onFilterToggle(group.key, opt.value); }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all"
                         style={isSelected ? {
                           background: "var(--color-accent-light)",
                           color: "var(--color-accent)",
-                          fontWeight: 500,
+                          borderColor: "var(--color-accent-mid)",
                         } : {
+                          background: "var(--color-surface)",
                           color: "var(--color-text-body)",
+                          borderColor: "var(--color-border)",
                         }}
                       >
-                        <span className="flex-1">{opt.label}</span>
-                        {isSelected && <span style={{ color: "var(--color-accent)" }}>✓</span>}
-                      </DropdownMenuItem>
+                        {opt.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dot}`} />}
+                        {opt.label}
+                      </button>
                     );
                   })}
                 </div>
@@ -346,23 +309,6 @@ function AdvancedFiltersPopover({ filters, onFilterToggle }) {
             );
           })}
         </div>
-
-        {advancedActiveCount > 0 && (
-          <div className="px-3 py-2.5 border-t" style={{ borderColor: "var(--color-border)" }}>
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault();
-                ADVANCED_FILTERS.forEach(group => {
-                  (filters[group.key] ?? []).forEach(value => onFilterToggle(group.key, value));
-                });
-              }}
-              className="w-full justify-center text-[11px] font-medium py-1.5 rounded-lg cursor-pointer"
-              style={{ color: "var(--color-text-sub)" }}
-            >
-              Clear advanced filters
-            </DropdownMenuItem>
-          </div>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -685,21 +631,11 @@ function TenantHeaderSlot({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Divider — separates location from state filters */}
+          {/* Divider — separates location from status filters */}
           <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
 
-          {/* Essential filters: Status + Payment */}
-          {ESSENTIAL_FILTERS.map(group => (
-            <FilterGroupButton
-              key={group.key}
-              group={group}
-              selectedValues={filters[group.key] ?? []}
-              onToggle={onFilterToggle}
-            />
-          ))}
-
-          {/* Advanced filters collapsed into one button */}
-          <AdvancedFiltersPopover filters={filters} onFilterToggle={onFilterToggle} />
+          {/* All filters: Status, Payment, Frequency, Lease — one button */}
+          <AllFiltersPopover filters={filters} onFilterToggle={onFilterToggle} onClearAll={onClearAll} />
 
           {/* Spacer — pushes right cluster to the end */}
           <div className="flex-1" />
@@ -755,6 +691,160 @@ function TenantHeaderSlot({
   );
 }
 
+// ─── Terminate Lease Dialog ───────────────────────────────────────────────────
+function TerminateLeaseDialog({ tenant, onClose, onConfirmed }) {
+  const [summary, setSummary] = useState(null);
+  const [loadingSum, setLoadingSum] = useState(true);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (!tenant) return;
+    setLoadingSum(true);
+    api.get(`/api/tenant/termination-summary/${tenant._id}`)
+      .then(r => setSummary(r.data.summary))
+      .catch(() => setSummary(null))
+      .finally(() => setLoadingSum(false));
+  }, [tenant]);
+
+  const handleConfirm = async () => {
+    setConfirming(true);
+    try {
+      const res = await api.patch(`/api/tenant/delete-tenant/${tenant._id}`);
+      if (res.data.success) {
+        toast.success(res.data.message);
+        onConfirmed();
+      } else {
+        toast.error(res.data.message || "Failed");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "An error occurred");
+    } finally {
+      setConfirming(false);
+      onClose();
+    }
+  };
+
+  const hasDue = summary && summary.totalDue > 0;
+
+  return (
+    <AlertDialog open={!!tenant} onOpenChange={open => { if (!open) onClose(); }}>
+      <AlertDialogContent style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+        <AlertDialogHeader>
+          <AlertDialogTitle style={{ color: "var(--color-text-strong)" }}>
+            Terminate Lease
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div>
+              {loadingSum ? (
+                <div className="flex items-center gap-2 py-4 text-sm" style={{ color: "var(--color-text-sub)" }}>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading summary…
+                </div>
+              ) : !summary ? (
+                <p className="text-sm py-2" style={{ color: "var(--color-danger)" }}>
+                  Could not load tenant summary.
+                </p>
+              ) : (
+                <div className="space-y-4 pt-1">
+                  <p className="text-sm" style={{ color: "var(--color-text-body)" }}>
+                    Terminating lease for <span className="font-semibold" style={{ color: "var(--color-text-strong)" }}>{summary.name}</span>.
+                    This action cannot be undone.
+                  </p>
+
+                  {/* Balance breakdown */}
+                  <div
+                    className="rounded-xl border overflow-hidden"
+                    style={{ borderColor: hasDue ? "var(--color-danger)" : "var(--color-border)" }}
+                  >
+                    <div
+                      className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest"
+                      style={{
+                        background: hasDue ? "var(--color-danger-bg)" : "var(--color-surface-raised)",
+                        color: hasDue ? "var(--color-danger)" : "var(--color-text-sub)",
+                        borderBottom: "1px solid var(--color-border)",
+                      }}
+                    >
+                      {hasDue ? "Outstanding Balance — must be cleared" : "Outstanding Balance"}
+                    </div>
+                    <div className="divide-y" style={{ divideColor: "var(--color-border)" }}>
+                      {[
+                        { label: "Rent Due", value: summary.rentDue },
+                        { label: "CAM Due", value: summary.camDue },
+                        { label: "Late Fees", value: summary.lateFeeDue },
+                      ].map(row => (
+                        <div key={row.label} className="flex items-center justify-between px-3 py-2">
+                          <span className="text-xs" style={{ color: "var(--color-text-sub)" }}>{row.label}</span>
+                          <span
+                            className="text-xs font-semibold font-mono tabular-nums"
+                            style={{ color: row.value > 0 ? "var(--color-danger)" : "var(--color-text-weak)" }}
+                          >
+                            Rs. {row.value.toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-3 py-2.5" style={{ background: "var(--color-surface-raised)" }}>
+                        <span className="text-xs font-semibold" style={{ color: "var(--color-text-strong)" }}>Total Due</span>
+                        <span
+                          className="text-sm font-bold font-mono tabular-nums"
+                          style={{ color: hasDue ? "var(--color-danger)" : "var(--color-success)" }}
+                        >
+                          Rs. {summary.totalDue.toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Security deposit */}
+                  <div
+                    className="flex items-center justify-between rounded-xl border px-3 py-2.5"
+                    style={{ borderColor: "var(--color-border)", background: "var(--color-surface-raised)" }}
+                  >
+                    <div>
+                      <p className="text-xs font-semibold" style={{ color: "var(--color-text-strong)" }}>Security Deposit</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: "var(--color-text-sub)" }}>
+                        {summary.securityDeposit > 0 ? "Held — process refund or adjust against dues" : "No deposit on record"}
+                      </p>
+                    </div>
+                    <span
+                      className="text-sm font-bold font-mono tabular-nums"
+                      style={{ color: summary.securityDeposit > 0 ? "var(--color-info)" : "var(--color-text-weak)" }}
+                    >
+                      Rs. {summary.securityDeposit.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+
+                  {hasDue && (
+                    <p className="text-[11px] leading-relaxed" style={{ color: "var(--color-text-sub)" }}>
+                      There is an outstanding balance. You can still terminate the lease — ensure dues are settled separately.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            onClick={onClose}
+            className="text-sm"
+            style={{ borderColor: "var(--color-border)", color: "var(--color-text-body)" }}
+          >
+            Cancel
+          </AlertDialogCancel>
+          <Button
+            onClick={handleConfirm}
+            disabled={confirming || loadingSum}
+            className="text-sm font-semibold text-white flex items-center gap-1.5"
+            style={{ background: "var(--color-danger)" }}
+          >
+            {confirming && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Terminate Lease
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Tenants() {
   const [tenants, setTenants] = useState([]);
@@ -762,6 +852,7 @@ export default function Tenants() {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState("grid");
+  const [terminateTenant, setTerminateTenant] = useState(null);
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -951,6 +1042,11 @@ export default function Tenants() {
 
   return (
     <div className="min-h-screen px-4 sm:px-6 font-sans" style={{ color: "var(--color-text-body)" }}>
+      <TerminateLeaseDialog
+        tenant={terminateTenant}
+        onClose={() => setTerminateTenant(null)}
+        onConfirmed={() => { setTerminateTenant(null); fetchAllTenants(); }}
+      />
 
       {/* ── Active filter chip bar ─────────────────────────────────────────── */}
       {appliedChips.length > 0 && (
@@ -1070,7 +1166,7 @@ export default function Tenants() {
         ) : viewMode === "grid" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
             {tenants.map(tenant => (
-              <TenantCard key={tenant._id} tenant={tenant} onTenantMutated={fetchAllTenants} />
+              <TenantCard key={tenant._id} tenant={tenant} onTenantMutated={fetchAllTenants} onTerminate={setTerminateTenant} />
             ))}
           </div>
         ) : (
@@ -1215,13 +1311,7 @@ export default function Tenants() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 style={{ color: "var(--color-danger)" }}
-                                onClick={async () => {
-                                  try {
-                                    const res = await api.patch(`/api/tenant/delete-tenant/${tenant._id}`);
-                                    if (res.data.success) { toast.success(res.data.message); fetchAllTenants(); }
-                                    else toast.error(res.data.message || "Failed");
-                                  } catch (err) { toast.error(err.response?.data?.message || "An error occurred"); }
-                                }}
+                                onClick={() => setTerminateTenant(tenant)}
                               >
                                 <XCircle className="w-3.5 h-3.5 mr-2" /> Terminate Lease
                               </DropdownMenuItem>

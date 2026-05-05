@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { Skeleton, ProgBar, Gauge, ChartTip } from "./AccountingPrimitives";
-import { fmtK, fmtN } from "./AccountingPage";
+import { fmtK } from "../utils/formatter";
 import { toBSDate } from "../utils/nepaliCalendar";
 
 // ─── Shared design tokens ─────────────────────────────────────────────────────

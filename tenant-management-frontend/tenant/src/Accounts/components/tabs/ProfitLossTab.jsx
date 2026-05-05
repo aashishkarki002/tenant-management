@@ -1,16 +1,3 @@
-/**
- * ProfitLossTab.jsx
- *
- * Formal Income Statement (P&L) for the selected filter period.
- *
- *   Gross Revenue
- *   − Operating Expenses  (Maintenance + Utilities + Salary + Other)
- *   = Operating Profit (EBIT / NOI)
- *   − Interest Expense   (Loan interest payments)
- *   = Net Income
- *
- * Data is fetched via useProfitLoss hook → GET /api/accounting/profit-loss.
- */
 
 import { useMemo } from "react";
 import {
@@ -23,7 +10,7 @@ import {
 } from "lucide-react";
 import { useProfitLoss } from "../../hooks/useProfitLoss";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK, fmtN } from "../AccountingPage";
+import { fmtK, fmtN } from "../../utils/formatter";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {

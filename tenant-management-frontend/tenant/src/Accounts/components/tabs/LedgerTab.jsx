@@ -1,24 +1,8 @@
-/**
- * tabs/LedgerTab.jsx  —  REDESIGNED
- *
- * Premium ledger view. Design decisions:
- *   • Top banner is a solid accent-bordered info card with clear Credit/Debit chips
- *   • The general ledger card has a clean header with print CTA
- *   • Credits chip: emerald bg, Debits chip: rose bg — consistent with the rest of the UI
- *   • Print button uses the ghost style from components.md
- *
- * Props (unchanged):
- *   filterLabel    string
- *   totals         { totalRevenue, totalExpenses }
- *   ledgerEntries  array
- *   loadingLedger  boolean
- */
-
 import { useState } from "react";
 import { FileTextIcon, PrinterIcon, ArrowDownRightIcon, ArrowUpRightIcon, DownloadIcon, FileSpreadsheetIcon, Loader2Icon } from "lucide-react";
 import { Card } from "../AccountingPrimitives";
 import LedgerTable from "../LedgerTable";
-import { fmtK } from "../AccountingPage";
+import { fmtK } from "../../utils/formatter";
 import { exportLedgerCSV, exportLedgerPDF } from "../../utils/exportUtils";
 import { useEntity } from "../../../context/EntityContext";
 

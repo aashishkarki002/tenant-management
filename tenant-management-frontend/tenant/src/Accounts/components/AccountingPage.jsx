@@ -9,7 +9,6 @@ import {
     SelectContent,
     SelectItem,
 } from "@/components/ui/select";
-// ── Date utilities — ONE import, no local duplicates ─────────────────────────
 import {
     NEPALI_MONTH_NAMES,
     QUARTER_LABELS,
@@ -17,9 +16,11 @@ import {
     getCurrentBSMonthName,
     toBSDate,
 } from "../utils/nepaliCalendar";
+import { fmtK } from "../utils/formatter";
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
+import { usePortfolioHealth } from "../hooks/usePortfolioHealth";
 import { useMonthlyChart } from "../hooks/useMonthlyChart";
 import { useEntity } from "../../context/EntityContext";
 
@@ -35,6 +36,9 @@ import CashFlowTab from "./tabs/CashFlowTab";
 import LedgerTab from "./tabs/LedgerTab";
 import BankingTab from "./tabs/BankingTab";
 import BalanceSheetTab from "./tabs/BalanceSheetTab";
+import ProfitlossTab from "./tabs/ProfitLossTab";
+import ProjectionsTab from "./tabs/ProjectionsTab";
+import FinancialRatiosTab from "./tabs/FinancialRatiosTab";
 
 
 // Now uses QUARTER_LABELS from nepaliCalendar — not a local duplicate
@@ -46,21 +50,15 @@ const TABS = [
     { id: "revenue", label: "Revenue" },
     { id: "expenses", label: "Expenses" },
     { id: "cash-flow", label: "Cash Flow" },
+    { id: "profit-loss", label: "Profit & Loss" },
+    { id: "financial-ratios", label: "Ratios" },
+    { id: "balance-sheet", label: "Balance Sheet" },
     { id: "liabilities", label: "Liabilities" },
     { id: "banking", label: "Banking" },
     { id: "ledger", label: "Ledger" },
-    { id: "balance-sheet", label: "Balance Sheet" },
+    { id: "projections", label: "Projections" },
 ];
 
-// ─── Formatters ───────────────────────────────────────────────────────────────
-export const fmtN = (n = 0) => Math.abs(n).toLocaleString("en-IN");
-export const fmtK = (v) => {
-    const a = Math.abs(v ?? 0), s = (v ?? 0) < 0 ? "−" : "";
-    if (a >= 10_000_000) return `${s}${(a / 10_000_000).toFixed(2)} Cr`;
-    if (a >= 100_000) return `${s}${(a / 100_000).toFixed(1)} L`;
-    if (a >= 1_000) return `${s}${(a / 1_000).toFixed(0)}K`;
-    return `${s}${a}`;
-};
 
 
 export function buildCompareLabel(granularity, { year, quarter, month } = {}) {
@@ -172,6 +170,14 @@ export default function AccountingPage() {
         resolvedFilter.month, resolvedFilter.fiscalYear,
         resolvedEntityId,
     );
+    const { health, loading: healthLoading } = usePortfolioHealth(
+        resolvedFilter.quarter,
+        resolvedFilter.startDate,
+        resolvedFilter.endDate,
+        resolvedFilter.month,
+        resolvedFilter.fiscalYear,
+        resolvedEntityId,
+    );
     useBankAccounts(); // keeps bank account context warm for dialogs
     const { chartData, compareData, comparisonStats, loadingChart } = useMonthlyChart(
         chartQuarter, activeCompareQtr,
@@ -180,7 +186,11 @@ export default function AccountingPage() {
     );
 
     // ── Derived totals ────────────────────────────────────────────────────────
-    const totals = summary?.totals ?? { totalRevenue: 0, totalExpenses: 0, totalLiabilities: 0, netCashFlow: 0 };
+    const totals = summary?.totals ?? {
+        totalRevenue: 0, totalExpenses: 0, totalLiabilities: 0, netCashFlow: 0,
+        cashBalance: 0, arBalance: 0, apBalance: 0, operatingCashFlow: 0,
+        cashBalancePaisa: 0, arBalancePaisa: 0, apBalancePaisa: 0, operatingCashFlowPaisa: 0,
+    };
     const netMargin = totals.totalRevenue > 0 ? (totals.netCashFlow / totals.totalRevenue) * 100 : 0;
 
     // ── Human-readable period label ───────────────────────────────────────────
@@ -365,6 +375,8 @@ export default function AccountingPage() {
                                 loadingLedger={loadingLedger}
                                 onViewLedger={() => setActiveTab("ledger")}
                                 currentBSMonth={getCurrentBSMonthName()}
+                                health={health}
+                                healthLoading={healthLoading}
                             />
                         )}
 
@@ -420,6 +432,25 @@ export default function AccountingPage() {
 
                         {activeTab === "balance-sheet" && (
                             <BalanceSheetTab entityId={resolvedEntityId} />
+                        )}
+
+                        {activeTab === "projections" && (
+                            <ProjectionsTab
+                                filterProps={filterProps}
+                                filterLabel={filterLabel}
+                            />
+                        )}
+                        {activeTab === "profit-loss" && (
+                            <ProfitlossTab
+                                filterProps={filterProps}
+                                filterLabel={filterLabel}
+                            />
+                        )}
+                        {activeTab === "financial-ratios" && (
+                            <FinancialRatiosTab
+                                filterProps={filterProps}
+                                filterLabel={filterLabel}
+                            />
                         )}
                     </motion.div>
                 </AnimatePresence>

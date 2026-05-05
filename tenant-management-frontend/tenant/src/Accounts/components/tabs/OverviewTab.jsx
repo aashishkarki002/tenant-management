@@ -1,20 +1,3 @@
-/**
- * OverviewTab — distilled
- *
- * Before: 9 card-chrome elements (5 health chips + 4 KPI cards) + sidebar + chart
- * After:  1 summary bar → full-width chart → 2-col detail row → transactions
- *
- * Changes from audit:
- *  - PortfolioHealthStrip + HeroCard + 3×KpiCard → single SummaryBar
- *  - DarkCard removed; size + color carry hierarchy instead
- *  - Sparklines + breakdown pills removed from KPI level
- *  - Chart always full-width (no competing sidebar)
- *  - ArrearsAgingCard + MiniCashFlow → compact 2-col panels below chart
- *  - Min text size 11px (was 9px throughout)
- *  - Max font weight: font-bold (was font-black)
- *  - Uppercase tracking removed from field-level labels
- */
-
 import { Skeleton, ProgBar } from "../AccountingPrimitives";
 import {
     RevExpChart,
@@ -22,7 +5,7 @@ import {
 } from "../AccountingCharts";
 import ChartCard from "../ChartCard";
 import LedgerFeed from "../LedgerFeed";
-import { fmtK } from "../AccountingPage";
+import { fmtK } from "../../utils/formatter";
 import { cn } from "@/lib/utils";
 import {
     TrendingUpIcon, TrendingDownIcon,
@@ -66,33 +49,34 @@ function TrendBadge({ pct, loading }) {
 // One bordered container, four metric cells divided by hairline borders.
 // Net Cash gets the dominant treatment via font size + color, not a black card.
 // No sparklines, no breakdown pills, no nested card chrome.
-function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading }) {
-    const col = health?.collection;
+function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, collectionGap }) {
     const yoy = health?.yoyDeltas;
-    const isDeficit = (totals.netCashFlow ?? 0) < 0;
-    const netColor = isDeficit ? T.danger : T.success;
+    const isLoss = (totals.netCashFlow ?? 0) < 0;
+    const netColor = isLoss ? T.danger : T.success;
+    const cashPos = totals.cashBalance ?? 0;
+    const cashNeg = cashPos < 0;
 
     return (
         <div
             className="rounded-xl overflow-hidden"
             style={{ background: T.raised, border: `1px solid ${T.border}` }}
         >
-            <div className="grid grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5">
 
-                {/* Net Cash — primary, slightly larger */}
+                {/* Net Income (accrual) — primary */}
                 <div className="flex flex-col gap-1 px-5 py-4 border-r border-b lg:border-b-0"
                     style={{ borderColor: T.border }}>
                     <div className="flex items-center justify-between">
                         <span className="text-[11px] font-medium" style={{ color: T.sub }}>
-                            Net cash flow
+                            Net income
                         </span>
                         <span className={cn(
                             "text-[10px] font-semibold px-2 py-0.5 rounded-full",
-                            isDeficit
+                            isLoss
                                 ? "bg-[var(--color-danger-bg)] text-[var(--color-danger)]"
                                 : "bg-[var(--color-success-bg)] text-[var(--color-success)]",
                         )}>
-                            {isDeficit ? "Deficit" : "Surplus"}
+                            {isLoss ? "Loss" : "Profit"}
                         </span>
                     </div>
                     {loadingSummary
@@ -106,21 +90,31 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading }
                                     letterSpacing: "-0.02em",
                                 }}
                             >
-                                {isDeficit ? "−" : "+"}RS {fmtK(Math.abs(totals.netCashFlow))}
+                                {isLoss ? "−" : "+"}RS {fmtK(Math.abs(totals.netCashFlow))}
                             </span>
                         )}
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[11px]" style={{ color: T.sub }}>
-                            {netMargin >= 0 ? "+" : ""}{netMargin.toFixed(1)}% margin
+                            {netMargin >= 0 ? "+" : ""}{netMargin.toFixed(1)}% margin · accrual
                         </span>
                         <TrendBadge pct={yoy?.netCashFlow?.pct} loading={healthLoading} />
                     </div>
                 </div>
 
-                {/* Revenue */}
+                {/* Revenue + collection split */}
                 <div className="flex flex-col gap-1 px-5 py-4 border-b lg:border-b-0 lg:border-l"
                     style={{ borderColor: T.border }}>
-                    <span className="text-[11px] font-medium" style={{ color: T.sub }}>Revenue</span>
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium" style={{ color: T.sub }}>Revenue</span>
+                        {!loadingSummary && (collectionGap?.outstanding ?? 0) > 0 && (
+                            <span
+                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
+                            >
+                                RS {fmtK(collectionGap.outstanding)} pending
+                            </span>
+                        )}
+                    </div>
                     {loadingSummary
                         ? <Skeleton h={28} />
                         : (
@@ -131,7 +125,15 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading }
                                 RS {fmtK(totals.totalRevenue)}
                             </span>
                         )}
-                    <TrendBadge pct={yoy?.revenue?.pct} loading={healthLoading} />
+                    {!loadingSummary && (collectionGap?.outstanding ?? 0) > 0
+                        ? <CollectionSplit
+                            billed={collectionGap.billed}
+                            collected={collectionGap.collected}
+                            outstanding={collectionGap.outstanding}
+                            rate={collectionGap.collectionRatePct}
+                          />
+                        : <TrendBadge pct={yoy?.revenue?.pct} loading={healthLoading} />
+                    }
                 </div>
 
                 {/* Expenses */}
@@ -175,13 +177,134 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading }
                     </span>
                 </div>
 
+                {/* Cash Position — actual bank/cash balance (balance sheet) */}
+                <div className="flex flex-col gap-1 px-5 py-4 border-t lg:border-t-0 lg:border-l"
+                    style={{ borderColor: T.border }}>
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium" style={{ color: T.sub }}>Cash position</span>
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+                            style={{ background: T.border, color: T.sub }}>
+                            live
+                        </span>
+                    </div>
+                    {loadingSummary
+                        ? <Skeleton h={28} />
+                        : (
+                            <span
+                                className="text-[22px] font-bold tabular-nums leading-none"
+                                style={{ color: cashNeg ? T.danger : T.body, letterSpacing: "-0.02em" }}
+                            >
+                                RS {fmtK(Math.abs(cashPos))}
+                            </span>
+                        )}
+                    <span className="text-[11px]" style={{ color: T.sub }}>bank + cash on hand</span>
+                </div>
+
             </div>
         </div>
     );
 }
 
+// ─── CollectionSplit — mini bar + collected/pending, shown inside Revenue cell ─
+function CollectionSplit({ billed, collected, outstanding, rate }) {
+    const barColor = rate >= 90 ? T.success : rate >= 70 ? "#f59e0b" : T.danger;
+    return (
+        <div className="flex flex-col gap-1 mt-0.5">
+            <div className="h-1 rounded-full overflow-hidden" style={{ background: T.border }}>
+                <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${rate}%`, background: barColor }}
+                />
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-semibold tabular-nums" style={{ color: barColor }}>
+                    RS {fmtK(collected)} collected
+                </span>
+                <span className="text-[9px]" style={{ color: T.sub }}>·</span>
+                <span className="text-[10px] font-semibold tabular-nums" style={{ color: "#f59e0b" }}>
+                    RS {fmtK(outstanding)} pending
+                </span>
+                <span className="text-[9px] font-bold tabular-nums ml-auto" style={{ color: barColor }}>
+                    {rate.toFixed(0)}%
+                </span>
+            </div>
+        </div>
+    );
+}
+
+// ─── CollectionGapStrip — full-width strip, only renders when outstanding > 0 ──
+function CollectionGapStrip({ collectionGap, loading, filterLabel }) {
+    if (loading || !collectionGap || (collectionGap.outstanding ?? 0) === 0) return null;
+
+    const { billed, collected, outstanding, collectionRatePct: rate } = collectionGap;
+    const barColor = rate >= 90 ? T.success : rate >= 70 ? "#f59e0b" : T.danger;
+
+    return (
+        <div
+            className="rounded-xl overflow-hidden"
+            style={{ background: T.raised, border: `1px solid ${T.border}` }}
+        >
+            <div className="flex items-center gap-4 flex-wrap px-4 py-3">
+                {/* Label */}
+                <div className="shrink-0 min-w-[110px]">
+                    <div className="text-[11px] font-semibold" style={{ color: T.body }}>Collection Health</div>
+                    <div className="text-[10px]" style={{ color: T.sub }}>{filterLabel}</div>
+                </div>
+
+                {/* Stat chips: Billed → Collected · Pending */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    <CollStat label="Billed"     value={`RS ${fmtK(billed)}`}       color={T.body} />
+                    <span className="text-[11px]" style={{ color: T.sub }}>→</span>
+                    <CollStat label="Collected"  value={`RS ${fmtK(collected)}`}    color={barColor} />
+                    <span className="text-[11px]" style={{ color: T.sub }}>·</span>
+                    <CollStat label="Pending"    value={`RS ${fmtK(outstanding)}`}  color="#f59e0b" highlight />
+                </div>
+
+                {/* Progress bar + rate */}
+                <div className="flex items-center gap-2 flex-1 min-w-[140px]">
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: T.border }}>
+                        <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${rate}%`, background: barColor }}
+                        />
+                    </div>
+                    <span className="text-[11px] font-bold tabular-nums shrink-0" style={{ color: barColor }}>
+                        {rate.toFixed(0)}%
+                    </span>
+                </div>
+
+                {/* Warning badge when collection rate is low */}
+                {rate < 80 && (
+                    <span
+                        className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0"
+                        style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
+                    >
+                        Follow up needed
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function CollStat({ label, value, color, highlight = false }) {
+    return (
+        <div
+            className="flex flex-col items-start px-2.5 py-1 rounded-lg"
+            style={highlight ? { background: "var(--color-warning-bg)" } : {}}
+        >
+            <span className="text-[9px] uppercase tracking-[0.11em] font-bold mb-0.5" style={{ color: T.sub }}>
+                {label}
+            </span>
+            <span className="text-[12px] font-bold tabular-nums leading-tight" style={{ color }}>
+                {value}
+            </span>
+        </div>
+    );
+}
+
 // ─── ArrearsPanel — simplified list, no icon overload ────────────────────────
-function ArrearsPanel({ aging, loading }) {
+function ArrearsPanel({ aging, loading, arBalancePaisa }) {
     const buckets = [
         { label: "1–30 days",  data: aging?.days30,     color: "var(--color-warning)" },
         { label: "31–60 days", data: aging?.days60,     color: "var(--color-danger)",  opacity: 0.7 },
@@ -194,7 +317,15 @@ function ArrearsPanel({ aging, loading }) {
     return (
         <div className="rounded-xl overflow-hidden" style={{ background: T.raised, border: `1px solid ${T.border}` }}>
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: T.border }}>
-                <span className="text-[12px] font-semibold" style={{ color: T.body }}>Arrears aging</span>
+                <div className="flex items-center gap-3">
+                    <span className="text-[12px] font-semibold" style={{ color: T.body }}>Arrears aging</span>
+                    {!loading && (arBalancePaisa ?? 0) > 0 && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}>
+                            Total AR: RS {fmtK(paisaToRs(arBalancePaisa))}
+                        </span>
+                    )}
+                </div>
                 {!loading && totalCount > 0 && (
                     <span className="text-[12px] font-semibold tabular-nums" style={{ color: T.danger }}>
                         RS {fmtK(paisaToRs(totalAmount))}
@@ -257,7 +388,7 @@ function CompareTable({ comparisonStats, labelA, labelB }) {
     const rows = [
         { label: "Revenue",       key: "revenue",     color: T.revenue },
         { label: "Expenses",      key: "expenses",    color: T.expenses },
-        { label: "Net cash flow", key: "netCashFlow", color: T.success },
+        { label: "Net income",    key: "netCashFlow", color: T.success },
     ];
     return (
         <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.border}` }}>
@@ -311,6 +442,7 @@ function CompareTable({ comparisonStats, labelA, labelB }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function OverviewTab({
+    summary,
     loadingSummary,
     totals,
     netMargin,
@@ -329,6 +461,8 @@ export default function OverviewTab({
     health,
     healthLoading,
 }) {
+    const collectionGap = summary?.collectionGap ?? null;
+
     return (
         <div className="flex flex-col gap-4">
 
@@ -339,7 +473,11 @@ export default function OverviewTab({
                 health={health}
                 loadingSummary={loadingSummary}
                 healthLoading={healthLoading}
+                collectionGap={collectionGap}
             />
+
+            {/* ── 1b. Collection gap strip — only when rent outstanding ────────── */}
+            <CollectionGapStrip collectionGap={collectionGap} loading={loadingSummary} filterLabel={filterLabel} />
 
             {/* ── 2. Compare mode banner ─────────────────────────────────────── */}
             {compareMode && (
@@ -401,7 +539,7 @@ export default function OverviewTab({
             )}
 
             {/* ── 4. Arrears — full width, most actionable data on this page ── */}
-            <ArrearsPanel aging={health?.arrearsAging} loading={healthLoading} />
+            <ArrearsPanel aging={health?.arrearsAging} loading={healthLoading} arBalancePaisa={totals.arBalancePaisa} />
 
             {/* ── 5. Recent transactions ────────────────────────────────────── */}
             <div

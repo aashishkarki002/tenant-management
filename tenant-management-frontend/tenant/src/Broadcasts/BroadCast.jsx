@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import api from '../../plugins/axios'
 import useProperty from '../hooks/use-property'
 import { useUnits } from '../hooks/use-units'
@@ -11,7 +11,6 @@ import {
     Eye,
     X,
     Filter,
-    ChevronDown,
     Receipt,
     Building2,
     Zap,
@@ -21,17 +20,39 @@ import {
     Users,
     CheckCircle2,
     AlertCircle,
+    Wallet,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 
 // ─── Channel definitions ─────────────────────────────────────────────────────
 const CHANNELS = [
     { id: 'email', label: 'Email', icon: Mail, available: true },
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, available: false },
-    { id: 'sms', label: 'SMS', icon: MessageSquare, available: false },
+    { id: 'sms', label: 'SMS', icon: MessageSquare, available: true },
 ]
 
-// ─── Quick-action draft templates ────────────────────────────────────────────
-const QUICK_TEMPLATES = [
+// ─── Email quick-action templates ────────────────────────────────────────────
+const EMAIL_TEMPLATES = [
     {
         id: 'rent',
         label: 'Rent Reminder',
@@ -129,6 +150,40 @@ Management Team`,
     },
 ]
 
+// ─── SMS quick-action templates (short, ≤160 chars ideal) ────────────────────
+const SMS_TEMPLATES = [
+    {
+        id: 'rent',
+        label: 'Rent Reminder',
+        icon: Receipt,
+        body: 'Dear {{tenantName}}, your rent of Rs.{{totalRent}} for {{units}} at {{property}} is due. Please pay at the earliest to avoid late fees. - Management',
+    },
+    {
+        id: 'cam',
+        label: 'CAM Charges',
+        icon: Building2,
+        body: 'Dear {{tenantName}}, your CAM charges for {{units}} at {{property}} are due this month. Kindly settle at the earliest. - Management',
+    },
+    {
+        id: 'maintenance',
+        label: 'Maintenance',
+        icon: Wrench,
+        body: 'Dear {{tenantName}}, scheduled maintenance at {{property}} Block {{block}}. Please make necessary arrangements. We apologize for inconvenience. - Management',
+    },
+    {
+        id: 'water',
+        label: 'Water Disruption',
+        icon: Droplets,
+        body: 'Dear {{tenantName}}, water supply at {{property}} will be temporarily interrupted due to maintenance. We apologize for the inconvenience. - Management',
+    },
+    {
+        id: 'custom',
+        label: 'Custom',
+        icon: PenLine,
+        body: '',
+    },
+]
+
 const PLACEHOLDERS = [
     { key: '{{tenantName}}', label: 'Name' },
     { key: '{{property}}', label: 'Property' },
@@ -140,109 +195,63 @@ const PLACEHOLDERS = [
     { key: '{{securityDeposit}}', label: 'Security Deposit' },
 ]
 
-// ─── CSS variable style helpers ───────────────────────────────────────────────
-const card = {
-    backgroundColor: 'var(--color-surface)',
-    border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-lg)',
-    boxShadow: 'var(--shadow-card)',
-}
-
-const sectionLabel = {
-    color: 'var(--color-text-weak)',
-    fontSize: '11px',
-    fontWeight: 600,
-    letterSpacing: '0.07em',
-    textTransform: 'uppercase',
-    marginBottom: '10px',
-    display: 'block',
-}
-
-const inputStyle = {
-    width: '100%',
-    backgroundColor: 'var(--color-bg)',
-    border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-md)',
-    padding: '9px 12px',
-    fontSize: '14px',
-    color: 'var(--color-text-body)',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-}
+// ─── Shared class helpers ─────────────────────────────────────────────────────
+const cardCls = 'bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-[var(--shadow-card)]'
+const sectionLabelCls = 'text-[var(--color-text-weak)] text-[11px] font-semibold tracking-[0.07em] uppercase mb-2.5 block'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function FilterTag({ children, onRemove }) {
     return (
-        <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '4px',
-            backgroundColor: 'var(--color-accent-light)',
-            color: 'var(--color-accent)',
-            border: '1px solid var(--color-accent-mid)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '2px 8px',
-            fontSize: '12px',
-            fontWeight: 500,
-        }}>
+        <Badge
+            className="gap-1 bg-[var(--color-accent-light)] text-[var(--color-accent)] border-[var(--color-accent-mid)] rounded-[var(--radius-sm)] px-2 py-0.5 font-medium"
+        >
             {children}
             {onRemove && (
                 <button
                     onClick={onRemove}
-                    className="cursor-pointer"
-                    style={{ opacity: 0.6, lineHeight: 1, background: 'none', border: 'none', padding: 0, color: 'inherit' }}
-                    onMouseOver={e => e.currentTarget.style.opacity = '1'}
-                    onMouseOut={e => e.currentTarget.style.opacity = '0.6'}
+                    className="opacity-60 hover:opacity-100 leading-none bg-transparent border-none p-0 text-inherit cursor-pointer"
                 >
                     <X className="w-3 h-3" />
                 </button>
             )}
-        </span>
+        </Badge>
     )
 }
 
-function SelectInput({ label, value, onChange, disabled, children }) {
+function FilterSelect({ label, value, onValueChange, disabled, placeholder, children }) {
     return (
-        <div>
-            <label style={{ ...sectionLabel, marginBottom: '5px', fontSize: '11px' }}>{label}</label>
-            <div style={{ position: 'relative' }}>
-                <select
-                    value={value}
-                    onChange={onChange}
-                    disabled={disabled}
-                    style={{
-                        ...inputStyle,
-                        paddingRight: '32px',
-                        appearance: 'none',
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                        opacity: disabled ? 0.5 : 1,
-                    }}
-                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
-                >
+        <div className="space-y-[5px]">
+            <Label className="text-[var(--color-text-weak)] text-[11px] font-semibold tracking-[0.07em] uppercase">
+                {label}
+            </Label>
+            <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+                <SelectTrigger className="w-full h-9 bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text-body)] text-sm">
+                    <SelectValue placeholder={placeholder} />
+                </SelectTrigger>
+                <SelectContent>
                     {children}
-                </select>
-                <ChevronDown
-                    className="w-3.5 h-3.5"
-                    style={{
-                        position: 'absolute', right: '10px', top: '50%',
-                        transform: 'translateY(-50%)', pointerEvents: 'none',
-                        color: 'var(--color-text-weak)',
-                    }}
-                />
-            </div>
+                </SelectContent>
+            </Select>
         </div>
     )
 }
 
-function RecipientPreviewPanel({ filters, onClose }) {
+function RecipientPreviewPanel({ filters, open, onClose, channel }) {
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
 
+    const isSms = channel === 'sms'
+    const endpoint = isSms
+        ? '/api/sms/preview-recipients'
+        : '/api/broadcast/preview-recipients'
+
     useEffect(() => {
-        const fetch = async () => {
+        if (!open) return
+        const fetchData = async () => {
             setLoading(true)
             try {
-                const res = await api.post('/api/broadcast/preview-recipients', { filters })
+                const res = await api.post(endpoint, { filters })
                 setData(res.data)
             } catch {
                 toast.error('Failed to preview recipients')
@@ -251,243 +260,217 @@ function RecipientPreviewPanel({ filters, onClose }) {
                 setLoading(false)
             }
         }
-        fetch()
-    }, [])
+        fetchData()
+    }, [open])
+
+    const withCount = isSms ? data?.withPhoneCount : data?.withEmailCount
+    const withoutCount = isSms ? data?.withoutPhoneCount : data?.withoutEmailCount
+    const withLabel = isSms ? 'With Phone' : 'With Email'
+    const withoutLabel = isSms ? 'No Phone' : 'No Email'
+    const missingList = isSms ? data?.tenantsWithoutPhone : data?.tenantsWithoutEmail
+    const missingWarning = isSms
+        ? "won't receive SMS — no phone on file."
+        : "won't receive emails — no email on file."
 
     return (
-        <div style={{
-            position: 'fixed', inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 50, padding: '16px',
-        }}>
-            <div style={{
-                ...card,
-                boxShadow: 'var(--shadow-modal)',
-                borderRadius: 'var(--radius-xl)',
-                width: '100%', maxWidth: '480px',
-                maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-            }}>
-                <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '16px 20px',
-                    borderBottom: '1px solid var(--color-border)',
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Users className="w-4 h-4" style={{ color: 'var(--color-accent)' }} />
-                        <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text-strong)', margin: 0 }}>
+        <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="max-w-[480px] p-0 gap-0 bg-[var(--color-surface)] border-[var(--color-border)]" showCloseButton={false}>
+                <DialogHeader className="flex-row items-center justify-between px-5 py-4 border-b border-[var(--color-border)] space-y-0">
+                    <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-[var(--color-accent)]" />
+                        <DialogTitle className="text-[15px] font-semibold text-[var(--color-text-strong)]">
                             Preview Recipients
-                        </h2>
+                        </DialogTitle>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="cursor-pointer"
-                        style={{
-                            padding: '6px', background: 'none', border: 'none',
-                            borderRadius: 'var(--radius-sm)', color: 'var(--color-text-weak)',
-                            cursor: 'pointer',
-                        }}
-                        onMouseOver={e => e.currentTarget.style.backgroundColor = 'var(--color-bg)'}
-                        onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
+                    <Button variant="ghost" size="icon-sm" onClick={onClose} className="text-[var(--color-text-weak)]">
                         <X className="w-4 h-4" />
-                    </button>
-                </div>
+                    </Button>
+                </DialogHeader>
 
-                <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
-                    {loading ? (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '120px', gap: '10px', color: 'var(--color-text-sub)' }}>
-                            <div style={{ width: '18px', height: '18px', border: '2px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%' }} className="animate-spin" />
-                            <span style={{ fontSize: '14px' }}>Loading recipients…</span>
-                        </div>
-                    ) : data ? (
-                        <>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>
-                                {[
-                                    { label: 'Total', val: data.totalCount, color: 'var(--color-text-strong)', bg: 'var(--color-bg)' },
-                                    { label: 'With Email', val: data.withEmailCount, color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
-                                    { label: 'No Email', val: data.withoutEmailCount, color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' },
-                                ].map(({ label, val, color, bg }) => (
-                                    <div key={label} style={{
-                                        backgroundColor: bg,
-                                        border: '1px solid var(--color-border)',
-                                        borderRadius: 'var(--radius-md)',
-                                        padding: '12px',
-                                        textAlign: 'center',
-                                    }}>
-                                        <div style={{ fontSize: '22px', fontWeight: 700, color }}>{val ?? 0}</div>
-                                        <div style={{ fontSize: '11px', color: 'var(--color-text-sub)', marginTop: '2px' }}>{label}</div>
-                                    </div>
-                                ))}
+                <ScrollArea className="max-h-[60vh]">
+                    <div className="px-5 py-4">
+                        {loading ? (
+                            <div className="flex items-center justify-center h-[120px] gap-2.5 text-[var(--color-text-sub)]">
+                                <div className="w-[18px] h-[18px] border-2 border-[var(--color-border)] border-t-[var(--color-accent)] rounded-full animate-spin" />
+                                <span className="text-sm">Loading recipients…</span>
                             </div>
-
-                            {data.tenantsWithoutEmail?.length > 0 && (
-                                <div style={{
-                                    backgroundColor: 'var(--color-warning-bg)',
-                                    border: '1px solid var(--color-warning-border)',
-                                    borderRadius: 'var(--radius-md)',
-                                    padding: '10px 12px',
-                                    marginBottom: '12px',
-                                    display: 'flex', gap: '8px', alignItems: 'flex-start',
-                                }}>
-                                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--color-warning)' }} />
-                                    <span style={{ fontSize: '13px', color: 'var(--color-warning)', lineHeight: 1.4 }}>
-                                        {data.tenantsWithoutEmail.length} tenant(s) won't receive emails — no email on file.
-                                    </span>
-                                </div>
-                            )}
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-                                {data.tenants?.slice(0, 20).map((t) => (
-                                    <div key={t.id} style={{
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                        padding: '10px 0',
-                                        borderBottom: '1px solid var(--color-border)',
-                                    }}>
-                                        <div>
-                                            <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-body)', margin: 0 }}>{t.name}</p>
-                                            <p style={{ fontSize: '11px', color: 'var(--color-text-weak)', margin: '2px 0 0' }}>
-                                                {[t.units, t.block].filter(Boolean).join(' · ') || 'No unit'}
-                                            </p>
+                        ) : data ? (
+                            <>
+                                <div className="grid grid-cols-3 gap-2.5 mb-4">
+                                    {[
+                                        { label: 'Total', val: data.totalCount, valCls: 'text-[var(--color-text-strong)]', bgCls: 'bg-[var(--color-bg)]' },
+                                        { label: withLabel, val: withCount, valCls: 'text-[var(--color-success)]', bgCls: 'bg-[var(--color-success-bg)]' },
+                                        { label: withoutLabel, val: withoutCount, valCls: 'text-[var(--color-danger)]', bgCls: 'bg-[var(--color-danger-bg)]' },
+                                    ].map(({ label, val, valCls, bgCls }) => (
+                                        <div key={label} className={`${bgCls} border border-[var(--color-border)] rounded-[var(--radius-md)] p-3 text-center`}>
+                                            <div className={`text-[22px] font-bold ${valCls}`}>{val ?? 0}</div>
+                                            <div className="text-[11px] text-[var(--color-text-sub)] mt-0.5">{label}</div>
                                         </div>
-                                        <span style={{
-                                            fontSize: '11px',
-                                            color: t.email ? 'var(--color-success)' : 'var(--color-danger)',
-                                            fontWeight: 500,
-                                        }}>
-                                            {t.email ? (
-                                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    <CheckCircle2 className="w-3 h-3" />
-                                                    Has email
-                                                </span>
-                                            ) : 'No email'}
+                                    ))}
+                                </div>
+
+                                {missingList?.length > 0 && (
+                                    <div className="bg-[var(--color-warning-bg)] border border-[var(--color-warning-border)] rounded-[var(--radius-md)] px-3 py-[10px] mb-3 flex gap-2 items-start">
+                                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-warning)]" />
+                                        <span className="text-[13px] text-[var(--color-warning)] leading-[1.4]">
+                                            {missingList.length} tenant(s) {missingWarning}
                                         </span>
                                     </div>
-                                ))}
-                                {data.tenants?.length > 20 && (
-                                    <p style={{ fontSize: '12px', color: 'var(--color-text-weak)', textAlign: 'center', paddingTop: '10px' }}>
-                                        +{data.tenants.length - 20} more tenants
-                                    </p>
                                 )}
-                            </div>
-                        </>
-                    ) : null}
-                </div>
-            </div>
-        </div>
+
+                                <div className="flex flex-col">
+                                    {data.tenants?.slice(0, 20).map((t) => {
+                                        const contactVal = isSms ? t.phone : t.email
+                                        const hasContact = Boolean(contactVal)
+                                        return (
+                                            <div key={t.id} className="flex items-center justify-between py-[10px] border-b border-[var(--color-border)]">
+                                                <div>
+                                                    <p className="text-[13px] font-medium text-[var(--color-text-body)] m-0">{t.name}</p>
+                                                    <p className="text-[11px] text-[var(--color-text-weak)] mt-0.5 m-0">
+                                                        {[t.units, t.block].filter(Boolean).join(' · ') || 'No unit'}
+                                                    </p>
+                                                </div>
+                                                <span className={`text-[11px] font-medium ${hasContact ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
+                                                    {hasContact ? (
+                                                        <span className="flex items-center gap-1">
+                                                            <CheckCircle2 className="w-3 h-3" />
+                                                            {isSms ? t.phone : 'Has email'}
+                                                        </span>
+                                                    ) : (isSms ? 'No phone' : 'No email')}
+                                                </span>
+                                            </div>
+                                        )
+                                    })}
+                                    {data.tenants?.length > 20 && (
+                                        <p className="text-xs text-[var(--color-text-weak)] text-center pt-[10px]">
+                                            +{data.tenants.length - 20} more tenants
+                                        </p>
+                                    )}
+                                </div>
+                            </>
+                        ) : null}
+                    </div>
+                </ScrollArea>
+            </DialogContent>
+        </Dialog>
     )
 }
 
-function ConfirmModal({ summary, onConfirm, onCancel, loading }) {
+function ConfirmModal({ summary, onConfirm, onCancel, loading, open, channel }) {
+    const isSms = channel === 'sms'
+
     return (
-        <div style={{
-            position: 'fixed', inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 50, padding: '16px',
-        }}>
-            <div style={{
-                ...card,
-                boxShadow: 'var(--shadow-modal)',
-                borderRadius: 'var(--radius-xl)',
-                width: '100%', maxWidth: '420px',
-                padding: '24px',
-            }}>
-                <div style={{
-                    width: '44px', height: '44px',
-                    backgroundColor: 'var(--color-accent-light)',
-                    borderRadius: 'var(--radius-lg)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: '16px',
-                }}>
-                    <Send className="w-5 h-5" style={{ color: 'var(--color-accent)' }} />
-                </div>
+  <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+  <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
 
-                <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-text-strong)', margin: '0 0 4px' }}>
-                    Send Broadcast Email
-                </h2>
-                <p style={{ fontSize: '13px', color: 'var(--color-text-sub)', margin: '0 0 20px' }}>
-                    This will send emails to all matching tenants. Review the details below.
-                </p>
+    {/* Header */}
+    <div className="px-5 pt-5 pb-4 border-b border-[var(--color-border)] flex gap-3 items-start">
+      
+      {/* Icon (reduced emphasis) */}
+      <div className="w-10 h-10 rounded-lg bg-[var(--color-accent-light)] flex items-center justify-center shrink-0">
+        {isSms
+          ? <MessageSquare className="w-4 h-4 text-[var(--color-accent)]" />
+          : <Send className="w-4 h-4 text-[var(--color-accent)]" />
+        }
+      </div>
 
-                <div style={{
-                    backgroundColor: 'var(--color-bg)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '14px',
-                    marginBottom: '20px',
-                }}>
-                    {[
-                        { label: 'Subject', value: summary.subject },
-                        summary.property && { label: 'Property', value: summary.property },
-                        summary.block && { label: 'Block', value: summary.block },
-                        summary.status && { label: 'Status', value: summary.status },
-                    ].filter(Boolean).map(({ label, value }) => (
-                        <div key={label} style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '5px 0',
-                            borderBottom: '1px solid var(--color-border)',
-                        }}>
-                            <span style={{ fontSize: '12px', color: 'var(--color-text-weak)' }}>{label}</span>
-                            <span style={{
-                                fontSize: '13px', fontWeight: 500, color: 'var(--color-text-body)',
-                                maxWidth: '65%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                textTransform: label === 'Status' ? 'capitalize' : 'none',
-                            }}>{value}</span>
-                        </div>
-                    ))}
-                </div>
+      {/* Title + Description */}
+      <div>
+        <DialogTitle className="text-sm font-semibold text-[var(--color-text-strong)]">
+          {isSms ? 'Send Broadcast SMS' : 'Send Broadcast Email'}
+        </DialogTitle>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    <button
-                        onClick={onCancel}
-                        className="cursor-pointer"
-                        style={{
-                            flex: 1, padding: '10px', borderRadius: 'var(--radius-md)',
-                            border: '1px solid var(--color-border)',
-                            backgroundColor: 'transparent',
-                            color: 'var(--color-text-body)',
-                            fontSize: '14px', fontWeight: 500, cursor: 'pointer',
-                            transition: 'background-color 0.15s',
-                        }}
-                        onMouseOver={e => e.currentTarget.style.backgroundColor = 'var(--color-bg)'}
-                        onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={onConfirm}
-                        disabled={loading}
-                        className="cursor-pointer"
-                        style={{
-                            flex: 1, padding: '10px', borderRadius: 'var(--radius-md)',
-                            border: 'none',
-                            backgroundColor: loading ? 'var(--color-accent-mid)' : 'var(--color-accent)',
-                            color: '#fff',
-                            fontSize: '14px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                            transition: 'background-color 0.15s',
-                            opacity: loading ? 0.8 : 1,
-                        }}
-                        onMouseOver={e => !loading && (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
-                        onMouseOut={e => !loading && (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
-                    >
-                        {loading && <div style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} className="animate-spin" />}
-                        {loading ? 'Sending…' : 'Send Now'}
-                    </button>
-                </div>
-            </div>
+        <DialogDescription className="text-xs text-[var(--color-text-sub)] mt-1 leading-relaxed">
+          {isSms
+            ? 'This will send an SMS to all matching tenants with a phone number.'
+            : 'This will send emails to all matching tenants.'}
+        </DialogDescription>
+      </div>
+    </div>
+
+    {/* Summary */}
+    <div className="px-5 py-4 space-y-3">
+
+      {/* Highlight primary field */}
+      {isSms ? (
+        <div>
+          <p className="text-xs text-[var(--color-text-weak)] mb-1">Message</p>
+          <div className="text-sm text-[var(--color-text-body)] bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg p-3 line-clamp-3">
+            {summary.message}
+          </div>
         </div>
+      ) : (
+        <div>
+          <p className="text-xs text-[var(--color-text-weak)] mb-1">Subject</p>
+          <p className="text-sm font-medium text-[var(--color-text-body)]">
+            {summary.subject}
+          </p>
+        </div>
+      )}
+
+      {/* Metadata grid (cleaner than rows) */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        {summary.property && (
+          <>
+            <span className="text-[var(--color-text-weak)]">Property</span>
+            <span className="text-right text-[var(--color-text-body)] font-medium">
+              {summary.property}
+            </span>
+          </>
+        )}
+
+        {summary.block && (
+          <>
+            <span className="text-[var(--color-text-weak)]">Block</span>
+            <span className="text-right text-[var(--color-text-body)] font-medium">
+              {summary.block}
+            </span>
+          </>
+        )}
+
+        {summary.status && (
+          <>
+            <span className="text-[var(--color-text-weak)]">Status</span>
+            <span className="text-right text-[var(--color-text-body)] font-medium capitalize">
+              {summary.status}
+            </span>
+          </>
+        )}
+      </div>
+    </div>
+
+    {/* Footer */}
+    <div className="px-5 py-4 border-t border-[var(--color-border)] flex gap-2">
+      
+      <Button
+        variant="ghost"
+        onClick={onCancel}
+        className="flex-1"
+      >
+        Cancel
+      </Button>
+
+      <Button
+        onClick={onConfirm}
+        disabled={loading}
+        className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white"
+      >
+        {loading && (
+          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        )}
+        {loading ? 'Sending…' : 'Confirm & Send'}
+      </Button>
+    </div>
+
+  </DialogContent>
+</Dialog>
     )
 }
+
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BroadCast() {
     const [activeChannel, setActiveChannel] = useState('email')
-
-    // Filter state
     const [selectedProperty, setSelectedProperty] = useState('')
     const [selectedBlock, setSelectedBlock] = useState('')
     const [selectedInnerBlock, setSelectedInnerBlock] = useState('')
@@ -497,13 +480,27 @@ export default function BroadCast() {
     // Email content
     const [subject, setSubject] = useState('')
     const [body, setBody] = useState('')
-    const [activeTemplate, setActiveTemplate] = useState(null)
+    const [activeEmailTemplate, setActiveEmailTemplate] = useState(null)
+    const [bodyRef, setBodyRef] = useState(null)
+
+    // SMS content
+    const [smsMessage, setSmsMessage] = useState('')
+    const [activeSmsTemplate, setActiveSmsTemplate] = useState(null)
+    const [smsMsgRef, setSmsMsgRef] = useState(null)
 
     // UI state
     const [showPreview, setShowPreview] = useState(false)
     const [showConfirm, setShowConfirm] = useState(false)
     const [isSending, setIsSending] = useState(false)
-    const [bodyRef, setBodyRef] = useState(null)
+    const [balance, setBalance] = useState(null)
+
+    useEffect(() => {
+        const controller = new AbortController()
+        api.get('/api/sms/balance', { signal: controller.signal })
+            .then(res => setBalance(res.data.messagesRemaining))
+            .catch(() => {})
+        return () => controller.abort()
+    }, [])
 
     const { property: properties } = useProperty()
     const selectedPropertyObj = properties?.find(p => p._id === selectedProperty)
@@ -523,38 +520,55 @@ export default function BroadCast() {
         ...(selectedStatus && { status: selectedStatus }),
     }
 
-    const applyTemplate = (tpl) => {
-        setActiveTemplate(tpl.id)
+    const applyEmailTemplate = (tpl) => {
+        setActiveEmailTemplate(tpl.id)
         setSubject(tpl.subject)
         setBody(tpl.body)
     }
 
-    const insertPlaceholder = (placeholder) => {
-        if (!bodyRef) return
-        const start = bodyRef.selectionStart
-        const end = bodyRef.selectionEnd
-        const newBody = body.slice(0, start) + placeholder + body.slice(end)
-        setBody(newBody)
+    const applySmsTemplate = (tpl) => {
+        setActiveSmsTemplate(tpl.id)
+        setSmsMessage(tpl.body)
+    }
+
+    const insertPlaceholder = (placeholder, isEmailChannel) => {
+        const ref = isEmailChannel ? bodyRef : smsMsgRef
+        const setter = isEmailChannel ? setBody : setSmsMessage
+        const current = isEmailChannel ? body : smsMessage
+        if (!ref) return
+        const start = ref.selectionStart
+        const end = ref.selectionEnd
+        setter(current.slice(0, start) + placeholder + current.slice(end))
         setTimeout(() => {
-            bodyRef.focus()
-            bodyRef.setSelectionRange(start + placeholder.length, start + placeholder.length)
+            ref.focus()
+            ref.setSelectionRange(start + placeholder.length, start + placeholder.length)
         }, 0)
     }
 
     const handleSend = async () => {
         setIsSending(true)
         try {
-            const res = await api.post('/api/broadcast/send-email', { filters, subject, body })
-            if (res.data.success) {
-                toast.success(`Sent to ${res.data.sentCount} tenant(s)${res.data.failedCount ? ` · ${res.data.failedCount} failed` : ''}`)
-                setShowConfirm(false)
-                setSubject('')
-                setBody('')
-                setActiveTemplate(null)
+            if (activeChannel === 'email') {
+                const res = await api.post('/api/broadcast/send-email', { filters, subject, body })
+                if (res.data.success) {
+                    toast.success(`Sent to ${res.data.sentCount} tenant(s)${res.data.failedCount ? ` · ${res.data.failedCount} failed` : ''}`)
+                    setSubject('')
+                    setBody('')
+                    setActiveEmailTemplate(null)
+                } else {
+                    toast.error(res.data.message || 'Failed to send')
+                }
             } else {
-                toast.error(res.data.message || 'Failed to send')
-                setShowConfirm(false)
+                const res = await api.post('/api/sms/send-broadcast', { filters, message: smsMessage })
+                if (res.data.success) {
+                    toast.success(`SMS sent to ${res.data.sentCount} tenant(s)${res.data.failedCount ? ` · ${res.data.failedCount} failed` : ''}`)
+                    setSmsMessage('')
+                    setActiveSmsTemplate(null)
+                } else {
+                    toast.error(res.data.message || 'Failed to send SMS')
+                }
             }
+            setShowConfirm(false)
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Something went wrong')
         } finally {
@@ -562,11 +576,16 @@ export default function BroadCast() {
         }
     }
 
-    const isValid = subject.trim().length > 0 && body.trim().length > 0
+    const isEmail = activeChannel === 'email'
+    const isValid = isEmail
+        ? subject.trim().length > 0 && body.trim().length > 0
+        : smsMessage.trim().length > 0
+
     const activeFilterCount = Object.keys(filters).length
 
     const confirmSummary = {
         subject,
+        message: smsMessage,
         property: properties?.find(p => p._id === selectedProperty)?.name,
         block: blocks.find(b => b._id === selectedBlock)?.name,
         status: selectedStatus,
@@ -581,54 +600,44 @@ export default function BroadCast() {
     }
 
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: 'var(--color-bg)', fontFamily: 'inherit' }}>
+        <div className="min-h-screen bg-[var(--color-bg)]">
             {/* Modals */}
-            {showPreview && <RecipientPreviewPanel filters={filters} onClose={() => setShowPreview(false)} />}
-            {showConfirm && (
-                <ConfirmModal
-                    summary={confirmSummary}
-                    onConfirm={handleSend}
-                    onCancel={() => setShowConfirm(false)}
-                    loading={isSending}
-                />
-            )}
+            <RecipientPreviewPanel
+                filters={filters}
+                open={showPreview}
+                onClose={() => setShowPreview(false)}
+                channel={activeChannel}
+            />
+            <ConfirmModal
+                summary={confirmSummary}
+                open={showConfirm}
+                onConfirm={handleSend}
+                onCancel={() => setShowConfirm(false)}
+                loading={isSending}
+                channel={activeChannel}
+            />
 
             {/* ── Page Header ────────────────────────────────────────────────── */}
-            <div style={{
-                backgroundColor: 'var(--color-surface)',
-                borderBottom: '1px solid var(--color-border)',
-                position: 'sticky', top: 0, zIndex: 30,
-            }}>
-                <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '0 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', padding: '12px 0' }}>
+            <div className="bg-[var(--color-surface)] border-b border-[var(--color-border)] sticky top-0 z-30">
+                <div className=" mx-auto px-4">
+                    <div className="flex items-center justify-between flex-wrap gap-3 py-3">
                         {/* Title */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{
-                                width: '36px', height: '36px',
-                                backgroundColor: 'var(--color-accent-light)',
-                                borderRadius: 'var(--radius-md)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>
-                                <Send className="w-4 h-4" style={{ color: 'var(--color-accent)' }} />
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 bg-[var(--color-accent-light)] rounded-[var(--radius-md)] flex items-center justify-center">
+                                <Send className="w-4 h-4 text-[var(--color-accent)]" />
                             </div>
                             <div>
-                                <h1 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--color-text-strong)', margin: 0, lineHeight: 1.2 }}>
+                                <h1 className="text-[15px] font-bold text-[var(--color-text-strong)] m-0 leading-[1.2]">
                                     Broadcast Message
                                 </h1>
-                                <p style={{ fontSize: '12px', color: 'var(--color-text-weak)', margin: 0 }}>
+                                <p className="text-xs text-[var(--color-text-weak)] m-0">
                                     Send personalised messages to filtered tenants
                                 </p>
                             </div>
                         </div>
 
                         {/* Channel selector tabs */}
-                        <div style={{
-                            display: 'flex', gap: '4px',
-                            backgroundColor: 'var(--color-bg)',
-                            border: '1px solid var(--color-border)',
-                            borderRadius: 'var(--radius-md)',
-                            padding: '3px',
-                        }}>
+                        <div className="flex gap-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius-md)] p-[3px]">
                             {CHANNELS.map(({ id, label, icon: Icon, available }) => {
                                 const isActive = activeChannel === id
                                 return (
@@ -636,33 +645,25 @@ export default function BroadCast() {
                                         key={id}
                                         onClick={() => available && setActiveChannel(id)}
                                         title={!available ? `${label} – coming soon` : label}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '6px',
-                                            padding: '6px 12px',
-                                            borderRadius: 'calc(var(--radius-md) - 2px)',
-                                            border: 'none',
-                                            fontSize: '13px', fontWeight: isActive ? 600 : 400,
-                                            cursor: available ? 'pointer' : 'not-allowed',
-                                            transition: 'all 0.15s',
-                                            backgroundColor: isActive ? 'var(--color-accent)' : 'transparent',
-                                            color: isActive ? '#fff' : available ? 'var(--color-text-sub)' : 'var(--color-text-weak)',
-                                            opacity: !available && !isActive ? 0.55 : 1,
-                                            position: 'relative',
-                                        }}
+                                        className={`flex items-center gap-1.5 px-3 py-[6px] rounded-[calc(var(--radius-md)-2px)] border-none text-[13px] relative transition-all duration-150 ${
+                                            isActive
+                                                ? 'bg-[var(--color-accent)] text-white font-semibold cursor-pointer'
+                                                : available
+                                                    ? 'bg-transparent text-[var(--color-text-sub)] font-normal cursor-pointer hover:bg-[var(--color-accent-light)]'
+                                                    : 'bg-transparent text-[var(--color-text-weak)] font-normal cursor-not-allowed opacity-[0.55]'
+                                        }`}
                                     >
                                         <Icon className="w-3.5 h-3.5" />
                                         <span>{label}</span>
                                         {!available && (
-                                            <span style={{
-                                                fontSize: '9px', fontWeight: 700,
-                                                backgroundColor: 'var(--color-border)',
-                                                color: 'var(--color-text-weak)',
-                                                borderRadius: '4px',
-                                                padding: '1px 4px',
-                                                letterSpacing: '0.04em',
-                                                textTransform: 'uppercase',
-                                            }}>
+                                            <span className="text-[9px] font-bold bg-[var(--color-border)] text-[var(--color-text-weak)] rounded-[4px] px-1 py-px tracking-[0.04em] uppercase">
                                                 Soon
+                                            </span>
+                                        )}
+                                        {id === 'sms' && balance !== null && (
+                                            <span className="flex items-center gap-0.5 text-[10px] font-semibold bg-[var(--color-success-bg)] text-[var(--color-success)] rounded-[4px] px-1.5 py-px">
+                                                <Wallet className="w-2.5 h-2.5" />
+                                                {balance}
                                             </span>
                                         )}
                                     </button>
@@ -674,275 +675,286 @@ export default function BroadCast() {
             </div>
 
             {/* ── Page Body ──────────────────────────────────────────────────── */}
-            <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '20px 16px' }}>
+            <div className=" mx-auto px-4 py-5">
                 <div className="grid grid-cols-1 lg:grid-cols-[1fr_288px] gap-5">
 
                     {/* ── Left column: Compose ─────────────────────────────── */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="flex flex-col gap-[14px]">
 
-                        {/* Quick Templates */}
-                        <div style={{ ...card, padding: '16px 18px' }}>
-                            <span style={sectionLabel}>Quick Templates</span>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {QUICK_TEMPLATES.map((tpl) => {
-                                    const Icon = tpl.icon
-                                    const isActive = activeTemplate === tpl.id
-                                    return (
-                                        <button
-                                            key={tpl.id}
-                                            onClick={() => applyTemplate(tpl)}
-                                            className="cursor-pointer"
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: '8px',
-                                                padding: '9px 12px',
-                                                borderRadius: 'var(--radius-md)',
-                                                border: `1px solid ${isActive ? 'var(--color-accent-mid)' : 'var(--color-border)'}`,
-                                                backgroundColor: isActive ? 'var(--color-accent-light)' : 'var(--color-bg)',
-                                                color: isActive ? 'var(--color-accent)' : 'var(--color-text-body)',
-                                                fontSize: '13px', fontWeight: isActive ? 600 : 400,
-                                                cursor: 'pointer',
-                                                textAlign: 'left',
-                                                transition: 'all 0.15s',
-                                            }}
-                                            onMouseOver={e => !isActive && (e.currentTarget.style.borderColor = 'var(--color-accent-mid)')}
-                                            onMouseOut={e => !isActive && (e.currentTarget.style.borderColor = 'var(--color-border)')}
-                                        >
-                                            <Icon
-                                                className="w-3.5 h-3.5 shrink-0"
-                                                style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text-sub)' }}
-                                            />
-                                            <span style={{ lineHeight: 1.3 }}>{tpl.label}</span>
-                                        </button>
-                                    )
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Subject (email only) */}
-                        <div style={{ ...card, padding: '16px 18px' }}>
-                            <label style={sectionLabel}>
-                                Subject <span style={{ color: 'var(--color-danger)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>*</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={subject}
-                                onChange={e => setSubject(e.target.value)}
-                                maxLength={200}
-                                placeholder="e.g. Rent Due Reminder for {{tenantName}}"
-                                style={inputStyle}
-                                onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
-                                onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
-                            />
-                            <p style={{ fontSize: '11px', color: 'var(--color-text-weak)', marginTop: '5px', textAlign: 'right' }}>
-                                {subject.length}/200
-                            </p>
-                        </div>
-
-                        {/* Message Body */}
-                        <div style={{ ...card, padding: '16px 18px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                                <span style={sectionLabel}>
-                                    Message Body <span style={{ color: 'var(--color-danger)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>*</span>
-                                </span>
-                                <span style={{ fontSize: '11px', color: 'var(--color-text-weak)', marginBottom: '10px' }}>
-                                    {body.length}/10,000
-                                </span>
-                            </div>
-
-                            {/* Placeholder chips */}
-                            <div style={{ marginBottom: '10px' }}>
-                                <p style={{ fontSize: '11px', color: 'var(--color-text-weak)', marginBottom: '6px' }}>
-                                    Insert placeholder at cursor:
-                                </p>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                                    {PLACEHOLDERS.map(p => (
-                                        <button
-                                            key={p.key}
-                                            onClick={() => insertPlaceholder(p.key)}
-                                            title={`Insert ${p.key}`}
-                                            className="cursor-pointer"
-                                            style={{
-                                                padding: '3px 9px',
-                                                backgroundColor: 'var(--color-bg)',
-                                                border: '1px solid var(--color-border)',
-                                                borderRadius: 'var(--radius-sm)',
-                                                fontSize: '11px', fontWeight: 500,
-                                                color: 'var(--color-text-sub)',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.15s',
-                                                fontFamily: 'monospace',
-                                            }}
-                                            onMouseOver={e => {
-                                                e.currentTarget.style.backgroundColor = 'var(--color-accent-light)'
-                                                e.currentTarget.style.borderColor = 'var(--color-accent-mid)'
-                                                e.currentTarget.style.color = 'var(--color-accent)'
-                                            }}
-                                            onMouseOut={e => {
-                                                e.currentTarget.style.backgroundColor = 'var(--color-bg)'
-                                                e.currentTarget.style.borderColor = 'var(--color-border)'
-                                                e.currentTarget.style.color = 'var(--color-text-sub)'
-                                            }}
-                                        >
-                                            {p.label}
-                                        </button>
-                                    ))}
+                        {/* ── EMAIL compose ── */}
+                        {isEmail && (
+                            <>
+                                {/* Quick Templates */}
+                                <div className={`${cardCls} px-[18px] py-4`}>
+                                    <span className={sectionLabelCls}>Quick Templates</span>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                        {EMAIL_TEMPLATES.map((tpl) => {
+                                            const Icon = tpl.icon
+                                            const isActiveT = activeEmailTemplate === tpl.id
+                                            return (
+                                                <button
+                                                    key={tpl.id}
+                                                    onClick={() => applyEmailTemplate(tpl)}
+                                                    className={`flex items-center gap-2 px-3 py-[9px] rounded-[var(--radius-md)] border text-[13px] cursor-pointer text-left transition-all duration-150 ${
+                                                        isActiveT
+                                                            ? 'border-[var(--color-accent-mid)] bg-[var(--color-accent-light)] text-[var(--color-accent)] font-semibold'
+                                                            : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)] font-normal hover:border-[var(--color-accent-mid)]'
+                                                    }`}
+                                                >
+                                                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActiveT ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-sub)]'}`} />
+                                                    <span className="leading-[1.3]">{tpl.label}</span>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
 
-                            <textarea
-                                ref={el => setBodyRef(el)}
-                                value={body}
-                                onChange={e => setBody(e.target.value)}
-                                maxLength={10000}
-                                rows={14}
-                                placeholder="Write your message here. Use placeholders like {{tenantName}} for personalisation."
-                                style={{
-                                    ...inputStyle,
-                                    resize: 'vertical',
-                                    fontFamily: 'ui-monospace, "Cascadia Code", Consolas, monospace',
-                                    fontSize: '13px',
-                                    lineHeight: 1.6,
-                                }}
-                                onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
-                                onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
-                            />
-                        </div>
+                                {/* Subject */}
+                                <div className={`${cardCls} px-[18px] py-4`}>
+                                    <Label className="text-[var(--color-text-weak)] text-[11px] font-semibold tracking-[0.07em] uppercase mb-2.5 block">
+                                        Subject <span className="text-[var(--color-danger)] font-normal normal-case tracking-normal">*</span>
+                                    </Label>
+                                    <Input
+                                        value={subject}
+                                        onChange={e => setSubject(e.target.value)}
+                                        maxLength={200}
+                                        placeholder="e.g. Rent Due Reminder for {{tenantName}}"
+                                        className="bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text-body)] focus-visible:border-[var(--color-accent)]"
+                                    />
+                                    <p className="text-[11px] text-[var(--color-text-weak)] mt-[5px] text-right">
+                                        {subject.length}/200
+                                    </p>
+                                </div>
+
+                                {/* Message Body */}
+                                <div className={`${cardCls} px-[18px] py-4`}>
+                                    <div className="flex items-center justify-between mb-2.5">
+                                        <Label className="text-[var(--color-text-weak)] text-[11px] font-semibold tracking-[0.07em] uppercase">
+                                            Message Body <span className="text-[var(--color-danger)] font-normal normal-case tracking-normal">*</span>
+                                        </Label>
+                                        <span className="text-[11px] text-[var(--color-text-weak)]">
+                                            {body.length}/10,000
+                                        </span>
+                                    </div>
+
+                                    <div className="mb-2.5">
+                                        <p className="text-[11px] text-[var(--color-text-weak)] mb-1.5">
+                                            Insert placeholder at cursor:
+                                        </p>
+                                        <div className="flex flex-wrap gap-[5px]">
+                                            {PLACEHOLDERS.map(p => (
+                                                <button
+                                                    key={p.key}
+                                                    onClick={() => insertPlaceholder(p.key, true)}
+                                                    title={`Insert ${p.key}`}
+                                                    className="cursor-pointer px-[9px] py-[3px] bg-[var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius-sm)] text-[11px] font-medium text-[var(--color-text-sub)] transition-all duration-150 font-mono hover:bg-[var(--color-accent-light)] hover:border-[var(--color-accent-mid)] hover:text-[var(--color-accent)]"
+                                                >
+                                                    {p.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <Textarea
+                                        ref={el => setBodyRef(el)}
+                                        value={body}
+                                        onChange={e => setBody(e.target.value)}
+                                        maxLength={10000}
+                                        rows={14}
+                                        placeholder="Write your message here. Use placeholders like {{tenantName}} for personalisation."
+                                        className="resize-y font-mono text-[13px] leading-relaxed bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text-body)] focus-visible:border-[var(--color-accent)] field-sizing-fixed"
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        {/* ── SMS compose ── */}
+                        {!isEmail && (
+                            <>
+                                {/* SMS Quick Templates */}
+                                <div className={`${cardCls} px-[18px] py-4`}>
+                                    <span className={sectionLabelCls}>Quick Templates</span>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                        {SMS_TEMPLATES.map((tpl) => {
+                                            const Icon = tpl.icon
+                                            const isActiveT = activeSmsTemplate === tpl.id
+                                            return (
+                                                <button
+                                                    key={tpl.id}
+                                                    onClick={() => applySmsTemplate(tpl)}
+                                                    className={`flex items-center gap-2 px-3 py-[9px] rounded-[var(--radius-md)] border text-[13px] cursor-pointer text-left transition-all duration-150 ${
+                                                        isActiveT
+                                                            ? 'border-[var(--color-accent-mid)] bg-[var(--color-accent-light)] text-[var(--color-accent)] font-semibold'
+                                                            : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)] font-normal hover:border-[var(--color-accent-mid)]'
+                                                    }`}
+                                                >
+                                                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActiveT ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-sub)]'}`} />
+                                                    <span className="leading-[1.3]">{tpl.label}</span>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* SMS Message */}
+                                <div className={`${cardCls} px-[18px] py-4`}>
+                                    <div className="flex items-center justify-between mb-2.5">
+                                        <Label className="text-[var(--color-text-weak)] text-[11px] font-semibold tracking-[0.07em] uppercase">
+                                            Message <span className="text-[var(--color-danger)] font-normal normal-case tracking-normal">*</span>
+                                        </Label>
+                                        <span className={`text-[11px] font-medium ${smsMessage.length > 640 ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-weak)]'}`}>
+                                            {smsMessage.length}/720
+                                            {smsMessage.length > 0 && (
+                                                <span className="ml-1.5 text-[var(--color-text-weak)] font-normal">
+                                                    · {Math.ceil(smsMessage.length / 160)} SMS part{Math.ceil(smsMessage.length / 160) !== 1 ? 's' : ''}
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
+
+                                    <div className="mb-2.5">
+                                        <p className="text-[11px] text-[var(--color-text-weak)] mb-1.5">
+                                            Insert placeholder at cursor:
+                                        </p>
+                                        <div className="flex flex-wrap gap-[5px]">
+                                            {PLACEHOLDERS.filter(p => p.key !== '{{email}}').map(p => (
+                                                <button
+                                                    key={p.key}
+                                                    onClick={() => insertPlaceholder(p.key, false)}
+                                                    title={`Insert ${p.key}`}
+                                                    className="cursor-pointer px-[9px] py-[3px] bg-[var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius-sm)] text-[11px] font-medium text-[var(--color-text-sub)] transition-all duration-150 font-mono hover:bg-[var(--color-accent-light)] hover:border-[var(--color-accent-mid)] hover:text-[var(--color-accent)]"
+                                                >
+                                                    {p.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <Textarea
+                                        ref={el => setSmsMsgRef(el)}
+                                        value={smsMessage}
+                                        onChange={e => setSmsMessage(e.target.value)}
+                                        maxLength={720}
+                                        rows={8}
+                                        placeholder="Write your SMS here. Use placeholders like {{tenantName}} for personalisation."
+                                        className="resize-y font-mono text-[13px] leading-relaxed bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text-body)] focus-visible:border-[var(--color-accent)] field-sizing-fixed"
+                                    />
+
+                                    <p className="text-[11px] text-[var(--color-text-sub)] mt-[7px] leading-[1.5]">
+                                        Each tenant receives a personalised copy. Placeholders are replaced before sending.
+                                    </p>
+                                </div>
+                            </>
+                        )}
 
                         {/* Action bar */}
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            <button
+                        <div className="flex gap-2.5">
+                            <Button
+                                variant="outline"
                                 onClick={() => setShowPreview(true)}
-                                className="cursor-pointer"
-                                style={{
-                                    flex: 1, padding: '11px',
-                                    borderRadius: 'var(--radius-md)',
-                                    border: '1px solid var(--color-border)',
-                                    backgroundColor: 'var(--color-surface)',
-                                    color: 'var(--color-text-body)',
-                                    fontSize: '14px', fontWeight: 500,
-                                    cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                                    transition: 'background-color 0.15s',
-                                }}
-                                onMouseOver={e => e.currentTarget.style.backgroundColor = 'var(--color-bg)'}
-                                onMouseOut={e => e.currentTarget.style.backgroundColor = 'var(--color-surface)'}
+                                className="flex-1 h-11 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-body)] hover:bg-[var(--color-bg)]"
                             >
                                 <Eye className="w-4 h-4" />
                                 Preview Recipients
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                                 onClick={() => setShowConfirm(true)}
                                 disabled={!isValid}
-                                className="cursor-pointer"
-                                style={{
-                                    flex: 1, padding: '11px',
-                                    borderRadius: 'var(--radius-md)',
-                                    border: 'none',
-                                    backgroundColor: isValid ? 'var(--color-accent)' : 'var(--color-border)',
-                                    color: isValid ? '#fff' : 'var(--color-text-weak)',
-                                    fontSize: '14px', fontWeight: 600,
-                                    cursor: isValid ? 'pointer' : 'not-allowed',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                                    transition: 'background-color 0.15s',
-                                }}
-                                onMouseOver={e => isValid && (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)')}
-                                onMouseOut={e => isValid && (e.currentTarget.style.backgroundColor = 'var(--color-accent)')}
+                                className="flex-1 h-11 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white disabled:bg-[var(--color-border)] disabled:text-[var(--color-text-weak)]"
                             >
                                 <Send className="w-4 h-4" />
-                                Send Email
-                            </button>
+                                {isEmail ? 'Send Broadcast' : 'Send SMS'}
+                            </Button>
                         </div>
                     </div>
 
                     {/* ── Right column: Filter Recipients ──────────────────── */}
                     <div>
-                        <div style={{ ...card, padding: '16px 18px', position: 'sticky', top: '72px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                                    <Filter className="w-4 h-4" style={{ color: 'var(--color-text-sub)' }} />
-                                    <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-strong)' }}>
+                        <div className={`${cardCls} px-[18px] py-4 sticky top-[72px]`}>
+                            <div className="flex items-center justify-between mb-[14px]">
+                                <div className="flex items-center gap-[7px]">
+                                    <Filter className="w-4 h-4 text-[var(--color-text-sub)]" />
+                                    <span className="text-sm font-semibold text-[var(--color-text-strong)]">
                                         Filter Recipients
                                     </span>
                                 </div>
                                 {activeFilterCount > 0 && (
-                                    <span style={{
-                                        backgroundColor: 'var(--color-accent-light)',
-                                        color: 'var(--color-accent)',
-                                        border: '1px solid var(--color-accent-mid)',
-                                        borderRadius: 'var(--radius-sm)',
-                                        fontSize: '11px', fontWeight: 600,
-                                        padding: '1px 7px',
-                                    }}>
+                                    <Badge className="bg-[var(--color-accent-light)] text-[var(--color-accent)] border-[var(--color-accent-mid)] rounded-[var(--radius-sm)] text-[11px] font-semibold px-[7px] py-px">
                                         {activeFilterCount} active
-                                    </span>
+                                    </Badge>
                                 )}
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                <SelectInput
+                            <div className="flex flex-col gap-2.5">
+                                <FilterSelect
                                     label="Property"
                                     value={selectedProperty}
-                                    onChange={e => { setSelectedProperty(e.target.value); setSelectedBlock(''); setSelectedInnerBlock(''); setSelectedUnit('') }}
+                                    onValueChange={(v) => { setSelectedProperty(v === '__all__' ? '' : v); setSelectedBlock(''); setSelectedInnerBlock(''); setSelectedUnit('') }}
+                                    placeholder="All Properties"
                                 >
-                                    <option value="">All Properties</option>
+                                    <SelectItem value="__all__">All Properties</SelectItem>
                                     {(properties || []).map(p => (
-                                        <option key={p._id} value={p._id}>{p.name}</option>
+                                        <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>
                                     ))}
-                                </SelectInput>
+                                </FilterSelect>
 
-                                <SelectInput
+                                <FilterSelect
                                     label="Block"
                                     value={selectedBlock}
-                                    onChange={e => { setSelectedBlock(e.target.value); setSelectedInnerBlock('') }}
+                                    onValueChange={(v) => { setSelectedBlock(v === '__all__' ? '' : v); setSelectedInnerBlock('') }}
                                     disabled={!selectedProperty || blocks.length === 0}
+                                    placeholder="All Blocks"
                                 >
-                                    <option value="">All Blocks</option>
+                                    <SelectItem value="__all__">All Blocks</SelectItem>
                                     {blocks.map(b => (
-                                        <option key={b._id} value={b._id}>{b.name}</option>
+                                        <SelectItem key={b._id} value={b._id}>{b.name}</SelectItem>
                                     ))}
-                                </SelectInput>
+                                </FilterSelect>
 
-                                <SelectInput
+                                <FilterSelect
                                     label="Floor / Inner Block"
                                     value={selectedInnerBlock}
-                                    onChange={e => setSelectedInnerBlock(e.target.value)}
+                                    onValueChange={(v) => setSelectedInnerBlock(v === '__all__' ? '' : v)}
                                     disabled={!selectedBlock || innerBlocks.length === 0}
+                                    placeholder="All Floors"
                                 >
-                                    <option value="">All Floors</option>
+                                    <SelectItem value="__all__">All Floors</SelectItem>
                                     {innerBlocks.map(ib => (
-                                        <option key={ib._id} value={ib._id}>{ib.name}</option>
+                                        <SelectItem key={ib._id} value={ib._id}>{ib.name}</SelectItem>
                                     ))}
-                                </SelectInput>
+                                </FilterSelect>
 
-                                <SelectInput
+                                <FilterSelect
                                     label="Unit"
                                     value={selectedUnit}
-                                    onChange={e => setSelectedUnit(e.target.value)}
+                                    onValueChange={(v) => setSelectedUnit(v === '__all__' ? '' : v)}
+                                    placeholder="All Units"
                                 >
-                                    <option value="">All Units</option>
+                                    <SelectItem value="__all__">All Units</SelectItem>
                                     {(units || []).map(u => (
-                                        <option key={u._id} value={u._id}>{u.name}</option>
+                                        <SelectItem key={u._id} value={u._id}>{u.name}</SelectItem>
                                     ))}
-                                </SelectInput>
+                                </FilterSelect>
 
-                                <SelectInput
+                                <FilterSelect
                                     label="Tenant Status"
                                     value={selectedStatus}
-                                    onChange={e => setSelectedStatus(e.target.value)}
+                                    onValueChange={(v) => setSelectedStatus(v === '__all__' ? '' : v)}
+                                    placeholder="All Statuses"
                                 >
-                                    <option value="">All Statuses</option>
-                                    <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                    <option value="pending">Pending</option>
-                                </SelectInput>
+                                    <SelectItem value="__all__">All Statuses</SelectItem>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                </FilterSelect>
 
                                 {/* Active filter tags */}
                                 {activeFilterCount > 0 && (
-                                    <div style={{ paddingTop: '6px', borderTop: '1px solid var(--color-border)' }}>
-                                        <p style={{ fontSize: '11px', color: 'var(--color-text-weak)', marginBottom: '7px' }}>
+                                    <div className="pt-1.5 border-t border-[var(--color-border)]">
+                                        <p className="text-[11px] text-[var(--color-text-weak)] mb-[7px]">
                                             Active filters:
                                         </p>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
+                                        <div className="flex flex-wrap gap-[5px] mb-2">
                                             {selectedProperty && (
                                                 <FilterTag onRemove={() => { setSelectedProperty(''); setSelectedBlock(''); setSelectedInnerBlock(''); setSelectedUnit('') }}>
                                                     {properties?.find(p => p._id === selectedProperty)?.name}
@@ -969,67 +981,33 @@ export default function BroadCast() {
                                                 </FilterTag>
                                             )}
                                         </div>
-                                        <button
+                                        <Button
+                                            variant="ghost"
+                                            size="xs"
                                             onClick={clearAllFilters}
-                                            className="cursor-pointer"
-                                            style={{
-                                                fontSize: '12px', color: 'var(--color-danger)',
-                                                background: 'none', border: 'none', padding: 0,
-                                                cursor: 'pointer', fontWeight: 500,
-                                                transition: 'opacity 0.15s',
-                                            }}
-                                            onMouseOver={e => e.currentTarget.style.opacity = '0.7'}
-                                            onMouseOut={e => e.currentTarget.style.opacity = '1'}
+                                            className="text-[var(--color-danger)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] px-0 h-auto"
                                         >
                                             Clear all filters
-                                        </button>
+                                        </Button>
                                     </div>
                                 )}
 
                                 {activeFilterCount === 0 && (
-                                    <div style={{
-                                        backgroundColor: 'var(--color-bg)',
-                                        border: '1px solid var(--color-border)',
-                                        borderRadius: 'var(--radius-md)',
-                                        padding: '10px 12px',
-                                        fontSize: '12px',
-                                        color: 'var(--color-text-sub)',
-                                        lineHeight: 1.5,
-                                    }}>
+                                    <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius-md)] px-3 py-[10px] text-xs text-[var(--color-text-sub)] leading-[1.5]">
                                         No filters — message will go to{' '}
-                                        <strong style={{ color: 'var(--color-text-body)' }}>all tenants</strong>.
+                                        <strong className="text-[var(--color-text-body)]">all tenants</strong>.
                                     </div>
                                 )}
 
                                 {/* Preview shortcut */}
-                                <button
+                                <Button
+                                    variant="outline"
                                     onClick={() => setShowPreview(true)}
-                                    className="cursor-pointer"
-                                    style={{
-                                        width: '100%', padding: '9px',
-                                        borderRadius: 'var(--radius-md)',
-                                        border: '1px dashed var(--color-border)',
-                                        backgroundColor: 'transparent',
-                                        color: 'var(--color-text-sub)',
-                                        fontSize: '12px', fontWeight: 500,
-                                        cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                        transition: 'all 0.15s',
-                                    }}
-                                    onMouseOver={e => {
-                                        e.currentTarget.style.borderColor = 'var(--color-accent-mid)'
-                                        e.currentTarget.style.color = 'var(--color-accent)'
-                                        e.currentTarget.style.backgroundColor = 'var(--color-accent-light)'
-                                    }}
-                                    onMouseOut={e => {
-                                        e.currentTarget.style.borderColor = 'var(--color-border)'
-                                        e.currentTarget.style.color = 'var(--color-text-sub)'
-                                        e.currentTarget.style.backgroundColor = 'transparent'
-                                    }}
+                                    className="w-full border-dashed border-[var(--color-border)] text-[var(--color-text-sub)] hover:border-[var(--color-accent-mid)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent-light)]"
                                 >
                                     <Users className="w-3.5 h-3.5" />
                                     Preview who will receive this
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>

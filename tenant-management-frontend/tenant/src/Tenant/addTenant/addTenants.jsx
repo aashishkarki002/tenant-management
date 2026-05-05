@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { ClipboardListIcon } from "lucide-react";
+import { ClipboardListIcon, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -13,6 +13,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { getCurrentNepaliMonth, getCurrentNepaliYear, NEPALI_MONTH_NAMES } from "@/utils/nepaliDate";
 import { TAB_KEYS } from "./constants/tenant.constant";
 import { useTenantForm } from "./hooks/useTenantForm";
 import { useUnits } from "../../hooks/use-units";
@@ -120,7 +130,7 @@ function AddTenants() {
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
   const handleSuccess = () => navigate("/tenants");
-  const { formik, isLoading } = useTenantForm(property, handleSuccess);
+  const { formik, isLoading, submissionProgress } = useTenantForm(property, handleSuccess);
 
   // Prefill sqft from unit.actualSquareFeet when a unit is selected
   const prevUnitIdsRef = useRef([]);
@@ -211,6 +221,28 @@ function AddTenants() {
     if (currentIndex > 0) goToStep(STEP_KEYS[currentIndex - 1]);
   };
 
+  // ── Billing start dialog ─────────────────────────────────────────────────
+  const [showBillingDialog, setShowBillingDialog] = useState(false);
+  const [billingMonth, setBillingMonth] = useState(String(getCurrentNepaliMonth()));
+  const [billingYear, setBillingYear] = useState(String(getCurrentNepaliYear()));
+
+  // Intercept the native form submit to open billing dialog first.
+  // The actual formik submit fires only after the user confirms.
+  const handleFormSubmit = (e) => {
+    e.preventDefault();
+    // Reset to current Nepali month/year each time dialog opens
+    setBillingMonth(String(getCurrentNepaliMonth()));
+    setBillingYear(String(getCurrentNepaliYear()));
+    setShowBillingDialog(true);
+  };
+
+  const handleBillingConfirm = async () => {
+    setShowBillingDialog(false);
+    await formik.setFieldValue("rentStartNepaliMonth", billingMonth);
+    await formik.setFieldValue("rentStartNepaliYear", billingYear);
+    formik.submitForm();
+  };
+
   // Show discard dialog instead of immediately resetting
   const handleClose = () => setShowDiscardDialog(true);
 
@@ -246,7 +278,7 @@ function AddTenants() {
         />
 
         {/* Form */}
-        <form onSubmit={formik.handleSubmit}>
+        <form onSubmit={handleFormSubmit}>
           <Tabs value={activeTab} onValueChange={goToStep}>
 
             <TabsContent value={TAB_KEYS.PERSONAL_INFO}>
@@ -284,6 +316,7 @@ function AddTenants() {
               <DocumentsTab
                 formik={formik}
                 isLoading={isLoading}
+                submissionProgress={submissionProgress}
                 onPrevious={handlePrevious}
                 onClose={handleClose}
               />
@@ -291,6 +324,62 @@ function AddTenants() {
 
           </Tabs>
         </form>
+
+        {/* ── Billing start dialog ──────────────────────────────────────────── */}
+        <AlertDialog open={showBillingDialog} onOpenChange={setShowBillingDialog}>
+          <AlertDialogContent className="max-w-sm">
+            <AlertDialogHeader>
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="w-5 h-5 text-primary shrink-0" />
+                <AlertDialogTitle>When should billing start?</AlertDialogTitle>
+              </div>
+              <AlertDialogDescription>
+                Select the Nepali month and year from which the first rent
+                {formik.values.rentPaymentFrequency === "quarterly" ? " quarter" : ""} should be generated.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <div className="grid grid-cols-2 gap-4 py-2">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Month (BS)</Label>
+                <Select value={billingMonth} onValueChange={setBillingMonth}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NEPALI_MONTH_NAMES.map((name, i) => (
+                      <SelectItem key={i + 1} value={String(i + 1)}>
+                        {i + 1}. {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Year (BS)</Label>
+                <Input
+                  type="number"
+                  min={2078}
+                  max={2090}
+                  value={billingYear}
+                  onChange={(e) => setBillingYear(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowBillingDialog(false)}>
+                Go Back
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBillingConfirm}
+                disabled={!billingMonth || !billingYear}
+              >
+                Confirm &amp; Register
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Discard confirmation dialog */}
         <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>

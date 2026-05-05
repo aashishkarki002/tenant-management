@@ -1,7 +1,4 @@
-
 import ExpenseBreakDown from "../ExpenseBreakDown";
-
-
 export default function ExpensesTab({
     filterProps,
     filterLabel,

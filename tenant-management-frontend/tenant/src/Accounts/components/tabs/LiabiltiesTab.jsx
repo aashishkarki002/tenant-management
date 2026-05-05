@@ -1,25 +1,7 @@
-/**
- * LiabilitiesTab.jsx — distilled
- *
- * Before: self-contained full-page wrapper (min-h-screen + px-4 sm:px-7 header)
- *   with heavy card chrome, font-black everywhere, uppercase on field labels,
- *   local Skeleton/fmtK duplicates fighting AccountingPage's outer layout.
- *
- * After:
- *   - Starts with flex flex-col gap-4 (matches OverviewTab / RevenueTab)
- *   - T token map (style={{ color: T.body }}) — no Tailwind var() strings
- *   - Skeleton + ProgBar imported from AccountingPrimitives
- *   - fmtK imported from AccountingPage
- *   - Max font weight: font-bold
- *   - Uppercase tracking only on table column headers
- *   - Panel helper collapses repeated card chrome
- *   - LOAN_STATUS badge/dot classes → color+opacity inline style
- */
-
 import { useState, useEffect, useCallback, useMemo } from "react";
 import SectionToggle from "../SectionToggle";
 import { Skeleton, ProgBar } from "../AccountingPrimitives";
-import { fmtK } from "../AccountingPage";
+import { fmtK } from "../../utils/formatter";
 import {
     AlertCircleIcon,
     AlertTriangleIcon,

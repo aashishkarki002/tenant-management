@@ -1,17 +1,3 @@
-/**
- * CashFlowTab.jsx
- *
- * A formal cash flow statement for the selected period.
- * Shows where money entered and exited the system — grouped by
- * income stream / expense category — with a monthly trend at the bottom.
- *
- * Data comes entirely from props already fetched in AccountingPage:
- *   summary.incomeStreams.breakdown  → inflow rows
- *   summary.expensesBreakdown        → outflow rows
- *   totals                           → net / totals
- *   chartData                        → monthly trend bars
- */
-
 import { useMemo } from "react";
 import {
     ComposedChart, Bar, Line, XAxis, YAxis,
@@ -19,9 +5,7 @@ import {
 } from "recharts";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK, fmtN } from "../AccountingPage";
-
-// ─── Design tokens ────────────────────────────────────────────────────────────
+import { fmtK, fmtN } from "../../utils/formatter";
 const C = {
     inflow: "var(--color-info)",
     outflow: "var(--color-warning)",
@@ -285,7 +269,7 @@ export default function CashFlowTab({
                         ) : (
                             <>
                                 <div className="text-[22px] font-black tabular-nums leading-none" style={{ color }}>
-                                    {prefix}RS {fmtK(value)}
+                                    {prefix}RS {fmtN(value)}
                                 </div>
                                 <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: C.sub }}>
                                     RS {fmtN(value)}

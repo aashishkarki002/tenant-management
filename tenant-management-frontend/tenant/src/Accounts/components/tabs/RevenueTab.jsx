@@ -1,11 +1,3 @@
-/**
- * tabs/RevenueTab.jsx  —  REDESIGNED
- *
- * Props (unchanged):
- *   filterProps · filterLabel · totalRevenue · pendingAction
- *   onDialogOpenHandled · onRevenueAdded
- */
-
 import { TrendingUpIcon } from "lucide-react";
 import RevenueBreakDown from "../RevenueBreakDown";
 

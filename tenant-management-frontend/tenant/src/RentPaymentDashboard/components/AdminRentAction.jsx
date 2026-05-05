@@ -22,6 +22,7 @@ import { MoreHorizontal } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { BackfillRentDialog } from "./BackfillRentDialog";
 
+
 /**
  * Minimal header actions: one primary CTA + overflow menu for secondary actions.
  */
@@ -67,13 +68,14 @@ export const AdminRentAction = ({
 
       {/* Overflow menu for secondary actions */}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+        <DropdownMenuTrigger >
           <Button
             type="button"
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
             aria-label="More actions"
+            disabled={false}
           >
             <MoreHorizontal className="size-4" />
           </Button>
@@ -84,7 +86,7 @@ export const AdminRentAction = ({
             disabled={sendingEmails}
             onSelect={(e) => {
               e.preventDefault();
-              setRemindOpen(true);
+             setTimeout(() => setRemindOpen(true), 0);
             }}
           >
             {sendingEmails ? "Sending…" : "Send Reminders"}
@@ -108,7 +110,7 @@ export const AdminRentAction = ({
             className="text-xs"
             onSelect={(e) => {
               e.preventDefault();
-              setBackfillOpen(true);
+             setTimeout(() => setBackfillOpen(true), 0);
             }}
           >
             Backfill Rent

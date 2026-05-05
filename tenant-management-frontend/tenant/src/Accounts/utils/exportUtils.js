@@ -34,7 +34,7 @@ function triggerDownload(blob, filename) {
 }
 
 function sanitizeFilename(label) {
-  return label.replace(/[^a-zA-Z0-9_\-\.]/g, "_");
+  return String(label ?? "all").replace(/[^a-zA-Z0-9_\-\.]/g, "_");
 }
 
 function todayLabel() {
