@@ -5,6 +5,10 @@ import {
   getTenantLedger,
   getAccountLedger,
   getBalanceSheet,
+  closePeriod,
+  reopenPeriod,
+  getClosedPeriods,
+  rebuildBalance,
 } from "./ledger.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -24,9 +28,9 @@ router.get(
   getLedgerSummary,
 );
 router.get(
-  "/get-tenant-ledger",
+  "/get-tenant-ledger/:tenantId",
   protect,
-  authorize("admin", "super_admin"),
+  authorize("admin", "super_admin", "staff"),
   getTenantLedger,
 );
 router.get(
@@ -40,6 +44,34 @@ router.get(
   protect,
   authorize("admin", "super_admin"),
   getBalanceSheet,
+);
+
+// ── Period closing (super_admin only — irreversible accounting action) ────────
+router.get(
+  "/closed-periods",
+  protect,
+  authorize("super_admin"),
+  getClosedPeriods,
+);
+router.post(
+  "/close-period",
+  protect,
+  authorize("super_admin"),
+  closePeriod,
+);
+router.post(
+  "/reopen-period",
+  protect,
+  authorize("super_admin"),
+  reopenPeriod,
+);
+
+// ── Admin balance repair ──────────────────────────────────────────────────────
+router.post(
+  "/rebuild-balance",
+  protect,
+  authorize("super_admin"),
+  rebuildBalance,
 );
 
 export default router;

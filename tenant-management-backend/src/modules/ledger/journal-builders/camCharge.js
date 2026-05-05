@@ -45,15 +45,12 @@ export function buildCamChargeJournal(cam, options = {}) {
   const amountPaisa = getRawPaisa(cam, "amountPaisa");
 
   // ── 3. Metadata ───────────────────────────────────────────────────────────
-  const transactionDate =
-    cam.createdAt instanceof Date
-      ? cam.createdAt
-      : new Date(cam.createdAt ?? Date.now());
-
-  // FIX: always a BS "YYYY-MM-DD" string
-  const nepaliDate = resolveNepaliDateString(cam.nepaliDate, transactionDate);
-
   const { nepaliMonth, nepaliYear } = cam;
+
+  // M5 FIX: use first day of billing period as transactionDate for correct accrual period.
+  const transactionDate = new NepaliDate(nepaliYear, nepaliMonth - 1, 1).getDateObject();
+
+  const nepaliDate = resolveNepaliDateString(cam.nepaliDate, transactionDate);
   const tenantName = cam.tenant?.name ?? "Tenant";
   const createdBy = options.createdBy ?? cam.createdBy ?? null;
   const description = `CAM charge for ${nepaliMonth}/${nepaliYear} from ${tenantName}`;

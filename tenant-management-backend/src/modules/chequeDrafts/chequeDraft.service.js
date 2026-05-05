@@ -18,6 +18,7 @@ import { ChequeDraft } from "./ChequeDraft.Model.js";
 import { Revenue } from "../revenue/Revenue.Model.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import {
+  buildChequeReceiptJournal,
   buildChequeDepositJournal,
   buildChequeBounceJournal,
 } from "../ledger/journal-builders/index.js";
@@ -95,6 +96,16 @@ export async function createChequeDraft(params, session) {
     { session },
   );
 
+  // RECEIVED cheques: post receipt journal immediately
+  //   DR 1150 Cheques In Hand / CR Revenue (4xxx)
+  // Revenue is recognised when the cheque is handed over, not at bank clearance.
+  // ISSUED cheques: the caller (expense.service.js) already posted
+  //   DR Expense / CR 2150 Cheques Payable — no journal needed here.
+  if (direction === "RECEIVED" && referenceAccountCode) {
+    const journalPayload = buildChequeReceiptJournal(draft.toObject());
+    await ledgerService.postJournalEntry(journalPayload, session, entityId);
+  }
+
   return draft;
 }
 
@@ -140,21 +151,14 @@ export async function markDeposited(
     draft.depositedAt = depositedAt;
     draft.depositNotes = depositNotes ?? null;
 
-    if (draft.direction === "ISSUED") {
-      // ISSUED: journal (DR Expense / CR Bank) was already posted at issue time.
-      // Deposit is an administrative confirmation — no new journal, no balance change.
-      await draft.save({ session });
-
-      await session.commitTransaction();
-      session.endSession();
-      return { draft: draft.toObject() };
-    }
-
-    // RECEIVED: cheque deposited → post DR Bank / CR Revenue now + activate Revenue doc
     const draftForJournal = draft.toObject();
     draftForJournal.depositedAt = depositedAt;
     draftForJournal.depositedBy = depositedBy;
 
+    // Both directions now post a clearing journal at deposit time.
+    //
+    // ISSUED:   DR 2150 Cheques Payable / CR Bank  — obligation settled, bank decreases
+    // RECEIVED: DR Bank / CR 1150 Cheques In Hand  — money arrives in bank account
     const journalPayload = buildChequeDepositJournal(draftForJournal);
     const { transaction } = await ledgerService.postJournalEntry(
       journalPayload,
@@ -165,23 +169,39 @@ export async function markDeposited(
     draft.clearingTransactionId = transaction._id;
     await draft.save({ session });
 
-    if (draft.referenceType === "Revenue" && draft.referenceId) {
-      await Revenue.findByIdAndUpdate(
-        draft.referenceId,
-        { $set: { status: "RECORDED", transactionId: transaction._id } },
-        { session },
-      );
-    }
+    if (draft.direction === "RECEIVED") {
+      // Activate the linked Revenue document — it was recognised at receipt (PENDING_CHEQUE),
+      // now confirm it is banked (RECORDED).
+      if (draft.referenceType === "Revenue" && draft.referenceId) {
+        await Revenue.findByIdAndUpdate(
+          draft.referenceId,
+          { $set: { status: "RECORDED" } },
+          { session },
+        );
+      }
 
-    // Increment bank balance now that the cheque has physically cleared.
-    if (draft.bankAccountCode) {
-      const bankAccount = await BankAccount.findOne({
-        accountCode: draft.bankAccountCode,
-        isDeleted: { $ne: true },
-      }).session(session);
-      if (bankAccount) {
-        bankAccount.balancePaisa += draft.amountPaisa;
-        await bankAccount.save({ session });
+      // Bank balance increases when the received cheque physically clears.
+      if (draft.bankAccountCode) {
+        const bankAccount = await BankAccount.findOne({
+          accountCode: draft.bankAccountCode,
+          isDeleted: { $ne: true },
+        }).session(session);
+        if (bankAccount) {
+          bankAccount.balancePaisa += draft.amountPaisa;
+          await bankAccount.save({ session });
+        }
+      }
+    } else {
+      // ISSUED: bank balance decreases when the issued cheque clears the bank.
+      if (draft.bankAccountCode) {
+        const bankAccount = await BankAccount.findOne({
+          accountCode: draft.bankAccountCode,
+          isDeleted: { $ne: true },
+        }).session(session);
+        if (bankAccount) {
+          bankAccount.balancePaisa -= draft.amountPaisa;
+          await bankAccount.save({ session });
+        }
       }
     }
 
@@ -256,37 +276,32 @@ async function _markReversed(id, newStatus, { actorId, reason }) {
 
     if (newStatus === "BOUNCED") draft.bounceReason = reason ?? null;
 
+    // Both directions post a reversal journal.
+    //
+    // RECEIVED reversal (reverses DR 1150 / CR Revenue from receipt):
+    //   DR Revenue (4xxx) / CR 1150 Cheques In Hand
+    //   Bank is NOT touched — the cheque never reached the bank.
+    //
+    // ISSUED reversal (reverses DR Expense / CR 2150 from issue):
+    //   DR 2150 Cheques Payable / CR Expense (5xxx)
+    //   Bank is NOT touched — the cheque never cleared the bank.
+    const draftForJournal = { ...draft.toObject(), status: newStatus };
+    const journalPayload = buildChequeBounceJournal(draftForJournal);
+    const { transaction } = await ledgerService.postJournalEntry(
+      journalPayload,
+      session,
+      draft.entityId,
+    );
+    draft.reversalTransactionId = transaction._id;
+
     if (draft.direction === "RECEIVED") {
-      // RECEIVED cheques: no journal was posted at receipt time, so no reversal needed.
-      // Just void the linked Revenue document.
+      // Void the linked Revenue document.
       if (draft.referenceType === "Revenue" && draft.referenceId) {
         await Revenue.findByIdAndUpdate(
           draft.referenceId,
           { $set: { status: "REVERSED" } },
           { session },
         );
-      }
-    } else {
-      // ISSUED cheques: DR Expense / CR Bank was posted at issue time.
-      // Reverse it: DR Bank / CR Expense, and restore the bank balance.
-      const draftForJournal = { ...draft.toObject(), status: newStatus };
-      const journalPayload = buildChequeBounceJournal(draftForJournal);
-      const { transaction } = await ledgerService.postJournalEntry(
-        journalPayload,
-        session,
-        draft.entityId,
-      );
-      draft.reversalTransactionId = transaction._id;
-
-      if (draft.bankAccountCode) {
-        const bankAccount = await BankAccount.findOne({
-          accountCode: draft.bankAccountCode,
-          isDeleted: { $ne: true },
-        }).session(session);
-        if (bankAccount) {
-          bankAccount.balancePaisa += draft.amountPaisa;
-          await bankAccount.save({ session });
-        }
       }
     }
 

@@ -8,7 +8,7 @@ import {
   formatNepaliISO,
   NEPALI_MONTH_NAMES,
 } from "../../utils/nepaliDateHelper.js";
-import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
+import { getFiscalQuarterMonths } from "../../config/fiscalCalendar.js";
 import { Revenue } from "../revenue/Revenue.Model.js";
 import { RevenueSource } from "../revenue/RevenueSource.Model.js";
 import { Maintenance } from "../maintenance/Maintenance.Model.js";
@@ -31,23 +31,15 @@ const SAFETY_CATEGORIES = [
 
 // ─── Nepali FY Quarter definitions ────────────────────────────────────────────
 //
-// Quarters use getMonthsInQuarter() from nepaliMonthQuarter.js instead of
-// hardcoded month arrays. This is the single source of truth for quarter→month
-// mapping across the entire codebase.
-//
-// Nepali fiscal year quarter order (Baisakh = month 1):
-//   Q1: months 1–3   (Baisakh, Jestha, Ashadh)
-//   Q2: months 4–6   (Shrawan, Bhadra, Ashwin)
-//   Q3: months 7–9   (Kartik, Mangsir, Poush)
-//   Q4: months 10–12 (Magh, Falgun, Chaitra)
-//
-// Note: The NP_FY_QUARTERS array below uses getMonthsInQuarter(q) so that if
-// the quarter definition ever changes in nepaliMonthQuarter.js, the dashboard
-// service automatically picks it up with no manual update needed.
+// Nepal fiscal quarters (Shrawan-based) — source: src/config/fiscalCalendar.js
+//   Q1: months 4–6   (Shrawan, Bhadra, Ashwin)
+//   Q2: months 7–9   (Kartik, Mangsir, Poush)
+//   Q3: months 10–12 (Magh, Falgun, Chaitra)
+//   Q4: months 1–3   (Baisakh, Jestha, Ashadh)
 
 const NP_FY_QUARTERS = [1, 2, 3, 4].map((q) => ({
   label: `Q${q}`,
-  months: getMonthsInQuarter(q), // e.g. Q1 → [1, 2, 3]
+  months: getFiscalQuarterMonths(q), // e.g. Q1 → [4, 5, 6]
 }));
 
 /**
@@ -601,7 +593,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
   const revenueThisYear = buildFullNepaliYear(npYear);
   const revenueLastYear = buildFullNepaliYear(npYear - 1);
 
-  // buildQuarterly uses getMonthsInQuarter() via NP_FY_QUARTERS — no hardcoded
+  // buildQuarterly uses getFiscalQuarterMonths() via NP_FY_QUARTERS — no hardcoded
   // month arrays anywhere in this file.
   const quarterlyThisYear = buildQuarterly(revenueThisYear);
   const quarterlyLastYear = buildQuarterly(revenueLastYear);
@@ -1418,7 +1410,7 @@ export async function getDashboardStatsData({ adminId } = {}) {
       revenueLastYear, // [{month, name, total}] × 12, zeros filled
 
       // Quarterly views — derived in-memory from monthly data via buildQuarterly()
-      // which uses getMonthsInQuarter() as the single source of truth.
+      // which uses getFiscalQuarterMonths() via NP_FY_QUARTERS.
       quarterlyThisYear,
       quarterlyLastYear,
 
@@ -1545,7 +1537,7 @@ export async function getUpcomingRents(req, res) {
 // Lightweight quarterly breakdown — used by drill-down views.
 // Returns only quarterly + monthly revenue; no tenant/maintenance/generator data.
 //
-// Uses getMonthsInQuarter() via buildQuarterly() — same quarter definition as
+// Uses getFiscalQuarterMonths() via buildQuarterly() — same quarter definition as
 // the main stats endpoint, guaranteed consistent.
 
 export async function getQuarterlyStats(req, res) {
@@ -1584,7 +1576,7 @@ export async function getQuarterlyStats(req, res) {
       data: {
         npYear,
         npMonth,
-        // buildQuarterly uses getMonthsInQuarter() — consistent with main endpoint
+        // buildQuarterly uses getFiscalQuarterMonths() — consistent with main endpoint
         thisYear: {
           year: npYear,
           quarters: buildQuarterly(buildFullYear(npYear)),

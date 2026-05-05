@@ -1,41 +1,8 @@
-import NepaliDate from "nepali-datetime";
 import { ledgerService } from "./ledger.service.js";
 import { getBalanceSummary } from "./domains/accountBalanceManger.js";
 import { formatMoney } from "../../utils/moneyUtil.js";
-
-// ─── Date-range resolver (mirrors ledger.service.js pattern) ──────────────────
-const FISCAL_QUARTER_MONTHS = { 1: [3, 4, 5], 2: [6, 7, 8], 3: [9, 10, 11], 4: [0, 1, 2] };
-const FISCAL_YEAR_MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
-
-function bsMonthToDateRange(year, month0) {
-  const firstNp = new NepaliDate(year, month0, 1);
-  const lastDay = NepaliDate.getDaysOfMonth(year, month0);
-  const lastNp  = new NepaliDate(year, month0, lastDay);
-  const toISO   = (nd) => nd.getDateObject().toISOString().split("T")[0];
-  return { startDate: toISO(firstNp), endDate: toISO(lastNp) };
-}
-
-function resolveBSFilterToGregorian({ fiscalYear, quarter, month, startDate, endDate }) {
-  if (startDate || endDate) return { startDate: startDate || undefined, endDate: endDate || undefined };
-  const fy = fiscalYear ? Number(fiscalYear) : undefined;
-  if (month) {
-    const r = bsMonthToDateRange(fy ?? new NepaliDate().getYear(), Number(month) - 1);
-    return { startDate: r.startDate, endDate: r.endDate };
-  }
-  if (quarter) {
-    const months = FISCAL_QUARTER_MONTHS[Number(quarter)].map((m0) => ({ year: fy, month0: m0 }));
-    const first  = bsMonthToDateRange(months[0].year, months[0].month0);
-    const last   = bsMonthToDateRange(months[months.length - 1].year, months[months.length - 1].month0);
-    return { startDate: first.startDate, endDate: last.endDate };
-  }
-  if (fy != null && Number.isFinite(fy)) {
-    const fyMonths = FISCAL_YEAR_MONTH_ORDER.map((m0) => ({ year: m0 <= 2 ? fy + 1 : fy, month0: m0 }));
-    const first    = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
-    const last     = bsMonthToDateRange(fyMonths[fyMonths.length - 1].year, fyMonths[fyMonths.length - 1].month0);
-    return { startDate: first.startDate, endDate: last.endDate };
-  }
-  return { startDate: undefined, endDate: undefined };
-}
+import { rebuildAccountBalance } from "./domains/accountBalanceManger.js";
+import { resolveFiscalGregorianRange } from "../../config/fiscalCalendar.js";
 
 /**
  * Get ledger entries with various filtering options
@@ -220,7 +187,7 @@ export const getBalanceSheet = async (req, res) => {
   try {
     const { entityId, fiscalYear, quarter, month, startDate, endDate } = req.query;
 
-    const { startDate: resolvedStart, endDate: resolvedEnd } = resolveBSFilterToGregorian({
+    const { resolvedStart, resolvedEnd } = resolveFiscalGregorianRange({
       fiscalYear, quarter, month, startDate, endDate,
     });
 
@@ -286,6 +253,135 @@ export const getBalanceSheet = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in getBalanceSheet controller:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─── Period Closing ───────────────────────────────────────────────────────────
+
+/**
+ * POST /ledger/close-period
+ * Body: { entityId, nepaliYear, nepaliMonth, note? }
+ */
+export const closePeriod = async (req, res) => {
+  try {
+    const { entityId, nepaliYear, nepaliMonth, note } = req.body;
+    const adminId = req.user?._id ?? req.user?.id;
+
+    if (!entityId || !nepaliYear || !nepaliMonth) {
+      return res.status(400).json({
+        success: false,
+        message: "entityId, nepaliYear, and nepaliMonth are required",
+      });
+    }
+
+    const result = await ledgerService.closePeriod(
+      entityId,
+      Number(nepaliYear),
+      Number(nepaliMonth),
+      adminId,
+      note,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Period ${nepaliYear}/${String(nepaliMonth).padStart(2, "0")} closed`,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in closePeriod controller:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /ledger/reopen-period
+ * Body: { entityId, nepaliYear, nepaliMonth, note? }
+ */
+export const reopenPeriod = async (req, res) => {
+  try {
+    const { entityId, nepaliYear, nepaliMonth, note } = req.body;
+    const adminId = req.user?._id ?? req.user?.id;
+
+    if (!entityId || !nepaliYear || !nepaliMonth) {
+      return res.status(400).json({
+        success: false,
+        message: "entityId, nepaliYear, and nepaliMonth are required",
+      });
+    }
+
+    const result = await ledgerService.reopenPeriod(
+      entityId,
+      Number(nepaliYear),
+      Number(nepaliMonth),
+      adminId,
+      note,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Period ${nepaliYear}/${String(nepaliMonth).padStart(2, "0")} reopened`,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in reopenPeriod controller:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * GET /ledger/closed-periods?entityId=&closedOnly=true
+ */
+export const getClosedPeriods = async (req, res) => {
+  try {
+    const { entityId, closedOnly } = req.query;
+
+    if (!entityId) {
+      return res.status(400).json({
+        success: false,
+        message: "entityId is required",
+      });
+    }
+
+    const periods = await ledgerService.getClosedPeriods(
+      entityId,
+      closedOnly === "true",
+    );
+
+    res.status(200).json({ success: true, data: periods });
+  } catch (error) {
+    console.error("Error in getClosedPeriods controller:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /ledger/rebuild-balance
+ * Admin-only: recompute an account's balance from full ledger history.
+ * Body: { entityId, accountCode }
+ */
+export const rebuildBalance = async (req, res) => {
+  try {
+    const { entityId, accountCode } = req.body;
+
+    if (!entityId || !accountCode) {
+      return res.status(400).json({
+        success: false,
+        message: "entityId and accountCode are required",
+      });
+    }
+
+    const result = await rebuildAccountBalance(accountCode, entityId);
+
+    res.status(200).json({
+      success: true,
+      message: result.hadDrift
+        ? `Balance corrected — drift of ${result.driftFormatted}`
+        : "Balance verified — no drift detected",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in rebuildBalance controller:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

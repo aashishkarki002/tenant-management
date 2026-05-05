@@ -1,25 +1,9 @@
-/**
- * ledger.service.js — v3 (multi-entity)
- *
- * BREAKING CHANGES from v2:
- *   - postJournalEntry: entityId is now REQUIRED (not optional).
- *     Every journal must belong to an OwnershipEntity.
- *   - applyJournalBalances now receives entityId explicitly.
- *   - Account resolution uses (code, entityId) pair via resolveAccountsByEntity().
- *   - getLedger / getLedgerSummary always filter by entityId when provided.
- *
- * BALANCE UPDATE STRATEGY:
- *   - Domain-driven: balances are updated atomically via $inc in the same
- *     Mongoose session as the Transaction and LedgerEntry writes.
- *   - No separate balance-sync job is needed in normal flows.
- *   - Use rebuildAccountBalance() (admin tool) only for drift repair.
- */
-
 import mongoose from "mongoose";
 import NepaliDate from "nepali-datetime";
 import { Account } from "./accounts/Account.Model.js";
 import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
+import { ClosedPeriod } from "./ClosedPeriod.Model.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
 import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 import { buildEntityFilter } from "../../utils/buildEntityFilter.js";
@@ -49,9 +33,6 @@ function bsMonthToDateRange(year, month0) {
 
 function getQuarterMonths(quarter, fiscalYear) {
   const year = fiscalYear ?? new NepaliDate().getYear();
-  // Q4 months (Baisakh=0, Jestha=1, Ashadh=2) fall in the NEXT BS calendar year.
-  // e.g. FY 2081 Q4 → Baisakh 2082, Jestha 2082, Ashadh 2082.
-  // Must mirror the same logic used in accounting.service.js calendarYearForBsMonth.
   return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({
     year: month0 <= 2 ? year + 1 : year,
     month0,
@@ -141,6 +122,17 @@ class LedgerService {
    * @param {string|ObjectId}              entityId   REQUIRED — which entity owns this journal
    */
   async postJournalEntry(payload, session = null, entityId) {
+    // ── Session guard ───────────────────────────────────────────────────────
+    // Without a session, partial failures (e.g. LedgerEntry insert succeeds but
+    // Account $inc fails) cannot be rolled back. Always pass a Mongoose session.
+    if (!session) {
+      console.warn(
+        "[ledger] WARNING: postJournalEntry called without a Mongoose session. " +
+          "Atomicity is not guaranteed — partial failures will not auto-rollback. " +
+          "Pass a ClientSession to ensure all-or-nothing posting.",
+      );
+    }
+
     // entityId from argument takes precedence over payload
     const resolvedEntityId = entityId ?? payload.entityId ?? null;
 
@@ -171,6 +163,23 @@ class LedgerService {
 
     if (!entries?.length)
       throw new Error("Journal payload must have at least one entry");
+
+    // ── Period-close guard ──────────────────────────────────────────────────
+    // Reject postings to a closed period.
+    if (nepaliMonth && nepaliYear) {
+      const closedPeriod = await ClosedPeriod.findOne({
+        entityId: resolvedEntityId,
+        nepaliYear: Number(nepaliYear),
+        nepaliMonth: Number(nepaliMonth),
+        isClosed: true,
+      }).session(session);
+      if (closedPeriod) {
+        throw new Error(
+          `Period ${nepaliYear}/${String(nepaliMonth).padStart(2, "0")} is closed for this entity. ` +
+            `Reopen the period before posting new entries.`,
+        );
+      }
+    }
 
     // ── Idempotency guard ───────────────────────────────────────────────────
     // Must include `type` so a reversal (e.g. RENT_CHARGE_REVERSAL) can
@@ -241,6 +250,13 @@ class LedgerService {
     );
 
     // ── Build ledger docs ───────────────────────────────────────────────────
+    const resolvedNepaliDate =
+      typeof nepaliDate === "string"
+        ? nepaliDate
+        : nepaliDate instanceof Date
+          ? nepaliDate.toISOString().split("T")[0]
+          : null;
+
     const ledgerDocs = entries.map((entry) => {
       const account = accountByCode[entry.accountCode];
       return {
@@ -248,45 +264,30 @@ class LedgerService {
         account: account._id,
         debitAmountPaisa: entry.debitAmountPaisa || 0,
         creditAmountPaisa: entry.creditAmountPaisa || 0,
-        balancePaisa: 0, // filled after $inc below
+        balancePaisa: 0, // running balance computed on reads (getLedger)
         description: entry.description ?? description,
         tenant: entry.tenant ?? payloadTenant ?? null,
         property: entry.property ?? payloadProperty ?? null,
         entityId: resolvedEntityId,
         nepaliMonth,
         nepaliYear,
-        nepaliDate:
-          typeof nepaliDate === "string"
-            ? nepaliDate
-            : nepaliDate instanceof Date
-              ? nepaliDate.toISOString().split("T")[0]
-              : null,
+        nepaliDate: resolvedNepaliDate,
         transactionDate,
+        // Audit trail: who triggered this posting
+        createdBy: createdBy ?? null,
       };
     });
 
-    // ── Apply balance changes via domain (entity-scoped) ────────────────────
-    const balanceResults = await applyJournalBalances(
-      entries,
-      resolvedEntityId,
-      session,
-    );
-
-    // Build lookup: accountCode → new running balance
-    const newBalanceByCode = Object.fromEntries(
-      balanceResults.map((r) => [r.accountCode, r.newBalancePaisa]),
-    );
-
-    // Stamp post-$inc balance on every ledger doc
-    for (const doc of ledgerDocs) {
-      const code = Object.entries(accountByCode).find(
-        ([, acc]) => String(acc._id) === String(doc.account),
-      )?.[0];
-      doc.balancePaisa = newBalanceByCode[code] ?? 0;
-    }
-
-    // ── Insert all entries in one round-trip ────────────────────────────────
+    // ── Insert entries FIRST — safe even if $inc below fails ────────────────
+    // Ordering rationale: if LedgerEntry insert fails, no balance change
+    // has occurred — state is fully consistent. If $inc fails after entries
+    // are stored, rebuildAccountBalance() can repair the drift. The inverse
+    // order ($inc first) leaves an incremented balance with no journal record,
+    // which is undetectable without full reconciliation.
     const ledgerEntries = await LedgerEntry.insertMany(ledgerDocs, { session });
+
+    // ── Apply balance changes via domain (entity-scoped) ────────────────────
+    await applyJournalBalances(entries, resolvedEntityId, session);
 
     return { transaction, ledgerEntries };
   }
@@ -762,14 +763,21 @@ class LedgerService {
     if (!origEntries.length)
       throw new Error("No ledger entries found for transaction");
 
+    // Reversal posts in the CURRENT period (date of reversal), not the original
+    // period. Transaction schema has no nepaliMonth/Year — derive from now.
+    const nowNp = new NepaliDate();
+    const reversalNepaliYear = nowNp.getYear();
+    const reversalNepaliMonth = nowNp.getMonth() + 1; // getMonth() is 0-based
+    const reversalNepaliDate = `${reversalNepaliYear}-${String(reversalNepaliMonth).padStart(2, "0")}-${String(nowNp.getDate()).padStart(2, "0")}`;
+
     const reversalPayload = {
       transactionType: `${orig.type}_REVERSAL`,
       referenceType: orig.referenceType,
       referenceId: orig.referenceId,
       transactionDate: new Date(),
-      nepaliDate: orig.nepaliDate,
-      nepaliMonth: orig.nepaliMonth ?? 1,
-      nepaliYear: orig.nepaliYear ?? 2081,
+      nepaliDate: reversalNepaliDate,
+      nepaliMonth: reversalNepaliMonth,
+      nepaliYear: reversalNepaliYear,
       description: `REVERSAL: ${reason} (original: ${orig.description})`,
       createdBy: reversedBy,
       totalAmountPaisa: orig.totalAmountPaisa,
@@ -785,6 +793,95 @@ class LedgerService {
     };
 
     return this.postJournalEntry(reversalPayload, session, orig.entityId);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Period closing
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Close a BS month/year for an entity. Prevents new journal postings to that period.
+   *
+   * @param {string|ObjectId} entityId
+   * @param {number}          nepaliYear
+   * @param {number}          nepaliMonth   1–12
+   * @param {string|ObjectId} adminId       who is closing
+   * @param {string}          [note]
+   */
+  async closePeriod(entityId, nepaliYear, nepaliMonth, adminId, note) {
+    if (!entityId) throw new Error("closePeriod: entityId is required");
+    if (!nepaliYear || !nepaliMonth) throw new Error("closePeriod: nepaliYear and nepaliMonth are required");
+    if (nepaliMonth < 1 || nepaliMonth > 12) throw new Error("closePeriod: nepaliMonth must be 1–12");
+
+    const result = await ClosedPeriod.findOneAndUpdate(
+      { entityId, nepaliYear: Number(nepaliYear), nepaliMonth: Number(nepaliMonth) },
+      {
+        $set: {
+          isClosed: true,
+          closedBy: adminId,
+          closedAt: new Date(),
+          closeNote: note ?? null,
+        },
+      },
+      { upsert: true, returnDocument: "after", new: true },
+    );
+
+    return result;
+  }
+
+  /**
+   * Reopen a previously closed period to allow corrections.
+   *
+   * @param {string|ObjectId} entityId
+   * @param {number}          nepaliYear
+   * @param {number}          nepaliMonth
+   * @param {string|ObjectId} adminId       who is reopening
+   * @param {string}          [note]
+   */
+  async reopenPeriod(entityId, nepaliYear, nepaliMonth, adminId, note) {
+    if (!entityId) throw new Error("reopenPeriod: entityId is required");
+
+    const result = await ClosedPeriod.findOneAndUpdate(
+      { entityId, nepaliYear: Number(nepaliYear), nepaliMonth: Number(nepaliMonth) },
+      {
+        $set: {
+          isClosed: false,
+          reopenedBy: adminId,
+          reopenedAt: new Date(),
+          reopenNote: note ?? null,
+        },
+      },
+      { returnDocument: "after", new: true },
+    );
+
+    if (!result) {
+      throw new Error(
+        `Period ${nepaliYear}/${String(nepaliMonth).padStart(2, "0")} was never closed for this entity`,
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * List all period close records for an entity.
+   *
+   * @param {string|ObjectId} entityId
+   * @param {boolean}         [closedOnly=false]   when true, return only currently-closed periods
+   */
+  async getClosedPeriods(entityId, closedOnly = false) {
+    if (!entityId) throw new Error("getClosedPeriods: entityId is required");
+
+    const filter = { entityId };
+    if (closedOnly) filter.isClosed = true;
+
+    const periods = await ClosedPeriod.find(filter)
+      .populate("closedBy", "name email")
+      .populate("reopenedBy", "name email")
+      .sort({ nepaliYear: -1, nepaliMonth: -1 })
+      .lean();
+
+    return periods;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

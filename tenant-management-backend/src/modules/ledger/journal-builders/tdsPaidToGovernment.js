@@ -9,12 +9,12 @@
  *   amount from "unverified recoverable" to "verified paid" for proper tracking.
  *
  * Non-cash journal entry (verification only, no bank movement):
- *   DR  TDS Verified Paid (1100)   ASSET ↑  — confirmed paid, ready for tax claim
+ *   DR  TDS Verified Paid (1350)   ASSET ↑  — confirmed paid, ready for tax claim
  *   CR  TDS Recoverable (1300)     ASSET ↓  — clears unverified amount
  *
  * This allows the balance sheet to distinguish:
  *   - TDS withheld but not yet verified as paid (1300)
- *   - TDS verified as paid to government (1100)
+ *   - TDS verified as paid to government (1350)
  *
  * @param {Object} rent  Rent document (Mongoose doc or plain object)
  *   Required: _id, nepaliMonth, nepaliYear, tdsAmountPaisa (integer > 0),

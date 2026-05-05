@@ -11,6 +11,7 @@ import {
   getTenantsWithArrears,
   rebuildTenantBalancesController,
   addUnitsToTenant,
+  getTerminationSummary,
 } from "./tenant.controller.js";
 import upload from "../../middleware/upload.js";
 import { multerErrorHandler } from "../../middleware/multerErrorHandler.js";
@@ -48,6 +49,7 @@ router.patch(
 );
 
 router.post("/add-units/:id", protect, addUnitsToTenant);
+router.get("/termination-summary/:id", protect, getTerminationSummary);
 router.patch("/delete-tenant/:id", protect, deleteTenant);
 router.patch("/restore-tenant/:id", protect, restoreTenant);
 router.get("/tenant-balance/:tenantId", protect, getTenantBalanceController);

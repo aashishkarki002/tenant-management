@@ -30,6 +30,7 @@
 import mongoose from "mongoose";
 import BankAccount from "./BankAccountModel.js";
 import { Account } from "../ledger/accounts/Account.Model.js";
+import { LedgerEntry } from "../ledger/Ledger.Model.js";
 import { rupeesToPaisa, formatMoney } from "../../utils/moneyUtil.js";
 import { Payment } from "../payment/payment.model.js";
 import { LoanPayment } from "../loans/LoanPayment.model.js";
@@ -373,6 +374,99 @@ export const getFundPositions = async (req, res) => {
       success: false,
       message: "Failed to fetch fund positions",
       error: error.message,
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BALANCE HISTORY  (sparkline data)
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/bank/balance-history?entityId=&days=30
+// Returns daily end-of-day balancePaisa per account code for the past N days.
+// Used by the Banking tab sparkline charts.
+
+export const getBalanceHistory = async (req, res) => {
+  try {
+    const { entityId, days = 30 } = req.query;
+    const entityObjId = entityId
+      ? new mongoose.Types.ObjectId(entityId)
+      : null;
+    const daysNum = Math.min(Math.max(parseInt(days) || 30, 7), 365);
+
+    const since = new Date();
+    since.setDate(since.getDate() - daysNum);
+    since.setHours(0, 0, 0, 0);
+
+    // 1. Resolve all relevant account ObjectIds (cash + each bank account)
+    const bankFilter = { isDeleted: false };
+    if (entityObjId) bankFilter.entityId = entityObjId;
+    const bankDocs = await BankAccount.find(bankFilter).lean();
+    const bankCodes = bankDocs.map((b) => b.accountCode).filter(Boolean);
+    const allCodes = ["1000", ...bankCodes];
+
+    const acctFilter = { code: { $in: allCodes }, isActive: true };
+    if (entityObjId) acctFilter.entityId = entityObjId;
+    const accounts = await Account.find(acctFilter).lean();
+
+    if (accounts.length === 0) {
+      return res.status(200).json({ success: true, histories: {} });
+    }
+
+    const accountIdToCode = new Map(
+      accounts.map((a) => [a._id.toString(), a.code])
+    );
+    const accountIds = accounts.map((a) => a._id);
+
+    // 2. Aggregate: last balancePaisa per (account, date-string) then collect
+    const matchStage = {
+      account: { $in: accountIds },
+      transactionDate: { $gte: since },
+    };
+    if (entityObjId) matchStage.entityId = entityObjId;
+
+    const raw = await LedgerEntry.aggregate([
+      { $match: matchStage },
+      {
+        $addFields: {
+          dateStr: {
+            $dateToString: { format: "%Y-%m-%d", date: "$transactionDate" },
+          },
+        },
+      },
+      // sort ascending so $last gives EOD balance
+      { $sort: { account: 1, transactionDate: 1 } },
+      {
+        $group: {
+          _id: { account: "$account", date: "$dateStr" },
+          balancePaisa: { $last: "$balancePaisa" },
+        },
+      },
+      {
+        $group: {
+          _id: "$_id.account",
+          data: {
+            $push: { date: "$_id.date", balancePaisa: "$balancePaisa" },
+          },
+        },
+      },
+    ]);
+
+    // 3. Map ObjectId → account code and sort data points by date
+    const histories = {};
+    for (const r of raw) {
+      const code = accountIdToCode.get(r._id.toString());
+      if (code) {
+        histories[code] = r.data.sort((a, b) => a.date.localeCompare(b.date));
+      }
+    }
+
+    return res.status(200).json({ success: true, histories });
+  } catch (err) {
+    console.error("getBalanceHistory error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch balance history",
+      error: err.message,
     });
   }
 };

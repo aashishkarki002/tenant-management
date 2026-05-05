@@ -556,20 +556,21 @@ export async function createExpense(expenseData, externalSession = null) {
         paymentMethod,
         session,
       });
+      // Cheque: CR goes to Cheques Payable (2150) — bank is NOT touched until deposit.
+      // Cash/bank_transfer/wallet: CR goes to the actual payment account.
+      const journalCrCode = paymentMethod === PAYMENT_METHODS.CHEQUE
+        ? ACCOUNT_CODES.CHEQUES_PAYABLE
+        : resolvedAccountCode;
       // Single journal → single entity's CoA
       await postExpenseJournalForEntity({
         expense: expenseBase,
         entityId: resolvedEntityId,
         amountPaisa: finalAmountPaisa,
-        bankAccountCode: resolvedAccountCode,
+        bankAccountCode: journalCrCode,
         expenseAccountCode,
         ...journalDateFields,
         session,
       });
-      if (paymentMethod === PAYMENT_METHODS.CHEQUE) {
-        const bankAcc = await BankAccount.findOne({ accountCode: resolvedAccountCode, isDeleted: { $ne: true } }).session(session);
-        if (bankAcc) { bankAcc.balancePaisa -= finalAmountPaisa; await bankAcc.save({ session }); }
-      }
     } else if (scope === "head_office") {
       const resolvedAccountCode = await resolvePaymentAccountCodeForEntity({
         bankAccountCode,
@@ -578,20 +579,19 @@ export async function createExpense(expenseData, externalSession = null) {
         paymentMethod,
         session,
       });
+      const journalCrCode = paymentMethod === PAYMENT_METHODS.CHEQUE
+        ? ACCOUNT_CODES.CHEQUES_PAYABLE
+        : resolvedAccountCode;
       // Single journal → head office entity's CoA
       await postExpenseJournalForEntity({
         expense: expenseBase,
         entityId: resolvedEntityId,
         amountPaisa: finalAmountPaisa,
-        bankAccountCode: resolvedAccountCode,
+        bankAccountCode: journalCrCode,
         expenseAccountCode,
         ...journalDateFields,
         session,
       });
-      if (paymentMethod === PAYMENT_METHODS.CHEQUE) {
-        const bankAcc = await BankAccount.findOne({ accountCode: resolvedAccountCode, isDeleted: { $ne: true } }).session(session);
-        if (bankAcc) { bankAcc.balancePaisa -= finalAmountPaisa; await bankAcc.save({ session }); }
-      }
     } else if (scope === "split") {
       // One journal per entity allocation
       // Validate allocation totals
@@ -615,6 +615,9 @@ export async function createExpense(expenseData, externalSession = null) {
           paymentMethod,
           session,
         });
+        const journalCrCode = paymentMethod === PAYMENT_METHODS.CHEQUE
+          ? ACCOUNT_CODES.CHEQUES_PAYABLE
+          : resolvedAccountCode;
         const result = await postExpenseJournalForEntity({
           expense: {
             ...expenseBase,
@@ -622,7 +625,7 @@ export async function createExpense(expenseData, externalSession = null) {
           },
           entityId: allocation.entityId,
           amountPaisa: allocation.amountPaisa,
-          bankAccountCode: resolvedAccountCode,
+          bankAccountCode: journalCrCode,
           expenseAccountCode,
           ...journalDateFields,
           session,
@@ -630,11 +633,6 @@ export async function createExpense(expenseData, externalSession = null) {
 
         // Stamp the ledgerEntryId back onto the allocation for traceability
         allocation.ledgerEntryId = result.ledgerEntries[0]?._id ?? null;
-
-        if (paymentMethod === PAYMENT_METHODS.CHEQUE) {
-          const bankAcc = await BankAccount.findOne({ accountCode: resolvedAccountCode, isDeleted: { $ne: true } }).session(session);
-          if (bankAcc) { bankAcc.balancePaisa -= allocation.amountPaisa; await bankAcc.save({ session }); }
-        }
       }
 
       // Update the expense doc with the populated ledgerEntryIds

@@ -13,9 +13,15 @@
  *     Sub-case A: deducted from SD, recognised as income (revenue).
  *       DR  Security Deposit Liability  (2100)  — liability reduces
  *       CR  Maintenance Revenue         (4300)  — income recognised
- *     Sub-case B: deducted to pay an expense directly (e.g. contractor invoice).
+ *     Sub-case B: deducted to offset a previously-recorded contractor expense.
  *       DR  Security Deposit Liability  (2100)  — liability reduces
- *       CR  Maintenance Expense Offset  (5000)  — expense offset / contra
+ *       CR  Maintenance Revenue         (4300)  — income recognised (mirrors sub-case A)
+ *       NOTE: Do NOT credit account 5000 (Expense). Crediting an EXPENSE account
+ *       creates an abnormal (credit) balance unless a prior DR 5000 exists in the
+ *       same entity/period. Use MAINTENANCE_ADJUSTMENT instead — recognise the SD
+ *       deduction as maintenance revenue regardless of whether the contractor was
+ *       paid through 5000 previously. If offsetting a specific contractor expense,
+ *       post a separate manual reversal of that expense entry.
  *
  *  3. RENT_ADJUSTMENT — SD applied to clear outstanding rent arrears.
  *       DR  Security Deposit Liability  (2100)  — liability reduces
@@ -150,10 +156,13 @@ function buildMaintenanceAdjustmentEntries(item, tenantName) {
 }
 
 function buildMaintenanceExpenseOffsetEntries(item, tenantName) {
-  // Deducted from SD to pay a contractor — offsets an existing expense
+  // M3 FIX: Previously credited EXPENSE (5000), creating an abnormal credit balance
+  // if no prior DR 5000 existed. Now recognised as Maintenance Revenue (4300) —
+  // the SD deduction is income regardless of how the contractor was paid.
+  // To reverse a prior contractor expense entry, post a separate manual journal.
   const desc =
     item.description ??
-    `SD withheld — contractor expense offset for ${tenantName}: ${item.note ?? ""}`;
+    `SD withheld — maintenance recovery for ${tenantName}: ${item.note ?? ""}`;
   return [
     {
       accountCode: ACCOUNT_CODES.SECURITY_DEPOSIT_LIABILITY,
@@ -162,7 +171,7 @@ function buildMaintenanceExpenseOffsetEntries(item, tenantName) {
       description: desc,
     },
     {
-      accountCode: ACCOUNT_CODES.EXPENSE, // "5000" — contra against existing expense
+      accountCode: ACCOUNT_CODES.MAINTENANCE_REVENUE, // "4300" — income recognised
       debitAmountPaisa: 0,
       creditAmountPaisa: item.amountPaisa,
       description: desc,

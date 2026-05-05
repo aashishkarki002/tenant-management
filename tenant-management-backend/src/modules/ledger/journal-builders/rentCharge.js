@@ -17,6 +17,7 @@ import {
   assertNepaliFields,
   formatNepaliISO,
 } from "../../../utils/nepaliDateHelper.js";
+import { getFiscalQuarterFromMonth } from "../../../config/fiscalCalendar.js";
 import NepaliDate from "nepali-datetime";
 
 /**
@@ -46,23 +47,24 @@ export function buildRentChargeJournal(rent) {
   const rentAmountPaisa = getRawPaisa(rent, "grossRentAmountPaisa");
 
   // ── 3. Metadata ──────────────────────────────────────────────────────────
-  const transactionDate =
-    rent.createdAt instanceof Date
-      ? rent.createdAt
-      : new Date(rent.createdAt ?? Date.now());
+  const { nepaliMonth, nepaliYear } = rent;
+
+  // M5 FIX: use first day of billing period as transactionDate, not createdAt.
+  // This ensures accrual entries land in the correct period for date-range queries.
+  const transactionDate = new NepaliDate(nepaliYear, nepaliMonth - 1, 1).getDateObject();
 
   const nepaliDate =
     typeof rent.nepaliDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(rent.nepaliDate)
       ? rent.nepaliDate.slice(0, 10)
       : formatNepaliISO(new NepaliDate(transactionDate));
 
-  const { nepaliMonth, nepaliYear } = rent;
   const tenantName = rent.tenantName ?? rent.tenant?.name ?? "Tenant";
 
   const billingFrequency = rent.rentFrequency ?? "monthly";
+  // C2 FIX: use fiscal quarter lookup instead of Math.ceil(month/3) which gives calendar quarters.
   const quarter =
     billingFrequency === "quarterly" && typeof nepaliMonth === "number"
-      ? Math.ceil(nepaliMonth / 3)
+      ? getFiscalQuarterFromMonth(nepaliMonth)
       : undefined;
 
   const description =

@@ -80,6 +80,14 @@ export function buildSecurityDepositJournal(sd, options = {}, bankAccountCode) {
         ? rupeesToPaisa(sd.amount)
         : 0;
 
+  // M4 FIX: reject zero / negative security deposits — posting a zero journal
+  // is valid double-entry but economically meaningless and masks data errors.
+  if (!Number.isInteger(amountPaisa) || amountPaisa <= 0) {
+    throw new Error(
+      `buildSecurityDepositJournal: amountPaisa must be a positive integer, got ${amountPaisa}`,
+    );
+  }
+
   // ── 3. Dates ─────────────────────────────────────────────────────────────
   const transactionDate = sd.paidDate || new Date();
   const nepaliDate = resolveNepaliDateString(sd.nepaliDate, transactionDate);

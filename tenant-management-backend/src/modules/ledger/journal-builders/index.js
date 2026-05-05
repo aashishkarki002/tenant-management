@@ -25,7 +25,11 @@ export { buildCamPaymentReceivedJournal } from "./camPaymentReceived.js";
 export {
   buildElectricityChargeJournal,
   buildElectricityPaymentJournal,
+  buildElectricityNeaCostJournal,
 } from "./electricity.js";
+
+// NEA bill payment (clears NEA_PAYABLE 2050)
+export { buildNeaPaymentJournal } from "./neaPayment.js";
 
 // Late fees  (NEW)
 export { buildLateFeeJournal, buildLateFeePaymentJournal } from "./lateFee.js";
@@ -46,5 +50,8 @@ export {
 // Security deposit refund
 export { buildSdRefundJournal } from "./sdRefund.js";
 
-// Cheque clearing (deposit + bounce/cancel reversal)
-export { buildChequeDepositJournal, buildChequeBounceJournal } from "./chequeClearing.js";
+// Cheque clearing (receipt + deposit + bounce/cancel reversal)
+export { buildChequeReceiptJournal, buildChequeDepositJournal, buildChequeBounceJournal } from "./chequeClearing.js";
+
+// Opening balances (onboarding existing properties)
+export { buildOpeningBalanceJournal } from "./openingBalance.js";

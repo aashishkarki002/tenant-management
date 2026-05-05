@@ -1,6 +1,8 @@
 import * as tenantService from "./tenant.service.js";
 import { getTenantBalance, rebuildAllTenantBalances } from "../tenantBalance/tenantBalance.service.js";
 import { TenantBalance } from "../tenantBalance/tenantBalance.model.js";
+import { Tenant } from "./Tenant.Model.js";
+import { paisaToRupees } from "../../utils/moneyUtil.js";
 export const createTenant = async (req, res) => {
   const adminId = req.admin_id ?? req.admin?.id;
   const result = await tenantService.createTenant(req.body, req.files, adminId);
@@ -405,6 +407,52 @@ export const getTenantsWithArrears = async (req, res) => {
     return res.status(200).json({ success: true, arrears });
   } catch (error) {
     console.error("[getTenantsWithArrears]", error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * GET /api/tenant/termination-summary/:id
+ * Returns outstanding balance + security deposit before lease termination.
+ */
+export const getTerminationSummary = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tenant = await Tenant.findById(id)
+      .select("name email phone securityDepositPaisa status isDeleted")
+      .lean();
+
+    if (!tenant) {
+      return res.status(404).json({ success: false, message: "Tenant not found" });
+    }
+    if (tenant.isDeleted || tenant.status === "vacated") {
+      return res.status(400).json({ success: false, message: "Tenant already vacated" });
+    }
+
+    let balance = await getTenantBalance(id);
+
+    // If no snapshot compute on-the-fly
+    if (!balance) {
+      const { syncTenantBalance } = await import("../tenantBalance/tenantBalance.service.js");
+      balance = await syncTenantBalance(id, null);
+    }
+
+    return res.status(200).json({
+      success: true,
+      summary: {
+        tenantId: tenant._id,
+        name: tenant.name,
+        email: tenant.email,
+        phone: tenant.phone,
+        rentDue: paisaToRupees(balance?.rentDuePaisa ?? 0),
+        camDue: paisaToRupees(balance?.camDuePaisa ?? 0),
+        lateFeeDue: paisaToRupees(balance?.lateFeeDuePaisa ?? 0),
+        totalDue: paisaToRupees(balance?.totalDuePaisa ?? 0),
+        securityDeposit: paisaToRupees(tenant.securityDepositPaisa ?? 0),
+      },
+    });
+  } catch (error) {
+    console.error("[getTerminationSummary]", error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 };

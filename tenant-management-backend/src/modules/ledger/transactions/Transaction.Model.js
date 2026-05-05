@@ -47,6 +47,8 @@ const transactionSchema = new mongoose.Schema(
         "CHEQUE_BOUNCE",
         "CHEQUE_CANCELLATION",
         "CHEQUE_DRAFT",
+        "NEA_PAYMENT",
+        "OPENING_BALANCE",
       ],
       required: true,
     },
@@ -93,6 +95,16 @@ const transactionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       required: true,
       refPath: "referenceType",
+    },
+
+    // ─────────────────────────────────────────────────
+    // ENTITY SCOPE — every transaction belongs to one OwnershipEntity
+    // ─────────────────────────────────────────────────
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OwnershipEntity",
+      required: true,
+      index: true,
     },
 
     // ============================================
@@ -149,6 +161,8 @@ const transactionSchema = new mongoose.Schema(
 transactionSchema.index({ transactionDate: 1, type: 1 });
 transactionSchema.index({ referenceType: 1, referenceId: 1 });
 transactionSchema.index({ status: 1 });
+// Idempotency query index — mirrors the findOne guard in ledger.service.js
+transactionSchema.index({ entityId: 1, type: 1, referenceType: 1, referenceId: 1 });
 transactionSchema.index(
   { description: "text" },
   { name: "transaction_text_search" },

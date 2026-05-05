@@ -21,7 +21,7 @@ import {
   getCreditAccountForPayment,
   assertValidPaymentMethod,
 } from "../../../utils/paymentAccountUtils.js";
-import { assertIntegerPaisa } from "../../../utils/moneyUtil.js";
+import { assertIntegerPaisa, paisaToRupees } from "../../../utils/moneyUtil.js";
 import NepaliDate from "nepali-datetime";
 
 /** AD "YYYY-MM-DD" must become a JS Date before NepaliDate — bare strings are parsed as BS. */
@@ -91,7 +91,7 @@ export function buildExpenseJournal(expense, bankAccountCode) {
     EXPENSE_TYPE_MAP[expense.referenceType] ?? "OTHER_EXPENSE";
   const description =
     `Expense (${expense.referenceType ?? "OTHER"}) — ` +
-    `${expense.amountPaisa / 100} NPR` +
+    `${paisaToRupees(expense.amountPaisa)} NPR` +
     (tenantName ? ` — ${tenantName}` : "");
 
   // ── 4. Canonical payload ──────────────────────────────────────────────────

@@ -75,6 +75,12 @@ const ledgerEntrySchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    // Who created this entry — propagated from payload.createdBy (Admin ObjectId)
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+    },
   },
   { timestamps: true },
 );
@@ -128,6 +134,8 @@ ledgerEntrySchema.index({ tenant: 1, transactionDate: -1 });
 ledgerEntrySchema.index({ property: 1, transactionDate: -1 });
 ledgerEntrySchema.index({ transactionDate: -1 });
 ledgerEntrySchema.index({ account: 1, transactionDate: -1 });
+// Compound: entity + account + date — supports entity-scoped balance queries
+ledgerEntrySchema.index({ entityId: 1, account: 1, transactionDate: -1 });
 
 ledgerEntrySchema.methods.getFormattedEntry = function () {
   // Use raw PAISA values (bypass getters that convert to rupees)

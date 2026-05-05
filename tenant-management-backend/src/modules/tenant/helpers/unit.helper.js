@@ -1,5 +1,19 @@
 import mongoose from "mongoose";
 
+export function normalizeUnitIdsArray(input) {
+  if (!input) return [];
+  const arr = Array.isArray(input) ? input : [input];
+  const result = [];
+  for (const item of arr) {
+    if (item && typeof item === "object" && Array.isArray(item.$in)) {
+      result.push(...item.$in);
+    } else if (item != null && item !== "") {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 export function parseUnitIds(units) {
   if (!units) throw new Error("Units are required");
 

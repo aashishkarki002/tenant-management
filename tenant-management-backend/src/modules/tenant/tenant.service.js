@@ -3,8 +3,12 @@ import { Tenant } from "./Tenant.Model.js";
 import tenantValidation from "../../validations/tenantValidation.js";
 import { Unit } from "../units/unit.model.js";
 import { sendWelcomeEmail } from "../../config/nodemailer.js";
+import { smsTenant } from "../../config/nestsms.templates.js";
 import { createTenantTransaction } from "./services/tenant.create.js";
-import { uploadSingleFile } from "./helpers/fileUploadHelper.js";
+import buildDocumentsFromFiles, {
+  uploadSingleFile,
+  rollbackUploads,
+} from "./helpers/fileUploadHelper.js";
 import { paisaToRupees, rupeesToPaisa, divideMoney } from "../../utils/moneyUtil.js";
 import { calculateMultiUnitLease } from "./domain/rent.calculator.service.js";
 import { Rent } from "../rents/rent.Model.js";
@@ -20,64 +24,73 @@ import { resolveEntityFromBlock } from "../../helper/resolveEntity.js";
 import { getNepaliMonthDates, getRentCycleDates } from "../../utils/nepaliDateHelper.js";
 
 export async function createTenant(body, files, adminId) {
+  // ── Parse unitLeases JSON string (multipart forms send it as string) ────────
+  if (body.unitLeases && typeof body.unitLeases === "string") {
+    try {
+      const parsed = JSON.parse(body.unitLeases);
+      if (Array.isArray(parsed)) {
+        body.unitLeases = parsed;
+        const unitIds = parsed
+          .map((u) => u.unitId)
+          .filter((id) => typeof id === "string" && id.trim().length > 0);
+        if (unitIds.length > 0) body.units = unitIds;
+      }
+    } catch (e) {
+      console.error("Failed to parse unitLeases JSON:", e);
+    }
+  }
+
+  await tenantValidation.validate(body, { abortEarly: false });
+
+  const documentFields = [
+    "image",
+    "pdfAgreement",
+    "citizenShip",
+    "company_docs",
+    "tax_certificate",
+    "bank_guarantee",
+    "cheque",
+    "other",
+  ];
+  const hasDocuments =
+    files &&
+    documentFields.some(
+      (f) =>
+        files[f] && (Array.isArray(files[f]) ? files[f].length > 0 : true),
+    );
+
+  if (!hasDocuments) {
+    return {
+      success: false,
+      statusCode: 400,
+      message: "Tenant documents are required",
+    };
+  }
+
+  // ── Upload files BEFORE opening the transaction ──────────────────────────
+  // Cloudinary uploads can take up to 120s. Holding a MongoDB session open
+  // that long causes lock contention and session timeouts.
+  let documents;
+  try {
+    documents = await buildDocumentsFromFiles(files);
+  } catch (uploadErr) {
+    return {
+      success: false,
+      statusCode: 400,
+      message: uploadErr.message,
+    };
+  }
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    if (body.unitLeases && typeof body.unitLeases === "string") {
-      try {
-        const parsed = JSON.parse(body.unitLeases);
-        if (Array.isArray(parsed)) {
-          body.unitLeases = parsed;
-          const unitIds = parsed
-            .map((u) => u.unitId)
-            .filter((id) => typeof id === "string" && id.trim().length > 0);
-          if (unitIds.length > 0) body.units = unitIds;
-        }
-      } catch (e) {
-        console.error("Failed to parse unitLeases JSON:", e);
-      }
-    }
-
-    if (Array.isArray(body.unitNumber) && !body.units)
-      body.units = body.unitNumber;
-    else if (body.unitNumber && !body.units) body.units = [body.unitNumber];
-
-    await tenantValidation.validate(body, { abortEarly: false });
-
-    const documentFields = [
-      "image",
-      "pdfAgreement",
-      "citizenShip",
-      "company_docs",
-      "tax_certificate",
-      "bank_guarantee",
-      "cheque",
-      "other",
-    ];
-    const hasDocuments =
-      files &&
-      documentFields.some(
-        (f) =>
-          files[f] && (Array.isArray(files[f]) ? files[f].length > 0 : true),
-      );
-
-    if (!hasDocuments) {
-      await session.abortTransaction();
-      session.endSession();
-      return {
-        success: false,
-        statusCode: 400,
-        message: "Tenant documents are required",
-      };
-    }
-
-    const tenant = await createTenantTransaction(body, files, adminId, session);
+    const tenant = await createTenantTransaction(body, documents, adminId, session);
 
     await session.commitTransaction();
     session.endSession();
 
-    // Fire-and-forget: apply system escalation defaults if configured
+
     applyDefaultEscalationIfEnabled(tenant._id.toString())
       .then((r) => {
         if (r?.applied) console.log(`Escalation applied to ${tenant.name}`);
@@ -94,6 +107,10 @@ export async function createTenant(body, files, adminId) {
         );
     }
 
+    // if (tenant.phone) {
+    //   smsTenant.welcome(tenant.phone, { tenantName: tenant.name } ,{unitName: tenant.units[0]?.name || "", propertyName: ""});
+    // }
+
     return {
       success: true,
       statusCode: 201,
@@ -104,6 +121,14 @@ export async function createTenant(body, files, adminId) {
     await session.abortTransaction();
     session.endSession();
     console.error("Tenant creation error:", error);
+
+    // DB transaction failed — delete already-uploaded Cloudinary assets
+    if (documents?.length) {
+      rollbackUploads(documents).catch((e) =>
+        console.error("Cloudinary rollback error:", e.message),
+      );
+    }
+
     return {
       success: false,
       statusCode: 500,
@@ -118,11 +143,7 @@ export async function createTenant(body, files, adminId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getTenants() {
-  // Use the same aggregation as searchTenants (no filter stage) so that
-  // paymentStatus is always computed from live Rent/CAM records.
-  // A plain Tenant.find() has no access to Rent/CAM data and would leave
-  // paymentStatus undefined, causing every card to show Paid on the
-  // unfiltered list.
+
   return searchTenants({});
 }
 
@@ -197,10 +218,6 @@ export async function getTenantById(id) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UPDATE
-// ─────────────────────────────────────────────────────────────────────────────
-
 export async function updateTenant(tenantId, body, files) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -230,7 +247,6 @@ export async function updateTenant(tenantId, body, files) {
       "keyHandoverDate",
       "spaceHandoverDate",
       "spaceReturnedDate",
-      // BS (Nepali) date strings — paired with their AD counterparts above
       "leaseStartDateNepali",
       "leaseEndDateNepali",
       "dateOfAgreementSignedNepali",

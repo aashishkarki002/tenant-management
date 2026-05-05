@@ -33,7 +33,9 @@
  *     2000   Accounts payable      (trade payables to vendors)
  *     2100   Security deposit      (owed back to tenants on exit)
  *     2200   Loan principal        (outstanding principal owed to lenders)
- *   3000–3999  Equity              (reserved)
+ *   3000–3999  Equity
+ *     3000   Owner's capital       (contributed capital per entity)
+ *     3100   Retained earnings     (accumulated profits after year-end close)
  *   4000–4999  Revenue
  *     4000   Rental income
  *     4100   Utility / electricity revenue
@@ -50,6 +52,21 @@ export const ACCOUNT_CODES = {
 
   /** Physical cash on hand. Use ONLY when paymentMethod === "cash". */
   CASH: "1000",
+
+  /**
+   * Cheques received but not yet deposited to the bank.
+   *
+   * Two-step cheque receipt flow:
+   *   On receipt (PENDING):  DR 1150  amountPaisa  (ASSET ↑ — cheque in hand)
+   *                          CR 4xxx  amountPaisa  (REVENUE ↑ — income recognised)
+   *   On deposit (DEPOSITED): DR Bank  amountPaisa  (ASSET ↑ — money in bank)
+   *                            CR 1150 amountPaisa  (ASSET ↓ — clears cheque in hand)
+   *   On bounce (BOUNCED):   DR 4xxx  amountPaisa  (REVENUE ↓ — reversal)
+   *                          CR 1150  amountPaisa  (ASSET ↓ — clears cheque in hand)
+   *
+   * Must be seeded for each OwnershipEntity.
+   */
+  CHEQUES_IN_HAND: "1150",
 
   /**
    * @deprecated  alias for CASH.
@@ -105,6 +122,21 @@ export const ACCOUNT_CODES = {
   SECURITY_DEPOSIT_LIABILITY: "2100",
 
   /**
+   * Cheques issued but not yet presented to / cleared by the bank.
+   *
+   * Two-step cheque issue flow:
+   *   On issue (PENDING):    DR 5xxx  amountPaisa  (EXPENSE ↑ — cost recorded)
+   *                          CR 2150  amountPaisa  (LIABILITY ↑ — cheque obligation)
+   *   On deposit (DEPOSITED): DR 2150 amountPaisa  (LIABILITY ↓ — clears the obligation)
+   *                            CR Bank amountPaisa  (ASSET ↓ — money exits bank)
+   *   On bounce (BOUNCED):   DR 2150  amountPaisa  (LIABILITY ↓ — reversal)
+   *                          CR 5xxx  amountPaisa  (EXPENSE ↓ — reversal)
+   *
+   * Must be seeded for each OwnershipEntity.
+   */
+  CHEQUES_PAYABLE: "2150",
+
+  /**
    * Outstanding principal owed to banks and lenders.
    *
    * Increases on disbursement (DR Bank / CR 2200).
@@ -112,6 +144,23 @@ export const ACCOUNT_CODES = {
    * Mirrors Liability.amountPaisa for all active loans.
    */
   LOAN_LIABILITY: "2200",
+
+  // ── Equity ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Owner's contributed capital. Increases on capital injection, decreases on
+   * withdrawal. Must be seeded for each OwnershipEntity.
+   * Opening balance journal: DR Bank / CR 3000 (capital introduced).
+   */
+  OWNERS_CAPITAL: "3000",
+
+  /**
+   * Accumulated earnings retained in the business after distributions.
+   * Increases when net profit is closed out at year-end.
+   * Year-end closing entry: DR REVENUE accounts / CR 3100 (net profit transfer).
+   * Must be seeded for each OwnershipEntity.
+   */
+  RETAINED_EARNINGS: "3100",
 
   // ── Revenue ────────────────────────────────────────────────────────────────
 

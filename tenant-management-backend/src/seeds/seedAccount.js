@@ -115,6 +115,19 @@ function getChartOfAccounts() {
         "Retained so historical ledger entries remain resolvable.",
     },
     {
+      // CHEQUES_IN_HAND = "1150"
+      // Asset: physical cheques received but not yet deposited to the bank.
+      // DR on cheque receipt (DR 1150 / CR Revenue).
+      // CR on cheque deposit (DR Bank / CR 1150) or bounce reversal (DR Revenue / CR 1150).
+      code: ACCOUNT_CODES.CHEQUES_IN_HAND,
+      name: "Cheques In Hand",
+      type: "ASSET",
+      description:
+        "Cheques received from tenants or third parties that are held physically " +
+        "but not yet deposited to the bank. DR when a cheque is received (paired with " +
+        "CR to Revenue). CR when the cheque is deposited to the bank or reversed on bounce.",
+    },
+    {
       code: "1200",
       name: "Accounts Receivable - Tenants",
       type: "ASSET",
@@ -167,6 +180,19 @@ function getChartOfAccounts() {
         "but not yet paid. CR when an NEA bill is posted via buildElectricityNeaCostJournal; " +
         "DR when the NEA invoice is settled (owner pays NEA). " +
         "String key referenced in journal builder as 'NEA_PAYABLE'.",
+    },
+    {
+      // CHEQUES_PAYABLE = "2150"
+      // Liability: cheques issued and handed to payees but not yet cleared by the bank.
+      // CR on cheque issue (DR Expense / CR 2150).
+      // DR on cheque clearance (DR 2150 / CR Bank) or bounce reversal (DR 2150 / CR Expense).
+      code: ACCOUNT_CODES.CHEQUES_PAYABLE,
+      name: "Cheques Payable",
+      type: "LIABILITY",
+      description:
+        "Cheques issued to vendors, staff, or other payees that are outstanding (not yet " +
+        "presented to or cleared by the bank). CR when an expense cheque is issued " +
+        "(paired with DR to Expense). DR when the cheque clears the bank or is reversed on bounce.",
     },
     {
       code: "2100",

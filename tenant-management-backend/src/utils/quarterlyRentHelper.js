@@ -4,14 +4,22 @@ import {
   formatNepaliISO,
   getNepaliMonthDates,
 } from "./nepaliDateHelper.js";
+import {
+  FISCAL_QUARTERS,
+  getFiscalQuarterFromMonth,
+  getFiscalQuarterMonths,
+} from "../config/fiscalCalendar.js";
 
 /**
  * Quarterly Rent Cycle Helper
  *
- * Industry standards:
- * - Quarterly periods: 3 months (standard business practice)
- * - Nepali fiscal quarters align with calendar quarters
- * - MongoDB date queries use Date objects (not strings)
+ * Quarterly periods use Nepal fiscal quarters (Shrawan-based):
+ *   Q1 → Shrawan(4),  Bhadra(5),   Ashwin(6)
+ *   Q2 → Kartik(7),   Mangsir(8),  Poush(9)
+ *   Q3 → Magh(10),    Falgun(11),  Chaitra(12)
+ *   Q4 → Baisakh(1),  Jestha(2),   Ashadh(3)
+ *
+ * Source of truth for quarter definitions: src/config/fiscalCalendar.js
  */
 
 // ============================================================================
@@ -19,32 +27,8 @@ import {
 // ============================================================================
 
 const QUARTERLY_MONTHS = 3;
-const NEPALI_QUARTERS = [
-  {
-    quarter: 1,
-    months: [1, 2, 3],
-    name: "Q1",
-    nepaliMonths: ["Baisakh", "Jestha", "Ashadh"],
-  },
-  {
-    quarter: 2,
-    months: [4, 5, 6],
-    name: "Q2",
-    nepaliMonths: ["Shrawan", "Bhadra", "Ashwin"],
-  },
-  {
-    quarter: 3,
-    months: [7, 8, 9],
-    name: "Q3",
-    nepaliMonths: ["Kartik", "Mangsir", "Poush"],
-  },
-  {
-    quarter: 4,
-    months: [10, 11, 12],
-    name: "Q4",
-    nepaliMonths: ["Magh", "Falgun", "Chaitra"],
-  },
-];
+// Re-export so existing callers of NEPALI_QUARTERS keep working.
+const NEPALI_QUARTERS = FISCAL_QUARTERS;
 
 // ============================================================================
 // QUARTER UTILITIES
@@ -55,33 +39,28 @@ const NEPALI_QUARTERS = [
  * @param {number} month1Based - Nepali month (1-12)
  * @returns {number} Quarter (1-4)
  */
+// Delegate to fiscalCalendar.js — do not implement locally.
 function getQuarterFromMonth(month1Based) {
-  if (month1Based < 1 || month1Based > 12) {
-    throw new Error(`Invalid month: ${month1Based}. Must be 1-12`);
-  }
-  return Math.ceil(month1Based / 3);
+  return getFiscalQuarterFromMonth(month1Based);
 }
 
 /**
- * Get quarter information for a given month
+ * Get quarter metadata for a given 1-based Nepali month.
  * @param {number} month1Based - Nepali month (1-12)
- * @returns {Object} Quarter metadata
+ * @returns {Object} Quarter metadata from FISCAL_QUARTERS
  */
 function getQuarterInfo(month1Based) {
-  const quarter = getQuarterFromMonth(month1Based);
-  return NEPALI_QUARTERS[quarter - 1];
+  const quarter = getFiscalQuarterFromMonth(month1Based);
+  return FISCAL_QUARTERS[quarter - 1];
 }
 
 /**
- * Get all months in a specific quarter
+ * Get all 1-based months in a specific fiscal quarter.
  * @param {number} quarter - Quarter number (1-4)
- * @returns {number[]} Array of months (1-based)
+ * @returns {number[]}
  */
 function getMonthsInQuarter(quarter) {
-  if (quarter < 1 || quarter > 4) {
-    throw new Error(`Invalid quarter: ${quarter}. Must be 1-4`);
-  }
-  return NEPALI_QUARTERS[quarter - 1].months;
+  return getFiscalQuarterMonths(quarter);
 }
 
 // ============================================================================

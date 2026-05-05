@@ -453,9 +453,12 @@ async function createRevenue(revenueData) {
       session,
     };
 
-    // Cheque revenue: skip journal posting at creation time.
-    // The journal (DR Bank / CR Revenue) is posted by markDeposited() when the
-    // cheque physically clears the bank. Nothing hits the ledger until then.
+    // Post journal entries for cash / bank_transfer / wallet payments.
+    //
+    // Cheque: the receipt journal (DR 1150 Cheques In Hand / CR Revenue) is posted
+    // by createChequeDraft() — ownership of the receipt journal lives there so that
+    // split allocations each get their own ChequeDraft + receipt entry automatically.
+    // Nothing hits the ledger here for cheque payments at creation time.
     if (resolvedPaymentMethod !== "cheque") {
       if (scope === "building") {
         const { transaction } = await postRevenueJournalForEntity({

@@ -9,6 +9,8 @@
  * - Clear input/output contracts
  */
 
+import { rupeesToPaisa, paisaToRupees } from "../../../utils/moneyUtil.js";
+
 /**
  * Calculate financial metrics for a single unit lease
  *
@@ -203,6 +205,87 @@ export function buildUnitBreakdown(
       camRate: unitCalc.camRatePerSqft,
     };
   });
+}
+
+/**
+ * Calculate aggregated lease summary for multiple units, with all monetary
+ * values duplicated in paisa alongside rupee originals.
+ *
+ * @param {Array} unitLeaseConfigs
+ * @param {number} tdsPercentage
+ * @returns {{ units: Array, totals: Object }}
+ */
+export function calculateMultiUnitLeaseInPaisa(unitLeaseConfigs, tdsPercentage) {
+  const calculation = calculateMultiUnitLease(unitLeaseConfigs, tdsPercentage);
+
+  const units = calculation.units.map((unit) => ({
+    unitId: unit.unitId,
+    sqft: unit.sqft,
+    pricePerSqft: unit.pricePerSqft,
+    camRatePerSqft: unit.camRatePerSqft,
+    securityDeposit: unit.securityDeposit,
+    grossMonthlyPaisa: rupeesToPaisa(unit.grossMonthly),
+    totalTdsPaisa: rupeesToPaisa(unit.totalTds),
+    rentMonthlyPaisa: rupeesToPaisa(unit.rentMonthly),
+    camMonthlyPaisa: rupeesToPaisa(unit.camMonthly),
+    netMonthlyPaisa: rupeesToPaisa(unit.netMonthly),
+    securityDepositPaisa: rupeesToPaisa(unit.securityDeposit),
+    pricePerSqftPaisa: rupeesToPaisa(unit.pricePerSqft),
+    camRatePerSqftPaisa: rupeesToPaisa(unit.camRatePerSqft),
+    grossMonthly: unit.grossMonthly,
+    totalTds: unit.totalTds,
+    rentMonthly: unit.rentMonthly,
+    camMonthly: unit.camMonthly,
+    netMonthly: unit.netMonthly,
+  }));
+
+  const totals = {
+    sqft: calculation.totals.sqft,
+    grossMonthlyPaisa: rupeesToPaisa(calculation.totals.grossMonthly),
+    totalTdsPaisa: rupeesToPaisa(calculation.totals.totalTds),
+    rentMonthlyPaisa: rupeesToPaisa(calculation.totals.rentMonthly),
+    camMonthlyPaisa: rupeesToPaisa(calculation.totals.camMonthly),
+    netMonthlyPaisa: rupeesToPaisa(calculation.totals.netMonthly),
+    securityDepositPaisa: rupeesToPaisa(calculation.totals.securityDeposit),
+    weightedPricePerSqft: calculation.totals.weightedPricePerSqft,
+    weightedCamRate: calculation.totals.weightedCamRate,
+    grossMonthly: calculation.totals.grossMonthly,
+    totalTds: calculation.totals.totalTds,
+    rentMonthly: calculation.totals.rentMonthly,
+    camMonthly: calculation.totals.camMonthly,
+    netMonthly: calculation.totals.netMonthly,
+    securityDeposit: calculation.totals.securityDeposit,
+  };
+
+  return { units, totals };
+}
+
+/**
+ * Calculate rent by frequency, returning amounts in paisa.
+ *
+ * @param {number} monthlyRentPaisa - Monthly rent in paisa
+ * @param {string} frequency - "monthly" | "quarterly"
+ * @param {number} frequencyMonths - Months per period (quarterly only)
+ * @returns {{ chargeAmountPaisa: number, chargeAmount: number, periodMonths: number }}
+ */
+export function calculateRentByFrequencyInPaisa(
+  monthlyRentPaisa,
+  frequency,
+  frequencyMonths = 3,
+) {
+  if (frequency === "quarterly") {
+    const chargeAmountPaisa = monthlyRentPaisa * frequencyMonths;
+    return {
+      chargeAmountPaisa,
+      chargeAmount: paisaToRupees(chargeAmountPaisa),
+      periodMonths: frequencyMonths,
+    };
+  }
+  return {
+    chargeAmountPaisa: monthlyRentPaisa,
+    chargeAmount: paisaToRupees(monthlyRentPaisa),
+    periodMonths: 1,
+  };
 }
 
 /**
