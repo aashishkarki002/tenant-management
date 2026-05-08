@@ -1,14 +1,8 @@
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react"; // useCallback used by handleCompareApply/handleCompareClear
 import { AnimatePresence, motion } from "motion/react"; // eslint-disable-line no-unused-vars
 import { cn } from "@/lib/utils";
-import {
-    Select,
-    SelectTrigger,
-    SelectValue,
-    SelectContent,
-    SelectItem,
-} from "@/components/ui/select";
+import { useSearchParams } from "react-router-dom";
 import {
     NEPALI_MONTH_NAMES,
     QUARTER_LABELS,
@@ -23,6 +17,8 @@ import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
 import { usePortfolioHealth } from "../hooks/usePortfolioHealth";
 import { useMonthlyChart } from "../hooks/useMonthlyChart";
 import { useEntity } from "../../context/EntityContext";
+import useProperty from "@/hooks/use-property";
+import api from "../../../plugins/axios";
 
 // ── Sub-components (extracted from this file) ─────────────────────────────────
 import FilterControlBar from "./FilterControlBar";
@@ -39,25 +35,25 @@ import BalanceSheetTab from "./tabs/BalanceSheetTab";
 import ProfitlossTab from "./tabs/ProfitLossTab";
 import ProjectionsTab from "./tabs/ProjectionsTab";
 import FinancialRatiosTab from "./tabs/FinancialRatiosTab";
+import AuditLogTab from "./tabs/AuditLogTab";
+import YearEndCloseTab from "./tabs/YearEndCloseTab";
+import VacateSettlementTab from "./tabs/VacateSettlementTab";
+import AdjustmentsTab from "./tabs/AdjustmentsTab";
+import TrialBalanceTab from "./tabs/TrialBalanceTab";
+import ArAgingTab from "./tabs/ArAgingTab";
+import TdsFilingTab from "./tabs/TdsFilingTab";
+import PropertyPLTab from "./tabs/PropertyPLTab";
+import TenantStatementTab from "./tabs/TenantStatementTab";
+import OwnerDistributionTab from "./tabs/OwnerDistributionTab";
+import VendorBillsTab from "./tabs/VendorBillsTab";
+import BankReconciliationTab from "./tabs/BankReconciliationTab";
+import BudgetTab from "./tabs/BudgetTab";
+import AdvanceRentTab from "./tabs/AdvanceRentTab";
+import CamReconciliationTab from "./tabs/CamReconciliationTab";
+import PettyCashTab from "./tabs/PettyCashTab";
+import CoaManagementTab from "./tabs/CoaManagementTab";
 
-
-// Now uses QUARTER_LABELS from nepaliCalendar — not a local duplicate
 // QUARTER_LABELS[1] === "Shrawan–Ashwin" etc.
-
-
-const TABS = [
-    { id: "overview", label: "Overview" },
-    { id: "revenue", label: "Revenue" },
-    { id: "expenses", label: "Expenses" },
-    { id: "cash-flow", label: "Cash Flow" },
-    { id: "profit-loss", label: "Profit & Loss" },
-    { id: "financial-ratios", label: "Ratios" },
-    { id: "balance-sheet", label: "Balance Sheet" },
-    { id: "liabilities", label: "Liabilities" },
-    { id: "banking", label: "Banking" },
-    { id: "ledger", label: "Ledger" },
-    { id: "projections", label: "Projections" },
-];
 
 
 
@@ -90,8 +86,9 @@ export default function AccountingPage() {
     const [customStart, setCustomStart] = useState("");
     const [customEnd, setCustomEnd] = useState("");
 
-    // ── UI state ─────────────────────────────────────────────────────────────
-    const [activeTab, setActiveTab] = useState("overview");
+    // ── UI state — tab driven by URL ?tab= param ─────────────────────────────
+    const [searchParams, setSearchParams] = useSearchParams();
+    const activeTab = searchParams.get("tab") ?? "overview";
     const [pendingAction, setPendingAction] = useState(null);
 
     // ── Compare state — compareMode derived from compareYear ─────────────────
@@ -111,40 +108,29 @@ export default function AccountingPage() {
         setCompareMonth(null);
     }, []);
 
-    // ── Tab overflow — pinned (always-visible) + More dropdown ───────────────
-    const [pinnedTabs, setPinnedTabs] = useState(["overview", "revenue", "expenses"]);
-    const [moreOpen, setMoreOpen] = useState(false);
-    const moreRef = useRef(null);
-
-    useEffect(() => {
-        if (!moreOpen) return;
-        const handle = (e) => {
-            if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
-        };
-        document.addEventListener("mousedown", handle);
-        return () => document.removeEventListener("mousedown", handle);
-    }, [moreOpen]);
-
-    const handleTabClick = useCallback((tabId) => {
-        setActiveTab(tabId);
-        if (!pinnedTabs.includes(tabId)) {
-            // Swap the last slot (index 2); overview at index 0 is never displaced
-            setPinnedTabs(prev => {
-                const next = [...prev];
-                next[next.length - 1] = tabId;
-                return next;
-            });
-            setMoreOpen(false);
-        }
-    }, [pinnedTabs]);
-
-    const visibleTabs = TABS.filter(t => pinnedTabs.includes(t.id))
-        .sort((a, b) => pinnedTabs.indexOf(a.id) - pinnedTabs.indexOf(b.id));
-    const hiddenTabs = TABS.filter(t => !pinnedTabs.includes(t.id));
-
     // ── Entity scope — shared via EntityContext so filter persists across navigation
     const { entities, activeEntityId, setActiveEntityId } = useEntity();
     const resolvedEntityId = activeEntityId ?? null;
+
+    // ── Properties list (for PropertyPLTab selector) ─────────────────────────
+    const { property: rawProperties } = useProperty();
+    const properties = useMemo(
+        () => (rawProperties ?? []).map((p) => ({ id: p._id, name: p.name })),
+        [rawProperties],
+    );
+
+    // ── Tenants list (for TenantStatementTab / AdvanceRentTab selectors) ─────
+    const [tenants, setTenants] = useState([]);
+    useEffect(() => {
+        const params = { limit: 500, status: "active" };
+        if (resolvedEntityId) params.entityId = resolvedEntityId;
+        api.get("/api/tenant", { params })
+            .then((r) => {
+                const raw = r.data?.tenants ?? r.data?.data ?? [];
+                setTenants(raw.map((t) => ({ id: t._id, name: t.name })));
+            })
+            .catch(() => {});
+    }, [resolvedEntityId]);
 
     // ── Resolved filter params (fed into every hook) ─────────────────────────
     const resolvedFilter = useMemo(() => {
@@ -228,7 +214,7 @@ export default function AccountingPage() {
     return (
         <div className="h-full flex flex-col overflow-hidden bg-[var(--color-bg)]">
 
-            {/* Filter bar — pinned at top, never scrolls away */}
+            {/* Filter bar — pinned at top, full width */}
             <FilterControlBar
                 entities={entities}
                 activeEntityId={activeEntityId}
@@ -254,98 +240,7 @@ export default function AccountingPage() {
                 filterLabel={filterLabel}
             />
 
-            {/* Tab bar — dropdown on mobile, pill row on sm+ */}
-
-            <div className="no-print sm:hidden flex-shrink-0 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
-                <Select value={activeTab} onValueChange={handleTabClick}>
-                    <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select tab" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                        {TABS.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                                {t.label}
-                                {t.id === "ledger" && ledgerEntries.length > 0
-                                    ? ` (${ledgerEntries.length})`
-                                    : ""}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-
-            {/* Desktop: pinned tabs + More ▾ overflow */}
-            <div
-                role="tablist"
-                className="no-print hidden sm:flex flex-shrink-0 items-center gap-0.5 px-4 sm:px-7 pt-3 pb-0 border-b border-[var(--color-border)] bg-[var(--color-bg)]"
-            >
-                {visibleTabs.map(t => (
-                    <button
-                        key={t.id}
-                        role="tab"
-                        aria-selected={activeTab === t.id}
-                        onClick={() => handleTabClick(t.id)}
-                        className={cn(
-                            "px-4 py-2 text-[13px] font-semibold cursor-pointer transition-all border-b-2 -mb-px whitespace-nowrap",
-                            activeTab === t.id
-                                ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-                                : "border-transparent text-[var(--color-text-sub)] hover:text-[var(--color-text-body)]",
-                        )}>
-                        {t.label}
-                        {t.id === "ledger" && ledgerEntries.length > 0 && (
-                            <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-[var(--color-surface)] text-[var(--color-text-sub)]">
-                                {ledgerEntries.length}
-                            </span>
-                        )}
-                    </button>
-                ))}
-
-                {/* More ▾ overflow trigger */}
-                <div ref={moreRef} className="relative ml-1 -mb-px">
-                    <button
-                        onClick={() => setMoreOpen(o => !o)}
-                        className={cn(
-                            "flex items-center gap-1 px-3 py-2 text-[13px] font-semibold cursor-pointer transition-all border-b-2 whitespace-nowrap",
-                            hiddenTabs.some(t => t.id === activeTab)
-                                ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-                                : "border-transparent text-[var(--color-text-sub)] hover:text-[var(--color-text-body)]",
-                        )}>
-                        More
-                        <svg
-                            width="12" height="12" viewBox="0 0 12 12" fill="none"
-                            className={cn("transition-transform duration-150", moreOpen && "rotate-180")}
-                        >
-                            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                    </button>
-
-                    {moreOpen && (
-                        <div className="absolute left-0 top-full mt-1 z-50 min-w-[160px] rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] shadow-lg py-1">
-                            {hiddenTabs.map(t => (
-                                <button
-                                    key={t.id}
-                                    onClick={() => handleTabClick(t.id)}
-                                    className={cn(
-                                        "w-full text-left px-4 py-2 text-[13px] font-semibold transition-colors whitespace-nowrap",
-                                        activeTab === t.id
-                                            ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]"
-                                            : "text-[var(--color-text-sub)] hover:text-[var(--color-text-body)] hover:bg-[var(--color-surface)]",
-                                    )}>
-                                    {t.label}
-                                    {t.id === "ledger" && ledgerEntries.length > 0 && (
-                                        <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-[var(--color-surface)] text-[var(--color-text-sub)]">
-                                            {ledgerEntries.length}
-                                        </span>
-                                    )}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Tab content — this div owns the scroll, everything above stays pinned */}
+            {/* Scrollable content — sidebar lives in app-sidebar now */}
             <div className="flex-1 min-h-0 overflow-y-auto">
                 <AnimatePresence mode="wait">
                     <motion.div
@@ -373,7 +268,7 @@ export default function AccountingPage() {
                                 filterLabel={filterLabel}
                                 ledgerEntries={ledgerEntries}
                                 loadingLedger={loadingLedger}
-                                onViewLedger={() => setActiveTab("ledger")}
+                                onViewLedger={() => setSearchParams({ tab: "ledger" }, { replace: true })}
                                 currentBSMonth={getCurrentBSMonthName()}
                                 health={health}
                                 healthLoading={healthLoading}
@@ -451,6 +346,61 @@ export default function AccountingPage() {
                                 filterProps={filterProps}
                                 filterLabel={filterLabel}
                             />
+                        )}
+                        {activeTab === "audit-log" && (
+                            <AuditLogTab />
+                        )}
+                        {
+                            activeTab === "year-end-close" && (
+                                <YearEndCloseTab entityId={resolvedEntityId} onYearClosed={refetch} />
+                            )
+                        }
+                        {
+                            activeTab === "vacate-settlement" && (
+                                <VacateSettlementTab entityId={resolvedEntityId} onSettlementAdded={refetch} />
+                            )
+                        }
+                        {activeTab === "adjustments" && (
+                            <AdjustmentsTab entityId={resolvedEntityId} />
+                        )}
+                        {activeTab === "trial-balance" && (
+                            <TrialBalanceTab filterProps={filterProps} />
+                        )}
+                        {activeTab === "ar-aging" && (
+                            <ArAgingTab />
+                        )}
+                        {activeTab === "tds-filing" && (
+                            <TdsFilingTab />
+                        )}
+                        {activeTab === "property-pl" && (
+                            <PropertyPLTab properties={properties} />
+                        )}
+                        {activeTab === "tenant-statement" && (
+                            <TenantStatementTab tenants={tenants} />
+                        )}
+                        {activeTab === "owner-distribution" && (
+                            <OwnerDistributionTab />
+                        )}
+                        {activeTab === "vendor-bills" && (
+                            <VendorBillsTab />
+                        )}
+                        {activeTab === "bank-reconciliation" && (
+                            <BankReconciliationTab />
+                        )}
+                        {activeTab === "budget" && (
+                            <BudgetTab />
+                        )}
+                        {activeTab === "advance-rent" && (
+                            <AdvanceRentTab tenants={tenants} />
+                        )}
+                        {activeTab === "cam-reconciliation" && (
+                            <CamReconciliationTab />
+                        )}
+                        {activeTab === "petty-cash" && (
+                            <PettyCashTab filterProps={filterProps} />
+                        )}
+                        {activeTab === "coa-management" && (
+                            <CoaManagementTab />
                         )}
                     </motion.div>
                 </AnimatePresence>

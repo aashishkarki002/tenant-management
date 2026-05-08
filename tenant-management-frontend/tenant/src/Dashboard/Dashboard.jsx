@@ -3,10 +3,14 @@ import { useAuth } from "../context/AuthContext";
 import { Loader2, PlusIcon, ReceiptTextIcon, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import KpiStrip from "./component/KpiStrip";
-import BarDiagram from "./component/BarDiagram";
 import RecentActivities from "./component/RecentActivities";
-import NeedsAttentionPanel from "./component/NeedsAttentionPanel";
-import BuildingHealthPanel from "./component/BuildingHealthPanel";
+import UrgentActionsPanel from "./component/UrgentActionsPanel";
+import BookedVsEarnedPanel from "./component/BookedVsEarnedPanel";
+import CashForecastPanel from "./component/CashForecastPanel";
+import DuesAgingPanel from "./component/DuesAgingPanel";
+import VacancyPipelinePanel from "./component/VacancyPipelinePanel";
+import MaintenanceHealthPanel from "./component/MaintenanceHealthPanel";
+import ExpenseBreakdownPanel from "./component/ExpenseBreakdownPanel";
 import { useTime } from "./hooks/UseTime";
 import { useStats } from "./hooks/UseStats";
 import { useArrearsData } from "./hooks/useArrearsData";
@@ -58,22 +62,31 @@ export default function Dashboard() {
     </div>
   ), []);
 
-  // ── Page header (shared across all breakpoints) ──────────────────────────────
+  // ── Page header ────────────────────────────────────────────────────────────
   const PageHeader = (
     <div className="px-4 sm:px-5 pt-4 pb-3 shrink-0 flex items-end justify-between gap-4">
       <div>
-        <p
-          className="text-sm font-medium text-muted-foreground mb-1.5"
-
-        >
+        <p className="text-sm font-medium text-muted-foreground mb-1.5">
           {greeting}, {user?.name}
         </p>
         <h1 className="text-2xl sm:text-3xl font-bold leading-none tracking-tight text-foreground">
           Property Overview
         </h1>
+        {stats && (
+          <p className="text-sm mt-1.5" style={{ color: "var(--color-text-sub)" }}>
+            {stats.kpi?.totalUnits ?? 0} units ·{" "}
+            <span style={{ fontWeight: 600, color: (stats.kpi?.collectionRate ?? 0) >= 80 ? "var(--color-success)" : "var(--color-warning)" }}>
+              {stats.kpi?.collectionRate ?? 0}%
+            </span>{" "}
+            collection efficiency
+            {(stats.attention?.urgentCount ?? 0) > 0 && (
+              <span style={{ color: "var(--color-danger)", fontWeight: 600, marginLeft: 8 }}>
+                · {stats.attention.urgentCount} critical item{stats.attention.urgentCount !== 1 ? "s" : ""}
+              </span>
+            )}
+          </p>
+        )}
       </div>
-
-      {/* FY Picker */}
       <div className="relative shrink-0">
         <button
           onClick={() => setFyOpen((o) => !o)}
@@ -90,7 +103,6 @@ export default function Dashboard() {
             style={{ transform: fyOpen ? "rotate(180deg)" : "rotate(0deg)" }}
           />
         </button>
-
         {fyOpen && (
           <div className="absolute right-0 top-full mt-1.5 z-30 rounded-xl border
                           border-border overflow-hidden shadow-lg bg-card min-w-[164px]">
@@ -108,9 +120,7 @@ export default function Dashboard() {
               >
                 <span>{FY_LABELS[p]}</span>
                 {period === p && (
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">
-                    Active
-                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">Active</span>
                 )}
               </button>
             ))}
@@ -123,7 +133,7 @@ export default function Dashboard() {
     </div>
   );
 
-  // ── Error banner ─────────────────────────────────────────────────────────────
+  // ── Error banner ───────────────────────────────────────────────────────────
   const ErrorBanner = error && !loading && (
     <div className="mx-4 sm:mx-5 mb-2 flex items-center justify-between gap-3 shrink-0
                     rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5">
@@ -138,7 +148,7 @@ export default function Dashboard() {
     </div>
   );
 
-  // ── Full-page loader (first load only) ───────────────────────────────────────
+  // ── Full-page loader ───────────────────────────────────────────────────────
   if (loading && !stats) {
     return (
       <div className="flex flex-col bg-background min-h-screen">
@@ -154,43 +164,57 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col bg-background min-h-screen">
-      {/* ─── Page Header ──────────────────────────────────────────────────────── */}
       {PageHeader}
       {ErrorBanner}
 
-      {/* ─── Main Grid ───────────────────────────────────────────────────────── */}
       {(stats || !loading) && (
-        <div className="px-3 sm:px-4 lg:px-5 pb-6 lg:pb-8">
-          <div className="grid gap-3 sm:gap-4 lg:gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+        <div className="px-3 sm:px-4 lg:px-5 pb-8 flex flex-col gap-4">
 
-            {/* KPI strip */}
-            <div className="col-span-1 sm:col-span-2 lg:col-span-4 xl:col-span-6">
-              <KpiStrip stats={stats} loading={loading} />
+          {/* KPI Strip — full width */}
+          <KpiStrip stats={stats} loading={loading} />
+
+          {/* Urgent Actions — full width */}
+          <UrgentActionsPanel
+            stats={stats}
+            arrears={arrears}
+            loading={loading || arrearsLoading}
+          />
+
+          {/* Row 2: Booked vs Earned (8 cols) + Cash Forecast (4 cols) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-8 dash-panel">
+              <BookedVsEarnedPanel stats={stats} loading={loading} />
             </div>
-
-            {/* Revenue chart — 50% on lg, 67% on xl+ */}
-            <div className="
-              col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-4
-              rounded-2xl border border-border bg-card shadow-sm
-              flex flex-col h-[380px] sm:h-[400px] lg:h-[420px]
-            ">
-              <BarDiagram stats={stats} loading={loading} error={error} period={period} />
+            <div className="lg:col-span-4 dash-panel">
+              <CashForecastPanel stats={stats} loading={loading} />
             </div>
-
-            {/* Alerts + health sidebar — 50% on lg, 33% on xl+ */}
-            <div className="col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2 flex flex-col gap-3 sm:gap-4 lg:gap-5">
-
-              <div className="flex-shrink-0">
-                <BuildingHealthPanel stats={stats} loading={loading} />
-              </div>
-            </div>
-
-            {/* Recent activity — full width */}
-            <div className="col-span-1 sm:col-span-2 lg:col-span-4 xl:col-span-6">
-              <RecentActivities stats={stats} loading={loading} error={error} />
-            </div>
-
           </div>
+
+          {/* Row 3: Dues Aging (5 cols) + Vacancy Pipeline (7 cols) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-5 dash-panel">
+              <DuesAgingPanel arrears={arrears} loading={arrearsLoading} />
+            </div>
+            <div className="lg:col-span-7 dash-panel">
+              <VacancyPipelinePanel stats={stats} loading={loading} />
+            </div>
+          </div>
+
+          {/* Row 4: Maintenance (7 cols) + Breakdown (5 cols) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-7 dash-panel">
+              <MaintenanceHealthPanel stats={stats} loading={loading} />
+            </div>
+            <div className="lg:col-span-5 dash-panel">
+              <ExpenseBreakdownPanel stats={stats} loading={loading} />
+            </div>
+          </div>
+
+          {/* Recent Activity — full width */}
+          <div className="rounded-2xl border border-border bg-card shadow-sm">
+            <RecentActivities stats={stats} loading={loading} error={error} />
+          </div>
+
         </div>
       )}
     </div>

@@ -1,14 +1,17 @@
-import { useState, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
+import { useFormik } from "formik";
+
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+
+
+
 import {
   Select,
   SelectContent,
@@ -16,248 +19,263 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  TrendingDown,
+} from "lucide-react";
+
 import { toast } from "sonner";
+
 import DragDropFileUpload from "@/components/DragDropFileUpload";
+
 import { useNeaBill } from "../hooks/useNeaBill";
-import { getRecentBillingPeriods, labelForPeriod, parsePeriodKey } from "@/utils/nepaliDate";
+import { neaBillValidationSchema } from "../validation/neaBill.validation";
+
+import {
+  getRecentBillingPeriods,
+  labelForPeriod,
+  parsePeriodKey,
+} from "@/utils/nepaliDate";
+
+const fmtKwh = (n) =>
+  `${Number(n).toLocaleString("en-NP", {
+    maximumFractionDigits: 1,
+  })} kWh`;
 
 const fmtRs = (n) =>
-  `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
+  `Rs ${Number(n).toLocaleString("en-NP", {
+    maximumFractionDigits: 0,
+  })}`;
 
-/**
- * NeaBillUploadDialog
- *
- * Lets the admin upload the monthly NEA utility bill PDF.
- * After upload shows a reconciliation summary comparing the NEA charge
- * against the sum of neaCostPaisa across all readings for that month.
- */
-export default function NeaBillUploadDialog({ open, onOpenChange, propertyId }) {
-  const periods       = getRecentBillingPeriods(13);
-  const defaultPeriod = periods[0] ? `${periods[0].year}-${periods[0].month}` : "";
 
-  const [periodKey,   setPeriodKey]   = useState(defaultPeriod);
-  const [totalAmount, setTotalAmount] = useState("");
-  const [notes,       setNotes]       = useState("");
-  const [file,        setFile]        = useState(null);
-  const [recon,       setRecon]       = useState(null);
+
+
+export default function NeaBillUploadDialog({
+  open,
+  onOpenChange,
+  propertyId,
+  onUploaded,
+}) {
+  const periods = getRecentBillingPeriods(13);
+
+  const defaultPeriod = useMemo(() => {
+    return periods[0]?.value ?? "";
+  }, [periods]);
+
+  const [file, setFile] = useState(null);
+  const [recon, setRecon] = useState(null);
 
   const { uploading, upload } = useNeaBill(propertyId);
 
-  const handleSubmit = async () => {
-    if (!file)
-      return toast.error("Please select the NEA bill PDF");
-    if (!totalAmount || isNaN(parseFloat(totalAmount)) || parseFloat(totalAmount) <= 0)
-      return toast.error("Enter a valid total amount (Rs)");
-    if (!periodKey)
-      return toast.error("Select a billing period");
+  const formik = useFormik({
+    enableReinitialize: true,
 
-    const { month, year } = parsePeriodKey(periodKey);
+    initialValues: {
+      periodKey: defaultPeriod,
+      totalAmount: "",
+      totalUnits: "",
+      demandCharge: "",
+      energyCharge: "",
+      billDate: "",
+      notes: "",
+    },
 
-    const formData = new FormData();
-    formData.append("neaBillPdf",  file);
-    formData.append("totalAmount", totalAmount);
-    formData.append("nepaliMonth", String(month));
-    formData.append("nepaliYear",  String(year));
-    if (notes.trim()) formData.append("notes", notes.trim());
+    validationSchema: neaBillValidationSchema,
 
-    try {
-      const result = await upload(formData);
-      setRecon(result.reconciliation);
-      toast.success("NEA bill uploaded successfully");
-    } catch (err) {
-      toast.error(err.message || "Upload failed");
-    }
-  };
+    onSubmit: async (values) => {
+      try {
+        const { nepaliMonth: month, nepaliYear: year } = parsePeriodKey(values.periodKey);
+
+        const formData = new FormData();
+
+        if (file) {
+          formData.append("neaBillPdf", file);
+        }
+
+        formData.append("totalAmount", values.totalAmount);
+        formData.append("nepaliMonth", String(month));
+        formData.append("nepaliYear", String(year));
+
+        if (values.totalUnits) {
+          formData.append("totalUnits", values.totalUnits);
+        }
+
+        if (values.demandCharge) {
+          formData.append("demandCharge", values.demandCharge);
+        }
+
+        if (values.energyCharge) {
+          formData.append("energyCharge", values.energyCharge);
+        }
+
+        if (values.billDate) {
+          formData.append("billDate", values.billDate);
+        }
+
+        if (values.notes?.trim()) {
+          formData.append("notes", values.notes.trim());
+        }
+
+        const result = await upload(formData);
+
+        setRecon(result.reconciliation);
+        onUploaded?.();
+
+        toast.success("NEA bill saved successfully");
+      } catch (err) {
+        toast.error(err.message || "Save failed");
+      }
+    },
+  });
 
   const handleClose = useCallback(() => {
-    setPeriodKey(defaultPeriod);
-    setTotalAmount("");
-    setNotes("");
+    formik.resetForm();
     setFile(null);
     setRecon(null);
+
     onOpenChange(false);
-  }, [defaultPeriod, onOpenChange]);
+  }, [formik, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent
-        className="flex flex-col sm:max-w-lg rounded-2xl p-0 gap-0 overflow-hidden"
-        style={{ maxHeight: "90dvh" }}
-      >
-        {/* ── Fixed header ─────────────────────────────────────────────── */}
-        <DialogHeader
-          className="px-6 pt-6 pb-4 shrink-0 border-b"
-          style={{ borderColor: "var(--color-border)" }}
-        >
-          <DialogTitle
-            className="text-lg font-bold"
-            style={{ color: "var(--color-text-strong)" }}
-          >
-            Upload NEA Bill
+      <DialogContent className="max-w-2xl overflow-hidden rounded-2xl p-0">
+        {/* Header */}
+        <DialogHeader className="border-b px-6 py-5">
+          <DialogTitle className="text-xl font-semibold">
+            Record NEA Bill
           </DialogTitle>
-          <p className="text-sm mt-0.5" style={{ color: "var(--color-text-sub)" }}>
-            Upload the monthly NEA utility bill PDF for this property. The bill is stored
-            on FTP and compared against readings to show your margin.
-          </p>
+
+          <DialogDescription className="text-sm leading-relaxed">
+            Upload monthly NEA bill and reconcile purchased electricity
+            against tenant meter readings.
+          </DialogDescription>
         </DialogHeader>
 
-        {/* ── Scrollable body ──────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        {/* Body */}
+        <div className="max-h-[70dvh] overflow-y-auto px-6 py-5">
+          {recon ? (
+            <ReconciliationCard recon={recon} />
+          ) : (
+            <form
+                onSubmit={formik.handleSubmit}
+                className="space-y-6"
+              >
+                {/* Billing Period */}
+                <div className="space-y-2">
+                  <LabelRequired>Billing Period (BS)</LabelRequired>
 
-          {/* Reconciliation result — shown after successful upload */}
-          {recon && (
-            <div
-              className="rounded-xl p-4 space-y-2.5"
-              style={{
-                backgroundColor: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <p
-                className="text-[11px] font-bold uppercase tracking-wider mb-3"
-                style={{ color: "var(--color-text-weak)" }}
-              >
-                Reconciliation
-              </p>
-              <SummaryRow label="NEA Charged (bill)"  value={fmtRs(recon.neaBillTotal)}  />
-              <SummaryRow
-                label="System NEA Cost"
-                value={fmtRs(recon.systemNeaCost)}
-                note="sum of readings"
-              />
-              <div
-                className="pt-2.5 border-t"
-                style={{ borderColor: "var(--color-border)" }}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-sm" style={{ color: "var(--color-text-sub)" }}>
-                    Difference
-                  </span>
-                  <div className="text-right">
-                    <span
-                      className="flex items-center gap-1.5 text-sm font-semibold tabular-nums"
-                      style={{
-                        color: recon.surplus
-                          ? "var(--color-success)"
-                          : recon.shortfall
-                            ? "var(--color-danger)"
-                            : "var(--color-text-body)",
-                      }}
-                    >
-                      {recon.surplus && (
-                        <CheckCircle2 style={{ width: 13, height: 13, flexShrink: 0 }} />
-                      )}
-                      {recon.shortfall && (
-                        <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0 }} />
-                      )}
-                      {fmtRs(Math.abs(recon.difference))}
-                    </span>
-                    <span className="text-[11px]" style={{ color: "var(--color-text-sub)" }}>
-                      {recon.surplus
-                        ? "Surplus — collected more than billed"
-                        : recon.shortfall
-                          ? "Shortfall — NEA billed more than collected"
-                          : "Balanced"}
-                    </span>
-                  </div>
+                <Select
+  value={formik.values.periodKey || ""}
+  onValueChange={(value) =>
+    formik.setFieldValue("periodKey", value)
+  }
+>
+  <SelectTrigger className="w-full">
+    <SelectValue placeholder="Select period" />
+  </SelectTrigger>
+
+  <SelectContent>
+    {periods.map((p) => (
+      <SelectItem key={p.value} value={p.value}>
+        {p.label}
+      </SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+
+                  {formik.touched.periodKey &&
+                    formik.errors.periodKey && (
+                      <p className="text-sm text-destructive">
+                        {formik.errors.periodKey}
+                      </p>
+                    )}
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* Upload form — hidden after successful upload */}
-          {!recon && (
-            <div className="space-y-5">
+                {/* Bill Date */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Bill Date</label>
 
-              {/* Billing period */}
-              <div className="space-y-1.5">
-                <Label htmlFor="nea-period" style={{ color: "var(--color-text-body)" }}>
-                  Billing Period (BS)
-                  <span style={{ color: "var(--color-danger)" }}> *</span>
-                </Label>
-                <Select value={periodKey} onValueChange={setPeriodKey}>
-                  <SelectTrigger id="nea-period">
-                    <SelectValue placeholder="Select period" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {periods.map((p) => {
-                      const key = `${p.year}-${p.month}`;
-                      return (
-                        <SelectItem key={key} value={key}>
-                          {labelForPeriod(p)}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Total amount */}
-              <div className="space-y-1.5">
-                <Label htmlFor="nea-total" style={{ color: "var(--color-text-body)" }}>
-                  NEA Total Amount
-                  <span style={{ color: "var(--color-danger)" }}> *</span>
-                </Label>
-                <div className="relative">
-                  <span
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium"
-                    style={{ color: "var(--color-text-sub)" }}
-                  >
-                    Rs
-                  </span>
                   <Input
-                    id="nea-total"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="e.g. 24500"
-                    value={totalAmount}
-                    onChange={(e) => setTotalAmount(e.target.value)}
-                    className="pl-9"
+                    type="date"
+                    name="billDate"
+                    value={formik.values.billDate}
+                    onChange={formik.handleChange}
                   />
                 </div>
-              </div>
 
-              {/* PDF upload */}
-              <div className="space-y-1.5">
-                <Label style={{ color: "var(--color-text-body)" }}>
-                  NEA Bill PDF
-                  <span style={{ color: "var(--color-danger)" }}> *</span>
-                </Label>
-                <DragDropFileUpload
-                  value={file}
-                  onChange={setFile}
-                  label=""
-                  acceptedTypes={["application/pdf"]}
-                  maxSizeMB={10}
-                />
-              </div>
+                {/* Amount + Units */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <CurrencyField
+                    label="Total Amount"
+                    required
+                    name="totalAmount"
+                    placeholder="24500"
+                    formik={formik}
+                  />
 
-              {/* Notes */}
-              <div className="space-y-1.5">
-                <Label htmlFor="nea-notes" style={{ color: "var(--color-text-body)" }}>
-                  Notes{" "}
-                  <span style={{ color: "var(--color-text-weak)" }}>(optional)</span>
-                </Label>
-                <Textarea
-                  id="nea-notes"
-                  placeholder="e.g. includes common area, generator surcharge…"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  style={{ resize: "vertical" }}
-                />
-              </div>
-            </div>
+                  <NumberField
+                    label="Total Units (kWh)"
+                    name="totalUnits"
+                    placeholder="3500"
+                    formik={formik}
+                  />
+                </div>
+
+                {/* Demand + Energy */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <CurrencyField
+                    label="Demand Charge"
+                    name="demandCharge"
+                    placeholder="2000"
+                    formik={formik}
+                  />
+
+                  <CurrencyField
+                    label="Energy Charge"
+                    name="energyCharge"
+                    placeholder="22500"
+                    formik={formik}
+                  />
+                </div>
+
+                {/* File Upload */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">NEA Bill PDF</label>
+
+                  <DragDropFileUpload
+                    value={file}
+                    onChange={setFile}
+                    acceptedTypes={["application/pdf"]}
+                    maxSizeMB={10}
+                    label=""
+                  />
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Notes</label>
+
+                  <Textarea
+                    rows={3}
+                    name="notes"
+                    placeholder="Includes common area, transformer loss, etc."
+                    value={formik.values.notes}
+                    onChange={formik.handleChange}
+                  />
+                </div>
+              </form>
           )}
         </div>
 
-        {/* ── Fixed footer ─────────────────────────────────────────────── */}
-        <div
-          className="px-6 py-4 shrink-0 border-t flex justify-end gap-2"
-          style={{ borderColor: "var(--color-border)" }}
-        >
+        {/* Footer */}
+        <DialogFooter className="border-t px-6 py-4">
           <Button
             type="button"
             variant="outline"
@@ -266,45 +284,263 @@ export default function NeaBillUploadDialog({ open, onOpenChange, propertyId }) 
           >
             {recon ? "Close" : "Cancel"}
           </Button>
+
           {!recon && (
             <Button
-              onClick={handleSubmit}
+              onClick={formik.submitForm}
               disabled={uploading}
-              style={{ backgroundColor: "var(--color-accent)", color: "#fff" }}
             >
               {uploading && (
-                <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {uploading ? "Uploading…" : "Upload NEA Bill"}
+
+              {uploading ? "Saving..." : "Save NEA Bill"}
             </Button>
           )}
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ── Helper sub-component ───────────────────────────────────────────────────────
+/* -------------------------------------------------------------------------- */
+/*                                Reconciliation                               */
+/* -------------------------------------------------------------------------- */
+
+function ReconciliationCard({ recon }) {
+  return (
+    <div className="space-y-5 rounded-2xl border bg-muted/30 p-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Reconciliation Summary
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <SummaryRow
+          label="NEA Charged"
+          value={fmtRs(recon.neaBillTotal)}
+        />
+
+        {recon.demandCharge != null && (
+          <SummaryRow
+            label="Demand Charge"
+            value={fmtRs(recon.demandCharge)}
+            note="building operating expense"
+          />
+        )}
+
+        <SummaryRow
+          label="System NEA Cost"
+          value={fmtRs(recon.systemNeaCost)}
+        />
+      </div>
+
+      <div className="border-t pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <span className="text-sm text-muted-foreground">
+            Cost Difference
+          </span>
+
+          <div className="text-right">
+            <div
+              className={`flex items-center justify-end gap-1 text-sm font-semibold ${
+                recon.surplus
+                  ? "text-green-600"
+                  : recon.shortfall
+                  ? "text-red-600"
+                  : ""
+              }`}
+            >
+              {recon.surplus && (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+
+              {recon.shortfall && (
+                <AlertTriangle className="h-4 w-4" />
+              )}
+
+              {fmtRs(
+                Math.abs(
+                  recon.costDifference ??
+                    recon.difference ??
+                    0
+                )
+              )}
+            </div>
+
+            <p className="mt-1 text-xs text-muted-foreground">
+              {recon.surplus
+                ? "Collected more than billed"
+                : recon.shortfall
+                ? "NEA billed more than collected"
+                : "Balanced"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {recon.purchasedUnits != null && (
+        <>
+          <div className="border-t pt-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Unit Reconciliation
+            </p>
+
+            <div className="space-y-3">
+              <SummaryRow
+                label="Purchased from NEA"
+                value={fmtKwh(recon.purchasedUnits)}
+              />
+
+              <SummaryRow
+                label="Metered Units"
+                value={fmtKwh(recon.meteredUnitUnits)}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-start justify-between gap-4">
+            <span className="text-sm text-muted-foreground">
+              {recon.unitLoss >= 0 ? "Loss" : "Surplus"}
+            </span>
+
+            <div className="text-right">
+              <div
+                className={`flex items-center justify-end gap-1 text-sm font-semibold ${
+                  recon.unitLoss > 0
+                    ? "text-amber-600"
+                    : recon.unitSurplus
+                    ? "text-green-600"
+                    : ""
+                }`}
+              >
+                {recon.unitLoss > 0 && (
+                  <TrendingDown className="h-4 w-4" />
+                )}
+
+                {fmtKwh(Math.abs(recon.unitLoss ?? 0))}
+
+                {recon.lossPercent != null &&
+                  ` (${recon.lossPercent}%)`}
+              </div>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                {recon.unitLoss > 0
+                  ? "Possible leakage or common area usage"
+                  : recon.unitSurplus
+                  ? "Metered more than purchased"
+                  : "Balanced"}
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                   Helpers                                  */
+/* -------------------------------------------------------------------------- */
+
+function LabelRequired({ children }) {
+  return (
+    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+      {children}
+      <span className="text-destructive"> *</span>
+    </label>
+  );
+}
+
+function CurrencyField({
+  label,
+  name,
+  placeholder,
+  formik,
+  required = false,
+}) {
+  return (
+    <div className="space-y-2">
+      {required ? (
+        <LabelRequired>{label}</LabelRequired>
+      ) : (
+        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">{label}</label>
+      )}
+
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+          Rs
+        </span>
+
+        <Input
+          type="number"
+          min="0"
+          step="0.01"
+          name={name}
+          placeholder={placeholder}
+          value={formik.values[name]}
+          onChange={formik.handleChange}
+          onBlur={formik.handleBlur}
+          className="pl-9"
+        />
+      </div>
+
+      {formik.touched[name] && formik.errors[name] && (
+        <p className="text-sm text-destructive">
+          {formik.errors[name]}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function NumberField({
+  label,
+  name,
+  placeholder,
+  formik,
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">{label}</label>
+
+      <Input
+        type="number"
+        min="0"
+        step="0.1"
+        name={name}
+        placeholder={placeholder}
+        value={formik.values[name]}
+        onChange={formik.handleChange}
+        onBlur={formik.handleBlur}
+      />
+
+      {formik.touched[name] && formik.errors[name] && (
+        <p className="text-sm text-destructive">
+          {formik.errors[name]}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SummaryRow({ label, value, note }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <span className="text-sm" style={{ color: "var(--color-text-sub)" }}>
+      <span className="text-sm text-muted-foreground">
         {label}
       </span>
+
       <div className="text-right">
-        <span
-          className="text-sm tabular-nums"
-          style={{ color: "var(--color-text-body)", fontWeight: 400 }}
-        >
+        <p className="text-sm font-medium tabular-nums">
           {value}
-        </span>
+        </p>
+
         {note && (
-          <span
-            className="block text-[11px]"
-            style={{ color: "var(--color-text-sub)" }}
-          >
+          <p className="text-xs text-muted-foreground">
             {note}
-          </span>
+          </p>
         )}
       </div>
     </div>

@@ -7,6 +7,8 @@ import {
   Banknote,
   Zap,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Landmark,
   ClipboardCheck,
   Store,
@@ -37,12 +39,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { useNavigate, NavLink } from "react-router-dom";
+import { useNavigate, NavLink, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import api from "../../plugins/axios";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { NAV_GROUPS as ACCOUNTING_GROUPS, getGroupForTab } from "../Accounts/components/accountingNavConfig";
 
 /* ─── NAV STRUCTURE ─────────────────────────────────────────────────────────
    Industry standard: flatten the nav into uniform groups. No separate
@@ -112,6 +115,82 @@ function getInitials(name) {
     .join("");
 }
 
+/* ─── ACCOUNTING SUB-NAV ────────────────────────────────────────────────── */
+
+function AccountingNav({ activeTab, onTabSelect }) {
+  const activeGroupId = getGroupForTab(activeTab);
+  const [openGroups, setOpenGroups] = useState(() => new Set([activeGroupId]));
+
+  const toggleGroup = (id) =>
+    setOpenGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      {ACCOUNTING_GROUPS.map(group => {
+        const isGroupActive = group.id === activeGroupId;
+        const isOpen = openGroups.has(group.id);
+
+        return (
+          <div key={group.id}>
+            {/* Group header */}
+            <button
+              onClick={() => toggleGroup(group.id)}
+              className={cn(
+                "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer",
+                isGroupActive
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              )}
+            >
+              <span className={cn(
+                "w-0.5 h-3.5 rounded-full shrink-0 transition-colors",
+                isGroupActive ? "bg-sidebar-ring" : "bg-transparent",
+              )} />
+              <group.Icon className="w-3.5 h-3.5 shrink-0" />
+              <span className="flex-1 text-left truncate">{group.label}</span>
+              <ChevronRight className={cn(
+                "w-3 h-3 shrink-0 transition-transform duration-150",
+                isOpen && "rotate-90",
+              )} />
+            </button>
+
+            {/* Tab items */}
+            {isOpen && (
+              <div className="flex flex-col gap-0.5 mt-0.5 mb-1">
+                {group.tabs.map(tab => {
+                  const isActive = tab.id === activeTab;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => onTabSelect(tab.id)}
+                      className={cn(
+                        "w-full flex items-center gap-2 pl-9 pr-2.5 py-1.5 rounded-md text-[12.5px] font-medium transition-colors cursor-pointer",
+                        isActive
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      )}
+                    >
+                      <span className={cn(
+                        "w-0.5 h-3 rounded-full shrink-0",
+                        isActive ? "bg-sidebar-ring" : "bg-transparent",
+                      )} />
+                      <span className="truncate">{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ─── NAV ITEM ───────────────────────────────────────────────────────────── */
 
 function NavItem({ item, onClick }) {
@@ -159,6 +238,16 @@ export default function AppSidebar() {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [openGroups, setOpenGroups] = useState({});
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const isAccounting = location.pathname === "/accounting" || location.pathname.startsWith("/accounting/");
+  const activeAccountingTab = searchParams.get("tab") ?? "overview";
+
+  const handleAccountingTab = (tabId) => {
+    setSearchParams({ tab: tabId }, { replace: true });
+    if (isMobile) setOpenMobile(false);
+  };
 
   const handleNav = () => {
     if (isMobile) setOpenMobile(false);
@@ -168,7 +257,7 @@ export default function AppSidebar() {
     setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
 
   const SignOut = async () => {
-    try { await api.post("/api/auth/logout"); } catch (_) { }
+    try { await api.post("/api/auth/logout"); } catch { /* best-effort logout */ }
     logout();
     navigate("/login");
     toast.success("Signed out successfully");
@@ -203,67 +292,69 @@ export default function AppSidebar() {
         </div>
       </div>
 
-      {/* ── NAVIGATION ────────────────────────────────────────────────────
-          FIX: overflow-y-auto (not overflow-hidden) so items are never
-          clipped on shorter viewports. Any number of new nav items can be
-          added safely — the area scrolls instead of cutting off.
-      ─────────────────────────────────────────────────────────────────── */}
+      {/* ── NAVIGATION ─────────────────────────────────────────────────── */}
       <SidebarContent className="flex-1 overflow-y-auto py-2 px-1.5 flex flex-col gap-1">
 
-        {NAV_GROUPS.map((group, gi) => {
-          const isCollapsible = group.collapsible;
-          const isOpen = openGroups[group.label] ?? false;
+        {isAccounting ? (
+          <>
+            {/* Back to main nav */}
+            <button
+              onClick={() => navigate("/")}
+              className="flex items-center gap-2 px-2.5 py-1.5 mb-1 rounded-md text-[12px] font-medium text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors cursor-pointer"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
+              <span>All sections</span>
+            </button>
+            <p
+              className="px-2.5 mb-1 text-[10px] font-semibold tracking-[0.16em] uppercase"
+              style={{ color: "var(--sidebar-foreground, currentColor)", opacity: 0.5 }}
+            >
+              Accounting
+            </p>
+            <AccountingNav
+              activeTab={activeAccountingTab}
+              onTabSelect={handleAccountingTab}
+            />
+          </>
+        ) : (
+          NAV_GROUPS.map((group, gi) => {
+            const isCollapsible = group.collapsible;
+            const isOpen = openGroups[group.label] ?? false;
 
-          return (
-            <div key={group.label ?? `group-${gi}`} className={gi > 0 ? "mt-3" : ""}>
-
-              {/* Group label ─────────────────────────────────────────────
-                  Industry standard (Linear/Vercel/Notion): labels sit at
-                  ~60-70% opacity, NOT 50%, so the visual hierarchy reads
-                  as: label → items, not label ≈ items. Collapsible groups
-                  get a chevron.
-              ──────────────────────────────────────────────────────────── */}
-              {group.label && (
-                isCollapsible ? (
-                  <button
-                    onClick={() => toggleGroup(group.label)}
-                    className="w-full flex items-center justify-between px-2.5 mb-1 text-[10px] font-semibold
-                               tracking-[0.16em] uppercase transition-colors"
-                    style={{ color: "var(--sidebar-foreground, currentColor)", opacity: 0.5 }}
-                  >
-                    <span>{group.label}</span>
-                    <ChevronDown
-                      className={cn(
-                        "w-3 h-3 transition-transform duration-200",
-                        isOpen && "rotate-180"
-                      )}
-                    />
-                  </button>
-                ) : (
-                  <p
-                    className="px-2.5 mb-1 text-[10px] font-semibold tracking-[0.16em] uppercase"
-                    style={{ color: "var(--sidebar-foreground, currentColor)", opacity: 0.5 }}
-                  >
-                    {group.label}
-                  </p>
-                )
-              )}
-
-              {/* Items ──────────────────────────────────────────────────── */}
-              <nav
-                className={cn(
+            return (
+              <div key={group.label ?? `group-${gi}`} className={gi > 0 ? "mt-3" : ""}>
+                {group.label && (
+                  isCollapsible ? (
+                    <button
+                      onClick={() => toggleGroup(group.label)}
+                      className="w-full flex items-center justify-between px-2.5 mb-1 text-[10px] font-semibold tracking-[0.16em] uppercase transition-colors"
+                      style={{ color: "var(--sidebar-foreground, currentColor)", opacity: 0.5 }}
+                    >
+                      <span>{group.label}</span>
+                      <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", isOpen && "rotate-180")} />
+                    </button>
+                  ) : (
+                    <p
+                      className="px-2.5 mb-1 text-[10px] font-semibold tracking-[0.16em] uppercase"
+                      style={{ color: "var(--sidebar-foreground, currentColor)", opacity: 0.5 }}
+                    >
+                      {group.label}
+                    </p>
+                  )
+                )}
+                <nav className={cn(
                   "flex flex-col gap-0.5",
                   isCollapsible && "overflow-hidden transition-all duration-200",
-                  isCollapsible && (isOpen ? "max-h-96" : "max-h-0")
-                )}
-              >
-                {group.items.map((item) => (
-                  <NavItem key={item.title} item={item} onClick={handleNav} />
-                ))}
-              </nav>
-            </div>
-          );
-        })}
+                  isCollapsible && (isOpen ? "max-h-96" : "max-h-0"),
+                )}>
+                  {group.items.map((item) => (
+                    <NavItem key={item.title} item={item} onClick={handleNav} />
+                  ))}
+                </nav>
+              </div>
+            );
+          })
+        )}
 
       </SidebarContent>
 

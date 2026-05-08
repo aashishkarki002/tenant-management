@@ -1,16 +1,18 @@
 import React from "react";
-import { Zap, DollarSign, AlertTriangle, Gauge } from "lucide-react";
+import { Zap, DollarSign, AlertTriangle, Gauge, TrendingUp } from "lucide-react";
 
 const METER_TYPE_KEYS = ["unit", "common_area", "parking", "sub_meter"];
 
 function deriveKpis(grouped, summary) {
   const totalConsumption = Number(summary.grandTotalUnits) || 0;
-  const totalRevenue = Number(summary.grandTotalAmount) || 0;
+  const totalRevenue     = Number(summary.grandTotalAmount) || 0;
+  const totalMargin      = Number(summary.grandTotalMargin) || 0;
+  const totalNeaCost     = Number(summary.grandTotalNeaCost) || 0;
 
   let pendingAmount = 0;
-  let pendingCount = 0;
+  let pendingCount  = 0;
   let recordedMeters = 0;
-  let totalMeters = 0;
+  let totalMeters   = 0;
 
   for (const key of METER_TYPE_KEYS) {
     const readings = grouped[key]?.readings ?? [];
@@ -25,18 +27,25 @@ function deriveKpis(grouped, summary) {
     }
   }
 
-  return { totalConsumption, totalRevenue, pendingAmount, pendingCount, recordedMeters, totalMeters };
+  // Margin % = margin / revenue (only for unit meter where revenue > 0)
+  const marginPercent = totalRevenue > 0
+    ? ((totalMargin / totalRevenue) * 100).toFixed(1)
+    : null;
+
+  return {
+    totalConsumption, totalRevenue, totalMargin, totalNeaCost, marginPercent,
+    pendingAmount, pendingCount, recordedMeters, totalMeters,
+  };
 }
 
 const fmtKwh = (n) => `${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 1 })} kWh`;
-const fmtRs = (n) => `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
+const fmtRs  = (n) => `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
 
 const KPI_CONFIG = [
   {
     id: "consumption",
     label: "Total Consumption",
     Icon: Zap,
-    accentVar: "--kpi-accent-blue",
     getValue: (k) => fmtKwh(k.totalConsumption),
     getSub: () => "This billing period",
     getAlert: () => false,
@@ -45,16 +54,29 @@ const KPI_CONFIG = [
     id: "revenue",
     label: "Electricity Revenue",
     Icon: DollarSign,
-    accentVar: "--kpi-accent-green",
     getValue: (k) => fmtRs(k.totalRevenue),
     getSub: () => "Billed this period",
     getAlert: () => false,
   },
   {
+    id: "margin",
+    label: "Profit Margin",
+    Icon: TrendingUp,
+    getValue: (k) => fmtRs(k.totalMargin),
+    getSub: (k) =>
+      k.marginPercent != null
+        ? `${k.marginPercent}% of revenue`
+        : k.totalNeaCost > 0
+          ? "Revenue minus NEA cost"
+          : "NEA rate not configured",
+    getAlert: (k) => k.totalMargin < 0,
+    getAlertText: () => "Selling below NEA cost",
+    alertStyle: "danger",
+  },
+  {
     id: "pending",
     label: "Pending Bills",
     Icon: AlertTriangle,
-    accentVar: "--kpi-accent-amber",
     getValue: (k) => fmtRs(k.pendingAmount),
     getSub: (k) =>
       k.pendingCount > 0
@@ -62,12 +84,12 @@ const KPI_CONFIG = [
         : "All bills settled",
     getAlert: (k) => k.pendingCount > 0,
     getAlertText: (k) => `${k.pendingCount} bill${k.pendingCount !== 1 ? "s" : ""} outstanding`,
+    alertStyle: "warning",
   },
   {
     id: "meters",
     label: "Readings Completed",
     Icon: Gauge,
-    accentVar: "--kpi-accent-blue",
     getValue: (k) => `${k.recordedMeters} / ${k.totalMeters}`,
     getSub: () => "Meters recorded",
     getAlert: (k) => k.totalMeters > 0 && k.recordedMeters < k.totalMeters,
@@ -75,12 +97,26 @@ const KPI_CONFIG = [
       const missing = k.totalMeters - k.recordedMeters;
       return `${missing} meter${missing !== 1 ? "s" : ""} missing`;
     },
+    alertStyle: "warning",
   },
 ];
 
 function KpiCard({ config, kpis }) {
-  const { Icon, label } = config;
+  const { Icon, label, alertStyle = "warning" } = config;
   const showAlert = config.getAlert(kpis);
+
+  const alertColors =
+    alertStyle === "danger"
+      ? {
+          bg: "var(--color-danger-bg)",
+          border: "var(--color-danger-border, var(--color-danger))",
+          text: "var(--color-danger)",
+        }
+      : {
+          bg: "var(--color-warning-bg)",
+          border: "var(--color-warning-border)",
+          text: "var(--color-warning)",
+        };
 
   return (
     <div
@@ -151,9 +187,9 @@ function KpiCard({ config, kpis }) {
             fontWeight: 500,
             borderRadius: "var(--radius-sm)",
             padding: "5px 9px",
-            backgroundColor: "var(--color-warning-bg)",
-            border: "1px solid var(--color-warning-border)",
-            color: "var(--color-warning)",
+            backgroundColor: alertColors.bg,
+            border: `1px solid ${alertColors.border}`,
+            color: alertColors.text,
           }}
         >
           <AlertTriangle style={{ width: "11px", height: "11px", flexShrink: 0 }} />
@@ -171,7 +207,7 @@ export function ElectricityKpiCards({ grouped = {}, summary = {} }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+        gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
         gap: "10px",
       }}
     >

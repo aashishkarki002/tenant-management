@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import useProperty from "../hooks/use-property";
 import { useUnits } from "../hooks/use-units";
 import { useElectricityData } from "./hooks/useElectricityData";
 import { useNewElectricityRows } from "./hooks/useNewElectricityRows";
+import { useNeaBill } from "./hooks/useNeaBill";
 import { ElectricityKpiCards } from "./components/ElectricityKpiCards";
 import { ElectricityFilters } from "./components/ElectricityFilters";
 import { ElectricitySummaryCards } from "./components/ElectricitySummaryCards";
@@ -87,7 +88,26 @@ export default function ElectricityPage() {
     ]
   );
 
+  // First property id — used for NEA bill upload + NEA bill fetch
+  const firstPropertyId = useMemo(() => {
+    if (!Array.isArray(property) || property.length === 0) return null;
+    return property[0]?._id ?? null;
+  }, [property]);
+
   const { grouped, summary, loading, refetch } = useElectricityData(apiFilters);
+
+  // Fetch current month's NEA bill for loss detection in insights
+  const { bills: neaBills, fetchBills: fetchNeaBills } = useNeaBill(firstPropertyId);
+  useEffect(() => {
+    if (firstPropertyId) fetchNeaBills();
+  }, [firstPropertyId, fetchNeaBills]);
+
+  const currentNeaBill = useMemo(() => {
+    if (!neaBills.length) return null;
+    return neaBills.find(
+      (b) => b.nepaliYear === filterValues.year && b.nepaliMonth === filterValues.month
+    ) ?? null;
+  }, [neaBills, filterValues.year, filterValues.month]);
 
   const { readings, countsByType } = useMemo(
     () => deriveElectricityMetrics(grouped, activeTab),
@@ -256,12 +276,6 @@ export default function ElectricityPage() {
     setDialogOpen(true);
   }, []);
 
-  // First property id — used for NEA bill upload
-  const firstPropertyId = useMemo(() => {
-    if (!Array.isArray(property) || property.length === 0) return null;
-    return property[0]?._id ?? null;
-  }, [property]);
-
   // ── Render ────────────────────────────────────────────────────────────────
   //
   // Layout strategy:
@@ -293,6 +307,7 @@ export default function ElectricityPage() {
         open={neaBillDialogOpen}
         onOpenChange={setNeaBillDialogOpen}
         propertyId={firstPropertyId}
+        onUploaded={fetchNeaBills}
       />
 
       {/* ── Fixed upper section ──────────────────────────────────────────────── */}
@@ -375,7 +390,7 @@ export default function ElectricityPage() {
         <ElectricitySummaryCards grouped={grouped} summary={summary} />
 
         {/* Insights — full-width row below summary */}
-        <ElectricityInsights grouped={grouped} />
+        <ElectricityInsights grouped={grouped} neaBill={currentNeaBill} />
 
         {/* Search result banner */}
         {searchQuery && (

@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertCircle, Zap } from "lucide-react";
 import { getConsumption } from "../utils/electricityCalculations";
 
 const METER_TYPE_KEYS = ["unit", "common_area", "parking", "sub_meter"];
@@ -9,7 +9,11 @@ const fmt = {
   rs: (n) => `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`,
 };
 
-export function ElectricityInsights({ grouped = {} }) {
+/**
+ * @param {Object} grouped
+ * @param {Object|null} neaBill  — current month's NeaBill document (optional)
+ */
+export function ElectricityInsights({ grouped = {}, neaBill = null }) {
   const insights = useMemo(() => {
     let allReadings = [];
     for (const key of METER_TYPE_KEYS) {
@@ -17,10 +21,11 @@ export function ElectricityInsights({ grouped = {} }) {
     }
     if (allReadings.length === 0) return null;
 
-    let highest = null;
-    let lowest = null;
+    let highest    = null;
+    let lowest     = null;
     let unpaidTotal = 0;
     let unpaidCount = 0;
+    let unitConsumption = 0; // tenant meter kWh only (for loss detection)
 
     for (const r of allReadings) {
       const consumption = r.unitsConsumed != null ? Number(r.unitsConsumed) : getConsumption(r);
@@ -28,8 +33,10 @@ export function ElectricityInsights({ grouped = {} }) {
 
       if (consumption > 0) {
         if (!highest || consumption > highest.consumption) highest = { name, consumption };
-        if (!lowest || consumption < lowest.consumption) lowest = { name, consumption };
+        if (!lowest  || consumption < lowest.consumption)  lowest  = { name, consumption };
       }
+
+      if (r.meterType === "unit") unitConsumption += consumption;
 
       const status = String(r.status ?? "pending").toLowerCase();
       if (status === "pending" || status === "partially_paid" || status === "overdue") {
@@ -38,11 +45,27 @@ export function ElectricityInsights({ grouped = {} }) {
       }
     }
 
-    return { highest, lowest, unpaidTotal, unpaidCount };
-  }, [grouped]);
+    // Loss detection: only when NEA bill has totalUnits
+    let lossData = null;
+    if (neaBill?.totalUnits != null && neaBill.totalUnits > 0) {
+      const purchased  = Number(neaBill.totalUnits);
+      const loss       = purchased - unitConsumption;
+      const lossPct    = ((loss / purchased) * 100).toFixed(1);
+      if (loss > 0) {
+        lossData = {
+          purchased,
+          metered: unitConsumption,
+          loss,
+          lossPct: parseFloat(lossPct),
+        };
+      }
+    }
+
+    return { highest, lowest, unpaidTotal, unpaidCount, lossData };
+  }, [grouped, neaBill]);
 
   if (!insights) return null;
-  const { highest, lowest, unpaidTotal, unpaidCount } = insights;
+  const { highest, lowest, unpaidTotal, unpaidCount, lossData } = insights;
 
   const cards = [
     highest && {
@@ -71,6 +94,15 @@ export function ElectricityInsights({ grouped = {} }) {
       label: "Unpaid Total",
       value: fmt.rs(unpaidTotal),
       detail: `${unpaidCount} tenant${unpaidCount !== 1 ? "s" : ""}`,
+    },
+    lossData && {
+      id: "loss",
+      icon: Zap,
+      iconBg: "var(--color-warning-bg)",
+      iconColor: "var(--color-warning)",
+      label: "Unit Loss Detected",
+      value: `${fmt.kwh(lossData.loss)} kWh`,
+      detail: `${lossData.lossPct}% of ${fmt.kwh(lossData.purchased)} purchased`,
     },
   ].filter(Boolean);
 
