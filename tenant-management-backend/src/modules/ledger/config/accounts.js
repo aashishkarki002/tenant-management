@@ -112,6 +112,12 @@ export const ACCOUNT_CODES = {
 
   // ── Liabilities ────────────────────────────────────────────────────────────
 
+  /**
+   * Petty cash float maintained for day-to-day minor expenses.
+   * Separate from CASH (1000) which is the main cash-on-hand account.
+   */
+  PETTY_CASH: "1100",
+
   /** Trade payables to vendors and contractors. */
   ACCOUNTS_PAYABLE: "2000",
 
@@ -135,6 +141,17 @@ export const ACCOUNT_CODES = {
    * Must be seeded for each OwnershipEntity.
    */
   CHEQUES_PAYABLE: "2150",
+
+  /**
+   * Advance rent received from tenants before the period it applies to.
+   * LIABILITY — the landlord owes the tenant this service (accommodation) in future.
+   *
+   * On advance receipt:  DR Cash/Bank / CR 2300  (liability rises)
+   * Monthly recognition: DR 2300 / CR 4000 Rental Income  (liability falls, revenue earned)
+   *
+   * Must be seeded for each OwnershipEntity (run seedAccount.js / migrateAccount2300.js).
+   */
+  DEFERRED_RENT_REVENUE: "2300",
 
   /**
    * Outstanding principal owed to banks and lenders.
@@ -229,6 +246,13 @@ export const ACCOUNT_CODES = {
   EXPENSE_OTHER: "5200",
 
   /**
+   * Staff salaries and wages.
+   * Seeded at code "5750" (moved from "5100" which is reserved for LOAN_INTEREST_EXPENSE).
+   * Use this for payeeType === "INTERNAL" and referenceType === "SALARY" expenses.
+   */
+  SALARY_EXPENSE: "5750",
+
+  /**
    * Bank processing fees, annual maintenance charges, loan origination fees.
    * Reserved — not yet seeded in chart of accounts.
    * @reserved do not use until Account "5400" is seeded.
@@ -248,4 +272,19 @@ export const ACCOUNT_CODES = {
   EVENT_EXPENSE: "5450",
   ELECTRICITY_EXPENSE_NEA: "5610",
   NEA_PAYABLE: "2050",
+
+  /**
+   * Bad debt expense — uncollectable Accounts Receivable written off on tenant vacate.
+   * DR 5700 / CR 1200 when AR cannot be recovered after security deposit settlement.
+   * Must be seeded for each OwnershipEntity (run seedYearEndAccounts.js).
+   */
+  BAD_DEBT_EXPENSE: "5700",
+
+  /**
+   * Income Summary — temporary clearing account used only during year-end close.
+   * Receives all revenue and expense balances for the FY.
+   * Balance MUST be zero after all three closing passes complete.
+   * Must be seeded for each OwnershipEntity (run seedYearEndAccounts.js).
+   */
+  INCOME_SUMMARY: "3500",
 };

@@ -55,3 +55,26 @@ export { buildChequeReceiptJournal, buildChequeDepositJournal, buildChequeBounce
 
 // Opening balances (onboarding existing properties)
 export { buildOpeningBalanceJournal } from "./openingBalance.js";
+
+// Year-end close (fiscal year closing entries)
+export {
+  buildYearEndRevenueCloseJournal,
+  buildYearEndExpenseCloseJournal,
+  buildYearEndRetainedEarningsJournal,
+} from "./yearEndClose.js";
+
+// Vacate settlement (pro-rated charges + bad debt)
+export { buildProRatedRentJournal, buildProRatedCamJournal } from "./proRatedRent.js";
+export { buildBadDebtWriteoffJournal } from "./badDebtWriteoff.js";
+
+// Adjustments (debit note, credit note, manual journal)
+export { buildAdjustmentJournal } from "./adjustment.js";
+
+// Owner distribution (draw)
+export { buildOwnerDistributionJournal } from "./ownerDistribution.js";
+
+// Vendor bills (AP workflow)
+export { buildVendorBillEntryJournal, buildVendorBillPaymentJournal } from "./vendorBill.js";
+
+// Advance / prepaid rent
+export { buildAdvanceRentReceiptJournal, buildAdvanceRentRecognitionJournal } from "./advanceRent.js";

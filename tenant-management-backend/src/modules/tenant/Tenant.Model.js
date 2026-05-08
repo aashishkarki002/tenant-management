@@ -180,6 +180,17 @@ const tenantSchema = new mongoose.Schema(
     isDeleted: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
 
+    // ── Vacate settlement tracking ──────────────────────────────────────────
+    // vacateStatus tracks the formal accounting settlement lifecycle.
+    // "vacated" = settlement executed and ledger locked.
+    vacateStatus: {
+      type: String,
+      enum: ["active", "vacating", "vacated"],
+      default: "active",
+    },
+    vacatedAt:       { type: Date, default: null },
+    vacatedAtNepali: { type: String, default: null }, // "YYYY-MM-DD" BS
+
     // =========================
     // REFERENCES
     // =========================

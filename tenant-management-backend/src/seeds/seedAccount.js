@@ -25,9 +25,10 @@
  *             different account. Every loan interest posting would silently
  *             inflate the Salaries account. The P&L would show wrong salary
  *             figures and zero loan interest.
- *   FIX:      Move "Salaries & Wages" to code "5700" (free slot).
+ *   FIX:      Move "Salaries & Wages" to code "5750" (free slot; was briefly 5700).
  *             Code "5100" is reserved exclusively for LOAN_INTEREST_EXPENSE,
  *             and is now seeded via ACCOUNT_CODES.LOAN_INTEREST_EXPENSE.
+ *             Code "5700" is now BAD_DEBT_EXPENSE (see collision fix below).
  *
  * BUG 3 — Code collision: "5400" seeded as "Property Tax"
  *   ORIGINAL: code "5400" → "Property Tax"
@@ -203,6 +204,17 @@ function getChartOfAccounts() {
         "is owed back to the tenant on vacancy.",
     },
     {
+      // DEFERRED_RENT_REVENUE = "2300"
+      // Advance rent received — liability until the period is served.
+      code: ACCOUNT_CODES.DEFERRED_RENT_REVENUE,
+      name: "Deferred Rent Revenue",
+      type: "LIABILITY",
+      description:
+        "Advance rent payments received from tenants before the rental period begins. " +
+        "CR on receipt (DR Cash/Bank). DR monthly as income is recognised (CR Rental Income 4000). " +
+        "Balance represents rent collected but not yet earned.",
+    },
+    {
       // LOAN_LIABILITY = "2200"
       code: ACCOUNT_CODES.LOAN_LIABILITY,
       name: "Loan Principal Liability",
@@ -232,6 +244,18 @@ function getChartOfAccounts() {
       name: "Rental Income",
       type: "REVENUE",
       description: "Income from occupied unit rent charges.",
+    },
+    {
+      // MAINTENANCE_REVENUE = "4300"
+      // Revenue from maintenance charges deducted from security deposit at vacate.
+      // Used by vacate settlement when SD deduction is classified as maintenance income.
+      code: ACCOUNT_CODES.MAINTENANCE_REVENUE,
+      name: "Maintenance Revenue",
+      type: "REVENUE",
+      description:
+        "Revenue from maintenance deductions withheld from the security deposit at vacate " +
+        "settlement. Posted when SD settlement includes a MAINTENANCE_ADJUSTMENT deduction. " +
+        "DR Security Deposit Liability / CR here.",
     },
     {
       // CAM_REVENUE = "4050"
@@ -277,7 +301,7 @@ function getChartOfAccounts() {
     },
     {
       // LOAN_INTEREST_EXPENSE = "5100"
-      // FIX BUG 2: was "Salaries & Wages" at 5100. Salaries moved to 5700.
+      // FIX BUG 2: was "Salaries & Wages" at 5100. Salaries moved first to 5700, then to 5750.
       // 5100 must be Loan Interest Expense because ACCOUNT_CODES.LOAN_INTEREST_EXPENSE = "5100".
       // Having Salaries at 5100 meant every EMI interest posting silently debited
       // the Salaries account instead, corrupting both salary figures and loan P&L.
@@ -337,7 +361,24 @@ function getChartOfAccounts() {
         "String key referenced in journal builder as 'ELECTRICITY_EXPENSE_NEA'.",
     },
     {
-      code: "5700",
+      // BAD_DEBT_EXPENSE = "5700"
+      // FIX: seedAccount.js previously put "Salaries & Wages" at code 5700.
+      // ACCOUNT_CODES.BAD_DEBT_EXPENSE = "5700" — every vacate-settlement bad-debt
+      // write-off was silently debiting the Salaries account instead.
+      // Salaries moved to 5750 (free slot). seedYearEndAccounts.js also seeds 5700
+      // as "Bad Debt Expense" — with this fix, it will find it already exists and skip.
+      code: ACCOUNT_CODES.BAD_DEBT_EXPENSE,
+      name: "Bad Debt Expense",
+      type: "EXPENSE",
+      description:
+        "Uncollectable Accounts Receivable written off at tenant vacate settlement. " +
+        "Posted when AR remains after applying the security deposit and the " +
+        "landlord determines the balance is unrecoverable. " +
+        "DR here / CR Accounts Receivable (1200) on write-off.",
+    },
+    {
+      // FIX: moved from 5700 → 5750 to free 5700 for BAD_DEBT_EXPENSE.
+      code: "5750",
       name: "Salaries & Wages",
       type: "EXPENSE",
       description: "Staff salaries, wages, and performance bonuses.",
@@ -562,6 +603,33 @@ export function assertNoDuplicateCodes() {
           accountCodesKey: key,
           seededName: seeded,
           error: `Code ${code} is ACCOUNT_CODES.${key} but seeded as "${seeded}"`,
+        });
+      }
+      if (key === "BAD_DEBT_EXPENSE" && !nameWords.includes("bad")) {
+        collisions.push({
+          code,
+          semanticMismatch: true,
+          accountCodesKey: key,
+          seededName: seeded,
+          error: `Code ${code} is ACCOUNT_CODES.${key} but seeded as "${seeded}" (expected "Bad Debt Expense")`,
+        });
+      }
+      if (key === "MAINTENANCE_REVENUE" && !nameWords.includes("maintenance")) {
+        collisions.push({
+          code,
+          semanticMismatch: true,
+          accountCodesKey: key,
+          seededName: seeded,
+          error: `Code ${code} is ACCOUNT_CODES.${key} but seeded as "${seeded}" (expected "Maintenance Revenue")`,
+        });
+      }
+      if (key === "SALARY_EXPENSE" && !nameWords.includes("salar") && !nameWords.includes("wage")) {
+        collisions.push({
+          code,
+          semanticMismatch: true,
+          accountCodesKey: key,
+          seededName: seeded,
+          error: `Code ${code} is ACCOUNT_CODES.${key} but seeded as "${seeded}" (expected "Salaries & Wages")`,
         });
       }
     }

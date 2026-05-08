@@ -180,6 +180,53 @@ export const getAccountLedger = async (req, res) => {
 };
 
 /**
+ * GET /ledger/trial-balance
+ * Returns all accounts with their debit/credit totals and net balance.
+ * A properly-posted double-entry ledger will always have totalDebit === totalCredit.
+ */
+export const getTrialBalance = async (req, res) => {
+  try {
+    const { entityId, fiscalYear, quarter, month, startDate, endDate } = req.query;
+
+    const { resolvedStart, resolvedEnd } = resolveFiscalGregorianRange({
+      fiscalYear, quarter, month, startDate, endDate,
+    });
+
+    const summary = await getBalanceSummary({
+      entityId,
+      nonZeroOnly: false,
+      startDate: resolvedStart,
+      endDate: resolvedEnd,
+    });
+
+    const { accounts, subtotals, trialBalance } = summary;
+
+    // Flatten accounts grouped by type into a single ordered list
+    const TYPE_ORDER = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"];
+    const rows = [];
+    for (const type of TYPE_ORDER) {
+      for (const acct of (accounts[type] ?? [])) {
+        rows.push(acct);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        rows,
+        subtotals,
+        totals: trialBalance,
+        isBalanced: trialBalance.isBalanced,
+        discrepancy: trialBalance.discrepancy,
+      },
+    });
+  } catch (error) {
+    console.error("Error in getTrialBalance controller:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
  * Get a formatted balance sheet: Assets = Liabilities + Equity
  * Equity includes permanent equity accounts + Retained Earnings (Revenue − Expenses)
  */
@@ -254,6 +301,128 @@ export const getBalanceSheet = async (req, res) => {
   } catch (error) {
     console.error("Error in getBalanceSheet controller:", error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * GET /ledger/ar-aging
+ * AR Aging Report: outstanding balances per tenant bucketed by months overdue.
+ */
+export const getArAging = async (req, res) => {
+  try {
+    const { propertyId } = req.query;
+    const data = await ledgerService.getArAging({ propertyId });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error("Error in getArAging controller:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─── New Reporting Endpoints ─────────────────────────────────────────────────
+
+/** GET /ledger/property-pl?propertyId=&fiscalYear=&quarter=&month= */
+export const getPropertyPL = async (req, res) => {
+  try {
+    const { propertyId, fiscalYear, quarter, month, startDate, endDate } = req.query;
+    if (!propertyId) return res.status(400).json({ success: false, message: "propertyId required" });
+    const { resolvedStart, resolvedEnd } = resolveFiscalGregorianRange({ fiscalYear, quarter, month, startDate, endDate });
+    const data = await ledgerService.getPropertyPL(propertyId, { startDate: resolvedStart, endDate: resolvedEnd });
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/** GET /ledger/bank-reconciliation?entityId= */
+export const getBankReconciliation = async (req, res) => {
+  try {
+    const { entityId } = req.query;
+    if (!entityId) return res.status(400).json({ success: false, message: "entityId required" });
+    const data = await ledgerService.getBankReconciliation(entityId);
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/** GET /ledger/tds-filing?nepaliYear=&tenantId= */
+export const getTdsFilingSummary = async (req, res) => {
+  try {
+    const { nepaliYear, tenantId } = req.query;
+    if (!nepaliYear) return res.status(400).json({ success: false, message: "nepaliYear required" });
+    const data = await ledgerService.getTdsFilingSummary(Number(nepaliYear), tenantId);
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/** GET /ledger/cam-reconciliation?entityId=&nepaliYear= */
+export const getCamReconciliation = async (req, res) => {
+  try {
+    const { entityId, nepaliYear } = req.query;
+    if (!entityId || !nepaliYear) return res.status(400).json({ success: false, message: "entityId and nepaliYear required" });
+    const data = await ledgerService.getCamReconciliation(Number(nepaliYear), entityId);
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/** GET /ledger/petty-cash?entityId=&fiscalYear=&quarter=&month= */
+export const getPettyCashLedger = async (req, res) => {
+  try {
+    const { entityId, fiscalYear, quarter, month, startDate, endDate } = req.query;
+    const { resolvedStart, resolvedEnd } = resolveFiscalGregorianRange({ fiscalYear, quarter, month, startDate, endDate });
+    const data = await ledgerService.getPettyCashLedger(entityId, { startDate: resolvedStart, endDate: resolvedEnd });
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/** GET /ledger/tenant-statement/:tenantId?fiscalYear=&quarter=&month= */
+export const getTenantStatement = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { fiscalYear, quarter, month, startDate, endDate } = req.query;
+    const { resolvedStart, resolvedEnd } = resolveFiscalGregorianRange({ fiscalYear, quarter, month, startDate, endDate });
+    const data = await ledgerService.getTenantStatement(tenantId, { startDate: resolvedStart, endDate: resolvedEnd });
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/** GET /ledger/accounts?entityId=&type= */
+export const listAccounts = async (req, res) => {
+  try {
+    const { entityId, type } = req.query;
+    const data = await ledgerService.getAccounts({ entityId, type });
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/** POST /ledger/accounts */
+export const createAccountEntry = async (req, res) => {
+  try {
+    const data = await ledgerService.createAccount(req.body);
+    res.status(201).json({ success: true, data });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+/** PUT /ledger/accounts/:id */
+export const updateAccountEntry = async (req, res) => {
+  try {
+    const data = await ledgerService.updateAccount(req.params.id, req.body);
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message });
   }
 };
 

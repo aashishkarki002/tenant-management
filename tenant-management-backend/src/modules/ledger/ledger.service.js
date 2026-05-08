@@ -4,6 +4,7 @@ import { Account } from "./accounts/Account.Model.js";
 import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
 import { ClosedPeriod } from "./ClosedPeriod.Model.js";
+import { VacateSettlement } from "./vacateSettlement/VacateSettlement.Model.js";
 import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
 import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 import { buildEntityFilter } from "../../utils/buildEntityFilter.js";
@@ -12,6 +13,7 @@ import {
   computeBalanceChange,
   resolveAccountsByEntity,
 } from "./domains/accountBalanceManger.js";
+import { auditService } from "../audit/audit.service.js";
 
 /** Nepal fiscal quarters (0-based BS month), aligned with accounting.service.js */
 const FISCAL_QUARTER_MONTHS = {
@@ -164,6 +166,22 @@ class LedgerService {
     if (!entries?.length)
       throw new Error("Journal payload must have at least one entry");
 
+    // ── Tenant ledger lock guard ────────────────────────────────────────────
+    // Reject any new postings to a vacated tenant's ledger.
+    const tenantId = payload.tenant ?? null;
+    if (tenantId) {
+      const lockedSettlement = await VacateSettlement.findOne({
+        tenant: tenantId,
+        status: "COMPLETED",
+      }).select("ledgerLockedAt").session(session).lean();
+      if (lockedSettlement?.ledgerLockedAt) {
+        throw new Error(
+          `Tenant ledger is locked — this tenant has been vacated and their ledger is closed. ` +
+            `No new journal entries can be posted.`,
+        );
+      }
+    }
+
     // ── Period-close guard ──────────────────────────────────────────────────
     // Reject postings to a closed period.
     if (nepaliMonth && nepaliYear) {
@@ -288,6 +306,16 @@ class LedgerService {
 
     // ── Apply balance changes via domain (entity-scoped) ────────────────────
     await applyJournalBalances(entries, resolvedEntityId, session);
+
+    // ── Audit log (fire-and-forget — never blocks the main path) ────────────
+    auditService.log("TRANSACTION_CREATED", createdBy ?? resolvedEntityId, {
+      entityId: resolvedEntityId,
+      resourceType: "Transaction",
+      resourceId: transaction._id,
+      amountPaisa: totalAmountPaisa,
+      nepaliYear,
+      nepaliMonth,
+    }).catch(() => {}); // swallow — audit failure must not affect posting
 
     return { transaction, ledgerEntries };
   }
@@ -826,6 +854,15 @@ class LedgerService {
       { upsert: true, returnDocument: "after", new: true },
     );
 
+    auditService.log("PERIOD_CLOSED", adminId, {
+      entityId,
+      resourceType: "ClosedPeriod",
+      resourceId: result._id,
+      nepaliYear: Number(nepaliYear),
+      nepaliMonth: Number(nepaliMonth),
+      reason: note,
+    }).catch(() => {});
+
     return result;
   }
 
@@ -860,6 +897,15 @@ class LedgerService {
       );
     }
 
+    auditService.log("PERIOD_REOPENED", adminId, {
+      entityId,
+      resourceType: "ClosedPeriod",
+      resourceId: result._id,
+      nepaliYear: Number(nepaliYear),
+      nepaliMonth: Number(nepaliMonth),
+      reason: note,
+    }).catch(() => {});
+
     return result;
   }
 
@@ -882,6 +928,445 @@ class LedgerService {
       .lean();
 
     return periods;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getPropertyPL — P&L filtered by property
+  // ─────────────────────────────────────────────────────────────────────────
+  async getPropertyPL(propertyId, filters = {}) {
+    if (!propertyId) throw new Error("propertyId is required");
+    const { startDate, endDate, entityId } = filters;
+
+    const matchStage = { property: new mongoose.Types.ObjectId(String(propertyId)) };
+    if (entityId) matchStage.entityId = new mongoose.Types.ObjectId(String(entityId));
+    if (startDate || endDate) {
+      matchStage.transactionDate = {};
+      if (startDate) matchStage.transactionDate.$gte = new Date(startDate);
+      if (endDate)   { const e = new Date(endDate); e.setHours(23,59,59,999); matchStage.transactionDate.$lte = e; }
+    }
+
+    const rows = await LedgerEntry.aggregate([
+      { $match: matchStage },
+      { $lookup: { from: "accounts", localField: "account", foreignField: "_id", as: "acct" } },
+      { $unwind: "$acct" },
+      { $group: {
+          _id: { accountCode: "$acct.code", accountName: "$acct.name", accountType: "$acct.type" },
+          totalDebit:  { $sum: "$debitAmountPaisa" },
+          totalCredit: { $sum: "$creditAmountPaisa" },
+        },
+      },
+      { $sort: { "_id.accountCode": 1 } },
+    ]);
+
+    let revenuePaisa = 0, expensePaisa = 0;
+    const revenueLines = [], expenseLines = [];
+
+    for (const r of rows) {
+      const { accountCode, accountName, accountType } = r._id;
+      const net = accountType === "REVENUE" ? r.totalCredit - r.totalDebit : r.totalDebit - r.totalCredit;
+      const line = { accountCode, accountName, paisa: net, formatted: formatMoney(net) };
+      if (accountType === "REVENUE") { revenuePaisa += net; revenueLines.push(line); }
+      if (accountType === "EXPENSE") { expensePaisa += net; expenseLines.push(line); }
+    }
+
+    const netProfitPaisa = revenuePaisa - expensePaisa;
+    return {
+      propertyId,
+      filters,
+      revenueLines,
+      expenseLines,
+      totalRevenue:  { paisa: revenuePaisa,  formatted: formatMoney(revenuePaisa) },
+      totalExpense:  { paisa: expensePaisa,  formatted: formatMoney(expensePaisa) },
+      netProfit:     { paisa: netProfitPaisa, formatted: formatMoney(netProfitPaisa) },
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getBankReconciliation — compare ledger vs BankAccount.balancePaisa
+  // ─────────────────────────────────────────────────────────────────────────
+  async getBankReconciliation(entityId) {
+    if (!entityId) throw new Error("entityId is required");
+    const { BankAccount } = await import("../banks/BankAccountModel.js");
+
+    const banks = await BankAccount.find({ entityId: new mongoose.Types.ObjectId(String(entityId)), isDeleted: { $ne: true } }).lean();
+    const results = [];
+
+    for (const bank of banks) {
+      const ledgerAccount = await Account.findOne({ code: bank.accountCode, entityId: new mongoose.Types.ObjectId(String(entityId)) }).lean();
+      const ledgerBalancePaisa = ledgerAccount?.currentBalancePaisa ?? 0;
+      const bankBalancePaisa   = bank.balancePaisa ?? 0;
+      const differencePaisa    = ledgerBalancePaisa - bankBalancePaisa;
+
+      results.push({
+        bankName:         bank.bankName,
+        accountNumber:    bank.accountNumber,
+        accountCode:      bank.accountCode,
+        ledgerBalance:    { paisa: ledgerBalancePaisa, formatted: formatMoney(ledgerBalancePaisa) },
+        bankBalance:      { paisa: bankBalancePaisa,   formatted: formatMoney(bankBalancePaisa) },
+        difference:       { paisa: differencePaisa,    formatted: formatMoney(Math.abs(differencePaisa)) },
+        isReconciled:     differencePaisa === 0,
+        note: differencePaisa !== 0
+          ? "Ledger and operational bank balance differ. Run rebuild-balance or check for unposted transactions."
+          : null,
+      });
+    }
+
+    const totalLedger = results.reduce((s, r) => s + r.ledgerBalance.paisa, 0);
+    const totalBank   = results.reduce((s, r) => s + r.bankBalance.paisa, 0);
+
+    return {
+      entityId,
+      accounts: results,
+      totals: {
+        ledger: { paisa: totalLedger, formatted: formatMoney(totalLedger) },
+        bank:   { paisa: totalBank,   formatted: formatMoney(totalBank) },
+        diff:   { paisa: totalLedger - totalBank, formatted: formatMoney(Math.abs(totalLedger - totalBank)) },
+      },
+      allReconciled: results.every((r) => r.isReconciled),
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getTdsFillingSummary — TDS register for government filing
+  // ─────────────────────────────────────────────────────────────────────────
+  async getTdsFilingSummary(nepaliYear, tenantId = null) {
+    if (!nepaliYear) throw new Error("nepaliYear is required");
+    const { Rent } = await import("../rents/rent.Model.js");
+
+    const filter = {
+      nepaliYear: Number(nepaliYear),
+      tdsAmountPaisa: { $gt: 0 },
+    };
+    if (tenantId) filter.tenant = new mongoose.Types.ObjectId(String(tenantId));
+
+    const rents = await Rent.find(filter)
+      .populate("tenant", "name email phone panNumber")
+      .populate("property", "name")
+      .sort({ nepaliMonth: 1 })
+      .lean();
+
+    // Group by tenant
+    const tenantMap = {};
+    for (const rent of rents) {
+      const tid = String(rent.tenant?._id ?? rent.tenant);
+      if (!tenantMap[tid]) {
+        tenantMap[tid] = {
+          tenantId: tid,
+          tenantName:     rent.tenant?.name ?? "Unknown",
+          tenantPan:      rent.tenant?.panNumber ?? null,
+          propertyName:   rent.property?.name ?? null,
+          monthlyBreakdown: [],
+          totalGrossPaisa: 0,
+          totalTdsPaisa:   0,
+          tdsPaidToGovt:   0,
+          tdsPending:      0,
+        };
+      }
+      const t = tenantMap[tid];
+      t.monthlyBreakdown.push({
+        nepaliMonth:    rent.nepaliMonth,
+        grossRentPaisa: rent.grossRentAmountPaisa,
+        tdsPaisa:       rent.tdsAmountPaisa,
+        paidToGovt:     rent.tdsPaidToGovernment ?? false,
+      });
+      t.totalGrossPaisa += rent.grossRentAmountPaisa;
+      t.totalTdsPaisa   += rent.tdsAmountPaisa;
+      if (rent.tdsPaidToGovernment) t.tdsPaidToGovt += rent.tdsAmountPaisa;
+      else t.tdsPending += rent.tdsAmountPaisa;
+    }
+
+    const tenants = Object.values(tenantMap);
+    const grandTotalGross = tenants.reduce((s, t) => s + t.totalGrossPaisa, 0);
+    const grandTotalTds   = tenants.reduce((s, t) => s + t.totalTdsPaisa, 0);
+    const grandPaid       = tenants.reduce((s, t) => s + t.tdsPaidToGovt, 0);
+    const grandPending    = tenants.reduce((s, t) => s + t.tdsPending, 0);
+
+    const fmt = (p) => ({ paisa: p, formatted: formatMoney(p) });
+    return {
+      nepaliYear,
+      tenants: tenants.map((t) => ({
+        ...t,
+        totalGross:   fmt(t.totalGrossPaisa),
+        totalTds:     fmt(t.totalTdsPaisa),
+        paidToGovt:   fmt(t.tdsPaidToGovt),
+        pending:      fmt(t.tdsPending),
+      })),
+      grandTotal: {
+        gross:   fmt(grandTotalGross),
+        tds:     fmt(grandTotalTds),
+        paid:    fmt(grandPaid),
+        pending: fmt(grandPending),
+      },
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getCamReconciliation — estimated vs actual CAM per tenant per year
+  // ─────────────────────────────────────────────────────────────────────────
+  async getCamReconciliation(nepaliYear, entityId = null) {
+    if (!nepaliYear) throw new Error("nepaliYear is required");
+    const { default: CamModel } = await import("../cam/cam.model.js");
+
+    const filter = { nepaliYear: Number(nepaliYear) };
+
+    const cams = await CamModel.find(filter)
+      .populate("tenant", "name email")
+      .populate("block", "name")
+      .lean();
+
+    const tenantMap = {};
+    for (const cam of cams) {
+      const tid = String(cam.tenant?._id ?? cam.tenant);
+      if (!tenantMap[tid]) {
+        tenantMap[tid] = {
+          tenantId:   tid,
+          tenantName: cam.tenant?.name ?? "Unknown",
+          billedPaisa: 0,
+          paidPaisa:   0,
+          months:      [],
+        };
+      }
+      const t = tenantMap[tid];
+      t.billedPaisa += cam.amount ?? 0;
+      t.paidPaisa   += cam.paidAmount ?? 0;
+      t.months.push({ nepaliMonth: cam.nepaliMonth, billed: cam.amount, paid: cam.paidAmount, status: cam.status });
+    }
+
+    const tenants = Object.values(tenantMap).map((t) => ({
+      ...t,
+      outstandingPaisa: t.billedPaisa - t.paidPaisa,
+      billed:      formatMoney(t.billedPaisa),
+      paid:        formatMoney(t.paidPaisa),
+      outstanding: formatMoney(t.billedPaisa - t.paidPaisa),
+    }));
+
+    const totalBilled  = tenants.reduce((s, t) => s + t.billedPaisa, 0);
+    const totalPaid    = tenants.reduce((s, t) => s + t.paidPaisa, 0);
+    return {
+      nepaliYear,
+      tenants,
+      grandTotal: {
+        billed:      formatMoney(totalBilled),
+        paid:        formatMoney(totalPaid),
+        outstanding: formatMoney(totalBilled - totalPaid),
+      },
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getPettyCashLedger — ledger for petty cash account (1100)
+  // ─────────────────────────────────────────────────────────────────────────
+  async getPettyCashLedger(entityId, filters = {}) {
+    return this.getLedger({ ...filters, entityId, accountCode: "1100" });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getTenantStatement — structured charges/payments per tenant for a period
+  // ─────────────────────────────────────────────────────────────────────────
+  async getTenantStatement(tenantId, filters = {}) {
+    if (!tenantId) throw new Error("tenantId is required");
+    const { startDate, endDate, fiscalYear, entityId } = filters;
+
+    const { resolvedStart, resolvedEnd } = resolveLedgerGregorianRange(filters);
+
+    const ledger = await this.getLedger({ tenantId, startDate: resolvedStart, endDate: resolvedEnd, entityId });
+
+    const openingBalancePaisa = 0; // Could be enhanced with prior-period balance
+    let runningPaisa = openingBalancePaisa;
+
+    const statement = ledger.entries.map((e) => {
+      const net = (e.debitAmountPaisa ?? 0) - (e.creditAmountPaisa ?? 0);
+      runningPaisa += net;
+      return {
+        date:        e.transactionDate,
+        nepaliDate:  e.nepaliDate,
+        description: e.description,
+        chargesPaisa: e.debitAmountPaisa > 0 ? e.debitAmountPaisa : 0,
+        paymentsPaisa: e.creditAmountPaisa > 0 ? e.creditAmountPaisa : 0,
+        balancePaisa:  runningPaisa,
+        charges:   formatMoney(e.debitAmountPaisa > 0 ? e.debitAmountPaisa : 0),
+        payments:  formatMoney(e.creditAmountPaisa > 0 ? e.creditAmountPaisa : 0),
+        balance:   formatMoney(runningPaisa),
+      };
+    });
+
+    return {
+      tenantId,
+      filters,
+      openingBalance: formatMoney(openingBalancePaisa),
+      closingBalance: formatMoney(runningPaisa),
+      closingBalancePaisa: runningPaisa,
+      statement,
+      totalChargesPaisa:  statement.reduce((s, r) => s + r.chargesPaisa, 0),
+      totalPaymentsPaisa: statement.reduce((s, r) => s + r.paymentsPaisa, 0),
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getAccounts / createAccount / updateAccount — CoA management
+  // ─────────────────────────────────────────────────────────────────────────
+  async getAccounts(entityId, filters = {}) {
+    const filter = { isActive: true };
+    if (entityId) filter.entityId = new mongoose.Types.ObjectId(String(entityId));
+    if (filters.type) filter.type = filters.type;
+    return Account.find(filter).sort({ code: 1 }).lean();
+  }
+
+  async createAccount({ entityId, code, name, type, description, parentAccount }) {
+    if (!entityId || !code || !name || !type)
+      throw new Error("entityId, code, name, and type are required");
+    const exists = await Account.findOne({ code, entityId: new mongoose.Types.ObjectId(String(entityId)) });
+    if (exists) throw new Error(`Account code "${code}" already exists for this entity`);
+    return Account.create({ entityId, code, name, type, description: description ?? null, parentAccount: parentAccount ?? null, currentBalancePaisa: 0, isActive: true });
+  }
+
+  async updateAccount(accountId, { name, description, isActive }) {
+    const updates = {};
+    if (name        !== undefined) updates.name        = name;
+    if (description !== undefined) updates.description = description;
+    if (isActive    !== undefined) updates.isActive    = isActive;
+    const updated = await Account.findByIdAndUpdate(accountId, { $set: updates }, { new: true }).lean();
+    if (!updated) throw new Error("Account not found");
+    return updated;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // getArAging — Accounts Receivable Aging Report
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * Returns outstanding AR balances per tenant bucketed by age.
+   *
+   * Buckets (by months overdue relative to rent BS month):
+   *   current  — 0 months old (current month)
+   *   1_month  — 1 month old
+   *   2_months — 2 months old
+   *   3_months — 3 months old
+   *   over_3   — more than 3 months old
+   *
+   * @param {Object} [filters]
+   * @param {string|ObjectId} [filters.propertyId]
+   * @returns {Promise<Object>}
+   */
+  async getArAging(filters = {}) {
+    const { Rent } = await import("../rents/rent.Model.js");
+    const { Tenant } = await import("../tenant/Tenant.Model.js");
+
+    const now = new NepaliDate();
+    const currentBSYear  = now.getYear();
+    const currentBSMonth = now.getMonth() + 1; // getMonth() is 0-based
+
+    // Total BS months elapsed since a given rent period
+    const monthsOld = (rentYear, rentMonth) => {
+      return (currentBSYear - rentYear) * 12 + (currentBSMonth - rentMonth);
+    };
+
+    const rentFilter = {
+      $expr: {
+        $gt: [
+          {
+            $subtract: [
+              { $subtract: ["$grossRentAmountPaisa", "$tdsAmountPaisa"] },
+              "$paidAmountPaisa",
+            ],
+          },
+          0,
+        ],
+      },
+    };
+
+    if (filters.propertyId) {
+      rentFilter.property = new mongoose.Types.ObjectId(String(filters.propertyId));
+    }
+
+    const rents = await Rent.find(rentFilter)
+      .populate("tenant", "name email phone")
+      .populate("property", "name")
+      .lean();
+
+    // Accumulate per-tenant
+    const tenantMap = {};
+
+    const BUCKETS = ["current", "1_month", "2_months", "3_months", "over_3"];
+
+    const emptyBuckets = () => ({
+      current:  0,
+      "1_month": 0,
+      "2_months": 0,
+      "3_months": 0,
+      over_3:   0,
+    });
+
+    for (const rent of rents) {
+      const outstanding =
+        (rent.grossRentAmountPaisa ?? 0) -
+        (rent.tdsAmountPaisa ?? 0) -
+        (rent.paidAmountPaisa ?? 0);
+
+      if (outstanding <= 0) continue;
+
+      const age = monthsOld(rent.nepaliYear, rent.nepaliMonth);
+      let bucket;
+      if (age <= 0)      bucket = "current";
+      else if (age === 1) bucket = "1_month";
+      else if (age === 2) bucket = "2_months";
+      else if (age === 3) bucket = "3_months";
+      else               bucket = "over_3";
+
+      const tenantId = String(rent.tenant?._id ?? rent.tenant);
+      if (!tenantMap[tenantId]) {
+        tenantMap[tenantId] = {
+          tenantId,
+          tenantName:   rent.tenant?.name   ?? "Unknown",
+          tenantEmail:  rent.tenant?.email  ?? null,
+          tenantPhone:  rent.tenant?.phone  ?? null,
+          propertyName: rent.property?.name ?? null,
+          totalPaisa:   0,
+          buckets:      emptyBuckets(),
+          rentCount:    0,
+        };
+      }
+
+      tenantMap[tenantId].buckets[bucket] += outstanding;
+      tenantMap[tenantId].totalPaisa      += outstanding;
+      tenantMap[tenantId].rentCount       += 1;
+    }
+
+    const tenants = Object.values(tenantMap).sort(
+      (a, b) => b.totalPaisa - a.totalPaisa,
+    );
+
+    // Grand totals per bucket
+    const grandBuckets = emptyBuckets();
+    let grandTotalPaisa = 0;
+    for (const t of tenants) {
+      for (const b of BUCKETS) {
+        grandBuckets[b] += t.buckets[b];
+      }
+      grandTotalPaisa += t.totalPaisa;
+    }
+
+    const fmt = (paisa) => ({
+      paisa,
+      rupees: paisa / 100,
+      formatted: formatMoney(paisa),
+    });
+
+    return {
+      asOf: { bsYear: currentBSYear, bsMonth: currentBSMonth },
+      tenants: tenants.map((t) => ({
+        ...t,
+        total: fmt(t.totalPaisa),
+        buckets: Object.fromEntries(
+          BUCKETS.map((b) => [b, fmt(t.buckets[b])]),
+        ),
+      })),
+      grandTotal: {
+        total: fmt(grandTotalPaisa),
+        buckets: Object.fromEntries(
+          BUCKETS.map((b) => [b, fmt(grandBuckets[b])]),
+        ),
+      },
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────

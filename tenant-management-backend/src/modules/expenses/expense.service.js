@@ -27,7 +27,8 @@ import { createChequeDraft } from "../chequeDrafts/chequeDraft.service.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_EXPENSE_ACCOUNT_CODE = "5200";
-const SALARY_EXPENSE_ACCOUNT_CODE = "5100";
+// "5750" = Salaries & Wages (seeded). "5100" is LOAN_INTEREST_EXPENSE — never use it here.
+const SALARY_EXPENSE_ACCOUNT_CODE = ACCOUNT_CODES.SALARY_EXPENSE;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL HELPERS

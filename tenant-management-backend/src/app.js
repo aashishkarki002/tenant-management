@@ -47,6 +47,14 @@ import liabilitiesRoute from "./modules/liabilities/liabilties.route.js";
 import ftpUploadRoute from "./modules/ftpUpload/ftpUpload.route.js";
 import chequeDraftRoute from "./modules/chequeDrafts/chequeDraft.route.js";
 import calendarRoute from "./modules/calendar/calendar.route.js";
+import auditRoute from "./modules/audit/audit.route.js";
+import yearEndCloseRoute from "./modules/ledger/yearEndClose/yearEndClose.route.js";
+import vacateRoute from "./modules/ledger/vacateSettlement/vacateSettlement.route.js";
+import adjustmentRoute from "./modules/ledger/adjustments/adjustment.route.js";
+import budgetRoute from "./modules/budget/budget.route.js";
+import ownerDistributionRoute from "./modules/ownerDistribution/ownerDistribution.route.js";
+import vendorBillsRoute from "./modules/vendorBills/vendorBills.route.js";
+import advanceRentRoute from "./modules/advanceRent/advanceRent.route.js";
 const app = express();
 
 app.disable("x-powered-by");
@@ -134,6 +142,14 @@ app.use("/api/liabilities", liabilitiesRoute);
 app.use("/api/ftp-upload", ftpUploadRoute);
 app.use("/api/cheque-drafts", chequeDraftRoute);
 app.use("/api/calendar", calendarRoute);
+app.use("/api/audit", auditRoute);
+app.use("/api/year-end-close", yearEndCloseRoute);
+app.use("/api/vacate", vacateRoute);
+app.use("/api/adjustments", adjustmentRoute);
+app.use("/api/budget", budgetRoute);
+app.use("/api/owner-distribution", ownerDistributionRoute);
+app.use("/api/vendor-bills", vendorBillsRoute);
+app.use("/api/advance-rent", advanceRentRoute);
 app.get("/api/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 // -------------------- ERROR HANDLERS --------------------
