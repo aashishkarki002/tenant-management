@@ -43,6 +43,7 @@ export const SECURITY_DEPOSIT_MODES = {
   CASH: "cash", // posts DR Cash / CR SD Liability
   BANK_TRANSFER: "bank_transfer", // posts DR Bank / CR SD Liability
   CHEQUE: "cheque", // posts DR Bank / CR SD Liability
+  OTHERS: "others", //open dated cheque
 };
 
 export const TENANT_STATUS = {
@@ -61,5 +62,4 @@ export const TAB_KEYS = {
 export const RENT_PAYMENT_FREQUENCY = {
   MONTHLY: "monthly",
   QUARTERLY: "quarterly",
-  YEARLY: "yearly",
 };

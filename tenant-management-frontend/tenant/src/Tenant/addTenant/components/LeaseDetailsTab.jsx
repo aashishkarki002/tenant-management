@@ -257,9 +257,7 @@ export const LeaseDetailsTab = ({
                             <SelectItem value={RENT_PAYMENT_FREQUENCY.QUARTERLY}>
                                 Quarterly
                             </SelectItem>
-                            <SelectItem value={RENT_PAYMENT_FREQUENCY.YEARLY}>
-                                Yearly
-                            </SelectItem>
+
                         </SelectContent>
                     </Select>
                 </div>
