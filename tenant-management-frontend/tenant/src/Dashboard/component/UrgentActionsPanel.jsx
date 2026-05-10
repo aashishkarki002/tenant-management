@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle, Wrench, FileText, Phone, Mail, ArrowRight,
-  Siren, ChevronRight,
+  Siren, ChevronRight, Receipt,
 } from "lucide-react";
 import { formatRupeesCompact } from "@/lib/formatters";
 
@@ -261,6 +261,93 @@ function LeaseRenewalCard({ contracts = [], loading }) {
   );
 }
 
+// ── Section: late fees ────────────────────────────────────────────────────────
+function LateFeeCard({ kpi = {}, loading }) {
+  const hasActiveFees       = kpi.hasActiveFees ?? false;
+  const lateFeeOutstanding  = kpi.lateFeeOutstanding ?? 0;
+  const lateFeeAccrued      = kpi.lateFeeAccrued ?? 0;
+  const lateFeeCollected    = kpi.lateFeeCollected ?? 0;
+  const tenantsCharged      = kpi.lateFeeTenantsCharged ?? 0;
+  const feeCollectionRate   = kpi.feeCollectionRate ?? 0;
+
+  if (loading) return <CardSkeleton />;
+
+  return (
+    <div className="urgent-card">
+      <div className="uc-head">
+        <div
+          className="uc-sev-icon"
+          style={{
+            background: hasActiveFees
+              ? "color-mix(in oklch, var(--color-warning) 14%, transparent)"
+              : "color-mix(in oklch, var(--color-success) 12%, transparent)",
+            color: hasActiveFees ? "var(--color-warning)" : "var(--color-success)",
+            border: `1px solid color-mix(in oklch, ${hasActiveFees ? "var(--color-warning)" : "var(--color-success)"} 28%, transparent)`,
+          }}
+        >
+          <Receipt className="w-3.5 h-3.5" />
+        </div>
+        <div className="uc-label">Late fees outstanding</div>
+        <div
+          className="uc-count"
+          style={
+            hasActiveFees
+              ? { background: "var(--color-warning-bg)", color: "var(--color-warning)", borderColor: "var(--color-warning-border)" }
+              : { background: "var(--color-success-bg)", color: "var(--color-success)", borderColor: "var(--color-success-border)" }
+          }
+        >
+          {tenantsCharged}
+        </div>
+      </div>
+
+      {hasActiveFees ? (
+        <>
+          <div className="uc-headline">
+            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-warning)" }}>
+              {formatRupeesCompact(lateFeeOutstanding)}
+            </span>{" "}
+            outstanding · {tenantsCharged} tenant{tenantsCharged !== 1 ? "s" : ""} charged
+          </div>
+          <div className="uc-rows">
+            <div className="uc-row">
+              <div>
+                <div className="uc-who">Accrued this period</div>
+                <div className="uc-meta">{feeCollectionRate}% collected</div>
+              </div>
+              <div className="uc-amt" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-strong)" }}>
+                {formatRupeesCompact(lateFeeAccrued)}
+              </div>
+            </div>
+            {lateFeeCollected > 0 && (
+              <div className="uc-row">
+                <div>
+                  <div className="uc-who">Collected so far</div>
+                  <div className="uc-meta">Late fee payments received</div>
+                </div>
+                <div className="uc-amt" style={{ fontFamily: "var(--font-mono)", color: "var(--color-success)" }}>
+                  {formatRupeesCompact(lateFeeCollected)}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="uc-actions">
+            <Link to="/rent-payment" className="uc-btn warn-out">
+              <Receipt className="w-3 h-3" />Collect fees
+            </Link>
+            <Link to="/tenant/allTenants" className="uc-btn ghost">
+              <ChevronRight className="w-3 h-3" />View tenants
+            </Link>
+          </div>
+        </>
+      ) : (
+        <div className="uc-empty" style={{ color: "var(--color-success)" }}>
+          No late fees outstanding this period
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Skeleton ──────────────────────────────────────────────────────────────
 function CardSkeleton() {
   return (
@@ -286,27 +373,29 @@ function CardSkeleton() {
 // ── Root panel ────────────────────────────────────────────────────────────
 export default function UrgentActionsPanel({ stats, arrears = [], loading }) {
   const maintenance = stats?.maintenance ?? [];
-  const contracts = stats?.contractsEndingSoon ?? [];
+  const contracts   = stats?.contractsEndingSoon ?? [];
+  const kpi         = stats?.kpi ?? {};
 
-  const overdueCount = arrears.filter(
+  const overdueCount      = arrears.filter(
     (a) => (a.consecutiveUnpaidMonths ?? 0) >= 2 || a.totalDuePaisa >= 5000_00,
   ).length;
   const maintOverdueCount = maintenance.filter((m) => daysOpen(m.createdAt) > 7).length;
-  const totalUrgent = overdueCount + maintOverdueCount + Math.min(contracts.length, 1);
+  const lateFeeCount      = (kpi.hasActiveFees && kpi.lateFeeTenantsCharged > 0) ? 1 : 0;
+  const totalUrgent       = overdueCount + maintOverdueCount + Math.min(contracts.length, 1) + lateFeeCount;
 
   return (
     <div className="urgent-panel">
       {/* panel header */}
       <div className="urgent-head">
         <div className="urgent-siren">
-          <Siren className="w-4 h-4"/>
+          <Siren className="w-4 h-4" />
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-base font-semibold leading-none" style={{ color: "var(--color-text-strong)" }}>
-            Urgent actions · Today
+            Attention · Today
           </h2>
           <p className="text-xs mt-0.5" style={{ color: "var(--color-text-sub)" }}>
-            Items needing a decision in the next 24 hours
+            Overdue rents · maintenance · late fees · lease renewals
           </p>
         </div>
         <div className="urgent-summary">
@@ -325,16 +414,17 @@ export default function UrgentActionsPanel({ stats, arrears = [], loading }) {
             <div className="urgent-stat-l">Total items</div>
           </div>
           <Link to="/maintenance" className="uc-btn ghost text-xs">
-            View all <ArrowRight className="w-3 h-3 inline-block ml-0.5"/>
+            View all <ArrowRight className="w-3 h-3 inline-block ml-0.5" />
           </Link>
         </div>
       </div>
 
-      {/* 3-column cards */}
+      {/* 4-column attention cards */}
       <div className="urgent-list">
-        <OverdueTenantsCard arrears={arrears} loading={loading}/>
-        <MaintenanceCard maintenance={maintenance} loading={loading}/>
-        <LeaseRenewalCard contracts={contracts} loading={loading}/>
+        <OverdueTenantsCard arrears={arrears} loading={loading} />
+        <MaintenanceCard maintenance={maintenance} loading={loading} />
+        <LateFeeCard kpi={kpi} loading={loading} />
+        <LeaseRenewalCard contracts={contracts} loading={loading} />
       </div>
     </div>
   );

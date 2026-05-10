@@ -131,3 +131,29 @@ export async function getNeaBills(propertyId) {
   }
   return result.data;
 }
+/**
+ * POST /api/electricity/nea-bill/:propertyId/:billId/pay
+ * @param {string} propertyId
+ * @param {string} billId
+ * @param {Object} body - paymentMethod, bankAccountId?, bankAccountCode?, paymentDate?, nepaliDate?, notes?
+ */
+export async function payNeaBill(propertyId, billId, body) {
+  const response = await api.post(
+    `/api/electricity/nea-bill/${propertyId}/${billId}/pay`,
+    body,
+  );
+  const result = response.data;
+  if (!result?.success) {
+    throw new Error(result?.message || "Failed to record NEA bill payment");
+  }
+  return result.data;
+}
+
+export async function parseNeaBillPdf(propertyId, formData) {
+  const res = await api.post(
+    `/api/electricity/nea-bill/${propertyId}/parse`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return res.data.data; // raw parsed fields
+}

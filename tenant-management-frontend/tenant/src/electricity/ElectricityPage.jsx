@@ -1,270 +1,243 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+
 import useProperty from "../hooks/use-property";
 import { useUnits } from "../hooks/use-units";
 import { useElectricityData } from "./hooks/useElectricityData";
 import { useNewElectricityRows } from "./hooks/useNewElectricityRows";
 import { useNeaBill } from "./hooks/useNeaBill";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { ElectricityKpiCards } from "./components/ElectricityKpiCards";
 import { ElectricityFilters } from "./components/ElectricityFilters";
 import { ElectricitySummaryCards } from "./components/ElectricitySummaryCards";
 import { ElectricityInsights } from "./components/ElectricityInsights";
 import { ElectricityTable } from "./components/ElectricityTable";
+import { NeaBillSection } from "./components/NeaBillSection";
+
 import ElectricityReadingDialog from "./components/ElectricityReadingDialog";
 import NeaBillUploadDialog from "./components/NeaBillUploadDialog";
+
 import {
   getConsumption,
   formatConsumption,
   getTrendPercent,
   deriveElectricityMetrics,
 } from "./utils/electricityCalculations";
+
 import {
   getCurrentBillingPeriod,
   labelForPeriod,
 } from "@/utils/nepaliDate";
+
 import { useHeaderSlot } from "../context/HeaderSlotContext";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PlusIcon, Download, Settings, Search, X, FileUp } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+
+import {
+  Plus,
+  Download,
+  Settings,
+  Search,
+  X,
+  FileUp,
+} from "lucide-react";
 
 function buildDefaultFilterValues() {
   const { nepaliYear, nepaliMonth } = getCurrentBillingPeriod();
-  return { blockId: "all", innerBlockId: "", month: nepaliMonth, year: nepaliYear };
+
+  return {
+    blockId: "all",
+    innerBlockId: "",
+    month: nepaliMonth,
+    year: nepaliYear,
+  };
 }
 
 export default function ElectricityPage() {
-  const { property } = useProperty();
-  const { units } = useUnits({ occupied: true });
   const navigate = useNavigate();
 
-  const [filterValues, setFilterValues] = useState(buildDefaultFilterValues);
-  const [activeTab, setActiveTab] = useState("all");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingReading, setEditingReading] = useState(null); // null = add mode
-  const [neaBillDialogOpen, setNeaBillDialogOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const { property } = useProperty();
+  const { units } = useUnits({ occupied: true });
 
-  // ── Derived property data ────────────────────────────────────────────────
-
-  const allBlocks = useMemo(() => {
-    if (!property || !Array.isArray(property)) return [];
-    return property.flatMap((prop) => prop.blocks ?? []);
-  }, [property]);
-
-  const selectedBlock = useMemo(
-    () => allBlocks.find((b) => b._id === filterValues.blockId),
-    [allBlocks, filterValues.blockId]
+  const [filterValues, setFilterValues] = useState(
+    buildDefaultFilterValues
   );
 
+  const [activeTab, setActiveTab] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingReading, setEditingReading] = useState(null);
+
+  const [neaBillDialogOpen, setNeaBillDialogOpen] =
+    useState(false);
+
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // ─────────────────────────────────────────────────────────
+  // Derived Data
+  // ─────────────────────────────────────────────────────────
+
+  const allBlocks = useMemo(() => {
+    if (!Array.isArray(property)) return [];
+
+    return property.flatMap((prop) => prop.blocks || []);
+  }, [property]);
+
+  const selectedBlock = useMemo(() => {
+    return allBlocks.find(
+      (block) => block._id === filterValues.blockId
+    );
+  }, [allBlocks, filterValues.blockId]);
+
   const propertyIdFromBlock = useMemo(() => {
-    if (!filterValues.blockId || filterValues.blockId === "all") return undefined;
-    if (!property || !Array.isArray(property)) return undefined;
-    for (const prop of property) {
-      if (prop.blocks?.some((b) => b._id === filterValues.blockId)) return prop._id;
+    if (
+      !filterValues.blockId ||
+      filterValues.blockId === "all"
+    ) {
+      return undefined;
     }
+
+    if (!Array.isArray(property)) return undefined;
+
+    for (const prop of property) {
+      const exists = prop.blocks?.some(
+        (block) => block._id === filterValues.blockId
+      );
+
+      if (exists) {
+        return prop._id;
+      }
+    }
+
     return undefined;
   }, [filterValues.blockId, property]);
 
-  const apiFilters = useMemo(
-    () => ({
-      propertyId: propertyIdFromBlock ?? undefined,
-      blockId: filterValues.blockId && filterValues.blockId !== "all" ? filterValues.blockId : undefined,
-      innerBlockId: filterValues.innerBlockId || undefined,
+  const apiFilters = useMemo(() => {
+    return {
+      propertyId: propertyIdFromBlock,
+      blockId:
+        filterValues.blockId !== "all"
+          ? filterValues.blockId
+          : undefined,
+
+      innerBlockId:
+        filterValues.innerBlockId || undefined,
+
       nepaliYear: filterValues.year,
       nepaliMonth: filterValues.month,
-      meterType: activeTab === "all" ? undefined : activeTab,
-      searchQuery: searchQuery.trim() || undefined,
-    }),
-    [
-      propertyIdFromBlock,
-      filterValues.blockId,
-      filterValues.innerBlockId,
-      filterValues.year,
-      filterValues.month,
-      activeTab,
-      searchQuery,
-    ]
-  );
 
-  // First property id — used for NEA bill upload + NEA bill fetch
+      meterType:
+        activeTab === "all" ? undefined : activeTab,
+
+      searchQuery:
+        searchQuery.trim() || undefined,
+    };
+  }, [
+    propertyIdFromBlock,
+    filterValues,
+    activeTab,
+    searchQuery,
+  ]);
+
   const firstPropertyId = useMemo(() => {
-    if (!Array.isArray(property) || property.length === 0) return null;
-    return property[0]?._id ?? null;
+    if (!Array.isArray(property) || property.length === 0) {
+      return null;
+    }
+
+    return property[0]?._id || null;
   }, [property]);
 
-  const { grouped, summary, loading, refetch } = useElectricityData(apiFilters);
+  const {
+    grouped,
+    summary,
+    loading,
+    refetch,
+  } = useElectricityData(apiFilters);
 
-  // Fetch current month's NEA bill for loss detection in insights
-  const { bills: neaBills, fetchBills: fetchNeaBills } = useNeaBill(firstPropertyId);
+  const {
+    bills: neaBills,
+    loading: neaBillsLoading,
+    paying: neaBillPaying,
+    fetchBills: fetchNeaBills,
+    payBill: payNeaBill,
+  } = useNeaBill(firstPropertyId);
+
   useEffect(() => {
-    if (firstPropertyId) fetchNeaBills();
+    if (firstPropertyId) {
+      fetchNeaBills();
+    }
   }, [firstPropertyId, fetchNeaBills]);
 
   const currentNeaBill = useMemo(() => {
     if (!neaBills.length) return null;
-    return neaBills.find(
-      (b) => b.nepaliYear === filterValues.year && b.nepaliMonth === filterValues.month
-    ) ?? null;
-  }, [neaBills, filterValues.year, filterValues.month]);
 
-  const { readings, countsByType } = useMemo(
-    () => deriveElectricityMetrics(grouped, activeTab),
-    [grouped, activeTab]
-  );
+    return (
+      neaBills.find(
+        (bill) =>
+          bill.nepaliYear === filterValues.year &&
+          bill.nepaliMonth === filterValues.month
+      ) || null
+    );
+  }, [neaBills, filterValues]);
 
-  const { newRows, updateNewRow, removeNewRow } = useNewElectricityRows({
+  const { readings, countsByType } = useMemo(() => {
+    return deriveElectricityMetrics(
+      grouped,
+      activeTab
+    );
+  }, [grouped, activeTab]);
+
+  const {
+    newRows,
+    updateNewRow,
+    removeNewRow,
+  } = useNewElectricityRows({
     readings,
     units: Array.isArray(units) ? units : [],
   });
 
-  const availableInnerBlocks = useMemo(
-    () => (Array.isArray(selectedBlock?.innerBlocks) ? selectedBlock.innerBlocks : []),
-    [selectedBlock]
+  const availableInnerBlocks = useMemo(() => {
+    return Array.isArray(selectedBlock?.innerBlocks)
+      ? selectedBlock.innerBlocks
+      : [];
+  }, [selectedBlock]);
+
+  // ─────────────────────────────────────────────────────────
+  // Handlers
+  // ─────────────────────────────────────────────────────────
+
+  const handleFilterChange = useCallback(
+    (field, value) => {
+      setFilterValues((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
+
+      setCurrentPage(1);
+    },
+    []
   );
-
-  // ── Handlers ─────────────────────────────────────────────────────────────
-
-  const handleFilterChange = useCallback((field, value) => {
-    setFilterValues((prev) => ({ ...prev, [field]: value }));
-    setCurrentPage(1);
-  }, []);
 
   const handleTabChange = useCallback((tab) => {
     setActiveTab(tab);
     setCurrentPage(1);
   }, []);
-
-  const periodLabel = useMemo(
-    () => labelForPeriod({ nepaliYear: filterValues.year, nepaliMonth: filterValues.month }),
-    [filterValues.month, filterValues.year]
-  );
-
-  // ── Export ────────────────────────────────────────────────────────────────
-
-  const handleExportReport = useCallback(() => {
-    if (!readings.length) {
-      toast.error("No readings to export.");
-      return;
-    }
-    const escapeCsv = (val) => {
-      const s = String(val ?? "");
-      if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-      return s;
-    };
-
-    const rows = [];
-    rows.push("Electricity Report", periodLabel, "");
-    rows.push("Total Readings,Total Consumption (kWh),Total Amount (Rs)");
-    rows.push(
-      [summary.totalReadings ?? 0, summary.grandTotalUnits ?? 0, summary.grandTotalAmount ?? 0].join(",")
-    );
-    rows.push("");
-    rows.push("Meter Type,Unit/Meter Name,Previous (kWh),Current (kWh),Consumption (kWh),Status,Trend (%)");
-
-    readings.forEach((record, index) => {
-      const name =
-        record.unit?.name ?? record.unit?.unitName ?? record.subMeter?.name ?? `Row ${index + 1}`;
-      const prev = Number(record.previousReading) || 0;
-      const curr = Number(record.currentReading) || 0;
-      const consumption = Number(record.unitsConsumed) || getConsumption(record);
-      const status = record.status || "pending";
-      const trend = getTrendPercent(consumption, prev);
-      const trendSign = parseFloat(trend) > 0 ? "+" : "";
-      rows.push(
-        [
-          escapeCsv(record.meterType ?? "unit"),
-          escapeCsv(name),
-          prev > 0 ? prev.toFixed(1) : "",
-          curr > 0 ? curr.toFixed(1) : "",
-          consumption > 0 ? formatConsumption(consumption) : "",
-          status,
-          prev > 0 ? `${trendSign}${trend}` : "",
-        ].join(",")
-      );
-    });
-
-    const csv = rows.join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `electricity-report-${periodLabel.replace(/\s+/g, "-")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Report exported.");
-  }, [readings, summary, periodLabel]);
-
-  // ── Header slot ───────────────────────────────────────────────────────────
-
-  useHeaderSlot(
-    () => (
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}>
-        <div style={{ flex: 1, maxWidth: "400px", position: "relative" }}>
-          <Search
-            style={{
-              position: "absolute",
-              left: "10px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              width: "14px",
-              height: "14px",
-              color: "var(--color-text-sub)",
-              pointerEvents: "none",
-            }}
-          />
-          <Input
-            type="text"
-            placeholder="Search by unit, area, or status…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ height: "34px", paddingLeft: "32px", paddingRight: searchQuery ? "32px" : "12px", fontSize: "13px" }}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              style={{
-                position: "absolute",
-                right: "8px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--color-text-sub)",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <X style={{ width: "13px", height: "13px" }} />
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}>
-          <Button type="button" size="sm" onClick={handleOpenAddReading}>
-            <PlusIcon style={{ width: "12px", height: "12px" }} />
-            <span className="hidden sm:inline" style={{ marginLeft: "6px" }}>Add Reading</span>
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => setNeaBillDialogOpen(true)}>
-            <FileUp style={{ width: "12px", height: "12px" }} />
-            <span className="hidden sm:inline" style={{ marginLeft: "6px" }}>NEA Bill</span>
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={handleExportReport}>
-            <Download style={{ width: "12px", height: "12px" }} />
-            <span className="hidden sm:inline" style={{ marginLeft: "6px" }}>Export</span>
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => navigate("/submeter")}>
-            <Settings style={{ width: "12px", height: "12px" }} />
-            <span className="hidden sm:inline" style={{ marginLeft: "6px" }}>Submeters</span>
-          </Button>
-        </div>
-      </div>
-    ),
-    [searchQuery, handleExportReport, navigate]
-  );
 
   const handleOpenAddReading = useCallback(() => {
     setEditingReading(null);
@@ -276,27 +249,201 @@ export default function ElectricityPage() {
     setDialogOpen(true);
   }, []);
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  //
-  // Layout strategy:
-  //   The page fills the remaining viewport height (100dvh minus header height).
-  //   The upper section (KPIs + filters + summary + insights) has a fixed natural
-  //   height. The table below is flex: 1, so it takes all remaining space and
-  //   scrolls internally — the user never needs to scroll the page itself.
+  const periodLabel = useMemo(() => {
+    return labelForPeriod({
+      nepaliYear: filterValues.year,
+      nepaliMonth: filterValues.month,
+    });
+  }, [filterValues]);
+
+  // ─────────────────────────────────────────────────────────
+  // Export
+  // ─────────────────────────────────────────────────────────
+
+  const handleExportReport = useCallback(() => {
+    if (!readings.length) {
+      toast.error("No readings to export.");
+      return;
+    }
+
+    const escapeCsv = (value) => {
+      const str = String(value || "");
+
+      if (/[",\n\r]/.test(str)) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+
+      return str;
+    };
+
+    const rows = [];
+
+    rows.push("Electricity Report", periodLabel, "");
+
+    rows.push(
+      "Total Readings,Total Consumption (kWh),Total Amount (Rs)"
+    );
+
+    rows.push(
+      [
+        summary.totalReadings || 0,
+        summary.grandTotalUnits || 0,
+        summary.grandTotalAmount || 0,
+      ].join(",")
+    );
+
+    rows.push("");
+
+    rows.push(
+      "Meter Type,Unit Name,Previous,Current,Consumption,Status,Trend"
+    );
+
+    readings.forEach((record, index) => {
+      const name =
+        record.unit?.name ||
+        record.unit?.unitName ||
+        record.subMeter?.name ||
+        `Row ${index + 1}`;
+
+      const previous =
+        Number(record.previousReading) || 0;
+
+      const current =
+        Number(record.currentReading) || 0;
+
+      const consumption =
+        Number(record.unitsConsumed) ||
+        getConsumption(record);
+
+      const trend = getTrendPercent(
+        consumption,
+        previous
+      );
+
+      const trendSign =
+        parseFloat(trend) > 0 ? "+" : "";
+
+      rows.push(
+        [
+          escapeCsv(record.meterType || "unit"),
+          escapeCsv(name),
+          previous || "",
+          current || "",
+          formatConsumption(consumption),
+          record.status || "pending",
+          `${trendSign}${trend}`,
+        ].join(",")
+      );
+    });
+
+    const csv = rows.join("\n");
+
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+
+    a.href = url;
+
+    a.download = `electricity-report-${periodLabel}.csv`;
+
+    a.click();
+
+    URL.revokeObjectURL(url);
+
+    toast.success("Report exported.");
+  }, [readings, summary, periodLabel]);
+
+  // ─────────────────────────────────────────────────────────
+  // Header Slot
+  // ─────────────────────────────────────────────────────────
+
+  useHeaderSlot(
+    () => (
+      <div className="flex w-full items-center gap-2">
+        {/* Search */}
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+
+          <Input
+            type="text"
+            placeholder="Search by unit, area, or status..."
+            value={searchQuery}
+            onChange={(e) =>
+              setSearchQuery(e.target.value)
+            }
+            className="h-9 pl-9 pr-9 text-sm"
+          />
+
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center justify-center text-muted-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+           
+            onClick={handleOpenAddReading}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">
+              Add Reading
+            </span>
+          </Button>
+
+ <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline">
+          More
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setNeaBillDialogOpen(true)}>
+          NEA Bill
+        </DropdownMenuItem>
+
+        <DropdownMenuItem onClick={handleExportReport}>
+          Export
+        </DropdownMenuItem>
+
+        <DropdownMenuItem onClick={() => navigate("/submeter")}>
+          Submeters
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+        </div>
+      </div>
+    ),
+    [searchQuery, handleExportReport, navigate]
+  );
+
+  // ─────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",           // fills the content area below the app header
-        minHeight: 0,
-        backgroundColor: "var(--color-background)",
-      }}
-    >
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      {/* Dialogs */}
       <ElectricityReadingDialog
         open={dialogOpen}
-        onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingReading(null); }}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+
+          if (!open) {
+            setEditingReading(null);
+          }
+        }}
         allBlocks={allBlocks}
         property={property}
         editingReading={editingReading}
@@ -310,120 +457,97 @@ export default function ElectricityPage() {
         onUploaded={fetchNeaBills}
       />
 
-      {/* ── Fixed upper section ──────────────────────────────────────────────── */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: "16px 20px 12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "10px",
-        }}
-      >
-        {/* Page title row */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: "16px",
-            flexWrap: "wrap",
-          }}
-        >
+      {/* Top Section */}
+      <div className="flex shrink-0 flex-col gap-3 px-5 pb-3 pt-4">
+        {/* Header */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1
-              style={{
-                fontSize: "20px",
-                fontWeight: 700,
-                color: "var(--color-text-strong)",
-                letterSpacing: "-0.02em",
-                margin: 0,
-              }}
-            >
+            <h1 className="text-xl font-bold tracking-tight">
               Electricity
             </h1>
-            <p style={{ fontSize: "13px", color: "var(--color-text-sub)", marginTop: "2px" }}>
+
+            <p className="mt-1 text-sm text-muted-foreground">
               Consumption, billing and meter readings
             </p>
           </div>
+
           {periodLabel && (
-            <div
-              style={{
-                backgroundColor: "var(--color-surface-raised)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-md)",
-                padding: "6px 14px",
-                textAlign: "right",
-              }}
-            >
-              <p
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.07em",
-                  color: "var(--color-text-sub)",
-                  marginBottom: "2px",
-                }}
-              >
+            <div className="rounded-md border bg-muted/40 px-4 py-2 text-right">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 Current Period
               </p>
-              <p style={{ fontSize: "14px", fontWeight: 700, color: "var(--color-text-strong)" }}>
+
+              <p className="text-sm font-bold">
                 {periodLabel}
               </p>
             </div>
           )}
         </div>
 
-        {/* KPIs */}
-        <ElectricityKpiCards grouped={grouped} summary={summary} />
+        {/* KPI */}
+        <ElectricityKpiCards
+          grouped={grouped}
+          summary={summary}
+        />
 
         {/* Filters */}
         <ElectricityFilters
           filterValues={filterValues}
           onChange={handleFilterChange}
           allBlocks={allBlocks}
-          availableInnerBlocks={availableInnerBlocks}
+          availableInnerBlocks={
+            availableInnerBlocks
+          }
         />
 
         {/* Summary */}
-        <ElectricitySummaryCards grouped={grouped} summary={summary} />
+        <ElectricitySummaryCards
+          grouped={grouped}
+          summary={summary}
+        />
 
-        {/* Insights — full-width row below summary */}
-        <ElectricityInsights grouped={grouped} neaBill={currentNeaBill} />
+        {/* Insights */}
+        <ElectricityInsights
+          grouped={grouped}
+          neaBill={currentNeaBill}
+        />
 
-        {/* Search result banner */}
+        {/* NEA Bill + Meter Readings — two-tab module */}
+        <NeaBillSection
+          bill={currentNeaBill}
+          bills={neaBills}
+          grouped={grouped}
+          loading={neaBillsLoading}
+          onPay={payNeaBill}
+          paying={neaBillPaying}
+          onUpload={() => setNeaBillDialogOpen(true)}
+        />
+
+        {/* Search Banner */}
         {searchQuery && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              backgroundColor: "var(--color-surface-raised)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)",
-              padding: "8px 14px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Search style={{ width: "13px", height: "13px", color: "var(--color-text-sub)" }} />
-              <p style={{ fontSize: "13px", color: "var(--color-text-body)" }}>
-                <span style={{ fontWeight: 700 }}>{readings.length}</span> result
-                {readings.length !== 1 ? "s" : ""} for{" "}
-                <span style={{ fontWeight: 600, color: "var(--color-accent)" }}>"{searchQuery}"</span>
+          <div className="flex items-center justify-between rounded-md border bg-muted/40 px-4 py-2">
+            <div className="flex items-center gap-2">
+              <Search className="h-3.5 w-3.5 text-muted-foreground" />
+
+              <p className="text-sm">
+                <span className="font-bold">
+                  {readings.length}
+                </span>{" "}
+                result
+                {readings.length !== 1
+                  ? "s"
+                  : ""}{" "}
+                for{" "}
+                <span className="font-semibold text-primary">
+                  "{searchQuery}"
+                </span>
               </p>
             </div>
+
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              style={{
-                background: "none",
-                border: "none",
-                fontSize: "12px",
-                cursor: "pointer",
-                color: "var(--color-text-sub)",
-                textDecoration: "underline",
-              }}
+              className="text-xs text-muted-foreground underline"
             >
               Clear
             </button>
@@ -431,21 +555,15 @@ export default function ElectricityPage() {
         )}
       </div>
 
-      {/* ── Table — fills all remaining height, scrolls internally ─────────── */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          padding: "0 20px 16px",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
+      {/* Table */}
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-4">
         <ElectricityTable
           loading={loading}
           readings={readings}
           newRows={newRows}
-          units={Array.isArray(units) ? units : []}
+          units={
+            Array.isArray(units) ? units : []
+          }
           activeTab={activeTab}
           onTabChange={handleTabChange}
           currentPage={currentPage}

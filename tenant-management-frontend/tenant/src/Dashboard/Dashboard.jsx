@@ -6,11 +6,11 @@ import KpiStrip from "./component/KpiStrip";
 import RecentActivities from "./component/RecentActivities";
 import UrgentActionsPanel from "./component/UrgentActionsPanel";
 import BookedVsEarnedPanel from "./component/BookedVsEarnedPanel";
-import CashForecastPanel from "./component/CashForecastPanel";
 import DuesAgingPanel from "./component/DuesAgingPanel";
 import VacancyPipelinePanel from "./component/VacancyPipelinePanel";
 import MaintenanceHealthPanel from "./component/MaintenanceHealthPanel";
 import ExpenseBreakdownPanel from "./component/ExpenseBreakdownPanel";
+import RevenueSummaryBanner from "./component/RevenueSummaryBanner";
 import { useTime } from "./hooks/UseTime";
 import { useStats } from "./hooks/UseStats";
 import { useArrearsData } from "./hooks/useArrearsData";
@@ -72,20 +72,7 @@ export default function Dashboard() {
         <h1 className="text-2xl sm:text-3xl font-bold leading-none tracking-tight text-foreground">
           Property Overview
         </h1>
-        {stats && (
-          <p className="text-sm mt-1.5" style={{ color: "var(--color-text-sub)" }}>
-            {stats.kpi?.totalUnits ?? 0} units ·{" "}
-            <span style={{ fontWeight: 600, color: (stats.kpi?.collectionRate ?? 0) >= 80 ? "var(--color-success)" : "var(--color-warning)" }}>
-              {stats.kpi?.collectionRate ?? 0}%
-            </span>{" "}
-            collection efficiency
-            {(stats.attention?.urgentCount ?? 0) > 0 && (
-              <span style={{ color: "var(--color-danger)", fontWeight: 600, marginLeft: 8 }}>
-                · {stats.attention.urgentCount} critical item{stats.attention.urgentCount !== 1 ? "s" : ""}
-              </span>
-            )}
-          </p>
-        )}
+       
       </div>
       <div className="relative shrink-0">
         <button
@@ -104,8 +91,10 @@ export default function Dashboard() {
           />
         </button>
         {fyOpen && (
-          <div className="absolute right-0 top-full mt-1.5 z-30 rounded-xl border
-                          border-border overflow-hidden shadow-lg bg-card min-w-[164px]">
+          <div
+            className="absolute right-0 top-full mt-1.5 z-30 rounded-xl border
+                        border-border overflow-hidden shadow-lg bg-card min-w-[164px]"
+          >
             {["thisYear", "lastYear"].map((p) => (
               <button
                 key={p}
@@ -120,7 +109,9 @@ export default function Dashboard() {
               >
                 <span>{FY_LABELS[p]}</span>
                 {period === p && (
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">Active</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">
+                    Active
+                  </span>
                 )}
               </button>
             ))}
@@ -135,8 +126,10 @@ export default function Dashboard() {
 
   // ── Error banner ───────────────────────────────────────────────────────────
   const ErrorBanner = error && !loading && (
-    <div className="mx-4 sm:mx-5 mb-2 flex items-center justify-between gap-3 shrink-0
-                    rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5">
+    <div
+      className="mx-4 sm:mx-5 mb-2 flex items-center justify-between gap-3 shrink-0
+                  rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5"
+    >
       <p className="text-sm font-medium text-destructive">{error}</p>
       <button
         onClick={refetch}
@@ -170,47 +163,27 @@ export default function Dashboard() {
       {(stats || !loading) && (
         <div className="px-3 sm:px-4 lg:px-5 pb-8 flex flex-col gap-4">
 
-          {/* KPI Strip — full width */}
+          {/* Row 1: Revenue composition banner */}
+          <RevenueSummaryBanner stats={stats} loading={loading} />
+
+          {/* Row 2: KPI strip — collection, tenant status, occupancy, attention */}
           <KpiStrip stats={stats} loading={loading} />
 
-          {/* Urgent Actions — full width */}
-          <UrgentActionsPanel
-            stats={stats}
-            arrears={arrears}
-            loading={loading || arrearsLoading}
-          />
+     
 
-          {/* Row 2: Booked vs Earned (8 cols) + Cash Forecast (4 cols) */}
+          {/* Row 4: Booked vs Earned chart (8 cols) + Cash/Dues snapshot (4 cols) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             <div className="lg:col-span-8 dash-panel">
               <BookedVsEarnedPanel stats={stats} loading={loading} />
             </div>
             <div className="lg:col-span-4 dash-panel">
-              <CashForecastPanel stats={stats} loading={loading} />
-            </div>
-          </div>
-
-          {/* Row 3: Dues Aging (5 cols) + Vacancy Pipeline (7 cols) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-5 dash-panel">
               <DuesAgingPanel arrears={arrears} loading={arrearsLoading} />
             </div>
-            <div className="lg:col-span-7 dash-panel">
-              <VacancyPipelinePanel stats={stats} loading={loading} />
-            </div>
           </div>
 
-          {/* Row 4: Maintenance (7 cols) + Breakdown (5 cols) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-7 dash-panel">
-              <MaintenanceHealthPanel stats={stats} loading={loading} />
-            </div>
-            <div className="lg:col-span-5 dash-panel">
-              <ExpenseBreakdownPanel stats={stats} loading={loading} />
-            </div>
-          </div>
+      
 
-          {/* Recent Activity — full width */}
+          {/* Row 6: Recent Activity — full width */}
           <div className="rounded-2xl border border-border bg-card shadow-sm">
             <RecentActivities stats={stats} loading={loading} error={error} />
           </div>
