@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useProfitLoss } from "../../hooks/useProfitLoss";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK, fmtN } from "../../utils/formatter";
+import { fmtK, fmtN } from "../../../utils/formatter";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {

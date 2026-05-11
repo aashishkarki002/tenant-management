@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import SectionToggle from "../SectionToggle";
 import { Skeleton, ProgBar } from "../AccountingPrimitives";
-import { fmtK } from "../../utils/formatter";
+
 import {
     AlertCircleIcon,
     AlertTriangleIcon,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import api from "../../../../plugins/axios";
+import { fmtK } from "../../../utils/formatter";
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const T = {
@@ -59,14 +60,16 @@ function agingBucket(dateStr) {
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
-function useLiabilities() {
+function useLiabilities(entityId = null) {
     const [all, setAll] = useState([]);
     const [loading, setLoading] = useState(false);
 
     const fetch = useCallback(async () => {
         try {
             setLoading(true);
-            const res = await api.get("/api/liabilities");
+            const params = {};
+            if (entityId) params.entityId = entityId;
+            const res = await api.get("/api/liabilities", { params });
             setAll(res.data?.data ?? []);
         } catch (err) {
             console.error("[useLiabilities]", err);
@@ -74,7 +77,7 @@ function useLiabilities() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [entityId]);
 
     useEffect(() => { fetch(); }, [fetch]);
     return { all, loading, refetch: fetch };
@@ -593,7 +596,8 @@ function DepositsContent({ all, loading }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function LiabilitiesTab() {
     const [activeTab, setActiveTab] = useState("overview");
-    const { all, loading, refetch } = useLiabilities();
+  
+    const { all, loading, refetch } = useLiabilities(activeEntityId);
     const overdueCount = all.filter(l => agingBucket(l.date).label === "90+ days").length;
 
     return (

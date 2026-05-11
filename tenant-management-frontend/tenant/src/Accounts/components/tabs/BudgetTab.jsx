@@ -4,10 +4,7 @@ import { useBudget } from "../../hooks/useBudget";
 import { useEntity } from "../../../context/EntityContext";
 import NepaliDate from "nepali-datetime";
 
-function fmtPaisa(p = 0) {
-  const sign = p < 0 ? "−" : "";
-  return `${sign}Rs ${(Math.abs(p) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { fmtRs } from "../../../utils/formatter";
 
 function pct(actual, budget) {
   if (!budget) return null;
@@ -15,10 +12,10 @@ function pct(actual, budget) {
 }
 
 export default function BudgetTab() {
-  const { selectedEntity } = useEntity();
+  const { activeEntityId } = useEntity();
   const currentYear = new NepaliDate(new Date()).getYear();
   const [fiscalYear, setFiscalYear] = useState(currentYear);
-  const { lines, vsActual, loading, error, refetch, upsert, remove } = useBudget(selectedEntity?.id ?? null, fiscalYear);
+  const { lines, vsActual, loading, error, refetch, upsert, remove } = useBudget(activeEntityId ?? null, fiscalYear);
 
   const [form, setForm] = useState({ accountCode: "", accountName: "", accountType: "EXPENSE", budgetedAmountPaisa: "" });
   const [saving, setSaving] = useState(false);
@@ -30,7 +27,7 @@ export default function BudgetTab() {
       setSaving(true);
       setFormError(null);
       await upsert({
-        entityId: selectedEntity?.id,
+        entityId: activeEntityId,
         fiscalYear,
         accountCode: form.accountCode,
         accountName: form.accountName,
@@ -117,10 +114,10 @@ export default function BudgetTab() {
                       <td className="py-2 pr-4 text-xs font-mono text-[var(--color-text-sub)]">{l.accountCode}</td>
                       <td className="py-2 pr-4 text-xs text-[var(--color-text)]">{l.accountName}</td>
                       <td className="py-2 pr-4 text-xs text-[var(--color-text-sub)]">{l.accountType}</td>
-                      <td className="py-2 pr-4 text-right text-xs font-mono">{fmtPaisa(l.budgetedAmountPaisa)}</td>
-                      <td className="py-2 pr-4 text-right text-xs font-mono">{fmtPaisa(l.actualPaisa)}</td>
+                      <td className="py-2 pr-4 text-right text-xs font-mono">{fmtRs(l.budgetedAmountPaisa)}</td>
+                      <td className="py-2 pr-4 text-right text-xs font-mono">{fmtRs(l.actualPaisa)}</td>
                       <td className="py-2 pr-4 text-right text-xs font-mono font-semibold" style={{ color: over ? "var(--color-danger)" : "var(--color-success)" }}>
-                        {fmtPaisa(Math.abs(variance))} {over ? "↑" : "↓"}
+                        {fmtRs(Math.abs(variance))} {over ? "↑" : "↓"}
                       </td>
                       <td className="py-2 text-right text-xs font-mono">{p != null ? `${p}%` : "—"}</td>
                     </tr>

@@ -6,10 +6,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, CreditCard, Eye, Pencil, FileText, Loader2 } from "lucide-react";
+import { MoreHorizontal, Eye, Pencil, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getConsumption, formatConsumption } from "../utils/electricityCalculations";
-import ElectricityPaymentDialog from "./ElectricityPaymentDialog";
 import { generateBill } from "../utils/electricityApi";
 import { useNavigate } from "react-router-dom";
 
@@ -47,8 +46,6 @@ const FALLBACK_STATUS = {
   rowBg: "transparent",
 };
 
-const PAYABLE_STATUSES = new Set(["pending", "partially_paid", "overdue"]);
-
 const fmtRs = (n) =>
   `Rs ${Number(n).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
 
@@ -78,8 +75,7 @@ const TD = ({ children, style = {} }) => (
   </td>
 );
 
-export function ElectricityTableRow({ record, index, onPaymentRecorded, onEditReading }) {
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+export function ElectricityTableRow({ record, index, onEditReading }) {
   const [generatingBill, setGeneratingBill] = useState(false);
   const [billPath, setBillPath] = useState(record.bill?.ftpPath ?? null);
   const navigate = useNavigate();
@@ -101,12 +97,6 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded, onEditRe
 
   const totalAmount = Number(record.totalAmount) || 0;
   const paidAmount = Number(record.paidAmount) || 0;
-  const remainingAmount =
-    record.remainingAmount != null
-      ? Number(record.remainingAmount)
-      : Math.max(0, totalAmount - paidAmount);
-
-  const isPayable = remainingAmount > 0 && PAYABLE_STATUSES.has(status);
 
   const handleViewDetails = useCallback(() => {
     if (record.tenant?._id) navigate(`/tenant/viewDetail/${record.tenant._id}`);
@@ -233,30 +223,6 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded, onEditRe
         {/* Actions */}
         <TD>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "flex-end" }}>
-            {isPayable && (
-              <button
-                type="button"
-                onClick={() => setPaymentDialogOpen(true)}
-                style={{
-                  height: "26px",
-                  padding: "0 10px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  borderRadius: "var(--radius-md)",
-                  border: "none",
-                  backgroundColor: "var(--color-accent)",
-                  color: "#fff",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <CreditCard style={{ width: "11px", height: "11px" }} />
-                Pay
-              </button>
-            )}
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -319,16 +285,6 @@ export function ElectricityTableRow({ record, index, onPaymentRecorded, onEditRe
         </TD>
       </tr>
 
-      <ElectricityPaymentDialog
-        paymentDialogOpen={paymentDialogOpen}
-        setPaymentDialogOpen={setPaymentDialogOpen}
-        unitName={unitName}
-        record={record}
-        totalAmount={totalAmount}
-        paidAmount={paidAmount}
-        remainingAmount={remainingAmount}
-        onPaymentRecorded={onPaymentRecorded}
-      />
     </>
   );
 }

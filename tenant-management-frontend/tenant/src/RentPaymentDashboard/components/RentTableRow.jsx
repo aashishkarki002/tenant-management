@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, MoreHorizontal } from "lucide-react";
+import { AlertTriangle, MoreHorizontal, Zap } from "lucide-react";
 import { TableRow, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -38,6 +38,7 @@ export const RentTableRow = ({
   rent,
   cams,
   bankAccounts,
+  electricityRecords = [],
   onOpenPaymentDialog,
   onRefresh,
   selected,
@@ -87,7 +88,15 @@ export const RentTableRow = ({
     rent.lateFeePaisa > 0 &&
     rent.lateFeeStatus !== "paid";
 
-  const isFullySettled = rent.status === "paid" && !hasOutstandingLateFee;
+  // Compute total electricity still due for this tenant/month
+  const totalElectricityDue = electricityRecords.reduce((sum, r) => {
+    const remaining =
+      r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0));
+    return sum + remaining;
+  }, 0);
+
+  const isFullySettled =
+    rent.status === "paid" && !hasOutstandingLateFee && totalElectricityDue <= 0;
 
   const propertyName = rent.block?.name || rent.innerBlock?.name || "";
   const unitNames =
@@ -115,14 +124,19 @@ export const RentTableRow = ({
     if (showPrevBalance) {
       setArrearsOpen(true);
     } else {
-      onOpenPaymentDialog(rent);
+      onOpenPaymentDialog(rent, electricityRecords);
     }
   };
 
-  const payLabel =
-    rent.status === "paid" && hasOutstandingLateFee ? "Record fee payment" : "Record payment";
+  // Dynamic button label based on what's outstanding
+  let payLabel = "Record payment";
+  if (rent.status === "paid" && hasOutstandingLateFee) {
+    payLabel = "Record fee payment";
+  } else if (rent.status === "paid" && !hasOutstandingLateFee && totalElectricityDue > 0) {
+    payLabel = "Record electricity payment";
+  }
 
-const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   return (
     <TableRow
@@ -185,10 +199,27 @@ const [dropdownOpen, setDropdownOpen] = useState(false);
         </div>
       </TableCell>
 
+      {/* Electricity */}
+      <TableCell className="whitespace-nowrap py-3 tabular-nums text-sm text-right">
+        {totalElectricityDue > 0 ? (
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-amber-600 dark:text-amber-400 font-medium">
+              {fmtRs(totalElectricityDue)}
+            </span>
+            <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5">
+              <Zap className="size-2.5" />
+              {electricityRecords.length} unit{electricityRecords.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+        ) : (
+          <span className="text-muted-foreground/40 text-xs">—</span>
+        )}
+      </TableCell>
+
       {/* Total */}
       <TableCell className="whitespace-nowrap py-3 text-right">
         <span className="tabular-nums text-sm font-semibold text-foreground">
-          {fmtRs(totalDue)}
+          {fmtRs(totalDue + totalElectricityDue)}
         </span>
       </TableCell>
 
@@ -211,50 +242,48 @@ const [dropdownOpen, setDropdownOpen] = useState(false);
             <Button
               type="button"
               onClick={handlePay}
-              className="h-6 px-2 rounded text-xs font-medium   transition-colors"
+              className="h-6 px-2 rounded text-xs font-medium transition-colors"
             >
               {payLabel}
             </Button>
           )}
 
-     
-            <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-  "h-6 w-6 text-muted-foreground/60 hover:text-foreground transition-opacity",
-  dropdownOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-)}
-                  aria-label="More actions"
+          <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-6 w-6 text-muted-foreground/60 hover:text-foreground transition-opacity",
+                  dropdownOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}
+                aria-label="More actions"
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {tenantId && (
+                <DropdownMenuItem
+                  className="text-xs"
+                  onClick={() => navigate(`/tenant/viewDetail/${tenantId}`)}
                 >
-                  <MoreHorizontal className="size-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {tenantId && (
-                  <DropdownMenuItem
-                    className="text-xs"
-                    onClick={() => navigate(`/tenant/viewDetail/${tenantId}`)}
-                  >
-                    View tenant
-                  </DropdownMenuItem>
-                )}
-                {tenantId && hasTds && <DropdownMenuSeparator />}
-                {hasTds && (
-                  <DropdownMenuItem
-                    className="text-xs"
-                    disabled={certLoading}
-                    onClick={handleDownloadTdsCert}
-                  >
-                    {certLoading ? "Generating…" : "Download TDS Certificate"}
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-      
+                  View tenant
+                </DropdownMenuItem>
+              )}
+              {tenantId && hasTds && <DropdownMenuSeparator />}
+              {hasTds && (
+                <DropdownMenuItem
+                  className="text-xs"
+                  disabled={certLoading}
+                  onClick={handleDownloadTdsCert}
+                >
+                  {certLoading ? "Generating…" : "Download TDS Certificate"}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {showPrevBalance && (

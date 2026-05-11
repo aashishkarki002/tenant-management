@@ -78,9 +78,9 @@ function AccountRow({ row }) {
 }
 
 export default function TrialBalanceTab({ filterProps = {} }) {
-  const { selectedEntity } = useEntity();
+  const { activeEntityId } = useEntity();
   const { data, loading, error, refetch } = useTrialBalance(
-    selectedEntity?.id ?? null,
+    activeEntityId ?? null,
     filterProps,
   );
 

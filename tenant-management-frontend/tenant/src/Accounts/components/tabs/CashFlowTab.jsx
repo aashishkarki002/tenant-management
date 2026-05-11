@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK, fmtN } from "../../utils/formatter";
+import { fmtRs } from "../../../utils/formatter";
 const C = {
     inflow: "var(--color-info)",
     outflow: "var(--color-warning)",
@@ -74,11 +74,11 @@ function StatementRow({ label, amount, pct, color, isTotal = false, loading }) {
                     className={`tabular-nums font-bold leading-none ${isTotal ? "text-[15px]" : "text-[12px]"}`}
                     style={{ color }}
                 >
-                    RS {fmtK(Math.abs(amount))}
+                    RS {fmtRs(Math.abs(amount))}
                 </div>
                 {!isTotal && (
                     <div className="text-[9px] mt-0.5 tabular-nums" style={{ color: C.sub }}>
-                        RS {fmtN(Math.abs(amount))}
+                        RS {fmtRs(Math.abs(amount))}
                     </div>
                 )}
             </div>
@@ -159,7 +159,7 @@ function WaterfallChart({ inflows, outflows, totalIn, totalOut, net, loading }) 
                                     {label}
                                 </div>
                                 <div className="text-[13px] font-black text-white tabular-nums">
-                                    RS {fmtN(v?.value ?? 0)}
+                                    RS {fmtRs(v?.value ?? 0)}
                                 </div>
                             </div>
                         );
@@ -198,14 +198,14 @@ function TrendChip({ chartData, loading }) {
             <div>
                 <div className="text-[9px] font-bold tracking-[0.12em] uppercase mb-0.5" style={{ color: C.sub }}>Best month</div>
                 <div className="text-[14px] font-bold tabular-nums" style={{ color: C.inflow }}>
-                    RS {fmtK(Math.max(...chartData.map(d => d.revenue ?? 0)))}
+                    RS {fmtRs(Math.max(...chartData.map(d => d.revenue ?? 0)))}
                 </div>
             </div>
             <div className="w-px h-10 self-center" style={{ background: C.border }} />
             <div>
                 <div className="text-[9px] font-bold tracking-[0.12em] uppercase mb-0.5" style={{ color: C.sub }}>Highest spend</div>
                 <div className="text-[14px] font-bold tabular-nums" style={{ color: C.outflow }}>
-                    RS {fmtK(Math.max(...chartData.map(d => d.expenses ?? 0)))}
+                    RS {fmtRs(Math.max(...chartData.map(d => d.expenses ?? 0)))}
                 </div>
             </div>
         </div>
@@ -269,10 +269,10 @@ export default function CashFlowTab({
                         ) : (
                             <>
                                 <div className="text-[22px] font-black tabular-nums leading-none" style={{ color }}>
-                                    {prefix}RS {fmtN(value)}
+                                    {prefix}RS {fmtRs(value)}
                                 </div>
                                 <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: C.sub }}>
-                                    RS {fmtN(value)}
+                                    RS {fmtRs(value)}
                                 </div>
                             </>
                         )}
@@ -373,10 +373,10 @@ export default function CashFlowTab({
                         ) : (
                             <div className="text-right">
                                 <div className="text-[24px] font-black tabular-nums leading-none" style={{ color: netColor }}>
-                                    {netCashFlow >= 0 ? "+" : "−"}RS {fmtK(Math.abs(netCashFlow))}
+                                    {netCashFlow >= 0 ? "+" : "−"}RS {fmtRs(Math.abs(netCashFlow))}
                                 </div>
                                 <div className="text-[10px] tabular-nums mt-0.5" style={{ color: netColor, opacity: 0.65 }}>
-                                    RS {fmtN(Math.abs(netCashFlow))}
+                                    RS {fmtRs(Math.abs(netCashFlow))}
                                 </div>
                             </div>
                         )}

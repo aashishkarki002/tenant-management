@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import api from "../../../plugins/axios";
 
-export function useTdsFilingSummary(nepaliYear = null, tenantId = null) {
+export function useTdsFilingSummary(nepaliYear = null, tenantId = null, entityId = null) {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -13,6 +13,7 @@ export function useTdsFilingSummary(nepaliYear = null, tenantId = null) {
       setError(null);
       const params = { nepaliYear };
       if (tenantId) params.tenantId = tenantId;
+      if (entityId) params.entityId = entityId;
       const res = await api.get("/api/ledger/tds-filing", { params });
       setData(res.data?.data ?? null);
     } catch (err) {
@@ -20,7 +21,7 @@ export function useTdsFilingSummary(nepaliYear = null, tenantId = null) {
     } finally {
       setLoading(false);
     }
-  }, [nepaliYear, tenantId]);
+  }, [nepaliYear, tenantId, entityId]);
 
   useEffect(() => { fetch(); }, [fetch]);
 

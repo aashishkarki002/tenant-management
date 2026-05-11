@@ -10,7 +10,6 @@ import DuesAgingPanel from "./component/DuesAgingPanel";
 import VacancyPipelinePanel from "./component/VacancyPipelinePanel";
 import MaintenanceHealthPanel from "./component/MaintenanceHealthPanel";
 import ExpenseBreakdownPanel from "./component/ExpenseBreakdownPanel";
-import RevenueSummaryBanner from "./component/RevenueSummaryBanner";
 import { useTime } from "./hooks/UseTime";
 import { useStats } from "./hooks/UseStats";
 import { useArrearsData } from "./hooks/useArrearsData";
@@ -163,10 +162,7 @@ export default function Dashboard() {
       {(stats || !loading) && (
         <div className="px-3 sm:px-4 lg:px-5 pb-8 flex flex-col gap-4">
 
-          {/* Row 1: Revenue composition banner */}
-          <RevenueSummaryBanner stats={stats} loading={loading} />
-
-          {/* Row 2: KPI strip — collection, tenant status, occupancy, attention */}
+          {/* Row 1: KPI strip — collection, tenant status, occupancy, attention */}
           <KpiStrip stats={stats} loading={loading} />
 
      

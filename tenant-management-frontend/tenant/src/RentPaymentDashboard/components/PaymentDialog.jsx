@@ -1,4 +1,5 @@
 import React from "react";
+import { Zap } from "lucide-react";
 import {
   DialogContent,
 } from "@/components/ui/dialog";
@@ -68,6 +69,7 @@ export const PaymentDialog = ({
   rent,
   cams,
   bankAccounts,
+  electricityRecords = [],
   formik,
   allocationMode,
   setAllocationMode,
@@ -77,6 +79,9 @@ export const PaymentDialog = ({
   setCamAllocation,
   lateFeeAllocation,
   setLateFeeAllocation,
+  electricityAllocations = [],
+  setElectricityAllocations,
+  totalElectricityAllocation = 0,
   selectedBankAccountId,
   setSelectedBankAccountId,
   handleAmountChange,
@@ -196,10 +201,17 @@ export const PaymentDialog = ({
     });
   }, [selectedUnitIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Electricity ───────────────────────────────────────────────────────────
+  const totalElecDue = electricityRecords.reduce((sum, r) => {
+    return sum + (r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0)));
+  }, 0);
+
   // ── Derived amounts ───────────────────────────────────────────────────────
   const paymentAmount = formik.values?.amount || 0;
-  const totalAllocated = rentAllocation + camAllocation + (lateFeeAllocation || 0);
-  const balanceOwed = totalDue - totalAllocated;
+  const totalAllocated =
+    rentAllocation + camAllocation + totalElectricityAllocation + (lateFeeAllocation || 0);
+  const grandTotalDue = totalDue + totalElecDue;
+  const balanceOwed = grandTotalDue - totalAllocated;
   const isOverAllocated = totalAllocated > paymentAmount && paymentAmount > 0;
 
   const lateFeeRemaining = remainingLateFeePaisa / 100;
@@ -266,15 +278,29 @@ export const PaymentDialog = ({
       payload.allocations.lateFee = { rentId: rent._id, amount: lateFeeAllocation };
     }
 
+    const validElec = electricityAllocations.filter((a) => (a.amount || 0) > 0);
+    if (validElec.length > 0) {
+      payload.allocations.electricity = validElec;
+    }
+
     return payload;
   }
 
   // ── Validation ────────────────────────────────────────────────────────────
   const needsBankAccount = paymentMethodRequiresBankAccount(formik.values?.paymentMethod);
 
+  // Electricity over-allocation: any record allocated more than its due
+  const isElecOverAllocated = electricityAllocations.some((a) => {
+    const rec = electricityRecords.find((r) => r._id === a.electricityId);
+    if (!rec) return false;
+    const due = rec.remainingAmount ?? Math.max(0, (rec.totalAmount || 0) - (rec.paidAmount || 0));
+    return (a.amount || 0) > due + 0.01;
+  });
+
   const isSubmitDisabled =
     !selectedUnits.length ||
     isOverAllocated ||
+    isElecOverAllocated ||
     isPartialLateFee ||
     !paymentAmount ||
     !formik.values?.paymentMethod ||
@@ -319,7 +345,8 @@ export const PaymentDialog = ({
             <Label>Amount Due</Label>
             <div className={cn(
               "grid gap-2",
-              hasLateFee ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"
+              (hasLateFee && totalElecDue > 0) ? "grid-cols-2 sm:grid-cols-4" :
+              (hasLateFee || totalElecDue > 0) ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"
             )}>
               {/* Rent */}
               <div className="py-2">
@@ -344,6 +371,22 @@ export const PaymentDialog = ({
                 </p>
               </div>
 
+              {/* Electricity */}
+              {totalElecDue > 0 && (
+                <div className="py-2 border-l border-border pl-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 mb-1 flex items-center gap-1">
+                    <Zap className="size-3" />
+                    Electricity
+                  </p>
+                  <p className="text-[20px] font-bold text-foreground leading-none">
+                    RS {totalElecDue.toLocaleString()}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                    {electricityRecords.length} reading{electricityRecords.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              )}
+
               {/* Late Fee */}
               {hasLateFee && (
                 <div className="col-span-2 sm:col-span-1 py-2 pl-3 pr-2 border-l border-destructive/30 bg-destructive/5 rounded-r-md">
@@ -363,7 +406,7 @@ export const PaymentDialog = ({
 
             <div className="border-t border-border mt-3 pt-3 flex justify-between items-center">
               <p className="text-[12px] text-muted-foreground">Total Due</p>
-              <p className="text-[17px] font-bold text-foreground">RS {totalDue.toLocaleString()}</p>
+              <p className="text-[17px] font-bold text-foreground">RS {grandTotalDue.toLocaleString()}</p>
             </div>
 
             {/* ── TDS Verification ───────────────────────────────────────────── */}
@@ -622,10 +665,10 @@ export const PaymentDialog = ({
                   <Label>Amount to Pay (Rs)</Label>
                   <Input
                     type="number"
-                    placeholder={`Full due: RS ${totalDue.toLocaleString()}`}
+                    placeholder={`Full due: RS ${grandTotalDue.toLocaleString()}`}
                     value={formik.values?.amount || ""}
-                    onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent)}
-                    onBlur={(e) => { if (!e.target.value) handleAmountChange(totalDue, rent); }}
+                    onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0, rent, electricityRecords)}
+                    onBlur={(e) => { if (!e.target.value) handleAmountChange(grandTotalDue, rent, electricityRecords); }}
                     className="text-base font-semibold"
                   />
                 </div>
@@ -653,6 +696,27 @@ export const PaymentDialog = ({
                       </p>
                     </div>
                   )}
+
+                  {/* Electricity rows — one per reading */}
+                  {totalElecDue > 0 && electricityRecords.map((elec) => {
+                    const due = elec.remainingAmount ?? Math.max(0, (elec.totalAmount || 0) - (elec.paidAmount || 0));
+                    if (due <= 0) return null;
+                    const unitName = elec.unit?.name || elec.subMeter?.name || "Unit";
+                    const alloc = electricityAllocations.find((a) => a.electricityId === elec._id);
+                    return (
+                      <div key={elec._id} className="px-3.5 py-2.5 flex justify-between items-center border-t border-border">
+                        <div>
+                          <p className="text-[12px] font-semibold text-foreground/80 flex items-center gap-1">
+                            <Zap className="size-3 text-amber-500" />{unitName}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground/70 mt-px">Electricity · Due RS {due.toLocaleString()}</p>
+                        </div>
+                        <p className={cn("text-[13px] font-bold", (alloc?.amount || 0) > 0 ? "text-foreground" : "text-muted-foreground/40")}>
+                          RS {(alloc?.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </p>
+                      </div>
+                    );
+                  })}
 
                   {hasLateFee && (
                     <div className="px-3.5 py-2.5 flex justify-between items-center border-t border-border bg-destructive/5">
@@ -722,7 +786,7 @@ export const PaymentDialog = ({
                   <Label>Total Amount to Pay (Rs)</Label>
                   <Input
                     type="number"
-                    placeholder="Enter total payment amount"
+                    placeholder={`Full due: RS ${grandTotalDue.toLocaleString()}`}
                     value={formik.values?.amount || ""}
                     onChange={(e) => formik.setFieldValue("amount", parseFloat(e.target.value) || 0)}
                     className="text-base font-semibold"
@@ -759,6 +823,44 @@ export const PaymentDialog = ({
                       className="w-[130px] text-right text-[13px]"
                     />
                   </div>
+
+                  {/* Electricity inputs — manual mode */}
+                  {totalElecDue > 0 && electricityRecords.map((elec) => {
+                    const due = elec.remainingAmount ?? Math.max(0, (elec.totalAmount || 0) - (elec.paidAmount || 0));
+                    if (due <= 0) return null;
+                    const unitName = elec.unit?.name || elec.subMeter?.name || "Unit";
+                    const currentAlloc = electricityAllocations.find((a) => a.electricityId === elec._id);
+                    const isOver = (currentAlloc?.amount || 0) > due + 0.01;
+                    return (
+                      <div key={elec._id} className="px-3.5 py-2.5 flex items-center gap-3 border-t border-border">
+                        <div className="flex-1">
+                          <p className="text-[12px] font-semibold text-foreground/80 flex items-center gap-1">
+                            <Zap className="size-3 text-amber-500" />{unitName}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground/70 mt-px">Electricity · Due RS {due.toLocaleString()}</p>
+                          {isOver && (
+                            <p className="text-[10px] text-destructive mt-0.5 font-medium">
+                              Cannot exceed RS {due.toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          value={currentAlloc?.amount || ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setElectricityAllocations((prev) => {
+                              const next = prev.filter((a) => a.electricityId !== elec._id);
+                              if (val > 0) next.push({ electricityId: elec._id, amount: val });
+                              return next;
+                            });
+                          }}
+                          className={cn("w-[130px] text-right text-[13px]", isOver && "border-destructive")}
+                        />
+                      </div>
+                    );
+                  })}
 
                   {/* Late Fee */}
                   {hasLateFee && (
@@ -973,7 +1075,7 @@ export const PaymentDialog = ({
             )}>
               <div className="grid grid-cols-3 gap-2 mb-2">
                 {[
-                  { label: "Due", value: `RS${totalDue.toLocaleString()}` },
+                  { label: "Due", value: `RS${grandTotalDue.toLocaleString()}` },
                   { label: "Allocated", value: `RS${totalAllocated.toLocaleString()}` },
                   { label: "Remaining", value: `RS ${balanceOwed.toLocaleString()}` },
                 ].map((item) => (
@@ -1000,7 +1102,7 @@ export const PaymentDialog = ({
             </div>
 
             {/* Validation errors */}
-            {(!selectedUnits.length || isOverAllocated || isPartialLateFee || unitAllocationMismatch ||
+            {(!selectedUnits.length || isOverAllocated || isElecOverAllocated || isPartialLateFee || unitAllocationMismatch ||
               (needsBankAccount && !formik.values?.bankAccountCode)) && (
                 <div className="bg-destructive/10 border border-destructive/20 rounded flex flex-col gap-0.5 px-2.5 py-2 mb-2.5">
                   {!selectedUnits.length && (
@@ -1008,6 +1110,9 @@ export const PaymentDialog = ({
                   )}
                   {isOverAllocated && (
                     <p className="text-[11px] text-destructive">Allocation exceeds payment amount.</p>
+                  )}
+                  {isElecOverAllocated && (
+                    <p className="text-[11px] text-destructive">Electricity allocation exceeds bill amount for one or more units.</p>
                   )}
                   {isPartialLateFee && (
                     <p className="text-[11px] text-destructive">

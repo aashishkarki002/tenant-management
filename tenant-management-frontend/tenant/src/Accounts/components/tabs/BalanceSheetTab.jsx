@@ -1,16 +1,3 @@
-/**
- * BalanceSheetTab.jsx
- *
- * Displays Assets = Liabilities + Equity for the selected entity.
- * Data source: GET /api/ledger/balance-sheet?entityId=...
- *
- * Patterns:
- *   - Hook: useBalanceSheet (mirrors useFundPositions pattern)
- *   - Primitives: Card, Lbl, Skeleton from AccountingPrimitives
- *   - Colors: CSS variables only (var(--color-*))
- *   - Money: paisa integers — divide by 100 for display, never floats
- */
-
 import { useState } from "react";
 import {
   ScaleIcon,
@@ -20,144 +7,139 @@ import {
   RefreshCwIcon,
   DownloadIcon,
   Loader2Icon,
+  BookOpenIcon,
 } from "lucide-react";
+
 import { cn } from "@/lib/utils";
-import { Card, Lbl, Skeleton } from "../AccountingPrimitives";
-import { useBalanceSheet } from "../../hooks/useBalanceSheet";
+import { Card } from "@/components/ui/card";
+import {
+  useBalanceSheet,
+} from "../../hooks/useBalanceSheet";
 import { exportBalanceSheetPDF } from "../../utils/exportUtils";
 import { useEntity } from "../../../context/EntityContext";
+import { fmtRs } from "../../../utils/formatter";
 
-// ─── Money formatter ──────────────────────────────────────────────────────────
-function fmtPaisa(paisa = 0) {
-  const abs = Math.abs(paisa);
-  const sign = paisa < 0 ? "−" : "";
-  return `${sign}RS  ${(abs / 100).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
 
-// ─── EquationBanner ───────────────────────────────────────────────────────────
-function EquationBanner({ isBalanced, totalAssets, totalLiabilitiesAndEquity, discrepancy }) {
-  const color = isBalanced ? "var(--color-success)" : "var(--color-danger)";
-  const bgColor = isBalanced ? "var(--color-success-bg)" : "var(--color-danger-bg)";
+// ─────────────────────────────────────────────
+// Equation Banner
+// ─────────────────────────────────────────────
+function EquationBanner({
+  isBalanced,
+  totalAssets,
+  totalLiabilitiesAndEquity,
+  discrepancy,
+}) {
+  const color = isBalanced ? "text-emerald-600" : "text-red-600";
+  const bg = isBalanced ? "bg-emerald-50" : "bg-red-50";
   const Icon = isBalanced ? CheckCircle2Icon : AlertTriangleIcon;
-  const label = isBalanced ? "Balanced" : "Out of Balance";
 
   return (
-    <div
-      className="flex items-center justify-between flex-wrap gap-4 px-5 py-4 rounded-xl"
-      style={{ background: bgColor, border: `1px solid ${color}` }}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-          style={{ background: color }}
-        >
-          <ScaleIcon size={18} color="#fff" />
-        </div>
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-text-sub)] mb-0.5">
-            Balance Sheet Equation
+    <div className={cn("p-4 rounded-xl border flex flex-col gap-3", bg)}>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center">
+            <ScaleIcon size={18} className="text-white" />
           </div>
-          <div className="text-[13px] font-semibold text-[var(--color-text-strong)]">
-            Assets = Liabilities + Equity
-          </div>
-        </div>
-      </div>
 
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="text-right">
-          <div className="text-[10px] text-[var(--color-text-sub)] uppercase tracking-wider mb-0.5">
-            Total Assets
-          </div>
-          <div className="text-[15px] font-black tabular-nums" style={{ color }}>
-            {fmtPaisa(totalAssets?.paisa ?? 0)}
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+              Balance Sheet Equation
+            </p>
+            <p className="text-sm font-semibold">
+              Assets = Liabilities + Equity
+            </p>
           </div>
         </div>
 
-        <div className="text-[var(--color-text-sub)] font-bold text-lg">=</div>
-
-        <div className="text-right">
-          <div className="text-[10px] text-[var(--color-text-sub)] uppercase tracking-wider mb-0.5">
-            Liabilities + Equity
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <p className="text-[10px] uppercase text-muted-foreground">
+              Assets
+            </p>
+            <p className={cn("font-bold text-sm", color)}>
+              {fmtRs(totalAssets?.paisa ?? 0)}
+            </p>
           </div>
-          <div className="text-[15px] font-black tabular-nums" style={{ color }}>
-            {fmtPaisa(totalLiabilitiesAndEquity?.paisa ?? 0)}
-          </div>
-        </div>
 
-        <div
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
-          style={{ background: color, color: "#fff" }}
-        >
-          <Icon size={13} />
-          {label}
+          <span className="font-bold text-muted-foreground">=</span>
+
+          <div className="text-right">
+            <p className="text-[10px] uppercase text-muted-foreground">
+              L + E
+            </p>
+            <p className={cn("font-bold text-sm", color)}>
+              {fmtRs(totalLiabilitiesAndEquity?.paisa ?? 0)}
+            </p>
+          </div>
+
+          <div
+            className={cn(
+              "flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold text-white",
+              isBalanced ? "bg-emerald-600" : "bg-red-600"
+            )}
+          >
+            <Icon size={12} />
+            {isBalanced ? "Balanced" : "Out of Balance"}
+          </div>
         </div>
       </div>
 
       {!isBalanced && discrepancy?.paisa > 0 && (
-        <div className="w-full text-[11px] font-semibold mt-1" style={{ color: "var(--color-danger)" }}>
-          Discrepancy: {fmtPaisa(discrepancy.paisa)} — check for unposted journals or data integrity issues.
-        </div>
+        <p className="text-xs text-red-600 font-medium">
+          Discrepancy: {fmtRs(discrepancy.paisa)} — check ledger integrity.
+        </p>
       )}
     </div>
   );
 }
 
-// ─── AccountRow ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Account Row
+// ─────────────────────────────────────────────
 function AccountRow({ account }) {
   const isSynthetic = account.isSynthetic;
-  const isAbnormal = account.balanceSide?.includes("abnormal") || account.balanceSide?.includes("deficit");
-  const isDebitSide = account.balanceSide?.startsWith("DR");
+  const isAbnormal = account.balanceSide?.includes("abnormal");
+  const isDebit = account.balanceSide?.startsWith("DR");
 
   return (
     <div
       className={cn(
-        "flex items-center justify-between px-3 py-2 rounded-lg",
-        isSynthetic
-          ? "border border-[var(--color-border)]"
-          : "hover:bg-[var(--color-muted)] transition-colors",
+        "flex justify-between items-center px-3 py-2 rounded-lg",
+        isSynthetic ? "border bg-muted" : "hover:bg-muted"
       )}
-      style={isSynthetic ? { background: "var(--color-surface)" } : {}}
     >
-      <div className="flex items-center gap-2.5 min-w-0">
-        <span className="text-[10px] font-mono text-[var(--color-text-sub)] shrink-0">
+      <div className="flex gap-2 min-w-0">
+        <span className="text-[10px] font-mono text-muted-foreground">
           {account.code}
         </span>
         <span
           className={cn(
-            "text-[12px] font-medium truncate",
-            isSynthetic ? "italic" : "text-[var(--color-text-body)]",
+            "text-sm truncate",
+            isSynthetic && "italic text-muted-foreground"
           )}
-          style={isSynthetic ? { color: "var(--color-text-sub)" } : {}}
         >
           {account.name}
         </span>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2">
         <span
-          className={cn("text-[13px] font-bold tabular-nums")}
-          style={{
-            color: isAbnormal
-              ? "var(--color-danger)"
-              : "var(--color-text-strong)",
-          }}
+          className={cn(
+            "text-sm font-bold tabular-nums",
+            isAbnormal ? "text-red-600" : "text-foreground"
+          )}
         >
-          {fmtPaisa(account.balance?.paisa ?? 0)}
+          {fmtRs(account.balance?.paisa ?? 0)}
         </span>
+
         {account.balanceSide && account.balanceSide !== "NIL" && (
           <span
-            className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
-            style={{
-              background: isDebitSide
-                ? "var(--color-info-bg)"
-                : "var(--color-success-bg)",
-              color: isDebitSide
-                ? "var(--color-info)"
-                : "var(--color-success)",
-            }}
+            className={cn(
+              "text-[10px] px-2 py-0.5 rounded font-bold uppercase",
+              isDebit
+                ? "bg-blue-100 text-blue-600"
+                : "bg-emerald-100 text-emerald-600"
+            )}
           >
             {account.balanceSide.split(" ")[0]}
           </span>
@@ -167,226 +149,125 @@ function AccountRow({ account }) {
   );
 }
 
-// ─── SectionTotal ─────────────────────────────────────────────────────────────
-function SectionTotal({ label, amountObj }) {
+// ─────────────────────────────────────────────
+// Section Card
+// ─────────────────────────────────────────────
+function SectionCard({
+  title,
+  accent,
+  accounts,
+  extraRows = [],
+  totalLabel,
+  totalAmountObj,
+}) {
   return (
-    <div
-      className="flex items-center justify-between px-3 py-2.5 mt-2 rounded-lg"
-      style={{
-        borderTop: "1px solid var(--color-border)",
-        background: "var(--color-surface)",
-      }}
-    >
-      <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-sub)]">
-        {label}
-      </span>
-      <span className="text-[14px] font-black tabular-nums text-[var(--color-text-strong)]">
-        {fmtPaisa(amountObj?.paisa ?? 0)}
-      </span>
-    </div>
-  );
-}
-
-// ─── SectionCard ──────────────────────────────────────────────────────────────
-function SectionCard({ title, accentColor, accounts, extraRows = [], totalLabel, totalAmountObj }) {
-  return (
-    <Card className="flex flex-col gap-0 p-0 overflow-hidden">
+    <Card className="p-0 overflow-hidden">
       <div
-        className="px-4 py-3"
-        style={{
-          borderBottom: "1px solid var(--color-border)",
-          borderLeft: `3px solid ${accentColor}`,
-        }}
+        className="px-4 py-3 border-b"
+        style={{ borderLeft: `3px solid ${accent}` }}
       >
-        <div
-          className="text-[11px] font-bold uppercase tracking-[0.1em]"
-          style={{ color: accentColor }}
-        >
+        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
           {title}
-        </div>
+        </p>
       </div>
 
-      <div className="p-3 flex flex-col gap-0.5">
-        {accounts.length === 0 && extraRows.length === 0 ? (
-          <p className="text-[11px] text-[var(--color-text-sub)] italic px-3 py-2">
+      <div className="p-3 space-y-1">
+        {[...accounts, ...extraRows].length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">
             No accounts
           </p>
         ) : (
-          <>
-            {accounts.map((acc, i) => (
-              <AccountRow key={`acc-${acc.code}-${i}`} account={acc} />
-            ))}
-            {extraRows.map((acc, i) => (
-              <AccountRow key={`extra-${acc.code}-${i}`} account={acc} />
-            ))}
-          </>
+          [...accounts, ...extraRows].map((acc, i) => (
+            <AccountRow key={i} account={acc} />
+          ))
         )}
       </div>
 
-      <div className="px-3 pb-3">
-        <SectionTotal label={totalLabel} amountObj={totalAmountObj} />
+      <div className="border-t px-3 py-2 flex justify-between text-sm font-bold">
+        <span className="text-muted-foreground">{totalLabel}</span>
+        <span>{fmtRs(totalAmountObj?.paisa ?? 0)}</span>
       </div>
     </Card>
   );
 }
 
-// ─── TrialBalanceStrip ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Trial Balance
+// ─────────────────────────────────────────────
 function TrialBalanceStrip({ trialBalance }) {
   if (!trialBalance) return null;
+
   const { totalDebit, totalCredit, isBalanced, discrepancy } = trialBalance;
 
   return (
     <div
-      className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 rounded-xl"
-      style={{
-        background: isBalanced ? "var(--color-success-bg)" : "var(--color-danger-bg)",
-        border: `1px solid ${isBalanced ? "var(--color-success)" : "var(--color-danger)"}`,
-      }}
-    >
-      <Lbl className="mb-0">Ledger Trial Balance</Lbl>
-      <div className="flex gap-4 flex-wrap items-center">
-        <div>
-          <div className="text-[10px] text-[var(--color-text-sub)] uppercase tracking-wider mb-0.5">
-            Total Debits
-          </div>
-          <div className="text-[13px] font-black tabular-nums text-[var(--color-info)]">
-            {totalDebit?.formatted ?? "—"}
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] text-[var(--color-text-sub)] uppercase tracking-wider mb-0.5">
-            Total Credits
-          </div>
-          <div className="text-[13px] font-black tabular-nums text-[var(--color-success)]">
-            {totalCredit?.formatted ?? "—"}
-          </div>
-        </div>
-        <div
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold"
-          style={{
-            background: isBalanced ? "var(--color-success)" : "var(--color-danger)",
-            color: "#fff",
-          }}
-        >
-          {isBalanced ? (
-            <><CheckCircle2Icon size={11} /> Debits = Credits</>
-          ) : (
-            <><AlertTriangleIcon size={11} /> Off by {discrepancy?.formatted}</>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── ExplainerAccordion ───────────────────────────────────────────────────────
-function ExplainerAccordion() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div
-      className="rounded-xl overflow-hidden"
-      style={{ border: "1px solid var(--color-border)" }}
-    >
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-[12px] font-semibold text-[var(--color-text-body)] cursor-pointer transition-colors"
-        style={{ background: "var(--color-surface)" }}
-      >
-        How are these balances calculated?
-        <ChevronDownIcon
-          size={15}
-          className={cn(
-            "transition-transform text-[var(--color-text-sub)]",
-            open && "rotate-180",
-          )}
-        />
-      </button>
-      {open && (
-        <div
-          className="px-4 py-4 text-[11px] text-[var(--color-text-sub)] flex flex-col gap-2.5"
-          style={{
-            background: "var(--color-surface)",
-            borderTop: "1px solid var(--color-border)",
-          }}
-        >
-          <p>
-            <strong className="text-[var(--color-text-body)]">T-Account rule:</strong>{" "}
-            Asset and Expense accounts increase on the <em>Debit (DR)</em> side.
-            Liability, Revenue, and Equity accounts increase on the <em>Credit (CR)</em> side.
-            A balance tagged "DR (abnormal)" means an account that should normally carry a credit
-            balance has flipped — this may indicate a data issue.
-          </p>
-          <p>
-            <strong className="text-[var(--color-text-body)]">Retained Earnings</strong>{" "}
-            is computed as <code className="font-mono text-[10px] px-1 py-0.5 rounded" style={{ background: "var(--color-muted)" }}>Total Revenue − Total Expenses</code>.
-            It represents the cumulative profit not yet distributed. It is derived at
-            report time, not stored as a separate ledger account.
-          </p>
-          <p>
-            <strong className="text-[var(--color-text-body)]">Balance check:</strong>{" "}
-            Total Assets must equal Total Liabilities + Total Equity.
-            If the sheet is out of balance, it usually means a journal entry was posted
-            without its offsetting leg, or account seeding is incomplete.
-          </p>
-          <p>
-            All amounts are stored as <em>paisa</em> integers (1 rupee = 100 paisa)
-            to eliminate floating-point rounding errors.
-          </p>
-        </div>
+      className={cn(
+        "p-3 rounded-xl border flex justify-between flex-wrap gap-3",
+        isBalanced ? "bg-emerald-50" : "bg-red-50"
       )}
-    </div>
-  );
-}
+    >
+      <div className="text-sm font-semibold">Trial Balance</div>
 
-// ─── Skeleton layout ──────────────────────────────────────────────────────────
-function SkeletonLayout() {
-  return (
-    <div className="flex flex-col gap-4">
-      <Skeleton className="h-16 w-full rounded-xl" />
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Skeleton className="h-64 rounded-2xl" />
-        <Skeleton className="h-64 rounded-2xl" />
-        <Skeleton className="h-64 rounded-2xl" />
-      </div>
-      <Skeleton className="h-12 w-full rounded-xl" />
-      <Skeleton className="h-10 w-full rounded-xl" />
-    </div>
-  );
-}
+      <div className="flex gap-4 text-sm">
+        <div>
+          <p className="text-xs text-muted-foreground">Debit</p>
+          <p className="font-bold text-blue-600">
+            {totalDebit?.formatted ?? "—"}
+          </p>
+        </div>
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN TAB COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════════
-export default function BalanceSheetTab({ entityId, filterProps = {}, filterLabel }) {
-  const { balanceSheet, loading, error, refetch } = useBalanceSheet(entityId, filterProps);
-  const [exporting, setExporting] = useState(false);
-  const { entities, activeEntityId } = useEntity();
-  const entityName = entities?.find(e => e._id === activeEntityId)?.name ?? "";
+        <div>
+          <p className="text-xs text-muted-foreground">Credit</p>
+          <p className="font-bold text-emerald-600">
+            {totalCredit?.formatted ?? "—"}
+          </p>
+        </div>
 
-  if (loading) return <SkeletonLayout />;
-
-  if (error) {
-    return (
-      <div
-        className="flex items-center gap-2 px-4 py-3 rounded-xl text-[12px] font-semibold"
-        style={{
-          background: "var(--color-danger-bg)",
-          color: "var(--color-danger)",
-          border: "1px solid var(--color-danger)",
-        }}
-      >
-        <AlertTriangleIcon size={14} />
-        {error}
-        <button
-          onClick={refetch}
-          className="ml-auto flex items-center gap-1 text-[11px] underline cursor-pointer"
+        <div
+          className={cn(
+            "px-2 py-1 rounded-full text-xs font-bold text-white",
+            isBalanced ? "bg-emerald-600" : "bg-red-600"
+          )}
         >
-          <RefreshCwIcon size={11} /> Retry
+          {isBalanced
+            ? "Balanced"
+            : `Off by ${discrepancy?.formatted}`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+// ─────────────────────────────────────────────
+// Main Component
+// ─────────────────────────────────────────────
+export default function BalanceSheetTab({
+  entityId,
+  filterProps = {},
+  filterLabel,
+}) {
+  const { balanceSheet, loading, error, refetch } =
+    useBalanceSheet(entityId, filterProps);
+
+  const [exporting, setExporting] = useState(false);
+
+  const { entities, activeEntityId } = useEntity();
+  const entityName =
+    entities?.find((e) => e._id === activeEntityId)?.name ?? "";
+
+  if (loading) return <div className="p-6">Loading...</div>;
+
+  if (error)
+    return (
+      <div className="p-3 bg-red-50 border border-red-500 text-red-600 rounded-xl flex justify-between">
+        {error}
+        <button onClick={refetch} className="underline">
+          Retry
         </button>
       </div>
     );
-  }
 
   if (!balanceSheet) return null;
 
@@ -405,33 +286,37 @@ export default function BalanceSheetTab({ entityId, filterProps = {}, filterLabe
   } = balanceSheet;
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* 0. Period label + export button */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+    <div className="space-y-5">
+      {/* header */}
+      <div className="flex justify-between items-center">
         {filterLabel && (
-          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)]">
+          <span className="text-xs px-2 py-1 bg-muted rounded-full">
             {filterLabel}
           </span>
         )}
+
         <button
           onClick={async () => {
             setExporting(true);
-            await new Promise(r => setTimeout(r, 0));
-            exportBalanceSheetPDF(balanceSheet, filterLabel, entityName);
+            await new Promise((r) => setTimeout(r, 0));
+            exportBalanceSheetPDF(
+              balanceSheet,
+              filterLabel,
+              entityName
+            );
             setExporting(false);
           }}
-          disabled={exporting}
-          title="Download Balance Sheet as PDF"
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[9px] border border-[var(--color-border)] bg-transparent text-[11px] font-semibold cursor-pointer text-[var(--color-text-body)] hover:bg-[var(--color-surface)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="text-xs px-3 py-1 border rounded flex items-center gap-1"
         >
-          {exporting
-            ? <Loader2Icon size={12} className="animate-spin" />
-            : <DownloadIcon size={12} />}
-          Export PDF
+          {exporting ? (
+            <Loader2Icon className="animate-spin" size={12} />
+          ) : (
+            <DownloadIcon size={12} />
+          )}
+          Export
         </button>
       </div>
 
-      {/* 1. Equation banner */}
       <EquationBanner
         isBalanced={isBalanced}
         totalAssets={totalAssets}
@@ -439,25 +324,27 @@ export default function BalanceSheetTab({ entityId, filterProps = {}, filterLabe
         discrepancy={discrepancy}
       />
 
-      {/* 2. Three-section grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* sections */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <SectionCard
           title="Assets"
-          accentColor="var(--color-info)"
+     
           accounts={assetAccounts}
           totalLabel="Total Assets"
           totalAmountObj={totalAssets}
         />
+
         <SectionCard
           title="Liabilities"
-          accentColor="var(--color-danger)"
+        
           accounts={liabilityAccounts}
           totalLabel="Total Liabilities"
           totalAmountObj={totalLiabilities}
         />
+
         <SectionCard
           title="Equity"
-          accentColor="var(--color-success)"
+   
           accounts={equityAccounts}
           extraRows={retainedEarnings ? [retainedEarnings] : []}
           totalLabel="Total Equity"
@@ -465,11 +352,8 @@ export default function BalanceSheetTab({ entityId, filterProps = {}, filterLabe
         />
       </div>
 
-      {/* 3. Trial balance validator */}
       <TrialBalanceStrip trialBalance={trialBalance} />
-
-      {/* 4. Explainer accordion */}
-      <ExplainerAccordion />
+  
     </div>
   );
 }

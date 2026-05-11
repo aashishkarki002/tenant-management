@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useYearEndClose } from "../../hooks/useYearEndClose";
 import { getCurrentFiscalYear } from "../../utils/nepaliCalendar";
-import { fmtK } from "../../utils/formatter";
+import { fmtK } from "../../../utils/formatter";
 
 const MONTH_LABELS = [
   "", "Baisakh", "Jestha", "Ashad",

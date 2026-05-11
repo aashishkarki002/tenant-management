@@ -3,14 +3,10 @@ import { useBankReconciliation } from "../../hooks/useBankReconciliation";
 import { useEntity } from "../../../context/EntityContext";
 import { CheckCircle2Icon, AlertTriangleIcon } from "lucide-react";
 
-function fmtPaisa(p = 0) {
-  const sign = p < 0 ? "−" : "";
-  return `${sign}Rs ${(Math.abs(p) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
+import { fmtRs } from "../../../utils/formatter";
 export default function BankReconciliationTab() {
-  const { selectedEntity } = useEntity();
-  const { data, loading, error, refetch } = useBankReconciliation(selectedEntity?.id ?? null);
+  const { activeEntityId } = useEntity();
+  const { data, loading, error, refetch } = useBankReconciliation(activeEntityId ?? null);
 
   if (loading) return <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>;
   if (error) return <div className="p-4 text-sm text-[var(--color-danger)] text-center">{error} <button onClick={refetch} className="underline ml-2 text-xs">Retry</button></div>;
@@ -54,11 +50,11 @@ export default function BankReconciliationTab() {
                   <tr key={r.bankAccountId} className="border-b border-[var(--color-border)]/30 hover:bg-[var(--color-surface-hover)] transition-colors">
                     <td className="py-2 pr-4 text-xs text-[var(--color-text)]">{r.bankName}</td>
                     <td className="py-2 pr-4 text-xs font-mono text-[var(--color-text-sub)]">{r.accountCode}</td>
-                    <td className="py-2 pr-4 text-right text-xs font-mono">{fmtPaisa(r.ledgerBalancePaisa)}</td>
-                    <td className="py-2 pr-4 text-right text-xs font-mono">{fmtPaisa(r.bankBalancePaisa)}</td>
+                    <td className="py-2 pr-4 text-right text-xs font-mono">{fmtRs(r.ledgerBalancePaisa)}</td>
+                    <td className="py-2 pr-4 text-right text-xs font-mono">{fmtRs(r.bankBalancePaisa)}</td>
                     <td className="py-2 text-right text-xs font-mono font-semibold"
                       style={{ color: hasGap ? "var(--color-danger)" : "var(--color-success)" }}>
-                      {hasGap ? fmtPaisa(diff) : "✓"}
+                      {hasGap ? fmtRs(diff) : "✓"}
                     </td>
                   </tr>
                 );

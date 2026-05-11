@@ -10,7 +10,7 @@ import {
     getCurrentBSMonthName,
     toBSDate,
 } from "../utils/nepaliCalendar";
-import { fmtK } from "../utils/formatter";
+import { fmtK} from "../../utils/formatter"
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
@@ -326,7 +326,7 @@ export default function AccountingPage() {
                         )}
 
                         {activeTab === "balance-sheet" && (
-                            <BalanceSheetTab entityId={resolvedEntityId} />
+                            <BalanceSheetTab entityId={resolvedEntityId} filterProps={filterProps} filterLabel={filterLabel} />
                         )}
 
                         {activeTab === "projections" && (
@@ -348,7 +348,7 @@ export default function AccountingPage() {
                             />
                         )}
                         {activeTab === "audit-log" && (
-                            <AuditLogTab />
+                            <AuditLogTab entityId={resolvedEntityId} />
                         )}
                         {
                             activeTab === "year-end-close" && (
@@ -367,10 +367,10 @@ export default function AccountingPage() {
                             <TrialBalanceTab filterProps={filterProps} />
                         )}
                         {activeTab === "ar-aging" && (
-                            <ArAgingTab />
+                            <ArAgingTab entityId={resolvedEntityId} />
                         )}
                         {activeTab === "tds-filing" && (
-                            <TdsFilingTab />
+                            <TdsFilingTab entityId={resolvedEntityId} />
                         )}
                         {activeTab === "property-pl" && (
                             <PropertyPLTab properties={properties} />

@@ -17,7 +17,7 @@ import {
 import { TrendingUp, TrendingDown, Minus, AlertCircle, Zap } from "lucide-react";
 import { useProjections } from "../../hooks/useProjections";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK } from "../../utils/formatter";
+import { fmtK } from "../../../utils/formatter";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {

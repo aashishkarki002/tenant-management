@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import api from "../../../plugins/axios";
 
-export function useArAging(propertyId = null) {
+export function useArAging(entityId = null) {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -11,7 +11,7 @@ export function useArAging(propertyId = null) {
       setLoading(true);
       setError(null);
       const params = {};
-      if (propertyId) params.propertyId = propertyId;
+      if (entityId) params.entityId = entityId;
       const res = await api.get("/api/ledger/ar-aging", { params });
       setData(res.data?.data ?? null);
     } catch (err) {
@@ -20,7 +20,7 @@ export function useArAging(propertyId = null) {
     } finally {
       setLoading(false);
     }
-  }, [propertyId]);
+  }, [entityId]);
 
   useEffect(() => { fetch(); }, [fetch]);
 

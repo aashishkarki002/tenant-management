@@ -8,12 +8,57 @@ import {
   paymentMethodRequiresBankAccount,
 } from "@/constants/paymentMethods.js";
 
+// Distribute `budget` rupees proportionally across electricity records with
+// outstanding balances. Returns [{electricityId, amount}] with amount > 0 only.
+function buildElecAllocations(records, budget) {
+  if (!records?.length || budget <= 0) return [];
+  const totalDue = records.reduce((s, r) => {
+    const due = r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0));
+    return s + due;
+  }, 0);
+  if (totalDue <= 0) return [];
+
+  const cappedBudget = Math.min(budget, totalDue);
+  let remaining = cappedBudget;
+  const result = [];
+
+  records.forEach((r, i) => {
+    const due = r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0));
+    if (due <= 0) return;
+    let alloc;
+    if (i === records.length - 1) {
+      alloc = remaining;
+    } else {
+      alloc = Math.round((due / totalDue) * cappedBudget * 100) / 100;
+      alloc = Math.min(alloc, due, remaining);
+    }
+    if (alloc > 0) {
+      result.push({ electricityId: r._id, amount: alloc });
+      remaining -= alloc;
+    }
+  });
+
+  return result;
+}
+
+function getElecTotal(records) {
+  return (records || []).reduce((s, r) => {
+    return s + (r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0)));
+  }, 0);
+}
+
 export const usePaymentForm = ({ cams, onSuccess }) => {
   const [allocationMode, setAllocationMode] = useState("auto");
   const [rentAllocation, setRentAllocation] = useState(0);
   const [camAllocation, setCamAllocation] = useState(0);
   const [lateFeeAllocation, setLateFeeAllocation] = useState(0);
+  const [electricityAllocations, setElectricityAllocations] = useState([]);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState("");
+
+  const totalElectricityAllocation = electricityAllocations.reduce(
+    (s, a) => s + (a.amount || 0),
+    0,
+  );
 
   const formik = useFormik({
     initialValues: {
@@ -47,10 +92,15 @@ export const usePaymentForm = ({ cams, onSuccess }) => {
           allocations: values.allocations,
         };
 
+        const hasElectricity =
+          Array.isArray(payload.allocations?.electricity) &&
+          payload.allocations.electricity.length > 0;
+
         if (
           !payload.allocations?.rent &&
           !payload.allocations?.cam &&
-          !payload.allocations?.lateFee
+          !payload.allocations?.lateFee &&
+          !hasElectricity
         ) {
           toast.error("No allocations found. Please try again.");
           return;
@@ -91,20 +141,19 @@ export const usePaymentForm = ({ cams, onSuccess }) => {
     setRentAllocation(0);
     setCamAllocation(0);
     setLateFeeAllocation(0);
+    setElectricityAllocations([]);
     setSelectedBankAccountId("");
     setAllocationMode("auto");
   };
 
   /**
    * Seeds formik + allocation state when a payment dialog opens.
-   * Default: fill rent + CAM + late fee in full (total outstanding).
+   * Accepts optional electricityRecords for the tenant/month to pre-fill.
    */
-  const handleOpenDialog = (rent) => {
-    const { rentAmount, camAmount, lateFeeAmount } = getPaymentAmounts(
-      rent,
-      cams,
-    );
-    const total = rentAmount + camAmount + lateFeeAmount;
+  const handleOpenDialog = (rent, electricityRecords = []) => {
+    const { rentAmount, camAmount, lateFeeAmount } = getPaymentAmounts(rent, cams);
+    const electricityTotal = getElecTotal(electricityRecords);
+    const total = rentAmount + camAmount + lateFeeAmount + electricityTotal;
 
     formik.setValues({
       ...formik.initialValues,
@@ -119,6 +168,7 @@ export const usePaymentForm = ({ cams, onSuccess }) => {
     setRentAllocation(rentAmount);
     setCamAllocation(camAmount);
     setLateFeeAllocation(lateFeeAmount);
+    setElectricityAllocations(buildElecAllocations(electricityRecords, electricityTotal));
     setSelectedBankAccountId("");
   };
 
@@ -126,40 +176,43 @@ export const usePaymentForm = ({ cams, onSuccess }) => {
    * Amount input change — auto-allocates using priority order:
    *   1. Rent principal (senior)
    *   2. CAM
-   *   3. Late fee (full-or-nothing: either all or zero — never partial)
-   *
-   * The full-or-nothing rule on late fee matches the backend constraint in
-   * allocatePayment(): partial late fee payments are rejected.
+   *   3. Electricity (proportional across unpaid records)
+   *   4. Late fee (full-or-nothing: either all or zero — never partial)
    */
-  const handleAmountChange = (amount, rent) => {
+  const handleAmountChange = (amount, rent, electricityRecords = []) => {
     formik.setFieldValue("amount", amount);
 
     if (allocationMode === "auto" && rent) {
-      const { rentAmount, camAmount, lateFeeAmount } = getPaymentAmounts(
-        rent,
-        cams,
-      );
+      const { rentAmount, camAmount, lateFeeAmount } = getPaymentAmounts(rent, cams);
+      const electricityTotal = getElecTotal(electricityRecords);
       const rentAndCam = rentAmount + camAmount;
-      const totalDue = rentAndCam + lateFeeAmount;
+      const rentCamElec = rentAndCam + electricityTotal;
+      const totalDue = rentCamElec + lateFeeAmount;
 
       if (amount >= totalDue) {
-        // Pays everything including late fee
         setRentAllocation(rentAmount);
         setCamAllocation(camAmount);
+        setElectricityAllocations(buildElecAllocations(electricityRecords, electricityTotal));
         setLateFeeAllocation(lateFeeAmount);
-      } else if (amount >= rentAndCam) {
-        // Covers rent + CAM but not enough for full late fee → late fee = 0
-        // (backend enforces full-or-nothing on late fee; don't send partial)
+      } else if (amount >= rentCamElec) {
         setRentAllocation(rentAmount);
         setCamAllocation(camAmount);
+        setElectricityAllocations(buildElecAllocations(electricityRecords, electricityTotal));
+        setLateFeeAllocation(0);
+      } else if (amount >= rentAndCam) {
+        setRentAllocation(rentAmount);
+        setCamAllocation(camAmount);
+        setElectricityAllocations(buildElecAllocations(electricityRecords, amount - rentAndCam));
         setLateFeeAllocation(0);
       } else if (amount >= rentAmount) {
         setRentAllocation(rentAmount);
         setCamAllocation(amount - rentAmount);
+        setElectricityAllocations([]);
         setLateFeeAllocation(0);
       } else {
         setRentAllocation(amount);
         setCamAllocation(0);
+        setElectricityAllocations([]);
         setLateFeeAllocation(0);
       }
     }
@@ -175,6 +228,9 @@ export const usePaymentForm = ({ cams, onSuccess }) => {
     setCamAllocation,
     lateFeeAllocation,
     setLateFeeAllocation,
+    electricityAllocations,
+    setElectricityAllocations,
+    totalElectricityAllocation,
     selectedBankAccountId,
     setSelectedBankAccountId,
     handleOpenDialog,

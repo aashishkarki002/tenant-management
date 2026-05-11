@@ -9,14 +9,8 @@
 import { AlertCircleIcon, UserIcon } from "lucide-react";
 import { Card, Lbl, Skeleton } from "../AccountingPrimitives";
 import { useArAging } from "../../hooks/useArAging";
+import { fmtRs } from "../../../utils/formatter";
 
-function fmtPaisa(paisa = 0) {
-  if (!paisa) return "—";
-  return `Rs ${(paisa / 100).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
 
 const BUCKETS = [
   { key: "current",   label: "Current",     color: "var(--color-success)" },
@@ -54,7 +48,7 @@ function TenantRow({ tenant }) {
         <td key={b.key} className="py-3 pr-3 text-right text-xs font-mono">
           {tenant.buckets[b.key]?.paisa > 0 ? (
             <span style={{ color: b.color, fontWeight: 600 }}>
-              {fmtPaisa(tenant.buckets[b.key].paisa)}
+              {fmtRs(tenant.buckets[b.key].paisa)}
             </span>
           ) : (
             <span className="text-[var(--color-border)]">—</span>
@@ -62,14 +56,14 @@ function TenantRow({ tenant }) {
         </td>
       ))}
       <td className="py-3 text-right text-xs font-mono font-bold" style={{ color: maxBucket.color }}>
-        {fmtPaisa(tenant.total?.paisa ?? 0)}
+        {fmtRs(tenant.total?.paisa ?? 0)}
       </td>
     </tr>
   );
 }
 
-export default function ArAgingTab() {
-  const { data, loading, error, refetch } = useArAging();
+export default function ArAgingTab({ entityId }) {
+  const { data, loading, error, refetch } = useArAging(entityId);
 
   if (loading) {
     return (
@@ -104,7 +98,7 @@ export default function ArAgingTab() {
         <Card>
           <Lbl>Total Outstanding AR</Lbl>
           <div className="text-xl font-bold text-[var(--color-text)]">
-            {fmtPaisa(totalOutstanding)}
+            {fmtRs(totalOutstanding)}
           </div>
           <div className="text-[10px] text-[var(--color-text-sub)] mt-1">
             {tenants.length} tenant{tenants.length !== 1 ? "s" : ""} with unpaid rent
@@ -116,7 +110,7 @@ export default function ArAgingTab() {
             className="text-xl font-bold"
             style={{ color: over3Paisa > 0 ? "var(--color-danger)" : "var(--color-text)" }}
           >
-            {fmtPaisa(over3Paisa)}
+            {fmtRs(over3Paisa)}
           </div>
           {over3Paisa > 0 && (
             <div className="flex items-center gap-1 mt-1">
@@ -177,12 +171,12 @@ export default function ArAgingTab() {
                   {BUCKETS.map((b) => (
                     <td key={b.key} className="py-3 pr-3 text-right text-xs font-mono font-bold" style={{ color: b.color }}>
                       {grandTotal?.buckets?.[b.key]?.paisa > 0
-                        ? fmtPaisa(grandTotal.buckets[b.key].paisa)
+                        ? fmtRs(grandTotal.buckets[b.key].paisa)
                         : "—"}
                     </td>
                   ))}
                   <td className="py-3 text-right text-sm font-mono font-bold text-[var(--color-text)]">
-                    {fmtPaisa(grandTotal?.total?.paisa ?? 0)}
+                    {fmtRs(grandTotal?.total?.paisa ?? 0)}
                   </td>
                 </tr>
               </tbody>

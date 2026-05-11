@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { Skeleton, ProgBar, Gauge, ChartTip } from "./AccountingPrimitives";
-import { fmtK } from "../utils/formatter";
+import { fmtRs } from "../../utils/formatter";
 import { toBSDate } from "../utils/nepaliCalendar";
 
 // ─── Shared design tokens ─────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ export function RevExpChart({ data = [], loading, currentMonth = null }) {
                     />
                     <YAxis
                         yAxisId="bars"
-                        tickFormatter={fmtK}
+                        tickFormatter={fmtRs}
                         tick={{ fontSize: 10, fill: CHR.muted }}
                         tickLine={false}
                         axisLine={false}
@@ -134,7 +134,7 @@ export function RevExpChart({ data = [], loading, currentMonth = null }) {
                     <YAxis
                         yAxisId="net"
                         orientation="right"
-                        tickFormatter={fmtK}
+                        tickFormatter={fmtRs}
                         tick={{ fontSize: 10, fill: CHR.muted }}
                         tickLine={false}
                         axisLine={false}
@@ -202,7 +202,7 @@ export function CompareChart({ data = [], loading, labelA, labelB }) {
             >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHR.grid} />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: CHR.muted }} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: CHR.muted }} tickLine={false} axisLine={false} width={38} />
+                <YAxis tickFormatter={fmtRs} tick={{ fontSize: 10, fill: CHR.muted }} tickLine={false} axisLine={false} width={38} />
                 <Tooltip content={<ChartTip />} cursor={{ fill: "var(--color-surface)", radius: 4 }} />
                 <Bar dataKey="revenueA" name={`Rev · ${labelA ?? "A"}`} fill={CHR.revenueLight} radius={[3, 3, 0, 0]} maxBarSize={22} />
                 <Bar dataKey="revenueB" name={`Rev · ${labelB ?? "B"}`} fill={`${CHR.revenueLight}55`} radius={[3, 3, 0, 0]} maxBarSize={22} />
@@ -249,7 +249,7 @@ export function CashFlowArea({ data = [], loading }) {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHR.grid} />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: CHR.muted }} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: CHR.muted }} tickLine={false} axisLine={false} width={38} />
+                <YAxis tickFormatter={fmtRs} tick={{ fontSize: 10, fill: CHR.muted }} tickLine={false} axisLine={false} width={38} />
                 <ReferenceLine y={0} stroke={CHR.muted} strokeDasharray="4 3" strokeOpacity={0.5} />
                 <Tooltip content={<ChartTip />} cursor={{ stroke: CHR.grid, strokeWidth: 1 }} />
                 <Area
@@ -312,11 +312,11 @@ export function CompareStatStrip({ stats, labelA, labelB, loading }) {
                         <div className="grid grid-cols-2 gap-1.5">
                             <div>
                                 <div className="text-[10px] mb-0.5 text-[var(--color-text-sub)]">{labelA}</div>
-                                <div className="text-[15px] font-bold text-[var(--color-text-strong)]">RS{fmtK(s.a ?? 0)}</div>
+                                <div className="text-[15px] font-bold text-[var(--color-text-strong)]">RS{fmtRs(s.a ?? 0)}</div>
                             </div>
                             <div>
                                 <div className="text-[10px] mb-0.5 text-[var(--color-text-sub)]">{labelB}</div>
-                                <div className="text-[15px] font-bold text-[var(--color-text-strong)]">RS{fmtK(s.b ?? 0)}</div>
+                                <div className="text-[15px] font-bold text-[var(--color-text-strong)]">RS{fmtRs(s.b ?? 0)}</div>
                             </div>
                         </div>
                         <div className="flex items-center gap-1.5 mt-2.5">
@@ -389,7 +389,7 @@ export function RevenueStreamTable({ breakdown = [], loading }) {
                         </span>
                     </div>
                     <div className="text-[13px] font-bold text-right text-[var(--color-text-strong)]">
-                        RS {fmtK(item.amount)}
+                        RS {fmtRs(item.amount)}
                     </div>
                 </div>
             ))}

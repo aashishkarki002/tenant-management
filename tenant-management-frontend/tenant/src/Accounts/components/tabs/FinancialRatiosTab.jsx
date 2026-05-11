@@ -17,7 +17,7 @@ import {
 import { TrendingUp, TrendingDown, Minus, AlertCircle, Info } from "lucide-react";
 import { useFinancialRatios } from "../../hooks/useFinancialRatios";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK } from "../../utils/formatter";
+import { fmtK } from "../../../utils/formatter";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {

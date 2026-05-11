@@ -69,9 +69,9 @@ function EditableRow({ acct, onSave }) {
 }
 
 export default function CoaManagementTab() {
-  const { selectedEntity } = useEntity();
+  const { activeEntityId } = useEntity();
   const [typeFilter, setTypeFilter] = useState("");
-  const { data, loading, error, refetch, create, update } = useAccounts(selectedEntity?.id ?? null, typeFilter || null);
+  const { data, loading, error, refetch, create, update } = useAccounts(activeEntityId ?? null, typeFilter || null);
 
   const [form, setForm] = useState({ code: "", name: "", type: "EXPENSE" });
   const [saving, setSaving] = useState(false);
@@ -82,7 +82,7 @@ export default function CoaManagementTab() {
     try {
       setSaving(true);
       setFormError(null);
-      await create({ ...form, entityId: selectedEntity?.id });
+      await create({ ...form, entityId: activeEntityId });
       setForm({ code: "", name: "", type: "EXPENSE" });
     } catch (ex) {
       setFormError(ex.response?.data?.message ?? "Failed to create account");

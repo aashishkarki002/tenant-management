@@ -5,14 +5,12 @@ import {
 } from "../AccountingCharts";
 import ChartCard from "../ChartCard";
 import LedgerFeed from "../LedgerFeed";
-import { fmtK } from "../../utils/formatter";
+import { fmtKLatin } from "../../../utils/formatter";
 import { cn } from "@/lib/utils";
 import {
     TrendingUpIcon, TrendingDownIcon,
     CheckCircle2Icon,
 } from "lucide-react";
-
-// ─── Tokens ───────────────────────────────────────────────────────────────────
 const T = {
     revenue:  "var(--color-info)",
     expenses: "var(--color-warning)",
@@ -26,7 +24,7 @@ const T = {
     raised:   "var(--color-surface-raised)",
 };
 
-function paisaToRs(p) { return (p ?? 0) / 100; }
+
 
 // ─── Trend badge — replaces YoYBadge, inline and token-correct ───────────────
 function TrendBadge({ pct, loading }) {
@@ -90,7 +88,7 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                                     letterSpacing: "-0.02em",
                                 }}
                             >
-                                {isLoss ? "−" : "+"}RS {fmtK(Math.abs(totals.netCashFlow))}
+                                {isLoss ? "−" : "+"}RS {fmtKLatin(Math.abs(totals.netCashFlow))}
                             </span>
                         )}
                     <div className="flex items-center gap-2 flex-wrap">
@@ -111,7 +109,7 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                                 className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                                 style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
                             >
-                                RS {fmtK(collectionGap.outstanding)} pending
+                                RS {fmtKLatin(collectionGap.outstanding)} pending
                             </span>
                         )}
                     </div>
@@ -122,7 +120,7 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                                 className="text-[22px] font-bold tabular-nums leading-none"
                                 style={{ color: T.revenue, letterSpacing: "-0.02em" }}
                             >
-                                RS {fmtK(totals.totalRevenue)}
+                                RS {fmtKLatin(totals.totalRevenue)}
                             </span>
                         )}
                     {!loadingSummary && (collectionGap?.outstanding ?? 0) > 0
@@ -147,7 +145,7 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                                 className="text-[22px] font-bold tabular-nums leading-none"
                                 style={{ color: T.expenses, letterSpacing: "-0.02em" }}
                             >
-                                RS {fmtK(totals.totalExpenses)}
+                                RS {fmtKLatin(totals.totalExpenses)}
                             </span>
                         )}
                     <TrendBadge pct={yoy?.expenses?.pct} loading={healthLoading} />
@@ -173,18 +171,18 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                             </span>
                         )}
                     <span className="text-[11px]" style={{ color: T.sub }}>
-                        {healthLoading ? "" : `NOI: RS ${fmtK(paisaToRs(health?.noi?.noiPaisa ?? 0))}`}
+                        {healthLoading ? "" : `NOI: RS ${fmtKLatin((health?.noi?.noiPaisa ?? 0))}`}
                     </span>
                 </div>
 
-                {/* Cash Position — actual bank/cash balance (balance sheet) */}
+                {/* Cash Position — ledger-derived all-time cumulative balance */}
                 <div className="flex flex-col gap-1 px-5 py-4 border-t lg:border-t-0 lg:border-l"
                     style={{ borderColor: T.border }}>
                     <div className="flex items-center justify-between">
                         <span className="text-[11px] font-medium" style={{ color: T.sub }}>Cash position</span>
                         <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
-                            style={{ background: T.border, color: T.sub }}>
-                            live
+                            style={{ background: "var(--color-success-bg)", color: "var(--color-success)" }}>
+                            ledger
                         </span>
                     </div>
                     {loadingSummary
@@ -194,10 +192,10 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                                 className="text-[22px] font-bold tabular-nums leading-none"
                                 style={{ color: cashNeg ? T.danger : T.body, letterSpacing: "-0.02em" }}
                             >
-                                RS {fmtK(Math.abs(cashPos))}
+                                RS {fmtKLatin(Math.abs(cashPos))}
                             </span>
                         )}
-                    <span className="text-[11px]" style={{ color: T.sub }}>bank + cash on hand</span>
+                    <span className="text-[11px]" style={{ color: T.sub }}>bank + cash · verified DR−CR</span>
                 </div>
 
             </div>
@@ -218,11 +216,11 @@ function CollectionSplit({ billed, collected, outstanding, rate }) {
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-semibold tabular-nums" style={{ color: barColor }}>
-                    RS {fmtK(collected)} collected
+                    RS {fmtKLatin(collected)} collected
                 </span>
                 <span className="text-[9px]" style={{ color: T.sub }}>·</span>
                 <span className="text-[10px] font-semibold tabular-nums" style={{ color: "#f59e0b" }}>
-                    RS {fmtK(outstanding)} pending
+                    RS {fmtKLatin   (outstanding)} pending
                 </span>
                 <span className="text-[9px] font-bold tabular-nums ml-auto" style={{ color: barColor }}>
                     {rate.toFixed(0)}%
@@ -253,11 +251,11 @@ function CollectionGapStrip({ collectionGap, loading, filterLabel }) {
 
                 {/* Stat chips: Billed → Collected · Pending */}
                 <div className="flex items-center gap-2 flex-wrap">
-                    <CollStat label="Billed"     value={`RS ${fmtK(billed)}`}       color={T.body} />
+                    <CollStat label="Billed"     value={`RS ${fmtKLatin(billed)}`}       color={T.body} />
                     <span className="text-[11px]" style={{ color: T.sub }}>→</span>
-                    <CollStat label="Collected"  value={`RS ${fmtK(collected)}`}    color={barColor} />
+                    <CollStat label="Collected"  value={`RS ${fmtKLatin(collected)}`}    color={barColor} />
                     <span className="text-[11px]" style={{ color: T.sub }}>·</span>
-                    <CollStat label="Pending"    value={`RS ${fmtK(outstanding)}`}  color="#f59e0b" highlight />
+                    <CollStat label="Pending"    value={`RS ${fmtKLatin(outstanding)}`}  color="#f59e0b" highlight />
                 </div>
 
                 {/* Progress bar + rate */}
@@ -322,13 +320,13 @@ function ArrearsPanel({ aging, loading, arBalancePaisa }) {
                     {!loading && (arBalancePaisa ?? 0) > 0 && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                             style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}>
-                            Total AR: RS {fmtK(paisaToRs(arBalancePaisa))}
+                            Total AR: RS {fmtKLatin((arBalancePaisa))}
                         </span>
                     )}
                 </div>
                 {!loading && totalCount > 0 && (
                     <span className="text-[12px] font-semibold tabular-nums" style={{ color: T.danger }}>
-                        RS {fmtK(paisaToRs(totalAmount))}
+                        RS {fmtKLatin((totalAmount))}
                     </span>
                 )}
             </div>
@@ -363,7 +361,7 @@ function ArrearsPanel({ aging, loading, arBalancePaisa }) {
                                                 className="text-[12px] font-semibold tabular-nums"
                                                 style={{ color: b.color, opacity: b.opacity ?? 1 }}
                                             >
-                                                RS {fmtK(paisaToRs(b.data?.amountPaisa ?? 0))}
+                                                RS {fmtKLatin(paisaToRs(b.data?.amountPaisa ?? 0))}
                                             </span>
                                             <ProgBar
                                                 value={b.data?.amountPaisa ?? 0}
@@ -414,7 +412,7 @@ function CompareTable({ comparisonStats, labelA, labelB }) {
                     >
                         <div className="text-[12px] font-medium" style={{ color: T.body }}>{r.label}</div>
                         <div className="text-[12px] font-semibold tabular-nums text-right" style={{ color: r.color }}>
-                            RS {fmtK(s.a)}
+                            RS {fmtKLatin(s.a)}
                         </div>
                         <div className="text-[12px] font-semibold tabular-nums text-right" style={{ color: r.color, opacity: 0.6 }}>
                             RS {fmtK(s.b)}

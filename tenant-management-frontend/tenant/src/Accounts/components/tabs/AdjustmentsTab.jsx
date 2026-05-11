@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useEntity } from "../../../context/EntityContext";
 import { useAdjustments } from "../../hooks/useAdjustments";
-import { fmtRs as fmtPaisa } from "../../utils/formatter";
+import { fmtRs} from "../../../utils/formatter";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

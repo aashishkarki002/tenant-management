@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FileTextIcon, PrinterIcon, ArrowDownRightIcon, ArrowUpRightIcon, DownloadIcon, FileSpreadsheetIcon, Loader2Icon } from "lucide-react";
 import { Card } from "../AccountingPrimitives";
 import LedgerTable from "../LedgerTable";
-import { fmtK } from "../../utils/formatter";
+import { fmtK } from "../../../utils/formatter";
 import { exportLedgerCSV, exportLedgerPDF } from "../../utils/exportUtils";
 import { useEntity } from "../../../context/EntityContext";
 

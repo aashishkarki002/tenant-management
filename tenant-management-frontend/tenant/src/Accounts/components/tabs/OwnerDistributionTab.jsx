@@ -10,8 +10,8 @@ function fmtPaisa(p = 0) {
 const PAYMENT_METHODS = ["cash", "bank_transfer", "cheque"];
 
 export default function OwnerDistributionTab() {
-  const { selectedEntity } = useEntity();
-  const { data, loading, error, refetch, create } = useOwnerDistribution(selectedEntity?.id ?? null);
+  const { activeEntityId } = useEntity();
+  const { data, loading, error, refetch, create } = useOwnerDistribution(activeEntityId ?? null);
 
   const [form, setForm] = useState({ amountPaisa: "", paymentMethod: "bank_transfer", description: "" });
   const [saving, setSaving] = useState(false);
@@ -24,7 +24,7 @@ export default function OwnerDistributionTab() {
       setSaving(true);
       setFormError(null);
       await create({
-        entityId: selectedEntity?.id,
+        entityId: activeEntityId,
         amountPaisa: Math.round(Number(form.amountPaisa) * 100),
         paymentMethod: form.paymentMethod,
         description: form.description || null,

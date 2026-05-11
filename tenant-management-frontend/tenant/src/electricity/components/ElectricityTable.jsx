@@ -272,7 +272,6 @@ export function ElectricityTable({
                   key={record._id ?? index}
                   record={record}
                   index={(currentPage - 1) * PAGE_SIZE + index}
-                  onPaymentRecorded={onPaymentRecorded}
                   onEditReading={onEditReading}
                 />
               ))}

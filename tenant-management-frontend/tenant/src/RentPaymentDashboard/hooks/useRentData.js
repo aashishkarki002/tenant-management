@@ -38,6 +38,8 @@ export const useRentData = () => {
   const [properties, setProperties] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [cams, setCams] = useState([]);
+  // electricityByTenantId: { [tenantId]: ElectricityRecord[] } — only unpaid records
+  const [electricityByTenantId, setElectricityByTenantId] = useState({});
 
   // ── Loading / error ───────────────────────────────────────────────────────
   const [initLoading, setInitLoading] = useState(true);
@@ -98,6 +100,34 @@ export const useRentData = () => {
       setRentsLoading(false);
     }
   }, [frequencyView, filterQuarter, filterRentMonth, filterRentYear, filterStatus, filterPropertyId]);
+
+  // ── Fetch: electricity for current period ────────────────────────────────
+  // Groups unpaid readings by tenantId so each RentTableRow can look up its own.
+  const getElectricityForPeriod = useCallback(async () => {
+    try {
+      const response = await api.get("/api/electricity/get-readings", {
+        params: { nepaliMonth: filterRentMonth, nepaliYear: filterRentYear },
+      });
+      if (response.data.success) {
+        const readings = response.data.data?.readings || [];
+        const map = {};
+        readings.forEach((r) => {
+          const tenantId = r.tenant?._id || r.tenant;
+          if (!tenantId) return;
+          const remaining =
+            r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0));
+          if (remaining <= 0) return; // skip fully paid
+          const key = tenantId.toString();
+          if (!map[key]) map[key] = [];
+          map[key].push(r);
+        });
+        setElectricityByTenantId(map);
+      }
+    } catch (err) {
+      console.error("Error fetching electricity readings for period:", err);
+      setElectricityByTenantId({});
+    }
+  }, [filterRentMonth, filterRentYear]);
 
   // ── Fetch: CAMs ───────────────────────────────────────────────────────────
   // Reads month/year from closure — no args needed when called post-payment.
@@ -198,6 +228,9 @@ export const useRentData = () => {
     getCams();
   }, [getCams]);
   useEffect(() => {
+    getElectricityForPeriod();
+  }, [getElectricityForPeriod]);
+  useEffect(() => {
     getPayments();
   }, [getPayments]);
 
@@ -233,6 +266,9 @@ export const useRentData = () => {
     setFilterStartDate,
     setFilterEndDate,
     setFilterPaymentMethod,
+    // Electricity by tenant
+    electricityByTenantId,
+    getElectricityForPeriod,
     // Stable actions
     getRents,
     getPayments,

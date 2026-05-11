@@ -100,12 +100,18 @@ const PaymentsMetricsStrip = ({ payments }) => {
   );
 };
 
-function rowFullySettled(rent) {
+function rowFullySettled(rent, electricityByTenantId = {}) {
   const hasOutstandingLateFee =
     rent.lateFeeApplied &&
     rent.lateFeePaisa > 0 &&
     rent.lateFeeStatus !== "paid";
-  return rent.status === "paid" && !hasOutstandingLateFee;
+  const elecRecords = electricityByTenantId[rent.tenant?._id?.toString()] || [];
+  const hasElectricityDue = elecRecords.some((r) => {
+    const remaining =
+      r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0));
+    return remaining > 0;
+  });
+  return rent.status === "paid" && !hasOutstandingLateFee && !hasElectricityDue;
 }
 
 const RentPayment = () => {
@@ -141,6 +147,8 @@ const RentPayment = () => {
     getRents,
     getPayments,
     getCams,
+    electricityByTenantId,
+    getElectricityForPeriod,
   } = useRentData();
 
   const adminRent = useAdminRentActions({ onProcessSuccess: getRents });
@@ -199,7 +207,7 @@ const RentPayment = () => {
 
   const tenantsPaidStats = useMemo(() => {
     const total = frequencyFilteredRents.length;
-    const paid = frequencyFilteredRents.filter((r) => rowFullySettled(r)).length;
+    const paid = frequencyFilteredRents.filter((r) => rowFullySettled(r, electricityByTenantId)).length;
     return { paid, total };
   }, [frequencyFilteredRents]);
 
@@ -227,8 +235,8 @@ const RentPayment = () => {
   ]);
 
   const handlePaymentSuccess = useCallback(async () => {
-    await Promise.all([getRents(), getPayments(), getCams()]);
-  }, [getRents, getPayments, getCams]);
+    await Promise.all([getRents(), getPayments(), getCams(), getElectricityForPeriod()]);
+  }, [getRents, getPayments, getCams, getElectricityForPeriod]);
 
   const handleClearPaymentFilters = () => {
     setFilterStartDate("");
@@ -459,6 +467,7 @@ const RentPayment = () => {
               rents={displayRents}
               cams={cams}
               bankAccounts={bankAccounts}
+              electricityByTenantId={electricityByTenantId}
               onRefresh={handlePaymentSuccess}
               sendRentReminders={adminRent.sendRentReminders}
               sendingEmails={adminRent.sendingEmails}

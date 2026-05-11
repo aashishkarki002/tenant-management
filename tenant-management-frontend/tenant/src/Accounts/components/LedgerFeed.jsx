@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Skeleton } from "./AccountingPrimitives";
 import { toBSDate } from "../utils/nepaliCalendar";
-import { fmtK } from "../utils/formatter";
+import { fmtRs} from "../../utils/formatter"
 
 export default function LedgerFeed({ entries = [], loading, onViewAll }) {
     if (loading) {
@@ -84,7 +84,7 @@ export default function LedgerFeed({ entries = [], loading, onViewAll }) {
                                             : "text-[var(--color-success)]",
                                     )}
                                 >
-                                    {isDebit ? "−" : "+"}RS {fmtK(amt)}
+                                    {isDebit ? "−" : "+"}RS {fmtRs(amt)}
                                 </div>
                             </div>
                         </div>

@@ -27,12 +27,17 @@ import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 
-function rowFullySettled(rent) {
+function rowFullySettled(rent, electricityRecords = []) {
   const hasOutstandingLateFee =
     rent.lateFeeApplied &&
     rent.lateFeePaisa > 0 &&
     rent.lateFeeStatus !== "paid";
-  return rent.status === "paid" && !hasOutstandingLateFee;
+  const hasElectricityDue = electricityRecords.some((r) => {
+    const remaining =
+      r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0));
+    return remaining > 0;
+  });
+  return rent.status === "paid" && !hasOutstandingLateFee && !hasElectricityDue;
 }
 
 const SORT_COLS = [
@@ -40,6 +45,7 @@ const SORT_COLS = [
   { key: "unit", label: "Unit" },
   { key: "rent", label: "Rent", right: true },
   { key: "cam", label: "CAM", right: true },
+  { key: "electricity", label: "Electricity", right: true },
   { key: "total", label: "Total", right: true },
   { key: "dueDate", label: "Due date" },
   { key: "status", label: "Status" },
@@ -134,6 +140,7 @@ export const RentTable = ({
   rents,
   cams,
   bankAccounts,
+  electricityByTenantId = {},
   onRefresh,
   sendRentReminders,
   sendingEmails,
@@ -148,6 +155,9 @@ export const RentTable = ({
     setCamAllocation,
     lateFeeAllocation,
     setLateFeeAllocation,
+    electricityAllocations,
+    setElectricityAllocations,
+    totalElectricityAllocation,
     selectedBankAccountId,
     setSelectedBankAccountId,
     handleOpenDialog,
@@ -220,9 +230,12 @@ export const RentTable = ({
     [sortedRents, activeSelectedIds],
   );
 
-  const handleOpen = (rent) => {
+  const getElecRecords = (rent) =>
+    electricityByTenantId[rent.tenant?._id?.toString()] || [];
+
+  const handleOpen = (rent, electricityRecords = []) => {
     setSelectedRent(rent);
-    handleOpenDialog(rent);
+    handleOpenDialog(rent, electricityRecords);
     setDialogOpen(true);
   };
 
@@ -245,7 +258,7 @@ export const RentTable = ({
     }
     const rent = selectedRentsList[0];
     if (!rent) return;
-    if (rowFullySettled(rent)) {
+    if (rowFullySettled(rent, getElecRecords(rent))) {
       toast.info("This row is already fully paid.");
       return;
     }
@@ -253,7 +266,7 @@ export const RentTable = ({
       toast.info("Use the Pay button on the row to handle this tenant's arrears.");
       return;
     }
-    handleOpen(rent);
+    handleOpen(rent, getElecRecords(rent));
   };
 
   const headerCheckboxRef = React.useRef(null);
@@ -261,6 +274,9 @@ export const RentTable = ({
     const el = headerCheckboxRef.current;
     if (el) el.indeterminate = someSelected && !allSelected;
   }, [someSelected, allSelected]);
+
+  // Electricity records for the currently open dialog (stable across re-renders)
+  const selectedElecRecords = selectedRent ? getElecRecords(selectedRent) : [];
 
   return (
     <>
@@ -301,7 +317,7 @@ export const RentTable = ({
 
       {/* Clean border-light table */}
       <div className="max-h-[min(70vh,820px)] overflow-auto">
-        <table className="w-full caption-bottom text-sm min-w-[860px]">
+        <table className="w-full caption-bottom text-sm min-w-[960px]">
           <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow className="border-b border-border/60 hover:bg-transparent">
               <TableHead className="w-10 px-3 py-2.5 bg-background">
@@ -332,7 +348,7 @@ export const RentTable = ({
             {sortedRents.length === 0 ? (
               <TableRow className="hover:bg-transparent border-0">
                 <TableCell
-                  colSpan={10}
+                  colSpan={11}
                   className="py-20 text-center"
                 >
                   <p className="text-sm text-muted-foreground">
@@ -350,6 +366,7 @@ export const RentTable = ({
                   rent={rent}
                   cams={cams}
                   bankAccounts={bankAccounts}
+                  electricityRecords={getElecRecords(rent)}
                   onOpenPaymentDialog={handleOpen}
                   onRefresh={onRefresh}
                   selected={!!(rent._id && activeSelectedIds.has(rent._id))}
@@ -367,6 +384,7 @@ export const RentTable = ({
             rent={selectedRent}
             cams={cams}
             bankAccounts={bankAccounts}
+            electricityRecords={selectedElecRecords}
             formik={formik}
             allocationMode={allocationMode}
             setAllocationMode={setAllocationMode}
@@ -376,6 +394,9 @@ export const RentTable = ({
             setCamAllocation={setCamAllocation}
             lateFeeAllocation={lateFeeAllocation}
             setLateFeeAllocation={setLateFeeAllocation}
+            electricityAllocations={electricityAllocations}
+            setElectricityAllocations={setElectricityAllocations}
+            totalElectricityAllocation={totalElectricityAllocation}
             selectedBankAccountId={selectedBankAccountId}
             setSelectedBankAccountId={setSelectedBankAccountId}
             handleAmountChange={handleAmountChange}

@@ -79,8 +79,8 @@ function PayModal({ bill, onClose, onPay }) {
 }
 
 export default function VendorBillsTab() {
-  const { selectedEntity } = useEntity();
-  const { data, loading, error, refetch, create, pay } = useVendorBills(selectedEntity?.id ?? null);
+  const { activeEntityId } = useEntity();
+  const { data, loading, error, refetch, create, pay } = useVendorBills(activeEntityId ?? null);
   const [payingBill, setPayingBill] = useState(null);
   const [form, setForm] = useState({ vendorName: "", billNumber: "", amountPaisa: "", expenseAccountCode: "5000", billDate: "" });
   const [saving, setSaving] = useState(false);
@@ -92,7 +92,7 @@ export default function VendorBillsTab() {
       setSaving(true);
       setFormError(null);
       await create({
-        entityId: selectedEntity?.id,
+        entityId: activeEntityId,
         vendorName: form.vendorName,
         billNumber: form.billNumber || null,
         amountPaisa: Math.round(Number(form.amountPaisa) * 100),

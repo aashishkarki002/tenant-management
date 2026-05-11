@@ -9,10 +9,10 @@ function fmtPaisa(p = 0) {
 
 const MONTHS = ["Baisakh","Jestha","Ashadh","Shrawan","Bhadra","Ashwin","Kartik","Mangsir","Poush","Magh","Falgun","Chaitra"];
 
-export default function TdsFilingTab() {
+export default function TdsFilingTab({ entityId }) {
   const currentYear = new NepaliDate(new Date()).getYear();
   const [nepaliYear, setNepaliYear] = useState(currentYear);
-  const { data, loading, error, refetch } = useTdsFilingSummary(nepaliYear);
+  const { data, loading, error, refetch } = useTdsFilingSummary(nepaliYear, null, entityId);
 
   return (
     <div className="space-y-4">

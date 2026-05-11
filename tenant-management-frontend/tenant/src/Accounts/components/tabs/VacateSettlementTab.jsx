@@ -1,13 +1,10 @@
 import { useState, useEffect } from "react";
 import { useVacateSettlement, useVacateList } from "../../hooks/useVacateSettlement";
-import { fmtK } from "../../utils/formatter";
+
 import api from "../../../../plugins/axios";
 import {Input} from "../../../components/ui/input";
 
-function fmtPaisa(p) {
-  if (p == null || p === 0) return "Rs 0";
-  return `Rs ${fmtK(Math.abs(p) / 100)}`;
-}
+import { fmtK } from "../../../utils/formatter";
 
 function fmtDate(iso) {
   if (!iso) return "—";

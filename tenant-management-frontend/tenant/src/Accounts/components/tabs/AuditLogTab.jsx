@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuditLog, useAuditEventTypes } from "../../hooks/useAuditLog";
-import { fmtK } from "../../utils/formatter";
+import { fmtRs } from "../../../utils/formatter";
 
 const EVENT_LABELS = {
   TRANSACTION_CREATED:      "Transaction Created",
@@ -200,7 +200,7 @@ export default function AuditLogTab({ entityId }) {
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-[var(--color-text-body)]">
                   {log.amountPaisa != null
-                    ? `Rs ${fmtK(log.amountPaisa / 100)}`
+                    ? `Rs ${fmtRs(log.amountPaisa / 100)}`
                     : "—"}
                 </td>
                 <td className="px-4 py-2.5 text-[var(--color-text-sub)]">

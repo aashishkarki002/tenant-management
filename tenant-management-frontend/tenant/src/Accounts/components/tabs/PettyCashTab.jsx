@@ -8,8 +8,8 @@ function fmtPaisa(p = 0) {
 }
 
 export default function PettyCashTab({ filterProps = {} }) {
-  const { selectedEntity } = useEntity();
-  const { data, loading, error, refetch } = usePettyCash(selectedEntity?.id ?? null, filterProps);
+  const { activeEntityId } = useEntity();
+  const { data, loading, error, refetch } = usePettyCash(activeEntityId ?? null, filterProps);
 
   if (loading) return <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>;
   if (error) return <div className="p-4 text-sm text-[var(--color-danger)] text-center">{error} <button onClick={refetch} className="underline ml-2 text-xs">Retry</button></div>;
