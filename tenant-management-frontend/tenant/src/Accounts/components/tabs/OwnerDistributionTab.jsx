@@ -1,7 +1,12 @@
 import { useState } from "react";
-import { Card, Lbl, Skeleton } from "../AccountingPrimitives";
 import { useOwnerDistribution } from "../../hooks/useOwnerDistribution";
 import { useEntity } from "../../../context/EntityContext";
+import { Button } from "@/components/ui/button";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function fmtPaisa(p = 0) {
   return `Rs ${(p / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -42,78 +47,86 @@ export default function OwnerDistributionTab() {
     <div className="space-y-4">
       {/* Create form */}
       <Card>
-        <div className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-sub)] mb-4">New Distribution</div>
-        <form onSubmit={handleCreate} className="flex flex-wrap gap-3 items-end">
-          <div>
-            <Lbl>Amount (Rs)</Lbl>
-            <input
-              type="number" step="0.01" min="0.01" required
-              className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-surface-raised)] text-[var(--color-text)] w-36"
-              value={form.amountPaisa}
-              onChange={(e) => setForm((f) => ({ ...f, amountPaisa: e.target.value }))}
-              placeholder="0.00"
-            />
-          </div>
-          <div>
-            <Lbl>Method</Lbl>
-            <select
-              className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-surface-raised)] text-[var(--color-text)]"
-              value={form.paymentMethod}
-              onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))}
+        <CardContent className="pt-6">
+          <div className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-sub)] mb-4">New Distribution</div>
+          <form onSubmit={handleCreate} className="flex flex-wrap gap-3 items-end">
+            <div>
+              <Label>Amount (Rs)</Label>
+              <Input
+                type="number" step="0.01" min="0.01" required
+                className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-surface-raised)] text-[var(--color-text)] w-36"
+                value={form.amountPaisa}
+                onChange={(e) => setForm((f) => ({ ...f, amountPaisa: e.target.value }))}
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <Label>Method</Label>
+              <Select
+                value={form.paymentMethod}
+                onValueChange={(value) => setForm((f) => ({ ...f, paymentMethod: value }))}
+              >
+                <SelectTrigger className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-surface-raised)] text-[var(--color-text)]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{m.replace("_", " ")}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input
+                type="text"
+                className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-surface-raised)] text-[var(--color-text)] w-48"
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Optional note"
+              />
+            </div>
+            <Button
+              type="submit" disabled={saving}
+              className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-[var(--color-primary)] disabled:opacity-50"
             >
-              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
-            </select>
-          </div>
-          <div>
-            <Lbl>Description</Lbl>
-            <input
-              type="text"
-              className="border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--color-surface-raised)] text-[var(--color-text)] w-48"
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              placeholder="Optional note"
-            />
-          </div>
-          <button
-            type="submit" disabled={saving}
-            className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-[var(--color-primary)] disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Record Distribution"}
-          </button>
-        </form>
-        {formError && <div className="mt-2 text-xs text-[var(--color-danger)]">{formError}</div>}
+              {saving ? "Saving…" : "Record Distribution"}
+            </Button>
+          </form>
+          {formError && <div className="mt-2 text-xs text-[var(--color-danger)]">{formError}</div>}
+        </CardContent>
       </Card>
 
       {loading && <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>}
-      {error && <div className="p-4 text-sm text-[var(--color-danger)] text-center">{error} <button onClick={refetch} className="underline ml-2 text-xs">Retry</button></div>}
+      {error && <div className="p-4 text-sm text-[var(--color-danger)] text-center">{error} <Button variant="link" onClick={refetch} className="underline ml-2 text-xs">Retry</Button></div>}
 
       {!loading && !error && (
         <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)]">
-                  <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">Date</th>
-                  <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">Method</th>
-                  <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">Description</th>
-                  <th className="py-2 text-right text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.length === 0 && (
-                  <tr><td colSpan={4} className="py-8 text-center text-xs text-[var(--color-text-sub)]">No distributions recorded</td></tr>
-                )}
-                {data.map((d) => (
-                  <tr key={d._id} className="border-b border-[var(--color-border)]/30 hover:bg-[var(--color-surface-hover)] transition-colors">
-                    <td className="py-2 pr-4 text-xs text-[var(--color-text-sub)]">{d.nepaliDate ?? d.distributionDate?.substring(0, 10)}</td>
-                    <td className="py-2 pr-4 text-xs capitalize text-[var(--color-text)]">{d.paymentMethod?.replace("_", " ")}</td>
-                    <td className="py-2 pr-4 text-xs text-[var(--color-text-sub)]">{d.description ?? "—"}</td>
-                    <td className="py-2 text-right text-xs font-mono font-semibold">{fmtPaisa(d.amountPaisa)}</td>
+          <CardContent className="pt-6">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-border)]">
+                    <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">Date</th>
+                    <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">Method</th>
+                    <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">Description</th>
+                    <th className="py-2 text-right text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">Amount</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.length === 0 && (
+                    <tr><td colSpan={4} className="py-8 text-center text-xs text-[var(--color-text-sub)]">No distributions recorded</td></tr>
+                  )}
+                  {data.map((d) => (
+                    <tr key={d._id} className="border-b border-[var(--color-border)]/30 hover:bg-[var(--color-surface-hover)] transition-colors">
+                      <td className="py-2 pr-4 text-xs text-[var(--color-text-sub)]">{d.nepaliDate ?? d.distributionDate?.substring(0, 10)}</td>
+                      <td className="py-2 pr-4 text-xs capitalize text-[var(--color-text)]">{d.paymentMethod?.replace("_", " ")}</td>
+                      <td className="py-2 pr-4 text-xs text-[var(--color-text-sub)]">{d.description ?? "—"}</td>
+                      <td className="py-2 text-right text-xs font-mono font-semibold">{fmtPaisa(d.amountPaisa)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
         </Card>
       )}
     </div>

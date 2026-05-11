@@ -253,6 +253,7 @@ export const FinancialTab = ({
                                 <SelectItem value={SECURITY_DEPOSIT_MODES.BANK_GUARANTEE}>
                                     Bank Guarantee (document only)
                                 </SelectItem>
+                                <SelectItem value={SECURITY_DEPOSIT_MODES.OTHERS}>Others</SelectItem>
                             </SelectContent>
                         </Select>
                         {sdMode === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE && (
@@ -304,6 +305,43 @@ export const FinancialTab = ({
                                     Selected: {formik.values.bankGuaranteePhoto.name}
                                 </p>
                             )}
+                        </div>
+                    )}
+
+                    {sdMode === SECURITY_DEPOSIT_MODES.OTHERS && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Cheque Number *</Label>
+                                <Input
+                                    name="sdOthersChequeNumber"
+                                    placeholder="Enter cheque number"
+                                    value={formik.values.sdOthersChequeNumber || ""}
+                                    onChange={formik.handleChange}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Date *</Label>
+                                <Input
+                                    name="sdOthersDate"
+                                    type="date"
+                                    value={formik.values.sdOthersDate || ""}
+                                    onChange={formik.handleChange}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Upload Image *</Label>
+                                <input
+                                    type="file"
+                                    className="border-2 p-2 rounded-2xl w-1/4 font-medium cursor-pointer bg-gray-100"
+                                    accept="image/*,application/pdf"
+                                    onChange={(e) => formik.setFieldValue("sdOthersImage", e.target.files?.[0])}
+                                />
+                                {formik.values.sdOthersImage && (
+                                    <p className="text-sm text-gray-600">
+                                        Selected: {formik.values.sdOthersImage.name}
+                                    </p>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
