@@ -103,9 +103,18 @@ function getStepValidation(stepKey, values) {
       if (sdMode === "bank_guarantee" && !values.bankGuaranteePhoto)
         errors.push("Bank guarantee document is required.");
 
+      if (sdMode === "others") {
+        if (!isNonEmptyString(values.sdOthersChequeNumber))
+          errors.push("Cheque number is required for open-dated cheque deposit.");
+        if (!isNonEmptyString(values.sdOthersDate))
+          errors.push("Cheque date is required for open-dated cheque deposit.");
+        if (!values.sdOthersImage)
+          errors.push("Cheque image is required for open-dated cheque deposit.");
+      }
+
       return {
         ok: errors.length === 0, errors,
-        touch: ["paymentMethod", "chequeAmount", "chequeNumber", "unitFinancials", "sdPaymentMethod", "sdBankAccountId", "bankGuaranteePhoto"],
+        touch: ["paymentMethod", "chequeAmount", "chequeNumber", "unitFinancials", "sdPaymentMethod", "sdBankAccountId", "bankGuaranteePhoto", "sdOthersChequeNumber", "sdOthersDate", "sdOthersImage"],
       };
     }
 

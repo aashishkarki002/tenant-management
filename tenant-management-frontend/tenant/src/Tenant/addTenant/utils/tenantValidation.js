@@ -61,6 +61,15 @@ export const validatePaymentMethod = (values) => {
     );
   }
 
+  if (values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.OTHERS) {
+    if (!values.sdOthersChequeNumber)
+      errors.push("Cheque number is required for open-dated cheque deposit");
+    if (!values.sdOthersDate)
+      errors.push("Cheque date is required for open-dated cheque deposit");
+    if (!values.sdOthersImage)
+      errors.push("Please upload the cheque image for the security deposit");
+  }
+
   return errors;
 };
 
@@ -76,9 +85,10 @@ export const validateUnits = (values) => {
     return errors;
   }
 
-  // SD via bank guarantee = document only, no cash amount required
+  // SD via bank guarantee or open-dated cheque = document only, no cash amount required
   const isBankGuarantee =
-    values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE;
+    values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE ||
+    values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.OTHERS;
 
   const missingFinancials = values.unitNumber.filter((unitId) => {
     const unitFinancial = values.unitFinancials?.[unitId];
@@ -106,9 +116,10 @@ export const validateTenantForm = (values) => {
   ];
 
   if (values.unitNumber?.length > 0) {
-    // SD via bank guarantee = no cash security deposit amount required per unit
+    // SD via bank guarantee or open-dated cheque = no cash amount required per unit
     const isBankGuarantee =
-      values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE;
+      values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.BANK_GUARANTEE ||
+      values.sdPaymentMethod === SECURITY_DEPOSIT_MODES.OTHERS;
 
     values.unitNumber.forEach((unitId, index) => {
       const financial = values.unitFinancials?.[unitId];

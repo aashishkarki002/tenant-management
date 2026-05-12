@@ -155,6 +155,16 @@ export const buildTenantFormData = (values, propertyId) => {
     formData.append("bank_guarantee", values.bankGuaranteePhoto);
   }
 
+  // Others (open-dated cheque) — document only, no ledger entry
+  if (sdMode === SECURITY_DEPOSIT_MODES.OTHERS) {
+    if (values.sdOthersChequeNumber)
+      formData.append("sdOthersChequeNumber", values.sdOthersChequeNumber);
+    if (values.sdOthersDate)
+      formData.append("sdOthersDate", values.sdOthersDate);
+    if (values.sdOthersImage)
+      formData.append("sd_others", values.sdOthersImage);
+  }
+
   // Cheque details for rent payment method
   if (values.paymentMethod === "cheque") {
     if (values.chequeAmount)

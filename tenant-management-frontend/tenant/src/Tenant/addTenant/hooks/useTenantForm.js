@@ -90,6 +90,9 @@ const INITIAL_VALUES = {
   sdBankAccountId: "",
   sdBankAccountCode: "",
   bankGuaranteePhoto: null,
+  sdOthersChequeNumber: "",
+  sdOthersDate: "",
+  sdOthersImage: null,
 
   // ── Rent Escalation (optional) ──────────────────────────────────────────
   // escalationEnabled: master toggle. False = rentEscalation.enabled stays false on the model.

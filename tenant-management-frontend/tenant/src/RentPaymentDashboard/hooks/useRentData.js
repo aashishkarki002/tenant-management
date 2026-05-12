@@ -106,7 +106,11 @@ export const useRentData = () => {
   const getElectricityForPeriod = useCallback(async () => {
     try {
       const response = await api.get("/api/electricity/get-readings", {
-        params: { nepaliMonth: filterRentMonth, nepaliYear: filterRentYear },
+        params: {
+          nepaliMonth: filterRentMonth,
+          nepaliYear: filterRentYear,
+          meterType: "unit",
+        },
       });
       if (response.data.success) {
         const readings = response.data.data?.readings || [];

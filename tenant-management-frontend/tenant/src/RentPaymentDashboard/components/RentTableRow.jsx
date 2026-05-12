@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, MoreHorizontal, Zap } from "lucide-react";
+import { AlertTriangle, MoreHorizontal, Zap, FileDown, Send, Mail, Copy, History } from "lucide-react";
 import { TableRow, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -19,9 +19,7 @@ import { toast } from "sonner";
 import api from "../../../plugins/axios";
 import { STATUS_LABEL, STATUS_BADGE_STYLES } from "../constants/paymentConstants";
 
-const fmtRs = (n) => `Rs ${Number(n).toLocaleString("en-IN")}`;
 
-/** Minimal status pill — very low contrast, no heavy borders */
 const StatusPill = ({ status }) => (
   <span
     className={cn(
@@ -49,6 +47,9 @@ export const RentTableRow = ({
   const [certLoading, setCertLoading] = useState(false);
 
   const hasTds = (rent.tdsAmountPaisa || 0) > 0;
+  const tenantEmail = rent.tenant?.email;
+  const isPaid = rent.status === "paid";
+  const isUnpaid = ["pending", "overdue", "partially_paid"].includes(rent.status);
 
   const handleDownloadTdsCert = async () => {
     const tenantId = rent.tenant?._id;
@@ -75,6 +76,102 @@ export const RentTableRow = ({
     } finally {
       setCertLoading(false);
     }
+  };
+
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const handleDownloadInvoice = async () => {
+    const tenantId = rent.tenant?._id;
+    if (!tenantId || !rent.nepaliYear) return;
+    setInvoiceLoading(true);
+    try {
+      const params = new URLSearchParams({
+        nepaliYear: rent.nepaliYear,
+        tenantId,
+      });
+      if (rent.nepaliMonth) params.append("nepaliMonth", rent.nepaliMonth);
+      const res = await api.get(`/api/rent/export/pdf?${params.toString()}`, {
+        responseType: "blob",
+      });
+      const name = (rent.tenant?.name || "tenant").replace(/\s+/g, "-");
+      const month = rent.nepaliMonth ? `-M${rent.nepaliMonth}` : "";
+      const url = URL.createObjectURL(
+        new Blob([res.data], { type: "application/pdf" }),
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Invoice-${name}-${rent.nepaliYear}${month}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Invoice downloaded.");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to generate invoice");
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
+
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const handleSendReminder = async () => {
+    if (!tenantEmail) {
+      toast.error("Tenant has no email on record.");
+      return;
+    }
+    setReminderLoading(true);
+    try {
+      const res = await api.post("/api/rent/send-email-to-tenants");
+      if (res.data.success) {
+        toast.success(res.data.message || "Reminder sent.");
+      } else {
+        toast.error(res.data.message || "Failed to send reminder.");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to send reminder.");
+    } finally {
+      setReminderLoading(false);
+    }
+  };
+
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const handleSendReceipt = async () => {
+    if (!tenantEmail) {
+      toast.error("Tenant has no email on record.");
+      return;
+    }
+    setReceiptLoading(true);
+    try {
+      // Get the latest payment for this rent first
+      const paymentRes = await api.get(
+        `/api/payment/get-payment-by-rent-id/${rent._id}`,
+      );
+      const payments = paymentRes.data.data || paymentRes.data.payments || [];
+      const latest = Array.isArray(payments) ? payments[0] : payments;
+      if (!latest?._id) {
+        toast.error("No payment record found for this rent.");
+        return;
+      }
+      const receiptRes = await api.post(
+        `/api/payment/send-receipt/${latest._id}`,
+      );
+      if (receiptRes.data.success) {
+        toast.success(
+          receiptRes.data.message || `Receipt sent to ${tenantEmail}.`,
+        );
+      } else {
+        toast.error(receiptRes.data.message || "Failed to send receipt.");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to send receipt.");
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
+
+  const handleCopyEmail = () => {
+    if (!tenantEmail) return;
+    navigator.clipboard.writeText(tenantEmail).then(
+      () => toast.success(`Copied ${tenantEmail}`),
+      () => toast.error("Failed to copy email"),
+    );
   };
 
   const { rentAmount, camAmount, totalDue, lateFeeAmount, hasLateFee } =
@@ -184,16 +281,16 @@ export const RentTableRow = ({
 
       {/* Rent */}
       <TableCell className="whitespace-nowrap py-3 tabular-nums text-sm text-right text-foreground">
-        {fmtRs(rentAmount)}
+        {(rentAmount)}
       </TableCell>
 
       {/* CAM */}
       <TableCell className="whitespace-nowrap py-3 tabular-nums text-sm text-right text-foreground">
         <div className="flex flex-col items-end gap-0.5">
-          <span>{fmtRs(camAmount)}</span>
+          <span>{(camAmount)}</span>
           {hasLateFee && (
             <span className="text-[10px] text-muted-foreground font-normal">
-              +{fmtRs(lateFeeAmount)} fee{lateFeePaid ? " · paid" : ""}
+              +{(lateFeeAmount)} fee{lateFeePaid ? " · paid" : ""}
             </span>
           )}
         </div>
@@ -204,7 +301,7 @@ export const RentTableRow = ({
         {totalElectricityDue > 0 ? (
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-amber-600 dark:text-amber-400 font-medium">
-              {fmtRs(totalElectricityDue)}
+              {(totalElectricityDue)}
             </span>
             <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5">
               <Zap className="size-2.5" />
@@ -219,7 +316,7 @@ export const RentTableRow = ({
       {/* Total */}
       <TableCell className="whitespace-nowrap py-3 text-right">
         <span className="tabular-nums text-sm font-semibold text-foreground">
-          {fmtRs(totalDue + totalElectricityDue)}
+          {(totalDue + totalElectricityDue)}
         </span>
       </TableCell>
 
@@ -263,23 +360,80 @@ export const RentTableRow = ({
                 <MoreHorizontal className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-52">
+              {/* Navigation */}
               {tenantId && (
                 <DropdownMenuItem
-                  className="text-xs"
+                  className="text-xs gap-2"
                   onClick={() => navigate(`/tenant/viewDetail/${tenantId}`)}
                 >
+                  <span className="size-3.5 opacity-60">👤</span>
                   View tenant
                 </DropdownMenuItem>
               )}
-              {tenantId && hasTds && <DropdownMenuSeparator />}
+              {tenantId && (
+                <DropdownMenuItem
+                  className="text-xs gap-2"
+                  onClick={() => navigate(`/tenant/viewDetail/${tenantId}?tab=payments`)}
+                >
+                  <History className="size-3.5 opacity-60" />
+                  Payment history
+                </DropdownMenuItem>
+              )}
+
+              <DropdownMenuSeparator />
+
+              {/* Communication */}
+              {isUnpaid && tenantEmail && (
+                <DropdownMenuItem
+                  className="text-xs gap-2"
+                  disabled={reminderLoading}
+                  onClick={handleSendReminder}
+                >
+                  <Send className="size-3.5 opacity-60" />
+                  {reminderLoading ? "Sending…" : "Send reminder"}
+                </DropdownMenuItem>
+              )}
+              {isPaid && tenantEmail && (
+                <DropdownMenuItem
+                  className="text-xs gap-2"
+                  disabled={receiptLoading}
+                  onClick={handleSendReceipt}
+                >
+                  <Mail className="size-3.5 opacity-60" />
+                  {receiptLoading ? "Sending…" : "Send receipt"}
+                </DropdownMenuItem>
+              )}
+              {tenantEmail && (
+                <DropdownMenuItem
+                  className="text-xs gap-2"
+                  onClick={handleCopyEmail}
+                >
+                  <Copy className="size-3.5 opacity-60" />
+                  Copy email
+                </DropdownMenuItem>
+              )}
+
+              <DropdownMenuSeparator />
+
+              {/* Documents */}
+              <DropdownMenuItem
+                className="text-xs gap-2"
+                disabled={invoiceLoading}
+                onClick={handleDownloadInvoice}
+              >
+                <FileDown className="size-3.5 opacity-60" />
+                {invoiceLoading ? "Generating…" : "Download invoice"}
+              </DropdownMenuItem>
+
               {hasTds && (
                 <DropdownMenuItem
-                  className="text-xs"
+                  className="text-xs gap-2"
                   disabled={certLoading}
                   onClick={handleDownloadTdsCert}
                 >
-                  {certLoading ? "Generating…" : "Download TDS Certificate"}
+                  <FileDown className="size-3.5 opacity-60" />
+                  {certLoading ? "Generating…" : "Download TDS certificate"}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

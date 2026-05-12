@@ -14,6 +14,7 @@ import {
   Phone, Mail, Upload, SlidersHorizontal, LayoutGrid, List as ListIcon,
   Loader2,
 } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   DropdownMenu, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
@@ -367,7 +368,7 @@ function MobileFilterDrawer({ isOpen, onClose, filters, allBlocks, onBlockChange
                   background: "var(--color-surface-raised)", color: "var(--color-text-body)", borderColor: "var(--color-border)",
                 }}
               >
-                All Blocks
+                All Buildings
               </button>
               {allBlocks.map(block => (
                 <div key={block._id}>
@@ -486,7 +487,7 @@ function TenantHeaderSlot({
 
   const blockLabel = selectedBlock
     ? selectedInner ? `${selectedBlock.name} · ${selectedInner.name}` : selectedBlock.name
-    : "All Blocks";
+    : "All Buildings";
 
   const mobileActiveFilterCount =
     (filters.block ? 1 : 0) +
@@ -556,13 +557,6 @@ function TenantHeaderSlot({
             <Plus className="w-5 h-5" />
           </Button>
         </div>
-
-        {/* ── Desktop ─────────────────────────────────────────────────────────── */}
-        {/*
-          Left cluster: Search + Block (location context)
-          Middle cluster: Status + Payment + More Filters (tenant state)
-          Right cluster: view toggle + Add Tenant (only primary CTA)
-        */}
         <div className="hidden sm:flex items-center gap-1.5 w-full min-w-0">
 
           {/* Search */}
@@ -602,10 +596,10 @@ function TenantHeaderSlot({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-52" align="start">
-              <DropdownMenuItem onClick={() => onBlockChange(null, null)}>All Blocks</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onBlockChange(null, null)}>All Buildings</DropdownMenuItem>
               <DropdownMenuSeparator />
               {allBlocks.length === 0 ? (
-                <DropdownMenuItem disabled>No blocks available</DropdownMenuItem>
+                <DropdownMenuItem disabled>No buildings available</DropdownMenuItem>
               ) : (
                 allBlocks.map(block => (
                   <DropdownMenuSub key={block._id}>
@@ -641,35 +635,36 @@ function TenantHeaderSlot({
           <div className="flex-1" />
 
           {/* View toggle — Grid / Table */}
-          <div
-            className="flex items-center rounded-lg p-0.5 border shrink-0"
-            style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-          >
-            <button
-              onClick={() => onViewModeChange("grid")}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
-              style={viewMode === "grid" ? {
-                background: "var(--color-surface-raised)",
-                color: "var(--color-text-strong)",
-                boxShadow: "var(--shadow-card)",
-              } : { color: "var(--color-text-sub)" }}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Grid</span>
-            </button>
-            <button
-              onClick={() => onViewModeChange("table")}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
-              style={viewMode === "table" ? {
-                background: "var(--color-surface-raised)",
-                color: "var(--color-text-strong)",
-                boxShadow: "var(--shadow-card)",
-              } : { color: "var(--color-text-sub)" }}
-            >
-              <ListIcon className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Table</span>
-            </button>
-          </div>
+     <ToggleGroup
+  type="single"
+  value={viewMode}
+  onValueChange={(value) => {
+    if (value) onViewModeChange(value);
+  }}
+  className="border rounded-lg p-0.5 gap-0"
+  style={{
+    background: "var(--color-surface)",
+    borderColor: "var(--color-border)",
+  }}
+>
+  <ToggleGroupItem
+    value="grid"
+    className="h-8 px-3 gap-1.5 text-[11px] font-medium rounded-md data-[state=on]:shadow-sm"
+ 
+  >
+    <LayoutGrid className="w-3.5 h-3.5" />
+    <span className="hidden md:inline">Grid</span>
+  </ToggleGroupItem>
+
+  <ToggleGroupItem
+    value="table"
+    className="h-8 px-3 gap-1.5 text-[11px] font-medium rounded-md data-[state=on]:shadow-sm"
+
+  >
+    <ListIcon className="w-3.5 h-3.5" />
+    <span className="hidden md:inline">Table</span>
+  </ToggleGroupItem>
+</ToggleGroup>
 
           {/* Divider */}
           <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
@@ -677,7 +672,7 @@ function TenantHeaderSlot({
           {/* Add Tenant — sole primary CTA */}
           <Button
             onClick={onNavigate.toAdd}
-            className="h-9 px-3 text-xs font-semibold text-white shrink-0 flex items-center gap-1.5"
+            className=" text-xs font-semibold text-white shrink-0 flex items-center "
             style={{ background: "var(--color-accent)" }}
           >
             <Plus className="w-3.5 h-3.5" />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAdvanceRent } from "../../hooks/useAdvanceRent";
 import { useEntity } from "../../../context/EntityContext";
-
+import {  Card, Lbl, Skeleton } from "../../components/AccountingPrimitives";
 function fmtPaisa(p = 0) {
   return `Rs ${(p / 100).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
@@ -104,7 +104,7 @@ function RecognizeModal({ advance, onClose, onRecognize }) {
           )}
           <div className="flex gap-3 justify-end pt-2">
             <button type="button" onClick={onClose} className="px-4 py-1.5 rounded-lg text-sm border border-[var(--color-border)] text-[var(--color-text-sub)]">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-[var(--color-primary)] disabled:opacity-50">
+            <Button type="submit" disabled={saving} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-[var(--color-primary)] disabled:opacity-50">
               {saving ? "Saving…" : "Recognize"}
             </Button>
           </div>

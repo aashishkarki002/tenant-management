@@ -135,7 +135,7 @@ function WaterfallChart({ inflows, outflows, totalIn, totalOut, net, loading }) 
                     tickLine={false}
                 />
                 <YAxis
-                    tickFormatter={v => `RS ${fmtK(v)}`}
+                    tickFormatter={v => `RS ${fmtRs(v)}`}
                     tick={{ fontSize: 9, fill: C.sub }}
                     axisLine={false}
                     tickLine={false}

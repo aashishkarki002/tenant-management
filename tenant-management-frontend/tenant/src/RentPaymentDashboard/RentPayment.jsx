@@ -1,4 +1,3 @@
-// src/pages/rent/RentPayment.jsx
 import React, { useState, useMemo, useCallback } from "react";
 import { useRentData } from "./hooks/useRentData";
 import { RentTable } from "./components/RentTable";
