@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtRs } from "../../../utils/formatter";
+
 const C = {
     inflow: "var(--color-info)",
     outflow: "var(--color-warning)",
@@ -74,11 +74,11 @@ function StatementRow({ label, amount, pct, color, isTotal = false, loading }) {
                     className={`tabular-nums font-bold leading-none ${isTotal ? "text-[15px]" : "text-[12px]"}`}
                     style={{ color }}
                 >
-                    RS {fmtRs(Math.abs(amount))}
+                    RS {(Math.abs(amount))}
                 </div>
                 {!isTotal && (
                     <div className="text-[9px] mt-0.5 tabular-nums" style={{ color: C.sub }}>
-                        RS {fmtRs(Math.abs(amount))}
+                        RS {(Math.abs(amount))}
                     </div>
                 )}
             </div>
@@ -135,7 +135,7 @@ function WaterfallChart({ inflows, outflows, totalIn, totalOut, net, loading }) 
                     tickLine={false}
                 />
                 <YAxis
-                    tickFormatter={v => `RS ${fmtRs(v)}`}
+                    tickFormatter={v => `RS ${(v)}`}
                     tick={{ fontSize: 9, fill: C.sub }}
                     axisLine={false}
                     tickLine={false}
@@ -159,7 +159,7 @@ function WaterfallChart({ inflows, outflows, totalIn, totalOut, net, loading }) 
                                     {label}
                                 </div>
                                 <div className="text-[13px] font-black text-white tabular-nums">
-                                    RS {fmtRs(v?.value ?? 0)}
+                                    RS {(v?.value ?? 0)}
                                 </div>
                             </div>
                         );
@@ -198,14 +198,14 @@ function TrendChip({ chartData, loading }) {
             <div>
                 <div className="text-[9px] font-bold tracking-[0.12em] uppercase mb-0.5" style={{ color: C.sub }}>Best month</div>
                 <div className="text-[14px] font-bold tabular-nums" style={{ color: C.inflow }}>
-                    RS {fmtRs(Math.max(...chartData.map(d => d.revenue ?? 0)))}
+                    RS {(Math.max(...chartData.map(d => d.revenue ?? 0)))}
                 </div>
             </div>
             <div className="w-px h-10 self-center" style={{ background: C.border }} />
             <div>
                 <div className="text-[9px] font-bold tracking-[0.12em] uppercase mb-0.5" style={{ color: C.sub }}>Highest spend</div>
                 <div className="text-[14px] font-bold tabular-nums" style={{ color: C.outflow }}>
-                    RS {fmtRs(Math.max(...chartData.map(d => d.expenses ?? 0)))}
+                    RS {(Math.max(...chartData.map(d => d.expenses ?? 0)))}
                 </div>
             </div>
         </div>
@@ -269,10 +269,10 @@ export default function CashFlowTab({
                         ) : (
                             <>
                                 <div className="text-[22px] font-black tabular-nums leading-none" style={{ color }}>
-                                    {prefix}RS {fmtRs(value)}
+                                    {prefix}RS {(value)}
                                 </div>
                                 <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: C.sub }}>
-                                    RS {fmtRs(value)}
+                                    RS {(value)}
                                 </div>
                             </>
                         )}
@@ -373,10 +373,10 @@ export default function CashFlowTab({
                         ) : (
                             <div className="text-right">
                                 <div className="text-[24px] font-black tabular-nums leading-none" style={{ color: netColor }}>
-                                    {netCashFlow >= 0 ? "+" : "−"}RS {fmtRs(Math.abs(netCashFlow))}
+                                    {netCashFlow >= 0 ? "+" : "−"}RS {(Math.abs(netCashFlow))}
                                 </div>
                                 <div className="text-[10px] tabular-nums mt-0.5" style={{ color: netColor, opacity: 0.65 }}>
-                                    RS {fmtRs(Math.abs(netCashFlow))}
+                                    RS {(Math.abs(netCashFlow))}
                                 </div>
                             </div>
                         )}

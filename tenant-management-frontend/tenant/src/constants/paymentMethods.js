@@ -75,3 +75,6 @@ export function normalizeLedgerPaymentMethod(raw, fallback = PAYMENT_METHODS.BAN
   if (VALID_PAYMENT_METHOD_VALUES.includes(s)) return s;
   return fallback;
 }
+export function isChequePayment(method) {
+  return normalizeLedgerPaymentMethod(method, "") === PAYMENT_METHODS.CHEQUE;
+}

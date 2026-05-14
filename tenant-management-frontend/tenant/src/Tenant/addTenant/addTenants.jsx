@@ -234,14 +234,16 @@ function AddTenants() {
   const [showBillingDialog, setShowBillingDialog] = useState(false);
   const [billingMonth, setBillingMonth] = useState(String(getCurrentNepaliMonth()));
   const [billingYear, setBillingYear] = useState(String(getCurrentNepaliYear()));
+  const [billingDay, setBillingDay] = useState("1");
 
   // Intercept the native form submit to open billing dialog first.
   // The actual formik submit fires only after the user confirms.
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    // Reset to current Nepali month/year each time dialog opens
+    // Reset to current Nepali month/year/day each time dialog opens
     setBillingMonth(String(getCurrentNepaliMonth()));
     setBillingYear(String(getCurrentNepaliYear()));
+    setBillingDay("1");
     setShowBillingDialog(true);
   };
 
@@ -249,6 +251,7 @@ function AddTenants() {
     setShowBillingDialog(false);
     await formik.setFieldValue("rentStartNepaliMonth", billingMonth);
     await formik.setFieldValue("rentStartNepaliYear", billingYear);
+    await formik.setFieldValue("rentStartNepaliDay", billingDay || "1");
     formik.submitForm();
   };
 
@@ -351,7 +354,7 @@ function AddTenants() {
             <div className="grid grid-cols-2 gap-4 py-2">
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Month (BS)</Label>
-                <Select value={billingMonth} onValueChange={setBillingMonth}>
+                <Select value={billingMonth} onValueChange={(v) => { setBillingMonth(v); setBillingDay("1"); }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Month" />
                   </SelectTrigger>
@@ -371,9 +374,28 @@ function AddTenants() {
                   min={2078}
                   max={2090}
                   value={billingYear}
-                  onChange={(e) => setBillingYear(e.target.value)}
+                  onChange={(e) => { setBillingYear(e.target.value); setBillingDay("1"); }}
                 />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">
+                Tenant joins on day <span className="text-muted-foreground font-normal">(of the billing month, BS)</span>
+              </Label>
+              <Input
+                type="number"
+                min={1}
+                max={32}
+                value={billingDay}
+                onChange={(e) => setBillingDay(e.target.value)}
+                placeholder="1"
+              />
+              {Number(billingDay) > 1 && (
+                <p className="text-[11px] text-amber-600">
+                  First period rent prorated — charged from day {billingDay} to end of period only.
+                </p>
+              )}
             </div>
 
             <AlertDialogFooter>

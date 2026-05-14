@@ -63,7 +63,10 @@ export default function BankAccountSelect({
       onValueChange={onValueChange}
       disabled={disabled}
     >
-      <SelectTrigger id={id} className={triggerClassName ?? className}>
+      <SelectTrigger
+        id={id}
+        className={`min-h-[64px] px-4 py-3 ${triggerClassName ?? className}`}
+      >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

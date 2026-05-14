@@ -90,6 +90,8 @@ export const usePaymentForm = ({ cams, onSuccess }) => {
           bankAccountCode: values.bankAccountCode || null,
           transactionRef: values.transactionRef || null,
           allocations: values.allocations,
+          chequeNumber: values.chequeNumber || null,
+          partyName: values.chequeAccountName || null,
         };
 
         const hasElectricity =

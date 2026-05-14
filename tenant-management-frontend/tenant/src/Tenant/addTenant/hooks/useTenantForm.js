@@ -107,6 +107,7 @@ const INITIAL_VALUES = {
   // Rent start — set by the "billing start" dialog shown after final submission.
   rentStartNepaliMonth: "",
   rentStartNepaliYear: "",
+  rentStartNepaliDay: "1",
 };
 
 export const useTenantForm = (property, onSuccess) => {

@@ -82,9 +82,10 @@ export const buildTenantFormData = (values, propertyId) => {
     "rentPaymentFrequency",
     // NOTE: paymentMethod is ONLY the rent payment method (no bank_guarantee)
     "paymentMethod",
-    // Billing start month/year chosen by user in the post-submit dialog
+    // Billing start month/year/day chosen by user in the post-submit dialog
     "rentStartNepaliMonth",
     "rentStartNepaliYear",
+    "rentStartNepaliDay",
   ];
   tenantFields.forEach((field) => {
     if (values[field] != null && values[field] !== "") {

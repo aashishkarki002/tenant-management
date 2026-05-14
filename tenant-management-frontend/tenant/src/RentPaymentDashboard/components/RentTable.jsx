@@ -40,7 +40,7 @@ function rowFullySettled(rent, electricityRecords = []) {
   return rent.status === "paid" && !hasOutstandingLateFee && !hasElectricityDue;
 }
 
-const SORT_COLS = [
+const BASE_SORT_COLS = [
   { key: "tenant", label: "Tenant" },
   { key: "unit", label: "Unit" },
   { key: "rent", label: "Rent", right: true },
@@ -144,7 +144,19 @@ export const RentTable = ({
   onRefresh,
   sendRentReminders,
   sendingEmails,
+  electricityMonthLabel,
 }) => {
+  const sortCols = useMemo(
+    () =>
+      electricityMonthLabel
+        ? BASE_SORT_COLS.map((col) =>
+            col.key === "electricity"
+              ? { ...col, label: `Elec · ${electricityMonthLabel}` }
+              : col,
+          )
+        : BASE_SORT_COLS,
+    [electricityMonthLabel],
+  );
   const {
     formik,
     allocationMode,
@@ -330,7 +342,7 @@ export const RentTable = ({
                   aria-label="Select all rows"
                 />
               </TableHead>
-              {SORT_COLS.map((col) => (
+              {sortCols.map((col) => (
                 <SortHead
                   key={col.key || col.label}
                   col={col}

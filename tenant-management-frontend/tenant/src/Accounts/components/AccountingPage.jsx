@@ -10,7 +10,7 @@ import {
     getCurrentBSMonthName,
     toBSDate,
 } from "../utils/nepaliCalendar";
-import { fmtK} from "../../utils/formatter"
+import { fmtK } from "../../utils/formatter"
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
@@ -42,7 +42,6 @@ import AdjustmentsTab from "./tabs/AdjustmentsTab";
 import TrialBalanceTab from "./tabs/TrialBalanceTab";
 import ArAgingTab from "./tabs/ArAgingTab";
 import TdsFilingTab from "./tabs/TdsFilingTab";
-import PropertyPLTab from "./tabs/PropertyPLTab";
 import TenantStatementTab from "./tabs/TenantStatementTab";
 import OwnerDistributionTab from "./tabs/OwnerDistributionTab";
 import VendorBillsTab from "./tabs/VendorBillsTab";
@@ -129,7 +128,7 @@ export default function AccountingPage() {
                 const raw = r.data?.tenants ?? r.data?.data ?? [];
                 setTenants(raw.map((t) => ({ id: t._id, name: t.name })));
             })
-            .catch(() => {});
+            .catch(() => { });
     }, [resolvedEntityId]);
 
     // ── Resolved filter params (fed into every hook) ─────────────────────────
@@ -372,9 +371,7 @@ export default function AccountingPage() {
                         {activeTab === "tds-filing" && (
                             <TdsFilingTab entityId={resolvedEntityId} />
                         )}
-                        {activeTab === "property-pl" && (
-                            <PropertyPLTab properties={properties} />
-                        )}
+
                         {activeTab === "tenant-statement" && (
                             <TenantStatementTab tenants={tenants} />
                         )}

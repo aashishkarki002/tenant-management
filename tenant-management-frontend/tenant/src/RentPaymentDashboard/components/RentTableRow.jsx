@@ -118,7 +118,10 @@ export const RentTableRow = ({
     }
     setReminderLoading(true);
     try {
-      const res = await api.post("/api/rent/send-email-to-tenants");
+      const res = await api.post("/api/rent/send-email-to-tenants", {
+        nepaliMonth: rent.nepaliMonth,
+        nepaliYear: rent.nepaliYear,
+      });
       if (res.data.success) {
         toast.success(res.data.message || "Reminder sent.");
       } else {

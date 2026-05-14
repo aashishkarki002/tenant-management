@@ -91,6 +91,7 @@ export default function LedgerTable({
                     <TableHeader>
                         <TableRow className="border-b border-[var(--color-border)]">
                             <TableHead className="w-[160px] text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Date (BS)</TableHead>
+                            <TableHead className="w-[160px] text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Invoice</TableHead>
                             <TableHead className="text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Description</TableHead>
                             <TableHead className="text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Debit</TableHead>
                             <TableHead className="text-[11px] font-semibold text-[var(--color-text-weak)] uppercase tracking-[0.05em]">Credit</TableHead>
@@ -119,6 +120,9 @@ export default function LedgerTable({
                                 >
                                     <TableCell className="text-[12px] tabular-nums text-[var(--color-text-body)]">
                                         {toBSDate(entry.date)}
+                                    </TableCell>
+                                    <TableCell className="text-[12px] tabular-nums text-[var(--color-text-body)]">
+                                        {entry?.voucherNo || "—"}
                                     </TableCell>
                                     <TableCell className="text-[12px] text-[var(--color-text-body)]">
                                         {entry.description || entry.account?.name || "—"}

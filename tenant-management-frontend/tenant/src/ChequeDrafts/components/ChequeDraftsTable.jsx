@@ -1,23 +1,45 @@
-import { CheckCircle, XCircle, Ban, ArrowUpRight, ArrowDownLeft, FileText } from "lucide-react";
+import { CheckCircle, XCircle, Ban, ArrowUpRight, ArrowDownLeft, FileText, Clock } from "lucide-react";
 import { C, fmtRupees, toBSDate } from "../../Loans/loan.constants";
 
 const STATUS_STYLE = {
-  PENDING: { label: "Pending", color: C.amber, bg: C.amberBg },
-  DEPOSITED: { label: "Deposited", color: C.positive, bg: C.positiveBg },
-  BOUNCED: { label: "Bounced", color: C.negative, bg: C.negativeBg },
-  CANCELLED: { label: "Cancelled", color: C.textMuted, bg: C.surface },
+  PENDING: { label: "Pending", color: C.amber, bg: C.amberBg, icon: Clock },
+  DEPOSITED: { label: "Deposited", color: C.positive, bg: C.positiveBg, icon: CheckCircle },
+  BOUNCED: { label: "Bounced", color: C.negative, bg: C.negativeBg, icon: XCircle },
+  CANCELLED: { label: "Cancelled", color: C.textMuted, bg: C.surface, icon: Ban },
 };
 
-function Badge({ value, map }) {
-  const s = map[value] ?? { label: value, color: C.textMuted, bg: C.surface };
+function StatusBadge({ value }) {
+  const s = STATUS_STYLE[value] ?? { label: value, color: C.textMuted, bg: C.surface, icon: Clock };
+  const Icon = s.icon;
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
       style={{ background: s.bg, color: s.color }}
     >
+      <Icon size={9} />
       {s.label}
     </span>
   );
+}
+
+/** Show extra context for non-PENDING rows */
+function StatusDetail({ draft }) {
+  if (draft.status === "DEPOSITED" && draft.depositedAt) {
+    return (
+      <p className="text-[10px] mt-0.5" style={{ color: C.positive }}>
+        Cleared {toBSDate(draft.depositedAt)}
+        {draft.depositNotes ? ` · ${draft.depositNotes}` : ""}
+      </p>
+    );
+  }
+  if (draft.status === "BOUNCED" && draft.bounceReason) {
+    return (
+      <p className="text-[10px] mt-0.5" style={{ color: C.negative }}>
+        {draft.bounceReason}
+      </p>
+    );
+  }
+  return null;
 }
 
 export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCancel }) {
@@ -64,18 +86,26 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
               key={d._id}
               style={{
                 borderBottom: i < drafts.length - 1 ? `1px solid ${C.border}` : "none",
+                opacity: d.status === "CANCELLED" ? 0.6 : 1,
               }}
               className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors duration-150"
             >
+              {/* Cheque # */}
               <td className="px-4 py-3 font-mono font-semibold" style={{ color: C.text }}>
                 {d.chequeNumber}
               </td>
+
+              {/* Date */}
               <td className="px-4 py-3" style={{ color: C.textMid }}>
                 {toBSDate(d.chequeDate)}
               </td>
+
+              {/* Party */}
               <td className="px-4 py-3 max-w-[140px] truncate" style={{ color: C.textMid }}>
                 {d.partyName ?? "—"}
               </td>
+
+              {/* Direction */}
               <td className="px-4 py-3">
                 <span
                   className="inline-flex items-center gap-1 text-[10px] font-semibold"
@@ -87,12 +117,19 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
                   }
                 </span>
               </td>
+
+              {/* Amount */}
               <td className="px-4 py-3 font-semibold font-sans text-right tabular-nums" style={{ color: C.text }}>
                 {fmtRupees(d.amountPaisa)}
               </td>
+
+              {/* Status + detail */}
               <td className="px-4 py-3">
-                <Badge value={d.status} map={STATUS_STYLE} />
+                <StatusBadge value={d.status} />
+                <StatusDetail draft={d} />
               </td>
+
+              {/* Actions */}
               <td className="px-4 py-3 whitespace-nowrap">
                 {d.status === "PENDING" && (
                   <div className="flex items-center gap-1.5">
@@ -100,7 +137,7 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
                       onClick={() => onDeposit(d)}
                       className="h-7 px-2.5 rounded-lg text-[10px] font-bold text-white flex items-center gap-1"
                       style={{ background: C.positive }}
-                      title="Mark deposited"
+                      title="Mark deposited — clears to bank"
                     >
                       <CheckCircle size={11} /> Deposit
                     </button>
@@ -108,7 +145,7 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
                       onClick={() => onBounce(d)}
                       className="h-7 px-2.5 rounded-lg text-[10px] font-bold text-white flex items-center gap-1"
                       style={{ background: C.negative }}
-                      title="Mark bounced"
+                      title="Mark bounced — reverses journal"
                     >
                       <XCircle size={11} /> Bounce
                     </button>
@@ -116,7 +153,7 @@ export function ChequeDraftsTable({ drafts, loading, onDeposit, onBounce, onCanc
                       onClick={() => onCancel(d)}
                       className="h-7 px-2.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border"
                       style={{ borderColor: C.border, color: C.textMid }}
-                      title="Cancel cheque"
+                      title="Cancel cheque — reverses journal"
                     >
                       <Ban size={11} /> Cancel
                     </button>

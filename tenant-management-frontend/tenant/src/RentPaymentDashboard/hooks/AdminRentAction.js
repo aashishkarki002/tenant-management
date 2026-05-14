@@ -52,10 +52,13 @@ export const useAdminRentActions = ({ onProcessSuccess } = {}) => {
    * Triggers email reminders to all tenants with unpaid/overdue rents.
    * Maps to: POST /api/rent/send-email-to-tenants
    */
-  const sendRentReminders = async () => {
+  const sendRentReminders = async (nepaliMonth, nepaliYear) => {
     try {
       setSendingEmails(true);
-      const response = await api.post("/api/rent/send-email-to-tenants");
+      const body = {};
+      if (nepaliMonth) body.nepaliMonth = nepaliMonth;
+      if (nepaliYear) body.nepaliYear = nepaliYear;
+      const response = await api.post("/api/rent/send-email-to-tenants", body);
       const { success, message } = response.data;
 
       if (success) {

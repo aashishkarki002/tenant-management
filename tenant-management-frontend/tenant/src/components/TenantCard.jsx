@@ -25,25 +25,14 @@ const AVATAR_PALETTES = [
   { bg: "var(--color-success-bg)", color: "var(--color-success)" },
   { bg: "var(--color-danger-bg)", color: "var(--color-danger)" },
   { bg: "var(--color-warning-bg)", color: "var(--color-warning)" },
-  { bg: "var(--color-muted-fill)", color: "var(--color-text-sub)" },
-];
-
-// Keep the Tailwind class variant exported so tenants.jsx table avatars still work
-const AVATAR_COLORS = [
-  "bg-blue-100 text-blue-600",
-  "bg-violet-100 text-violet-600",
-  "bg-emerald-100 text-emerald-600",
-  "bg-rose-100 text-rose-600",
-  "bg-amber-100 text-amber-600",
-  "bg-cyan-100 text-cyan-600",
-  "bg-pink-100 text-pink-600",
-  "bg-indigo-100 text-indigo-600",
+  { bg: "var(--color-private-bg)", color: "var(--color-private)" },
+  { bg: "var(--color-company-bg)", color: "var(--color-company)" },
+  { bg: "var(--color-headoffice-bg)", color: "var(--color-headoffice)" },
 ];
 
 export function getAvatarColor(name = "") {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash += name.charCodeAt(i);
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+  const palette = getAvatarPalette(name);
+  return palette; // Now returns an object with bg and color
 }
 
 function getAvatarPalette(name = "") {
@@ -75,22 +64,18 @@ function Avatar({ name }) {
 export const PAYMENT_BADGE = {
   paid: {
     label: "Paid",
-    className: "bg-green-50 text-green-700 border-green-200",
     style: { background: "var(--color-success-bg)", color: "var(--color-success)", borderColor: "var(--color-success-border)" },
   },
   partial: {
     label: "Partial",
-    className: "bg-blue-50 text-blue-700 border-blue-200",
-    style: { background: "var(--color-info-bg)", color: "var(--color-info)", borderColor: "var(--color-info-border, var(--color-info))" },
+    style: { background: "var(--color-info-bg)", color: "var(--color-info)", borderColor: "var(--color-info-border)" },
   },
   due_soon: {
     label: "Due Soon",
-    className: "bg-amber-50 text-amber-700 border-amber-200",
     style: { background: "var(--color-warning-bg)", color: "var(--color-warning)", borderColor: "var(--color-warning-border)" },
   },
   overdue: {
     label: "Overdue",
-    className: "bg-red-50 text-red-700 border-red-200",
     style: { background: "var(--color-danger-bg)", color: "var(--color-danger)", borderColor: "var(--color-danger-border)" },
   },
 };
@@ -132,98 +117,87 @@ export function getTenantRentDisplay(tenant) {
   return "N/A";
 }
 
-// ─── TenantCard ────────────────────────────────────────────────────────────────
-export default function TenantCard({ tenant, onTenantMutated, onTerminate }) {
+export default function TenantCard({
+  tenant,
+  onTenantMutated,
+  onTerminate,
+}) {
   const navigate = useNavigate();
-  const attention = needsAttention(tenant);
-  const paymentStatus = getPaymentStatus(tenant);
-  const badge = PAYMENT_BADGE[paymentStatus] ?? PAYMENT_BADGE.paid;
 
-  const rentDisplay = getTenantRentDisplay(tenant);
-  const frequencyLabel =
-    tenant?.rentPaymentFrequency === "monthly" ? "/ mo"
-      : tenant?.rentPaymentFrequency === "quarterly" ? "/ qtr"
-        : "";
+  const paymentStatus = getPaymentStatus(tenant);
   const locationLabel = getTenantLocationLabel(tenant);
 
-  // Show arrears regardless of current paymentStatus.
-  // "Paid" means this month's rent is settled — it says nothing about past dues.
-  // A tenant can be current this month and still carry 3 months of arrears.
-  const overdueBalance = tenant?.overdueBalance ?? 0;
-  const overdueMonth = tenant?.oldestOverdueNepaliMonth;
-  const overdueMonthName = overdueMonth != null
-    ? (NEPALI_MONTH_NAMES[overdueMonth - 1] ?? null)   // DB is 1-based, array is 0-based
+  /* ── Lease urgency (UX upgrade) ── */
+  const leaseEnd = tenant?.leaseEndDate ? new Date(tenant.leaseEndDate) : null;
+  const today = new Date();
+  const daysLeft = leaseEnd
+    ? Math.ceil((leaseEnd - today) / (1000 * 60 * 60 * 24))
     : null;
-  const overdueYear = tenant?.oldestOverdueNepaliYear ?? null;
-  const overdueLabel = overdueMonthName && overdueYear
-    ? `since ${overdueMonthName} ${overdueYear}`
-    : (tenant?.consecutiveUnpaidMonths ?? 0) > 1
-      ? `${tenant.consecutiveUnpaidMonths} months unpaid`
+
+  const leaseLabel =
+    daysLeft == null
+      ? "No lease date"
+      : daysLeft <= 0
+        ? "Lease expired"
+        : `Ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`;
+
+  const leaseSubLabel = tenant?.leaseEndDateNepali || "";
+
+  /* ── Overdue logic ── */
+  const overdueBalance = tenant?.overdueBalance ?? 0;
+
+  const overdueMonth = tenant?.oldestOverdueNepaliMonth;
+  const overdueYear = tenant?.oldestOverdueNepaliYear;
+
+  const overdueMonthName =
+    overdueMonth != null
+      ? NEPALI_MONTH_NAMES[overdueMonth - 1]
       : null;
+
+  const overdueLabel =
+    overdueMonthName && overdueYear
+      ? `Since ${overdueMonthName} ${overdueYear}`
+      : tenant?.consecutiveUnpaidMonths > 1
+        ? `${tenant.consecutiveUnpaidMonths} months unpaid`
+        : null;
 
   const deleteTenant = async () => {
     try {
-      if (!tenant?._id) { toast.error("Tenant ID is missing"); return; }
-      const res = await api.patch(`/api/tenant/delete-tenant/${tenant._id}`);
-      if (res.data.success) { toast.success(res.data.message); onTenantMutated?.(); }
-      else toast.error(res.data.message || "Failed to delete tenant");
+      const res = await api.patch(
+        `/api/tenant/delete-tenant/${tenant._id}`
+      );
+
+      if (res.data.success) {
+        toast.success(res.data.message);
+        onTenantMutated?.();
+      } else {
+        toast.error(res.data.message || "Failed");
+      }
     } catch (err) {
-      toast.error(err.response?.data?.message || "An error occurred while deleting tenant");
+      toast.error("Error deleting tenant");
     }
   };
 
   return (
     <Card
       onClick={() => navigate(`/tenant/viewDetail/${tenant._id}`)}
-      className="group cursor-pointer rounded-xl border overflow-hidden transition-all duration-200"
+      className="group cursor-pointer rounded-xl border overflow-hidden transition-all"
       style={{
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
-        boxShadow: "var(--shadow-card)",
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.borderColor = "var(--color-accent-mid)";
-        e.currentTarget.style.boxShadow = "0 4px 12px rgba(28,25,23,0.09)";
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = "var(--color-border)";
-        e.currentTarget.style.boxShadow = "var(--shadow-card)";
       }}
     >
       <CardContent className="p-3">
 
-        {/* ── Attention banner ─────────────────────────────────────────────────
-            Only renders when overdue or lease expiring — zero noise otherwise.
-        ──────────────────────────────────────────────────────────────────────── */}
-        {attention && (
-          <div
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 mb-2.5 text-[11px] font-semibold border"
-            style={{
-              background: "var(--color-danger-bg)",
-              borderColor: "var(--color-danger-border)",
-              color: "var(--color-danger)",
-            }}
-          >
-            <AlertTriangle className="w-3 h-3 shrink-0" />
-            Attention Needed
-          </div>
-        )}
-
-        {/* ── Header: Avatar + Name + Menu ─────────────────────────────────── */}
-        <div className="flex items-start justify-between mb-2.5">
+        {/* ── HEADER ───────────────────────────── */}
+        <div className="flex justify-between items-start mb-2.5">
           <div className="flex items-center gap-2 min-w-0">
             <Avatar name={tenant?.name} />
             <div className="min-w-0">
-              <p
-                className="text-sm font-semibold leading-tight truncate font-sans"
-                style={{ color: "var(--color-text-strong)" }}
-              >
+              <p className="text-sm font-semibold truncate">
                 {tenant?.name || "—"}
               </p>
-              <p
-                className="text-[11px] truncate mt-0.5"
-                style={{ color: "var(--color-text-sub)" }}
-              >
+              <p className="text-[11px] opacity-70 truncate">
                 {locationLabel}
               </p>
             </div>
@@ -232,153 +206,139 @@ export default function TenantCard({ tenant, onTenantMutated, onTerminate }) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                onClick={e => e.stopPropagation()}
-                className="w-6 h-6 rounded-full flex items-center justify-center
-                           opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                style={{ color: "var(--color-text-sub)" }}
-                onMouseEnter={e => e.currentTarget.style.background = "var(--color-surface-raised)"}
-                onMouseLeave={e => e.currentTarget.style.background = ""}
+                onClick={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center"
               >
                 <MoreVertical className="w-3.5 h-3.5" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44" onClick={e => e.stopPropagation()}>
-              <DropdownMenuLabel className="text-xs">Actions</DropdownMenuLabel>
+
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
+
               <DropdownMenuItem onClick={() => navigate(`/tenant/viewDetail/${tenant._id}`)}>
-                <Eye className="w-3.5 h-3.5 mr-2" /> View Profile
+                <Eye className="w-3.5 h-3.5 mr-2" /> View
               </DropdownMenuItem>
+
               <DropdownMenuItem onClick={() => navigate(`/rent-payment`)}>
-                <CreditCard className="w-3.5 h-3.5 mr-2" /> Record Payment
+                <CreditCard className="w-3.5 h-3.5 mr-2" /> Payment
               </DropdownMenuItem>
+
               <DropdownMenuItem onClick={() => navigate(`/tenant/send-message`)}>
-                <Bell className="w-3.5 h-3.5 mr-2" /> Send Reminder
+                <Bell className="w-3.5 h-3.5 mr-2" /> Reminder
               </DropdownMenuItem>
+
               <DropdownMenuItem onClick={() => navigate(`/tenant/editTenant/${tenant._id}`)}>
-                <Pencil className="w-3.5 h-3.5 mr-2" /> Edit Tenant
+                <Pencil className="w-3.5 h-3.5 mr-2" /> Edit
               </DropdownMenuItem>
+
               <DropdownMenuSeparator />
+
               <DropdownMenuItem
+                onClick={() => (onTerminate ? onTerminate(tenant) : deleteTenant())}
                 style={{ color: "var(--color-danger)" }}
-                onClick={() => onTerminate ? onTerminate(tenant) : deleteTenant()}
               >
-                <XCircle className="w-3.5 h-3.5 mr-2" /> Terminate Lease
+                <XCircle className="w-3.5 h-3.5 mr-2" /> Terminate
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        {/* ── Rent + Payment badge ──────────────────────────────────────────── */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-baseline gap-1">
-            <span
-              className="text-lg font-bold leading-tight font-mono tabular-nums"
-              style={{ color: "var(--color-text-strong)" }}
-            >
-              {rentDisplay}
-            </span>
-            {frequencyLabel && (
-              <span
-                className="text-[10px] font-medium"
-                style={{ color: "var(--color-text-weak)" }}
-              >
-                {frequencyLabel}
+        {/* ── RENT + STATUS ─────────────────────── */}
+        <div className="flex justify-between items-center mb-2">
+          <div>
+            <p className="text-lg font-bold">
+              Rs. {tenant?.totalRent?.toLocaleString("en-IN") || "N/A"}
+            </p>
+            <p className="text-[10px] opacity-60">
+              {tenant?.rentPaymentFrequency}
+            </p>
+          </div>
+
+          <span
+            className="text-[10px] px-2 py-0.5 rounded-full border transition-colors"
+            style={PAYMENT_BADGE[paymentStatus]?.style}
+          >
+            {PAYMENT_BADGE[paymentStatus]?.label || paymentStatus}
+          </span>
+        </div>
+
+        {/* ── LEASE (UX FIXED) ─────────────────── */}
+        <div className="flex items-start gap-2 text-[11px] mb-2">
+          <Calendar className="w-3 h-3 mt-0.5" />
+
+          <div className="flex flex-col leading-tight">
+            <span className="font-medium">{leaseLabel}</span>
+            {leaseSubLabel && (
+              <span className="opacity-60 text-[10px]">
+                {leaseSubLabel}
               </span>
             )}
           </div>
-          <span
-            className="text-[10px] font-semibold px-2 py-0.5 rounded-full border"
-            style={badge.style}
-          >
-            {badge.label}
-          </span>
         </div>
 
-        {/* ── Metadata row ─────────────────────────────────────────────────── */}
-        <div
-          className="flex items-center gap-3 text-[11px] mb-2.5"
-          style={{ color: "var(--color-text-sub)" }}
-        >
-          {tenant?.rentAmountFormatted && (
-            <span className="font-mono tabular-nums">Paid: {tenant.rentAmountFormatted}</span>
-          )}
-          <span className="flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            {tenant?.leaseEndDateNepali || "—"}
-          </span>
-        </div>
-
-        {/* ── Overdue balance row ──────────────────────────────────────────── */}
+        {/* ── OVERDUE ──────────────────────────── */}
         {overdueBalance > 0 && (
           <div
-            className="flex items-center justify-between rounded-lg px-2.5 py-1.5 mb-2.5 border"
+            className="flex justify-between items-center border rounded-lg px-2 py-1 mb-2"
             style={{
               background: "var(--color-danger-bg)",
               borderColor: "var(--color-danger-border)",
             }}
           >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <TrendingDown className="w-3 h-3 shrink-0" style={{ color: "var(--color-danger)" }} />
-              <span className="text-[11px] font-semibold font-mono tabular-nums" style={{ color: "var(--color-danger)" }}>
-                Rs. {overdueBalance.toLocaleString("en-IN")} arrears
-              </span>
+            <div
+              className="flex items-center gap-1 text-[11px] font-semibold"
+              style={{ color: "var(--color-danger)" }}
+            >
+              <TrendingDown className="w-3 h-3" />
+              Rs. {overdueBalance.toLocaleString("en-IN")} arrears
             </div>
+
             {overdueLabel && (
-              <span className="text-[10px] shrink-0 ml-2" style={{ color: "var(--color-danger)" }}>
+              <span
+                className="text-[10px]"
+                style={{ color: "var(--color-danger)" }}
+              >
                 {overdueLabel}
               </span>
             )}
           </div>
         )}
 
-        {/* ── Action buttons ────────────────────────────────────────────────── */}
-        <div
-          className="border-t pt-2 flex gap-1.5"
-          style={{ borderColor: "var(--color-border)" }}
-        >
+        {/* ── ACTIONS ──────────────────────────── */}
+        <div className="border-t pt-2 flex gap-1.5">
           <button
-            className="flex-1 flex items-center justify-center gap-1 text-xs rounded-lg py-1.5 transition-colors font-medium"
+            className="flex-1 text-xs py-1.5 rounded-lg border transition-colors"
             style={{
-              background: "var(--color-surface-raised)",
-              color: "var(--color-text-sub)",
+              background: "var(--color-surface)",
+              borderColor: "var(--color-border)",
+              color: "var(--color-text-body)",
             }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = "var(--color-success-bg)";
-              e.currentTarget.style.color = "var(--color-success)";
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = "var(--color-surface-raised)";
-              e.currentTarget.style.color = "var(--color-text-sub)";
-            }}
-            onClick={e => {
+            onClick={(e) => {
               e.stopPropagation();
               if (tenant?.phone) window.location.href = `tel:${tenant.phone}`;
             }}
           >
-            <Phone className="w-3 h-3" /> Call
+            <Phone className="w-3 h-3 inline mr-1" /> Call
           </button>
+
           <button
-            className="flex-1 flex items-center justify-center gap-1 text-xs rounded-lg py-1.5 transition-colors font-medium"
+            className="flex-1 text-xs py-1.5 rounded-lg border transition-colors"
             style={{
-              background: "var(--color-surface-raised)",
-              color: "var(--color-text-sub)",
+              background: "var(--color-surface)",
+              borderColor: "var(--color-border)",
+              color: "var(--color-text-body)",
             }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = "var(--color-accent-light)";
-              e.currentTarget.style.color = "var(--color-accent)";
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = "var(--color-surface-raised)";
-              e.currentTarget.style.color = "var(--color-text-sub)";
-            }}
-            onClick={e => {
+            onClick={(e) => {
               e.stopPropagation();
               if (tenant?.email) window.location.href = `mailto:${tenant.email}`;
             }}
           >
-            <Mail className="w-3 h-3" /> Email
+            <Mail className="w-3 h-3 inline mr-1" /> Email
           </button>
         </div>
+
       </CardContent>
     </Card>
   );

@@ -152,6 +152,14 @@ const RentPayment = () => {
 
   const adminRent = useAdminRentActions({ onProcessSuccess: getRents });
 
+  const sendRemindersForPeriod = useCallback(() => {
+    const month =
+      frequencyView === "quarterly"
+        ? getQuarterMonthRange(filterQuarter).start
+        : filterRentMonth;
+    return adminRent.sendRentReminders(month, filterRentYear);
+  }, [adminRent.sendRentReminders, frequencyView, filterQuarter, filterRentMonth, filterRentYear]);
+
   const [activeTab, setActiveTab] = useState("rent");
   const [datePickerResetKey, setDatePickerResetKey] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
@@ -293,6 +301,11 @@ const RentPayment = () => {
 
   const selectedProperty = properties.find((p) => p._id === filterPropertyId);
 
+  const electricityMonthLabel =
+    frequencyView === "quarterly"
+      ? NEPALI_MONTH_NAMES[filterRentMonth - 1]
+      : null;
+
   // Inline context: "Baisakh 2083 · Monthly · All Properties"
   const contextLine = [
     currentPeriodLabel,
@@ -397,7 +410,7 @@ const RentPayment = () => {
             <AdminRentAction
               onProcessSuccess={getRents}
               processMonthlyRents={adminRent.processMonthlyRents}
-              sendRentReminders={adminRent.sendRentReminders}
+              sendRentReminders={sendRemindersForPeriod}
               processingRents={adminRent.processingRents}
               sendingEmails={adminRent.sendingEmails}
               onExport={handleExportVisibleRents}
@@ -468,8 +481,9 @@ const RentPayment = () => {
               bankAccounts={bankAccounts}
               electricityByTenantId={electricityByTenantId}
               onRefresh={handlePaymentSuccess}
-              sendRentReminders={adminRent.sendRentReminders}
+              sendRentReminders={sendRemindersForPeriod}
               sendingEmails={adminRent.sendingEmails}
+              electricityMonthLabel={electricityMonthLabel}
             />
           </div>
         </div>

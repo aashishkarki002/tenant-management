@@ -10,25 +10,25 @@ import {
 } from "lucide-react";
 import { useProfitLoss } from "../../hooks/useProfitLoss";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK, fmtN } from "../../../utils/formatter";
+import { fmtN } from "../../../utils/formatter";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
-    revenue:   "var(--color-info)",
-    opEx:      "var(--color-warning)",
-    ebit:      "#6c63ff",
-    interest:  "var(--color-danger)",
-    net:       "var(--color-success)",
-    netNeg:    "var(--color-danger)",
-    border:    "var(--color-border)",
-    surface:   "var(--color-surface-raised)",
-    sub:       "var(--color-text-sub)",
-    body:      "var(--color-text-body)",
-    strong:    "var(--color-text-strong)",
-    muted:     "var(--color-muted)",
-    bg:        "var(--color-bg)",
-    accent:    "var(--color-accent)",
-    accentBg:  "var(--color-accent-light)",
+    revenue: "var(--color-info)",
+    opEx: "var(--color-warning)",
+    ebit: "#6c63ff",
+    interest: "var(--color-danger)",
+    net: "var(--color-success)",
+    netNeg: "var(--color-danger)",
+    border: "var(--color-border)",
+    surface: "var(--color-surface-raised)",
+    sub: "var(--color-text-sub)",
+    body: "var(--color-text-body)",
+    strong: "var(--color-text-strong)",
+    muted: "var(--color-muted)",
+    bg: "var(--color-bg)",
+    accent: "var(--color-accent)",
+    accentBg: "var(--color-accent-light)",
 };
 
 // ─── Small primitives ─────────────────────────────────────────────────────────
@@ -74,11 +74,11 @@ function PLRow({ label, amount, pct, color, indent = false, isSubtotal = false, 
                         className={`tabular-nums font-bold ${isTotal ? "text-[16px]" : isSubtotal ? "text-[14px]" : "text-[12px]"}`}
                         style={{ color }}
                     >
-                        {amount < 0 ? "−" : ""}RS {fmtK(Math.abs(amount))}
+                        {amount < 0 ? "−" : ""}RS {(Math.abs(amount))}
                     </div>
                     {!isTotal && (
                         <div className="text-[9px] tabular-nums" style={{ color: C.sub }}>
-                            RS {fmtN(Math.abs(amount))}
+                            RS {(Math.abs(amount))}
                         </div>
                     )}
                 </div>
@@ -96,7 +96,7 @@ function YoYBadge({ pct, inverse = false }) {
             className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
             style={{
                 background: good ? "var(--color-success-bg)" : "var(--color-danger-bg)",
-                color:      good ? "var(--color-success)"    : "var(--color-danger)",
+                color: good ? "var(--color-success)" : "var(--color-danger)",
             }}
         >
             <Icon size={10} />
@@ -112,7 +112,7 @@ function KpiCard({ label, value, margin, yoyPct, color, loading, isNeg = false, 
             {loading ? <Skeleton h={36} /> : (
                 <>
                     <div className="text-[22px] font-black tabular-nums leading-none" style={{ color }}>
-                        {isNeg ? "−" : ""}RS {fmtK(Math.abs(value ?? 0))}
+                        {isNeg ? "−" : ""}RS {(Math.abs(value ?? 0))}
                     </div>
                     {margin != null && (
                         <div className="text-[10px] font-semibold" style={{ color }}>
@@ -143,7 +143,7 @@ function PLWaterfallChart({ data, loading }) {
             <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid vertical={false} stroke={C.border} strokeOpacity={0.5} />
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: C.sub, fontWeight: 600 }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={v => `RS ${fmtK(v)}`} tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} width={52} />
+                <YAxis tickFormatter={v => `RS ${(v)}`} tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} width={52} />
                 <Tooltip
                     cursor={{ fill: "rgba(0,0,0,0.04)" }}
                     content={({ active, payload }) => {
@@ -187,17 +187,17 @@ function MonthlyTrendChart({ monthlyTrend = [], loading }) {
             <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <defs>
                     <linearGradient id="plRevGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor={C.revenue} stopOpacity={0.18} />
+                        <stop offset="5%" stopColor={C.revenue} stopOpacity={0.18} />
                         <stop offset="95%" stopColor={C.revenue} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="plExpGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor={C.opEx} stopOpacity={0.18} />
+                        <stop offset="5%" stopColor={C.opEx} stopOpacity={0.18} />
                         <stop offset="95%" stopColor={C.opEx} stopOpacity={0} />
                     </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} stroke={C.border} strokeOpacity={0.5} />
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={v => `RS ${fmtK(v)}`} tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} width={52} />
+                <YAxis tickFormatter={v => `RS ${(v)}`} tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} width={52} />
                 <Tooltip
                     cursor={{ stroke: C.accent, strokeWidth: 1, strokeDasharray: "4 2" }}
                     content={({ active, payload, label }) => {
@@ -208,7 +208,7 @@ function MonthlyTrendChart({ monthlyTrend = [], loading }) {
                                 {payload.map(p => (
                                     <div key={p.dataKey} className="flex justify-between gap-4 font-semibold" style={{ color: p.color }}>
                                         <span>{p.dataKey}</span>
-                                        <span className="tabular-nums">RS {fmtK(p.value)}</span>
+                                        <span className="tabular-nums">RS {(p.value)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -216,8 +216,8 @@ function MonthlyTrendChart({ monthlyTrend = [], loading }) {
                     }}
                 />
                 <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 10, color: C.sub }} />
-                <Area type="monotone" dataKey="Revenue"  stroke={C.revenue} strokeWidth={1.5} fill="url(#plRevGrad)" dot={false} />
-                <Area type="monotone" dataKey="Expenses" stroke={C.opEx}    strokeWidth={1.5} fill="url(#plExpGrad)" dot={false} />
+                <Area type="monotone" dataKey="Revenue" stroke={C.revenue} strokeWidth={1.5} fill="url(#plRevGrad)" dot={false} />
+                <Area type="monotone" dataKey="Expenses" stroke={C.opEx} strokeWidth={1.5} fill="url(#plExpGrad)" dot={false} />
             </AreaChart>
         </ResponsiveContainer>
     );
@@ -233,7 +233,7 @@ export default function ProfitLossTab({ filterProps, filterLabel }) {
     const { data, loading, error } = useProfitLoss(
         selectedQuarter,
         customStartDate ?? "",
-        customEndDate   ?? "",
+        customEndDate ?? "",
         selectedMonth,
         fiscalYear,
         entityId,
@@ -243,17 +243,17 @@ export default function ProfitLossTab({ filterProps, filterLabel }) {
     const waterfallData = useMemo(() => {
         if (!data) return [];
         return [
-            { label: "Revenue",     value: data.revenue.totalRupees,      color: C.revenue  },
-            { label: "Operating\nEx.", value: -(data.expenses.operatingRupees ?? 0), color: C.opEx   },
-            { label: "EBIT",        value: data.ebit.rupees,              color: C.ebit     },
-            { label: "Interest",    value: -(data.expenses.interestRupees ?? 0),     color: C.interest },
-            { label: "Net Income",  value: data.netIncome.rupees,          color: data.netIncome.rupees >= 0 ? C.net : C.netNeg },
+            { label: "Revenue", value: data.revenue.totalRupees, color: C.revenue },
+            { label: "Operating\nEx.", value: -(data.expenses.operatingRupees ?? 0), color: C.opEx },
+            { label: "EBIT", value: data.ebit.rupees, color: C.ebit },
+            { label: "Interest", value: -(data.expenses.interestRupees ?? 0), color: C.interest },
+            { label: "Net Income", value: data.netIncome.rupees, color: data.netIncome.rupees >= 0 ? C.net : C.netNeg },
         ];
     }, [data]);
 
-    const cmp       = data?.comparison;
-    const isProfit  = (data?.netIncome?.rupees ?? 0) >= 0;
-    const netColor  = isProfit ? C.net : C.netNeg;
+    const cmp = data?.comparison;
+    const isProfit = (data?.netIncome?.rupees ?? 0) >= 0;
+    const netColor = isProfit ? C.net : C.netNeg;
 
     if (error) {
         return (
@@ -345,28 +345,64 @@ export default function ProfitLossTab({ filterProps, filterLabel }) {
                     </div>
 
                     {/* Operating Expenses */}
-                    <div className="px-5 pt-4 pb-3 border-b" style={{ borderColor: C.border }}>
+                    {/* Operating Expenses */}
+                    <div
+                        className="px-5 pt-4 pb-3 border-b"
+                        style={{ borderColor: C.border }}
+                    >
                         <SectionHeader>Operating Expenses</SectionHeader>
+
                         {[
-                            { key: "maintenancePaisa", label: "Maintenance" },
-                            { key: "utilityPaisa",     label: "Utilities" },
-                            { key: "salaryPaisa",      label: "Staff Salary" },
-                            { key: "manualPaisa",      label: "Other / Manual" },
-                        ].map(({ key, label }) => {
-                            const paisa = data?.expenses?.[key] ?? 0;
-                            const rupees = paisa / 100;
-                            if (!loading && rupees === 0) return null;
+                            {
+                                value: data?.expenses?.maintenanceRupees,
+                                paisa: data?.expenses?.maintenancePaisa,
+                                label: "Maintenance",
+                            },
+                            {
+                                value: data?.expenses?.utilityRupees,
+                                paisa: data?.expenses?.utilityPaisa,
+                                label: "Utilities",
+                            },
+                            {
+                                value: data?.expenses?.salaryRupees,
+                                paisa: data?.expenses?.salaryPaisa,
+                                label: "Staff Salary",
+                            },
+                            {
+                                value: data?.expenses?.manualRupees,
+                                paisa: data?.expenses?.manualPaisa,
+                                label: "Other / Manual",
+                            },
+                        ].map(({ value, paisa, label }) => {
+                            if (!loading && (!value || value === 0)) {
+                                return null;
+                            }
+
                             return (
-                                <PLRow key={key}
+                                <PLRow
+                                    key={label}
                                     label={label}
-                                    amount={rupees}
-                                    pct={data?.expenses?.operatingPaisa > 0 ? (paisa / data.expenses.operatingPaisa) * 100 : 0}
+                                    amount={value}
+                                    pct={
+                                        data?.expenses?.operatingPaisa > 0
+                                            ? ((paisa ?? 0) /
+                                                data.expenses.operatingPaisa) *
+                                            100
+                                            : 0
+                                    }
                                     color={C.opEx}
                                     loading={loading}
                                 />
                             );
                         })}
-                        <PLRow label="Total Operating Expenses" amount={data?.expenses?.operatingRupees} color={C.opEx} isSubtotal loading={loading} />
+
+                        <PLRow
+                            label="Total Operating Expenses"
+                            amount={data?.expenses?.operatingRupees}
+                            color={C.opEx}
+                            isSubtotal
+                            loading={loading}
+                        />
                     </div>
 
                     {/* EBIT line */}
@@ -411,7 +447,7 @@ export default function ProfitLossTab({ filterProps, filterLabel }) {
                         {loading ? <Skeleton h={28} /> : (
                             <div className="text-right">
                                 <div className="text-[26px] font-black tabular-nums leading-none" style={{ color: netColor }}>
-                                    {isProfit ? "+" : "−"}RS {fmtK(Math.abs(data?.netIncome?.rupees ?? 0))}
+                                    {isProfit ? "+" : "−"}RS {(Math.abs(data?.netIncome?.rupees ?? 0))}
                                 </div>
                                 <div className="text-[10px] tabular-nums mt-0.5 font-semibold" style={{ color: netColor, opacity: 0.7 }}>
                                     {data?.netIncome?.marginPct?.toFixed(1)}% net margin
@@ -434,9 +470,9 @@ export default function ProfitLossTab({ filterProps, filterLabel }) {
                     <div className="rounded-2xl border p-4" style={{ background: C.surface, borderColor: C.border }}>
                         <div className="text-[10px] font-bold tracking-[0.12em] uppercase mb-3" style={{ color: C.sub }}>Key Ratios</div>
                         {[
-                            { label: "Expense Ratio",   value: data?.expenseRatioPct,        suffix: "%", good: v => v < 70,  bad: v => v > 90  },
-                            { label: "EBIT Margin",     value: data?.ebit?.marginPct,         suffix: "%", good: v => v > 20,  bad: v => v < 0   },
-                            { label: "Net Margin",      value: data?.netIncome?.marginPct,    suffix: "%", good: v => v > 15,  bad: v => v < 0   },
+                            { label: "Expense Ratio", value: data?.expenseRatioPct, suffix: "%", good: v => v < 70, bad: v => v > 90 },
+                            { label: "EBIT Margin", value: data?.ebit?.marginPct, suffix: "%", good: v => v > 20, bad: v => v < 0 },
+                            { label: "Net Margin", value: data?.netIncome?.marginPct, suffix: "%", good: v => v > 15, bad: v => v < 0 },
                         ].map(({ label, value, suffix, good, bad }) => {
                             const color = loading || value == null ? C.sub : bad(value) ? C.netNeg : good(value) ? C.net : C.opEx;
                             return (

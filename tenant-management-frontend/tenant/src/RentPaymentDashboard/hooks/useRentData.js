@@ -135,10 +135,16 @@ export const useRentData = () => {
 
   // ── Fetch: CAMs ───────────────────────────────────────────────────────────
   // Reads month/year from closure — no args needed when called post-payment.
+  // Quarterly CAMs are stored at the quarter-start month, so pass that month
+  // in quarterly view instead of filterRentMonth.
   const getCams = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      params.append("nepaliMonth", filterRentMonth);
+      const camMonth =
+        frequencyView === "quarterly"
+          ? getQuarterMonthRange(filterQuarter).start
+          : filterRentMonth;
+      params.append("nepaliMonth", camMonth);
       params.append("nepaliYear", filterRentYear);
       const response = await api.get(`/api/cam/get-cams?${params.toString()}`);
       if (response.data.success) {
@@ -151,7 +157,7 @@ export const useRentData = () => {
       setCams([]);
       toast.error("Failed to fetch CAMs. CAM payments may be unavailable.");
     }
-  }, [filterRentMonth, filterRentYear]);
+  }, [frequencyView, filterQuarter, filterRentMonth, filterRentYear]);
 
   // ── Fetch: payments ───────────────────────────────────────────────────────
   const getPayments = useCallback(async () => {

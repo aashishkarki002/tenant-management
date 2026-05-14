@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, ArrowRight, Banknote } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { C, fmtRupees } from "../../Loans/loan.constants";
+import { C, fmtRupees, toBSDate } from "../../Loans/loan.constants";
 import { depositCheque } from "../hooks/useChequeDrafts";
 
 export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
@@ -28,11 +28,13 @@ export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
 
   if (!draft) return null;
 
+  const isReceived = draft.direction === "RECEIVED";
+
   const handleSubmit = async () => {
     try {
       setSaving(true);
       await depositCheque(draft._id, { depositDate, depositNotes: depositNotes || null });
-      toast.success(`Cheque #${draft.chequeNumber} marked as deposited`);
+      toast.success(`Cheque #${draft.chequeNumber} deposited — bank balance updated`);
       onOpenChange(false);
       onSuccess?.();
     } catch (err) {
@@ -49,8 +51,39 @@ export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
           <DialogTitle style={{ color: C.text }}>Mark as Deposited</DialogTitle>
           <p className="text-[12px]" style={{ color: C.textMuted }}>
             Cheque #{draft.chequeNumber} · {fmtRupees(draft.amountPaisa)}
+            {draft.partyName ? ` · ${draft.partyName}` : ""}
           </p>
         </DialogHeader>
+
+        {/* Lifecycle diagram */}
+        <div
+          className="rounded-xl border px-4 py-3 flex items-center gap-2 mt-1"
+          style={{ background: C.surface, borderColor: C.border }}
+        >
+          <div className="text-center">
+            <p className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: C.textMuted }}>
+              {isReceived ? "Cheques In Hand" : "Cheques Payable"}
+            </p>
+            <p className="text-[10px] font-bold mt-px" style={{ color: C.amber }}>
+              {isReceived ? "1150" : "2150"}
+            </p>
+          </div>
+          <ArrowRight size={14} style={{ color: C.textMuted, flexShrink: 0 }} />
+          <div className="text-center flex-1">
+            <Banknote size={13} style={{ color: C.positive, margin: "0 auto 2px" }} />
+            <p className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: C.textMuted }}>
+              Bank
+            </p>
+            <p className="text-[10px] font-mono font-semibold mt-px" style={{ color: C.positive }}>
+              {draft.bankAccountCode ?? "—"}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] font-bold tabular-nums" style={{ color: C.positive }}>
+              {fmtRupees(draft.amountPaisa)}
+            </p>
+          </div>
+        </div>
 
         <div className="flex flex-col gap-3 mt-1">
           <div className="flex flex-col gap-1.5">
@@ -68,14 +101,14 @@ export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
 
           <div className="flex flex-col gap-1.5">
             <label className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: C.textMuted }}>
-              Notes (optional)
+              Notes <span className="normal-case font-normal">(optional)</span>
             </label>
             <input
               type="text"
               value={depositNotes}
               onChange={(e) => setDepositNotes(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-              placeholder="Bank reference, remarks…"
+              placeholder="Bank reference, slip number…"
               className="h-9 rounded-lg border px-3 text-[13px] bg-transparent outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]"
               style={{ borderColor: C.border, color: C.text }}
             />

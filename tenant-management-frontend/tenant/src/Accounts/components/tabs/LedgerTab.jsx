@@ -18,58 +18,6 @@ export default function LedgerTab({
     return (
         <div className="flex flex-col gap-4">
 
-            {/* ── Info banner ─────────────────────────────────────────────── */}
-            <div
-                className="flex items-center justify-between flex-wrap gap-4 px-4 py-4 rounded-xl"
-                style={{
-                    background: "var(--color-info-bg)",
-                    borderLeft: "3px solid var(--color-info)",
-                    border: "1px solid var(--color-border)",
-                    borderLeftWidth: "3px",
-                    borderLeftColor: "var(--color-info)",
-                }}
-            >
-                {/* Left: icon + label */}
-                <div className="flex items-center gap-3">
-                    <div
-                        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                        style={{ background: "var(--color-info)" }}
-                    >
-                        <FileTextIcon size={17} color="#fff" />
-                    </div>
-                    <div>
-                        <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-text-sub)] mb-0.5">
-                            General Ledger
-                        </div>
-                        <div className="text-[13px] text-[var(--color-text-body)]">
-                            All transactions for{" "}
-                            <span className="font-bold text-[var(--color-text-strong)]">
-                                {filterLabel}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right: Credits + Debits chips */}
-                <div className="flex gap-2.5">
-                    <MetricChip
-                        label="Credits"
-                        value={totals.totalRevenue}
-                        color="var(--color-success)"
-                        bg="var(--color-success-bg)"
-                        border="var(--color-success)"
-                        icon={<ArrowUpRightIcon size={11} />}
-                    />
-                    <MetricChip
-                        label="Debits"
-                        value={totals.totalExpenses}
-                        color="var(--color-danger)"
-                        bg="var(--color-danger-bg)"
-                        border="var(--color-danger)"
-                        icon={<ArrowDownRightIcon size={11} />}
-                    />
-                </div>
-            </div>
 
             {/* ── Ledger table card ────────────────────────────────────────── */}
             <Card className="p-0">

@@ -55,8 +55,7 @@ export const FinancialTotalsDisplay = ({ unitFinancials = {}, tdsPercentage = 10
 
             <p className="text-xs text-gray-500 pt-1">
                 TDS is withheld by the tenant and remitted to IRD. The landlord books
-                Net Rent as income. These numbers are previews — the backend stores
-                all values as integer paisa.
+                Net Rent as income.
             </p>
         </div>
     );

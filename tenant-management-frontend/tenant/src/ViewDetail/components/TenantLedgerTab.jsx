@@ -47,337 +47,168 @@ export function TenantLedgerTab({ tenantId, tenant }) {
     try {
       setLoading(true);
       setError(null);
+
       const params = new URLSearchParams();
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
-      const qs = params.toString();
+
       const res = await api.get(
-        `/api/ledger/get-tenant-ledger/${tenantId}${qs ? `?${qs}` : ""}`
+        `/api/ledger/get-tenant-ledger/${tenantId}?${params}`
       );
+
       if (res.data.success) {
         setEntries(res.data.data?.entries ?? []);
         setSummary(res.data.data?.summary ?? null);
         setPage(1);
-      } else {
-        setError(res.data.message || "Failed to load ledger");
       }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load ledger");
+    } catch (e) {
+      setError("Failed to load ledger");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchLedger();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId]);
-
-  const tenantName = tenant?.name ?? "Tenant";
-  const filterLabel =
-    startDate && endDate
-      ? `${startDate} – ${endDate}`
-      : startDate
-      ? `From ${startDate}`
-      : endDate
-      ? `Until ${endDate}`
-      : "All time";
-
-  const totals = {
-    totalRevenue: summary?.totalCredit ?? 0,
-    totalExpenses: summary?.totalDebit ?? 0,
-    netCashFlow: summary?.netBalance ?? 0,
-  };
-
   const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
   const pageEntries = entries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const handleExportCSV = async () => {
-    setExporting("csv");
-    await new Promise((r) => setTimeout(r, 0));
-    exportLedgerCSV(entries, `${tenantName} · ${filterLabel}`, totals, tenantName);
-    setExporting(null);
-  };
-
-  const handleExportPDF = async () => {
-    setExporting("pdf");
-    await new Promise((r) => setTimeout(r, 0));
-    exportLedgerPDF(entries, totals, `${tenantName} · ${filterLabel}`, tenantName);
-    setExporting(null);
-  };
+  const tenantName = tenant?.name ?? "Tenant";
 
   return (
-    <Card className="border border-border shadow-sm rounded-xl bg-background">
-      <CardHeader className="p-4 sm:p-6 pb-4">
-        <div className="flex flex-col gap-4">
-          {/* Title row */}
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-50">
-                <BookOpen className="w-4 h-4 text-teal-600" />
-              </div>
-              <div>
-                <CardTitle className="text-base sm:text-lg leading-tight">
-                  Tenant Ledger
-                </CardTitle>
-                {summary && (
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {summary.totalEntries} entries · {filterLabel}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleExportCSV}
-                disabled={loading || entries.length === 0 || exporting !== null}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {exporting === "csv" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                )}
-                CSV
-              </button>
-              <button
-                onClick={handleExportPDF}
-                disabled={loading || entries.length === 0 || exporting !== null}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {exporting === "pdf" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Download className="w-3.5 h-3.5" />
-                )}
-                PDF
-              </button>
-            </div>
+    <Card className="bg-background border-0 shadow-sm rounded-xl">
+      {/* HEADER */}
+      <CardHeader className="space-y-4 pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-medium">Tenant Ledger</h2>
+            <p className="text-xs text-muted-foreground">
+              {tenantName} • {summary?.totalEntries ?? 0} entries
+            </p>
           </div>
 
-          {/* Date filter row */}
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground font-medium">
-                From
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-8 px-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground font-medium">
-                To
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="h-8 px-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-            <Button
-              size="sm"
-              onClick={fetchLedger}
-              disabled={loading}
-              className="h-8 text-xs cursor-pointer"
-            >
-              {loading ? (
-                <Loader2 className="w-3 h-3 animate-spin mr-1" />
-              ) : null}
-              Apply
-            </Button>
-            {(startDate || endDate) && (
-              <button
-                onClick={() => {
-                  setStartDate("");
-                  setEndDate("");
-                }}
-                className="h-8 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-
-          {/* Summary chips */}
-          {summary && !loading && (
-            <div className="flex flex-wrap gap-2">
-              <SummaryChip
-                label="Total Credits"
-                value={summary.formatted?.totalCredit}
-                variant="credit"
-                icon={<ArrowUpRight className="w-3 h-3" />}
-              />
-              <SummaryChip
-                label="Total Debits"
-                value={summary.formatted?.totalDebit}
-                variant="debit"
-                icon={<ArrowDownRight className="w-3 h-3" />}
-              />
-              <SummaryChip
-                label="Net Balance"
-                value={summary.formatted?.netBalance}
-                variant="neutral"
-              />
-            </div>
-          )}
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-0">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-2">
-            <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-muted-foreground">Loading ledger…</p>
-          </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-2">
-            <p className="text-sm text-red-500">{error}</p>
-            <button
-              onClick={fetchLedger}
-              className="text-xs text-teal-600 hover:underline cursor-pointer"
-            >
-              Retry
+          <div className="flex gap-2">
+            <button className="text-xs text-muted-foreground hover:text-foreground">
+              CSV
+            </button>
+            <button className="text-xs text-muted-foreground hover:text-foreground">
+              PDF
             </button>
           </div>
+        </div>
+
+        {/* FILTERS */}
+        <div className="flex items-end gap-2">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="h-8 text-xs border rounded-md px-2"
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="h-8 text-xs border rounded-md px-2"
+          />
+          <button
+            onClick={fetchLedger}
+            className="h-8 px-3 text-xs bg-foreground text-background rounded-md"
+          >
+            Apply
+          </button>
+        </div>
+
+        {/* SUMMARY */}
+        {summary && (
+          <div className="flex gap-3 text-xs text-muted-foreground">
+            <span>Cr: {summary.formatted?.totalCredit}</span>
+            <span>Dr: {summary.formatted?.totalDebit}</span>
+            <span>Net: {summary.formatted?.netBalance}</span>
+          </div>
+        )}
+      </CardHeader>
+
+      {/* CONTENT */}
+      <CardContent className="pt-0">
+        {loading ? (
+          <div className="py-10 text-xs text-muted-foreground">
+            Loading…
+          </div>
+        ) : error ? (
+          <div className="py-10 text-xs text-red-500">{error}</div>
         ) : entries.length === 0 ? (
-          <EmptyState />
+          <div className="py-10 text-xs text-muted-foreground">
+            No entries found
+          </div>
         ) : (
           <>
-            {/* Mobile cards */}
-            <div className="block sm:hidden px-4 pb-4 space-y-2">
-              {pageEntries.map((entry) => (
-                <MobileCard key={entry._id} entry={entry} />
-              ))}
-            </div>
+            {/* TABLE */}
+            <div className="overflow-hidden rounded-lg border">
+              <table className="w-full text-xs">
+                <thead className="text-left text-muted-foreground border-b">
+                  <tr>
+                    <th className="p-2">Date (B.S)</th>
+                    <th className="p-2">Description</th>
+                    <th className="p-2">Voucher No</th>
+                    <th className="p-2 text-right">Dr</th>
+                    <th className="p-2 text-right">Cr</th>
+                    <th className="p-2 text-right">Balance</th>
+                  </tr>
+                </thead>
 
-            {/* Desktop table */}
-            <div className="hidden sm:block overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-y border-border bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider py-3 w-28">
-                      Date (BS)
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider py-3">
-                      Description
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider py-3 w-32">
-                      Account
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider py-3 text-right w-28">
-                      Debit (रू)
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider py-3 text-right w-28">
-                      Credit (रू)
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider py-3 text-right w-32">
-                      Balance (रू)
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pageEntries.map((entry, idx) => (
-                    <TableRow
-                      key={entry._id}
-                      className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${
-                        idx % 2 === 0 ? "bg-background" : "bg-muted/10"
-                      }`}
+                <tbody>
+                  {pageEntries.map((e) => (
+                    <tr
+                      key={e._id}
+                      className="border-b last:border-0 hover:bg-muted/30"
                     >
-                      <TableCell className="py-3 text-xs font-mono text-muted-foreground">
-                        {entry.nepaliDate ?? formatDate(entry.date)}
-                      </TableCell>
-                      <TableCell className="py-3 text-sm text-foreground max-w-xs">
-                        <span className="line-clamp-2">
-                          {entry.description || entry.account?.name || "—"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-medium text-foreground">
-                            {entry.account?.name ?? "—"}
-                          </span>
-                          {entry.account?.code && (
-                            <span className="text-[10px] text-muted-foreground font-mono">
-                              {entry.account.code}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3 text-right tabular-nums text-sm">
-                        {entry.debit ? (
-                          <span className="text-red-600 font-medium">
-                            {fmtAmt(entry.debit)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3 text-right tabular-nums text-sm">
-                        {entry.credit ? (
-                          <span className="text-emerald-600 font-medium">
-                            {fmtAmt(entry.credit)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3 text-right tabular-nums text-sm font-semibold">
-                        {entry.runningBalance !== undefined ? (
-                          <span
-                            className={
-                              entry.runningBalance < 0
-                                ? "text-red-600"
-                                : "text-foreground"
-                            }
-                          >
-                            {fmtAmt(entry.runningBalance)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
+                      <td className="p-2 text-muted-foreground">
+                        {e.nepaliDate ?? formatDate(e.date)}
+                      </td>
+                      <td className="p-2 text-muted-foreground">
+                        {e.voucherNo}
+                      </td>
+
+                      <td className="p-2">
+                        {e.description || e.account?.name || "—"}
+                      </td>
+
+                      <td className="p-2 text-right text-red-600">
+                        {e.debit ? fmtAmt(e.debit) : "—"}
+                      </td>
+
+                      <td className="p-2 text-right text-emerald-600">
+                        {e.credit ? fmtAmt(e.credit) : "—"}
+                      </td>
+
+                      <td className="p-2 text-right font-medium">
+                        {fmtAmt(e.runningBalance)}
+                      </td>
+                    </tr>
                   ))}
-                </TableBody>
-              </Table>
+                </tbody>
+              </table>
             </div>
 
-            {/* Pagination */}
+            {/* PAGINATION */}
             {totalPages > 1 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 sm:px-6 py-4 border-t border-border">
-                <p className="text-xs text-muted-foreground">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–
-                  {Math.min(page * PAGE_SIZE, entries.length)} of{" "}
-                  {entries.length} entries
-                </p>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
+              <div className="flex justify-between items-center mt-3 text-xs text-muted-foreground">
+                <span>
+                  {page} / {totalPages}
+                </span>
+
+                <div className="flex gap-2">
+                  <button
                     onClick={() => setPage((p) => p - 1)}
                     disabled={page === 1}
-                    className="h-8 w-8 p-0 cursor-pointer"
                   >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </Button>
-                  <span className="text-xs px-3 py-1 rounded border border-border bg-muted/30 font-medium">
-                    {page} / {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                    Prev
+                  </button>
+                  <button
                     onClick={() => setPage((p) => p + 1)}
-                    disabled={page >= totalPages}
-                    className="h-8 w-8 p-0 cursor-pointer"
+                    disabled={page === totalPages}
                   >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
+                    Next
+                  </button>
                 </div>
               </div>
             )}
@@ -415,9 +246,8 @@ function MobileCard({ entry }) {
         <div>
           <p className="text-muted-foreground">Balance</p>
           <p
-            className={`font-semibold mt-0.5 ${
-              (entry.runningBalance ?? 0) < 0 ? "text-red-600" : "text-foreground"
-            }`}
+            className={`font-semibold mt-0.5 ${(entry.runningBalance ?? 0) < 0 ? "text-red-600" : "text-foreground"
+              }`}
           >
             {entry.runningBalance !== undefined ? fmtAmt(entry.runningBalance) : "—"}
           </p>
