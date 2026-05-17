@@ -17,8 +17,8 @@ import { useAccounting, useBankAccounts } from "../hooks/useAccounting";
 import { usePortfolioHealth } from "../hooks/usePortfolioHealth";
 import { useMonthlyChart } from "../hooks/useMonthlyChart";
 import { useEntity } from "../../context/EntityContext";
-import useProperty from "@/hooks/use-property";
 import api from "../../../plugins/axios";
+import { buildCompareLabel } from "../utils/filterHelpers";
 
 // ── Sub-components (extracted from this file) ─────────────────────────────────
 import FilterControlBar from "./FilterControlBar";
@@ -51,27 +51,6 @@ import AdvanceRentTab from "./tabs/AdvanceRentTab";
 import CamReconciliationTab from "./tabs/CamReconciliationTab";
 import PettyCashTab from "./tabs/PettyCashTab";
 import CoaManagementTab from "./tabs/CoaManagementTab";
-
-// QUARTER_LABELS[1] === "Shrawan–Ashwin" etc.
-
-
-
-export function buildCompareLabel(granularity, { year, quarter, month } = {}) {
-    if (granularity === "year" && year)
-        return `FY ${year}/${String(year + 1).slice(2)}`;
-    if (granularity === "quarter" && quarter && year)
-        return `Q${quarter} · ${QUARTER_LABELS[quarter]} · FY ${year}`;
-    if (granularity === "month" && month && year)
-        return `${NEPALI_MONTH_NAMES[month - 1]} ${month <= 3 ? year + 1 : year}`;
-    return null;
-}
-
-export function isValidDraft(granularity, { year, quarter, month }) {
-    if (granularity === "year") return !!year;
-    if (granularity === "quarter") return !!quarter && !!year;
-    if (granularity === "month") return !!month && !!year;
-    return false;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE COMPONENT
@@ -110,13 +89,6 @@ export default function AccountingPage() {
     // ── Entity scope — shared via EntityContext so filter persists across navigation
     const { entities, activeEntityId, setActiveEntityId } = useEntity();
     const resolvedEntityId = activeEntityId ?? null;
-
-    // ── Properties list (for PropertyPLTab selector) ─────────────────────────
-    const { property: rawProperties } = useProperty();
-    const properties = useMemo(
-        () => (rawProperties ?? []).map((p) => ({ id: p._id, name: p.name })),
-        [rawProperties],
-    );
 
     // ── Tenants list (for TenantStatementTab / AdvanceRentTab selectors) ─────
     const [tenants, setTenants] = useState([]);

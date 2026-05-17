@@ -46,18 +46,19 @@ import { adIsoToBsIso } from "@/utils/nepaliDate";
 
 
 
-function ownershipEntityIdFromBlock(block) {
-  if (!block) return "";
-  const ref = block.ownershipEntityId ?? block.ownershipEntity;
-  const id = ref?._id ?? ref;
-  return id != null ? String(id) : "";
+function getEntityBadgeColor(type) {
+  switch (type) {
+    case "private":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800";
+    case "company":
+      return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800";
+    case "head_office":
+      return "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800";
+    default:
+      return "bg-muted text-muted-foreground border-border";
+  }
 }
 
-function blocksForOwnershipEntity(blocks, entityId) {
-  if (!entityId || !Array.isArray(blocks)) return [];
-  const target = String(entityId);
-  return blocks.filter((b) => ownershipEntityIdFromBlock(b) === target);
-}
 
 const getInitialValues = () => {
   const date = new Date().toISOString().split("T")[0];

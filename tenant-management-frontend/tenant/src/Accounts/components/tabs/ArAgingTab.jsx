@@ -1,187 +1,430 @@
 /**
  * ArAgingTab.jsx
  *
- * Accounts Receivable Aging Report.
- * Shows outstanding rent balances per tenant bucketed by months overdue.
- * Data source: GET /api/ledger/ar-aging
+ * Minimal modern AR Aging dashboard.
+ * Cleaner accounting-focused UI with softer hierarchy,
+ * better spacing, and improved readability.
  */
 
-import { AlertCircleIcon, UserIcon } from "lucide-react";
-import { Card, Lbl, Skeleton } from "../AccountingPrimitives";
+import {
+  AlertCircleIcon,
+  RefreshCwIcon,
+  UserIcon,
+  CalendarIcon,
+} from "lucide-react";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+
 import { useArAging } from "../../hooks/useArAging";
 import { fmtRs } from "../../../utils/formatter";
 
-
 const BUCKETS = [
-  { key: "current",   label: "Current",     color: "var(--color-success)" },
-  { key: "1_month",  label: "1 Mo",         color: "var(--color-warning)" },
-  { key: "2_months", label: "2 Mo",         color: "var(--color-warning-dark, #c47a00)" },
-  { key: "3_months", label: "3 Mo",         color: "var(--color-danger-light, #e05252)" },
-  { key: "over_3",   label: "3+ Mo",        color: "var(--color-danger)" },
+  {
+    key: "current",
+    label: "Current",
+    textClass:
+      "text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    key: "1_month",
+    label: "1 Mo",
+    textClass:
+      "text-amber-600 dark:text-amber-400",
+  },
+  {
+    key: "2_months",
+    label: "2 Mo",
+    textClass:
+      "text-orange-600 dark:text-orange-400",
+  },
+  {
+    key: "3_months",
+    label: "3 Mo",
+    textClass: "text-red-500 dark:text-red-400",
+  },
+  {
+    key: "over_3",
+    label: "3+ Mo",
+    textClass: "text-red-600 dark:text-red-500",
+  },
 ];
 
-function TenantRow({ tenant }) {
-  const maxBucket = BUCKETS.reduce(
-    (best, b) => (tenant.buckets[b.key]?.paisa > best.paisa ? { paisa: tenant.buckets[b.key].paisa, color: b.color } : best),
-    { paisa: 0, color: "var(--color-text-sub)" },
-  );
-
+function SummaryMetric({
+  title,
+  value,
+  description,
+  icon: Icon,
+  valueClassName = "",
+  iconClassName = "",
+}) {
   return (
-    <tr className="border-b border-[var(--color-border)]/30 hover:bg-[var(--color-surface-hover)] transition-colors">
-      <td className="py-3 pr-4">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-            style={{ background: "var(--color-surface-sub)" }}
-          >
-            <UserIcon size={13} className="text-[var(--color-text-sub)]" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-[var(--color-text)]">{tenant.tenantName}</div>
-            {tenant.propertyName && (
-              <div className="text-[10px] text-[var(--color-text-sub)]">{tenant.propertyName}</div>
+    <Card className="border-border/60 shadow-none">
+      <CardContent className="">
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              {title}
+            </p>
+
+            <div
+              className={`mt-2 text-2xl font-semibold tracking-tight tabular-nums ${valueClassName}`}
+            >
+              {value}
+            </div>
+
+            {description && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {description}
+              </p>
             )}
           </div>
+
+          <div
+            className={`rounded-xl border bg-muted/40 p-2 ${iconClassName}`}
+          >
+            <Icon className="h-4 w-4 text-muted-foreground" />
+          </div>
         </div>
-      </td>
-      {BUCKETS.map((b) => (
-        <td key={b.key} className="py-3 pr-3 text-right text-xs font-mono">
-          {tenant.buckets[b.key]?.paisa > 0 ? (
-            <span style={{ color: b.color, fontWeight: 600 }}>
-              {fmtRs(tenant.buckets[b.key].paisa)}
-            </span>
-          ) : (
-            <span className="text-[var(--color-border)]">—</span>
-          )}
-        </td>
-      ))}
-      <td className="py-3 text-right text-xs font-mono font-bold" style={{ color: maxBucket.color }}>
-        {fmtRs(tenant.total?.paisa ?? 0)}
-      </td>
-    </tr>
+      </CardContent>
+    </Card>
   );
 }
 
-export default function ArAgingTab({ entityId }) {
-  const { data, loading, error, refetch } = useArAging(entityId);
+function TenantRow({ tenant }) {
+  const highestBucket = BUCKETS.reduce(
+    (best, bucket) => {
+      const amount =
+        tenant.buckets?.[bucket.key]?.paisa ?? 0;
+
+      if (amount > best.amount) {
+        return {
+          amount,
+          textClass: bucket.textClass,
+        };
+      }
+
+      return best;
+    },
+    {
+      amount: 0,
+      textClass: "text-foreground",
+    }
+  );
+
+  return (
+    <TableRow className="hover:bg-muted/30">
+      <TableCell className="min-w-[240px] py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted/40">
+            <UserIcon className="h-4 w-4 text-muted-foreground" />
+          </div>
+
+          <div className="space-y-0.5">
+            <div className="font-medium text-foreground">
+              {tenant.tenantName}
+            </div>
+
+            {tenant.propertyName && (
+              <div className="text-xs text-muted-foreground">
+                {tenant.propertyName}
+              </div>
+            )}
+          </div>
+        </div>
+      </TableCell>
+
+      {BUCKETS.map((bucket) => {
+        const amount =
+          tenant.buckets?.[bucket.key]?.paisa ?? 0;
+
+        return (
+          <TableCell
+            key={bucket.key}
+            className="py-4 text-right text-sm"
+          >
+            {amount > 0 ? (
+              <span
+                className={`font-medium tabular-nums ${bucket.textClass}`}
+              >
+                {fmtRs(amount)}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                —
+              </span>
+            )}
+          </TableCell>
+        );
+      })}
+
+      <TableCell
+        className={`py-4 text-right text-sm font-semibold tabular-nums ${highestBucket.textClass}`}
+      >
+        {fmtRs(tenant.total?.paisa ?? 0)}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="space-y-3">
+      {[...Array(4)].map((_, i) => (
+        <Skeleton
+          key={i}
+          className="h-20 w-full rounded-2xl"
+        />
+      ))}
+    </div>
+  );
+}
+
+function ErrorState({ error, onRetry }) {
+  return (
+    <Card className="border-red-200 shadow-none dark:border-red-900">
+      <CardContent className="flex flex-col items-center justify-center gap-4 py-14">
+        <div className="rounded-2xl bg-red-500/10 p-3">
+          <AlertCircleIcon className="h-6 w-6 text-red-500" />
+        </div>
+
+        <div className="space-y-1 text-center">
+          <p className="font-medium text-red-500">
+            Failed to load AR Aging
+          </p>
+
+          <p className="text-sm text-muted-foreground">
+            {error}
+          </p>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRetry}
+          className="gap-2"
+        >
+          <RefreshCwIcon className="h-4 w-4" />
+          Retry
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyState() {
+  return (
+    <Card className="shadow-none">
+      <CardContent className="flex flex-col items-center justify-center py-20">
+        <div className="rounded-2xl bg-emerald-500/10 p-3">
+          <UserIcon className="h-6 w-6 text-emerald-500" />
+        </div>
+
+        <div className="mt-4 text-center">
+          <p className="font-medium">
+            No Outstanding Receivables
+          </p>
+
+          <p className="mt-1 text-sm text-muted-foreground">
+            All tenant rent balances are settled.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function ArAgingTab({
+  entityId,
+}) {
+  const {
+    data,
+    loading,
+    error,
+    refetch,
+  } = useArAging(entityId);
 
   if (loading) {
-    return (
-      <div className="space-y-3 p-4">
-        {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (error) {
     return (
-      <div className="p-6 text-center text-sm text-[var(--color-danger)]">
-        {error}
-        <button onClick={refetch} className="block mx-auto mt-2 text-xs underline text-[var(--color-text-sub)]">
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        error={error}
+        onRetry={refetch}
+      />
     );
   }
 
   if (!data) return null;
 
-  const { tenants = [], grandTotal, asOf } = data;
+  const {
+    tenants = [],
+    grandTotal,
+    asOf,
+  } = data;
 
-  const totalOutstanding = grandTotal?.total?.paisa ?? 0;
-  const over3Paisa = grandTotal?.buckets?.over_3?.paisa ?? 0;
+  const totalOutstanding =
+    grandTotal?.total?.paisa ?? 0;
+
+  const over3Paisa =
+    grandTotal?.buckets?.over_3?.paisa ?? 0;
 
   return (
-    <div className="space-y-4">
-      {/* Summary banner */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Card>
-          <Lbl>Total Outstanding AR</Lbl>
-          <div className="text-xl font-bold text-[var(--color-text)]">
-            {fmtRs(totalOutstanding)}
-          </div>
-          <div className="text-[10px] text-[var(--color-text-sub)] mt-1">
-            {tenants.length} tenant{tenants.length !== 1 ? "s" : ""} with unpaid rent
-          </div>
-        </Card>
-        <Card>
-          <Lbl>3+ Months Overdue</Lbl>
-          <div
-            className="text-xl font-bold"
-            style={{ color: over3Paisa > 0 ? "var(--color-danger)" : "var(--color-text)" }}
-          >
-            {fmtRs(over3Paisa)}
-          </div>
-          {over3Paisa > 0 && (
-            <div className="flex items-center gap-1 mt-1">
-              <AlertCircleIcon size={11} className="text-[var(--color-danger)]" />
-              <span className="text-[10px] text-[var(--color-danger)]">Requires attention</span>
-            </div>
-          )}
-        </Card>
-        <Card className="col-span-2 sm:col-span-1">
-          <Lbl>As Of</Lbl>
-          <div className="text-sm font-semibold text-[var(--color-text)]">
-            BS {asOf?.bsYear}/{String(asOf?.bsMonth).padStart(2, "0")}
-          </div>
-          <div className="text-[10px] text-[var(--color-text-sub)] mt-1">Current BS month</div>
-        </Card>
+    <div className="space-y-5">
+      {/* Summary */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <SummaryMetric
+          title="Total Outstanding"
+          value={fmtRs(totalOutstanding)}
+          description={`${tenants.length} tenant${tenants.length !== 1 ? "s" : ""
+            } with unpaid balances`}
+          icon={UserIcon}
+        />
+
+        <SummaryMetric
+          title="3+ Months Overdue"
+          value={fmtRs(over3Paisa)}
+          description={
+            over3Paisa > 0
+              ? "Requires immediate follow-up"
+              : "No critical overdue balances"
+          }
+          icon={AlertCircleIcon}
+          valueClassName={
+            over3Paisa > 0
+              ? "text-red-500"
+              : ""
+          }
+          iconClassName={
+            over3Paisa > 0
+              ? "border-red-500/20 bg-red-500/10"
+              : ""
+          }
+        />
+
+        <SummaryMetric
+          title="Report Period"
+          value={`BS ${asOf?.bsYear}/${String(
+            asOf?.bsMonth
+          ).padStart(2, "0")}`}
+          description="Current accounting month"
+          icon={CalendarIcon}
+        />
       </div>
 
-      {/* Aging table */}
+      {/* Table */}
       {tenants.length === 0 ? (
-        <Card>
-          <div className="py-8 text-center text-sm text-[var(--color-text-sub)]">
-            No outstanding AR — all rents are paid up.
-          </div>
-        </Card>
+        <EmptyState />
       ) : (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)]">
-                  <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">
-                    Tenant
-                  </th>
-                  {BUCKETS.map((b) => (
-                    <th
-                      key={b.key}
-                      className="py-2 pr-3 text-right text-[10px] font-bold uppercase tracking-widest"
-                      style={{ color: b.color }}
-                    >
-                      {b.label}
-                    </th>
-                  ))}
-                  <th className="py-2 text-right text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">
-                    Total
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {tenants.map((t) => (
-                  <TenantRow key={t.tenantId} tenant={t} />
-                ))}
+        <Card className="border-border/60 shadow-none">
+          <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
+            <div>
+              <CardTitle className="text-base font-semibold">
+                Accounts Receivable Aging
+              </CardTitle>
 
-                {/* Grand total row */}
-                <tr className="border-t-2 border-[var(--color-border)] bg-[var(--color-surface-sub)]">
-                  <td className="py-3 pr-4 text-xs font-bold uppercase tracking-widest text-[var(--color-text-sub)]">
-                    Total
-                  </td>
-                  {BUCKETS.map((b) => (
-                    <td key={b.key} className="py-3 pr-3 text-right text-xs font-mono font-bold" style={{ color: b.color }}>
-                      {grandTotal?.buckets?.[b.key]?.paisa > 0
-                        ? fmtRs(grandTotal.buckets[b.key].paisa)
-                        : "—"}
-                    </td>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Outstanding balances grouped by overdue
+                duration
+              </p>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refetch}
+              className="gap-2"
+            >
+              <RefreshCwIcon className="h-4 w-4" />
+              Refresh
+            </Button>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30 hover:bg-muted/30">
+                    <TableHead className="h-12 min-w-[240px] px-6">
+                      Tenant
+                    </TableHead>
+
+                    {BUCKETS.map((bucket) => (
+                      <TableHead
+                        key={bucket.key}
+                        className={`h-12 text-right ${bucket.textClass}`}
+                      >
+                        {bucket.label}
+                      </TableHead>
+                    ))}
+
+                    <TableHead className="h-12 pr-6 text-right">
+                      Total
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {tenants.map((tenant) => (
+                    <TenantRow
+                      key={tenant.tenantId}
+                      tenant={tenant}
+                    />
                   ))}
-                  <td className="py-3 text-right text-sm font-mono font-bold text-[var(--color-text)]">
-                    {fmtRs(grandTotal?.total?.paisa ?? 0)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+
+                  {/* Grand Total */}
+                  <TableRow className="border-t bg-muted/40 hover:bg-muted/40">
+                    <TableCell className="px-6 py-4 font-semibold uppercase tracking-wide text-muted-foreground">
+                      Grand Total
+                    </TableCell>
+
+                    {BUCKETS.map((bucket) => {
+                      const amount =
+                        grandTotal?.buckets?.[
+                          bucket.key
+                        ]?.paisa ?? 0;
+
+                      return (
+                        <TableCell
+                          key={bucket.key}
+                          className={`py-4 text-right font-semibold tabular-nums ${bucket.textClass}`}
+                        >
+                          {amount > 0
+                            ? fmtRs(amount)
+                            : "—"}
+                        </TableCell>
+                      );
+                    })}
+
+                    <TableCell className="pr-6 text-right text-base font-bold tabular-nums">
+                      {fmtRs(
+                        grandTotal?.total?.paisa ??
+                        0
+                      )}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
         </Card>
       )}
     </div>

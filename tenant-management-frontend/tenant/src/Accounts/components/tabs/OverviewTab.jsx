@@ -5,23 +5,23 @@ import {
 } from "../AccountingCharts";
 import ChartCard from "../ChartCard";
 import LedgerFeed from "../LedgerFeed";
-import { fmtKLatin } from "../../../utils/formatter";
+import { fmtKLatin, fmtK } from "../../../utils/formatter";
 import { cn } from "@/lib/utils";
 import {
     TrendingUpIcon, TrendingDownIcon,
     CheckCircle2Icon,
 } from "lucide-react";
 const T = {
-    revenue:  "var(--color-info)",
+    revenue: "var(--color-info)",
     expenses: "var(--color-warning)",
-    success:  "var(--color-success)",
-    danger:   "var(--color-danger)",
-    sub:      "var(--color-text-sub)",
-    body:     "var(--color-text-body)",
-    strong:   "var(--color-text-strong)",
-    border:   "var(--color-border)",
-    surface:  "var(--color-surface)",
-    raised:   "var(--color-surface-raised)",
+    success: "var(--color-success)",
+    danger: "var(--color-danger)",
+    sub: "var(--color-text-sub)",
+    body: "var(--color-text-body)",
+    strong: "var(--color-text-strong)",
+    border: "var(--color-border)",
+    surface: "var(--color-surface)",
+    raised: "var(--color-surface-raised)",
 };
 
 
@@ -51,8 +51,8 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
     const yoy = health?.yoyDeltas;
     const isLoss = (totals.netCashFlow ?? 0) < 0;
     const netColor = isLoss ? T.danger : T.success;
-    const cashPos = totals.cashBalance ?? 0;
-    const cashNeg = cashPos < 0;
+    const cashCollected = totals.operatingCashFlow ?? 0;
+    const cashNeg = cashCollected < 0;
 
     return (
         <div
@@ -66,7 +66,7 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                     style={{ borderColor: T.border }}>
                     <div className="flex items-center justify-between">
                         <span className="text-[11px] font-medium" style={{ color: T.sub }}>
-                            Net income
+                            Net Income (Accrual)
                         </span>
                         <span className={cn(
                             "text-[10px] font-semibold px-2 py-0.5 rounded-full",
@@ -93,17 +93,22 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                         )}
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[11px]" style={{ color: T.sub }}>
-                            {netMargin >= 0 ? "+" : ""}{netMargin.toFixed(1)}% margin · accrual
+                            {netMargin >= 0 ? "+" : ""}{netMargin.toFixed(1)}% margin
                         </span>
                         <TrendBadge pct={yoy?.netCashFlow?.pct} loading={healthLoading} />
                     </div>
+                    {!loadingSummary && (
+                        <span className="text-[11px] font-semibold tabular-nums" style={{ color: cashNeg ? T.danger : T.success }}>
+                            Cash in: RS {fmtKLatin(Math.abs(cashCollected))} (period)
+                        </span>
+                    )}
                 </div>
 
-                {/* Revenue + collection split */}
+                {/* Revenue + TDS + collection split */}
                 <div className="flex flex-col gap-1 px-5 py-4 border-b lg:border-b-0 lg:border-l"
                     style={{ borderColor: T.border }}>
                     <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-medium" style={{ color: T.sub }}>Revenue</span>
+                        <span className="text-[11px] font-medium" style={{ color: T.sub }}>Revenue (Accrual)</span>
                         {!loadingSummary && (collectionGap?.outstanding ?? 0) > 0 && (
                             <span
                                 className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
@@ -123,13 +128,21 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                                 RS {fmtKLatin(totals.totalRevenue)}
                             </span>
                         )}
-                    {!loadingSummary && (collectionGap?.outstanding ?? 0) > 0
+                    {/* TDS deduction line — only when TDS exists */}
+                    {!loadingSummary && (collectionGap?.tds ?? 0) > 0 && (
+                        <div className="flex items-center justify-between text-[10px] tabular-nums"
+                            style={{ color: "var(--color-warning)" }}>
+                            <span>TDS withheld (govt)</span>
+                            <span className="font-semibold">− RS {fmtKLatin(collectionGap.tds)}</span>
+                        </div>
+                    )}
+                    {!loadingSummary && collectionGap && (collectionGap.billed ?? 0) > 0
                         ? <CollectionSplit
                             billed={collectionGap.billed}
                             collected={collectionGap.collected}
                             outstanding={collectionGap.outstanding}
                             rate={collectionGap.collectionRatePct}
-                          />
+                        />
                         : <TrendBadge pct={yoy?.revenue?.pct} loading={healthLoading} />
                     }
                 </div>
@@ -163,7 +176,7 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                                 style={{
                                     color: (health?.noi?.noiMarginPct ?? 0) >= 40 ? T.success
                                         : (health?.noi?.noiMarginPct ?? 0) >= 20 ? "var(--color-warning)"
-                                        : T.danger,
+                                            : T.danger,
                                     letterSpacing: "-0.02em",
                                 }}
                             >
@@ -171,18 +184,18 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                             </span>
                         )}
                     <span className="text-[11px]" style={{ color: T.sub }}>
-                        {healthLoading ? "" : `NOI: RS ${fmtKLatin((health?.noi?.noiPaisa ?? 0))}`}
+                        {healthLoading ? "" : `NOI: RS ${fmtKLatin((health?.noi?.noiPaisa ?? 0) / 100)}`}
                     </span>
                 </div>
 
-                {/* Cash Position — ledger-derived all-time cumulative balance */}
+                {/* Cash Collected — period-scoped actual cash received */}
                 <div className="flex flex-col gap-1 px-5 py-4 border-t lg:border-t-0 lg:border-l"
                     style={{ borderColor: T.border }}>
                     <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-medium" style={{ color: T.sub }}>Cash position</span>
+                        <span className="text-[11px] font-medium" style={{ color: T.sub }}>Cash Collected</span>
                         <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
                             style={{ background: "var(--color-success-bg)", color: "var(--color-success)" }}>
-                            ledger
+                            cash basis
                         </span>
                     </div>
                     {loadingSummary
@@ -190,12 +203,12 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
                         : (
                             <span
                                 className="text-[22px] font-bold tabular-nums leading-none"
-                                style={{ color: cashNeg ? T.danger : T.body, letterSpacing: "-0.02em" }}
+                                style={{ color: cashNeg ? T.danger : T.success, letterSpacing: "-0.02em" }}
                             >
-                                RS {fmtKLatin(Math.abs(cashPos))}
+                                RS {fmtKLatin(Math.abs(cashCollected))}
                             </span>
                         )}
-                    <span className="text-[11px]" style={{ color: T.sub }}>bank + cash · verified DR−CR</span>
+                    <span className="text-[11px]" style={{ color: T.sub }}>this period · actual cash in/out</span>
                 </div>
 
             </div>
@@ -204,8 +217,8 @@ function SummaryBar({ totals, netMargin, health, loadingSummary, healthLoading, 
 }
 
 // ─── CollectionSplit — mini bar + collected/pending, shown inside Revenue cell ─
-function CollectionSplit({ billed, collected, outstanding, rate }) {
-    const barColor = rate >= 90 ? T.success : rate >= 70 ? "#f59e0b" : T.danger;
+function CollectionSplit({ collected, outstanding, rate }) {
+    const barColor = rate >= 90 ? T.success : rate >= 70 ? T.expenses : T.danger;
     return (
         <div className="flex flex-col gap-1 mt-0.5">
             <div className="h-1 rounded-full overflow-hidden" style={{ background: T.border }}>
@@ -219,8 +232,8 @@ function CollectionSplit({ billed, collected, outstanding, rate }) {
                     RS {fmtKLatin(collected)} collected
                 </span>
                 <span className="text-[9px]" style={{ color: T.sub }}>·</span>
-                <span className="text-[10px] font-semibold tabular-nums" style={{ color: "#f59e0b" }}>
-                    RS {fmtKLatin   (outstanding)} pending
+                <span className="text-[10px] font-semibold tabular-nums" style={{ color: T.expenses }}>
+                    RS {fmtKLatin(outstanding)} pending
                 </span>
                 <span className="text-[9px] font-bold tabular-nums ml-auto" style={{ color: barColor }}>
                     {rate.toFixed(0)}%
@@ -235,7 +248,7 @@ function CollectionGapStrip({ collectionGap, loading, filterLabel }) {
     if (loading || !collectionGap || (collectionGap.outstanding ?? 0) === 0) return null;
 
     const { billed, collected, outstanding, collectionRatePct: rate } = collectionGap;
-    const barColor = rate >= 90 ? T.success : rate >= 70 ? "#f59e0b" : T.danger;
+    const barColor = rate >= 90 ? T.success : rate >= 70 ? T.expenses : T.danger;
 
     return (
         <div
@@ -251,11 +264,11 @@ function CollectionGapStrip({ collectionGap, loading, filterLabel }) {
 
                 {/* Stat chips: Billed → Collected · Pending */}
                 <div className="flex items-center gap-2 flex-wrap">
-                    <CollStat label="Billed"     value={`RS ${fmtKLatin(billed)}`}       color={T.body} />
+                    <CollStat label="Billed" value={`RS ${fmtKLatin(billed)}`} color={T.body} />
                     <span className="text-[11px]" style={{ color: T.sub }}>→</span>
-                    <CollStat label="Collected"  value={`RS ${fmtKLatin(collected)}`}    color={barColor} />
+                    <CollStat label="Collected" value={`RS ${fmtKLatin(collected)}`} color={barColor} />
                     <span className="text-[11px]" style={{ color: T.sub }}>·</span>
-                    <CollStat label="Pending"    value={`RS ${fmtKLatin(outstanding)}`}  color="#f59e0b" highlight />
+                    <CollStat label="Pending" value={`RS ${fmtKLatin(outstanding)}`} color={T.expenses} highlight />
                 </div>
 
                 {/* Progress bar + rate */}
@@ -304,13 +317,13 @@ function CollStat({ label, value, color, highlight = false }) {
 // ─── ArrearsPanel — simplified list, no icon overload ────────────────────────
 function ArrearsPanel({ aging, loading, arBalancePaisa }) {
     const buckets = [
-        { label: "1–30 days",  data: aging?.days30,     color: "var(--color-warning)" },
-        { label: "31–60 days", data: aging?.days60,     color: "var(--color-danger)",  opacity: 0.7 },
-        { label: "60+ days",   data: aging?.days90Plus, color: "var(--color-danger)" },
+        { label: "1–30 days", data: aging?.days30, color: "var(--color-warning)" },
+        { label: "31–60 days", data: aging?.days60, color: "var(--color-danger)", opacity: 0.7 },
+        { label: "60+ days", data: aging?.days90Plus, color: "var(--color-danger)" },
     ];
 
     const totalAmount = buckets.reduce((s, b) => s + (b.data?.amountPaisa ?? 0), 0);
-    const totalCount  = buckets.reduce((s, b) => s + (b.data?.count ?? 0), 0);
+    const totalCount = buckets.reduce((s, b) => s + (b.data?.count ?? 0), 0);
 
     return (
         <div className="rounded-xl overflow-hidden" style={{ background: T.raised, border: `1px solid ${T.border}` }}>
@@ -320,13 +333,13 @@ function ArrearsPanel({ aging, loading, arBalancePaisa }) {
                     {!loading && (arBalancePaisa ?? 0) > 0 && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                             style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}>
-                            Total AR: RS {fmtKLatin((arBalancePaisa))}
+                            Total AR: RS {fmtKLatin(arBalancePaisa / 100)}
                         </span>
                     )}
                 </div>
                 {!loading && totalCount > 0 && (
                     <span className="text-[12px] font-semibold tabular-nums" style={{ color: T.danger }}>
-                        RS {fmtKLatin((totalAmount))}
+                        RS {fmtKLatin(totalAmount / 100)}
                     </span>
                 )}
             </div>
@@ -361,7 +374,7 @@ function ArrearsPanel({ aging, loading, arBalancePaisa }) {
                                                 className="text-[12px] font-semibold tabular-nums"
                                                 style={{ color: b.color, opacity: b.opacity ?? 1 }}
                                             >
-                                                RS {fmtKLatin(paisaToRs(b.data?.amountPaisa ?? 0))}
+                                                RS {fmtKLatin((b.data?.amountPaisa ?? 0) / 100)}
                                             </span>
                                             <ProgBar
                                                 value={b.data?.amountPaisa ?? 0}
@@ -384,9 +397,9 @@ function ArrearsPanel({ aging, loading, arBalancePaisa }) {
 function CompareTable({ comparisonStats, labelA, labelB }) {
     if (!comparisonStats) return null;
     const rows = [
-        { label: "Revenue",       key: "revenue",     color: T.revenue },
-        { label: "Expenses",      key: "expenses",    color: T.expenses },
-        { label: "Net income",    key: "netCashFlow", color: T.success },
+        { label: "Revenue", key: "revenue", color: T.revenue },
+        { label: "Expenses", key: "expenses", color: T.expenses },
+        { label: "Net income", key: "netCashFlow", color: T.success },
     ];
     return (
         <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.border}` }}>

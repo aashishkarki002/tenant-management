@@ -155,7 +155,16 @@ export const ArrearsPaymentDialog = ({
         setNote,
         amountNum,
         needsBankAccount,
+        isCheque,
         fillFullAmount,
+        chequeNumber,
+        setChequeNumber,
+        chequeBankName,
+        setChequeBankName,
+        chequeAccountName,
+        setChequeAccountName,
+        chequeBranch,
+        setChequeBranch,
         validationErrors,
         isValid,
         submit,
@@ -352,6 +361,70 @@ export const ArrearsPaymentDialog = ({
                         </Select>
                     </div>
 
+                    {/* ── Cheque details ───────────────────────────────────────────────── */}
+                    {isCheque && (
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                                    Cheque details
+                                </p>
+                                <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">
+                                    Pending clearance
+                                </span>
+                            </div>
+                            <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+                                            Cheque number *
+                                        </p>
+                                        <Input
+                                            placeholder="e.g. 001234"
+                                            value={chequeNumber}
+                                            onChange={(e) => setChequeNumber(e.target.value)}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+                                            Issuing bank *
+                                        </p>
+                                        <Input
+                                            placeholder="e.g. Nabil Bank"
+                                            value={chequeBankName}
+                                            onChange={(e) => setChequeBankName(e.target.value)}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+                                            Account holder <span className="normal-case font-normal">(optional)</span>
+                                        </p>
+                                        <Input
+                                            placeholder="Name on cheque"
+                                            value={chequeAccountName}
+                                            onChange={(e) => setChequeAccountName(e.target.value)}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+                                            Branch <span className="normal-case font-normal">(optional)</span>
+                                        </p>
+                                        <Input
+                                            placeholder="e.g. New Baneshwor"
+                                            value={chequeBranch}
+                                            onChange={(e) => setChequeBranch(e.target.value)}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* ── Bank account ─────────────────────────────────────────────────── */}
                     {needsBankAccount && (
                         <div>
@@ -361,9 +434,10 @@ export const ArrearsPaymentDialog = ({
                             <BankAccountSelect
                                 bankAccounts={bankAccounts}
                                 value={bankAccountId}
-                                onChange={(id, code) => {
+                                onValueChange={(id) => {
+                                    const bank = bankAccounts.find((b) => String(b._id) === String(id));
                                     setBankAccountId(id);
-                                    setBankAccountCode(code);
+                                    setBankAccountCode(bank?.accountCode || "");
                                 }}
                             />
                         </div>

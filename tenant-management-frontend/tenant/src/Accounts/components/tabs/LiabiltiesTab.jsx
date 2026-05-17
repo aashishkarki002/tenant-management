@@ -1,65 +1,140 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import SectionToggle from "../SectionToggle";
-import { Skeleton, ProgBar } from "../AccountingPrimitives";
+import {
+    AlertCircle,
+    AlertTriangle,
+    CheckCircle2,
+    Filter,
+    Plus,
+    Printer,
+    RefreshCw,
+} from "lucide-react";
+
+import api from "../../../../plugins/axios";
+import { fmtRs } from "../../../utils/formatter";
+import { useEntity } from "../../../context/EntityContext";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
 
 import {
-    AlertCircleIcon,
-    AlertTriangleIcon,
-    CheckCircle2Icon,
-    CreditCardIcon,
-    FilterIcon,
-    PlusIcon,
-    PrinterIcon,
-    RefreshCwIcon,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import api from "../../../../plugins/axios";
-import { fmtK } from "../../../utils/formatter";
+    Tabs,
+    TabsList,
+    TabsTrigger,
+    TabsContent,
+} from "@/components/ui/tabs";
 
-// ─── Tokens ───────────────────────────────────────────────────────────────────
-const T = {
-    danger:  "var(--color-danger)",
-    success: "var(--color-success)",
-    warning: "var(--color-warning)",
-    info:    "var(--color-info)",
-    accent:  "var(--color-accent)",
-    sub:     "var(--color-text-sub)",
-    body:    "var(--color-text-body)",
-    strong:  "var(--color-text-strong)",
-    border:  "var(--color-border)",
-    surface: "var(--color-surface)",
-    raised:  "var(--color-surface-raised)",
-};
+import {
+    Badge
+} from "@/components/ui/badge";
 
-// ─── Formatters ───────────────────────────────────────────────────────────────
-const fmtPaisa = (p = 0) => `RS ${fmtK(p / 100)}`;
-const pct = (part, total) => (total > 0 ? Math.min(100, Math.round((part / total) * 100)) : 0);
+import {
+    Progress
+} from "@/components/ui/progress";
 
-// ─── Lookup maps ──────────────────────────────────────────────────────────────
+import {
+    Skeleton
+} from "@/components/ui/skeleton";
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+const pct = (part, total) =>
+    total > 0 ? Math.min(100, Math.round((part / total) * 100)) : 0;
+
 const LOAN_STATUS = {
-    ACTIVE:    { label: "Active",    color: "var(--color-info)" },
-    CLOSED:    { label: "Closed",    color: "var(--color-success)" },
-    DEFAULTED: { label: "Defaulted", color: "var(--color-danger)" },
+    ACTIVE: {
+        label: "Active",
+        style: {
+            background: "var(--color-info-bg)",
+            color: "var(--color-info)",
+            borderColor: "var(--color-info-border)",
+        },
+    },
+    CLOSED: {
+        label: "Closed",
+        style: {
+            background: "var(--color-success-bg)",
+            color: "var(--color-success)",
+            borderColor: "var(--color-success-border)",
+        },
+    },
+    DEFAULTED: {
+        label: "Defaulted",
+        style: {
+            background: "var(--color-danger-bg)",
+            color: "var(--color-danger)",
+            borderColor: "var(--color-danger-border)",
+        },
+    },
 };
 
 const REF_LABELS = {
-    RENT_EXPENSE:     "Rent",
-    CAM:              "CAM",
-    SALARY:           "Salary",
-    MANUAL:           "Manual",
+    RENT_EXPENSE: "Rent",
+    CAM: "CAM",
+    SALARY: "Salary",
+    MANUAL: "Manual",
     SECURITY_DEPOSIT: "Deposit",
-    LOAN:             "Loan",
+    LOAN: "Loan",
 };
 
 function agingBucket(dateStr) {
-    const days = Math.floor((Date.now() - new Date(dateStr)) / 86_400_000);
-    if (days <= 30) return { label: "0–30 days",  color: "var(--color-success)" };
-    if (days <= 60) return { label: "31–60 days", color: "var(--color-warning)" };
-    if (days <= 90) return { label: "61–90 days", color: "var(--color-warning)" };
-    return             { label: "90+ days",  color: "var(--color-danger)" };
+    const days = Math.floor(
+        (Date.now() - new Date(dateStr)) / 86400000
+    );
+
+    if (days <= 30)
+        return {
+            label: "0–30 days",
+            style: {
+                background: "var(--color-success-bg)",
+                color: "var(--color-success)",
+                borderColor: "var(--color-success-border)",
+            },
+        };
+
+    if (days <= 60)
+        return {
+            label: "31–60 days",
+            style: {
+                background: "var(--color-warning-bg)",
+                color: "var(--color-warning)",
+                borderColor: "var(--color-warning-border)",
+            },
+        };
+
+    if (days <= 90)
+        return {
+            label: "61–90 days",
+            style: {
+                background: "var(--color-warning-bg)",
+                color: "var(--color-warning)",
+                borderColor: "var(--color-warning-border)",
+            },
+        };
+
+    return {
+        label: "90+ days",
+        style: {
+            background: "var(--color-danger-bg)",
+            color: "var(--color-danger)",
+            borderColor: "var(--color-danger-border)",
+        },
+    };
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Hook
+// ─────────────────────────────────────────────────────────────
+
 function useLiabilities(entityId = null) {
     const [all, setAll] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -67,9 +142,14 @@ function useLiabilities(entityId = null) {
     const fetch = useCallback(async () => {
         try {
             setLoading(true);
+
             const params = {};
             if (entityId) params.entityId = entityId;
-            const res = await api.get("/api/liabilities", { params });
+
+            const res = await api.get("/api/liabilities", {
+                params,
+            });
+
             setAll(res.data?.data ?? []);
         } catch (err) {
             console.error("[useLiabilities]", err);
@@ -79,568 +159,895 @@ function useLiabilities(entityId = null) {
         }
     }, [entityId]);
 
-    useEffect(() => { fetch(); }, [fetch]);
-    return { all, loading, refetch: fetch };
+    useEffect(() => {
+        fetch();
+    }, [fetch]);
+
+    return {
+        all,
+        loading,
+        refetch: fetch,
+    };
 }
 
-// ─── Shared primitives ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Shared Components
+// ─────────────────────────────────────────────────────────────
+
 function Empty({ message = "Nothing to display" }) {
     return (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-            <CheckCircle2Icon size={28} className="mb-2.5 opacity-25" style={{ color: T.sub }} />
-            <div className="text-[13px] font-semibold" style={{ color: T.body }}>{message}</div>
-            <div className="text-[12px] mt-0.5" style={{ color: T.sub }}>
-                Nothing to display for the selected period.
-            </div>
+        <div className="flex flex-col items-center justify-center py-14 text-center">
+            <CheckCircle2 className="h-7 w-7 text-muted-foreground/40 mb-2" />
+
+            <p className="text-sm font-medium">{message}</p>
+
+            <p className="text-xs text-muted-foreground mt-1">
+                Nothing available for the selected period.
+            </p>
         </div>
     );
 }
 
-function Panel({ title, subtitle, actions, children }) {
+function Panel({
+    title,
+    subtitle,
+    actions,
+    children,
+}) {
     return (
-        <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.border}`, background: T.raised }}>
-            <div className="flex items-center justify-between px-4 py-3.5 border-b" style={{ borderColor: T.border }}>
+        <Card className="shadow-none">
+            <CardHeader className="flex-row items-center justify-between space-y-0 border-b pb-4">
                 <div>
-                    <div className="text-[13px] font-semibold" style={{ color: T.body }}>{title}</div>
-                    {subtitle && <div className="text-[11px] mt-0.5" style={{ color: T.sub }}>{subtitle}</div>}
+                    <h3 className="text-sm font-semibold">
+                        {title}
+                    </h3>
+
+                    {subtitle && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                            {subtitle}
+                        </p>
+                    )}
                 </div>
+
                 {actions}
-            </div>
-            {children}
-        </div>
+            </CardHeader>
+
+            <CardContent className="p-4">
+                {children}
+            </CardContent>
+        </Card>
     );
 }
 
-// ─── CategoryRow ──────────────────────────────────────────────────────────────
-function CategoryRow({ label, amountPaisa, total, count }) {
+function KPI({
+    label,
+    value,
+    sub,
+    danger,
+    loading,
+}) {
     return (
-        <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-                <span className="text-[12px] font-medium" style={{ color: T.body }}>{label}</span>
-                <div className="flex items-center gap-3">
-                    <span className="text-[11px]" style={{ color: T.sub }}>{count} items</span>
-                    <span className="text-[13px] font-bold tabular-nums" style={{ color: T.strong }}>
-                        {fmtPaisa(amountPaisa)}
-                    </span>
-                </div>
-            </div>
-            <ProgBar value={amountPaisa} max={total || 1} color={T.accent} h={3} />
-        </div>
-    );
-}
+        <div className="flex flex-col gap-1 p-5 border-r last:border-r-0">
+            <span className="text-xs text-muted-foreground">
+                {label}
+            </span>
 
-// ─── LoanCard ─────────────────────────────────────────────────────────────────
-function LoanCard({ loan }) {
-    const status   = LOAN_STATUS[loan.loanStatus] ?? LOAN_STATUS.ACTIVE;
-    const repaid   = (loan.originalAmountPaisa ?? loan.amountPaisa) - loan.amountPaisa;
-    const progress = pct(repaid, loan.originalAmountPaisa ?? loan.amountPaisa);
-    const barColor = progress >= 80 ? T.success : progress >= 40 ? T.info : T.warning;
-
-    return (
-        <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.border}`, background: T.raised }}>
-            <div className="flex items-center justify-between px-4 py-3.5 border-b" style={{ borderColor: T.border }}>
-                <div>
-                    <div className="text-[13px] font-bold" style={{ color: T.strong }}>{loan.notes || "Loan"}</div>
-                    <div className="text-[11px]" style={{ color: T.sub }}>{loan.source?.name ?? "—"}</div>
-                </div>
+            {loading ? (
+                <Skeleton className="h-7 w-24" />
+            ) : (
                 <span
-                    className="text-[10px] font-bold px-2.5 py-0.5 rounded-full"
+                    className="text-2xl font-bold tracking-tight tabular-nums"
                     style={{
-                        background: status.color + "22",
-                        color: status.color,
-                        border: `1px solid ${status.color}55`,
+                        color: danger
+                            ? "var(--color-danger)"
+                            : "var(--color-text-strong)",
                     }}
                 >
-                    {status.label}
+                    {value}
                 </span>
-            </div>
+            )}
 
-            <div className="px-4 py-4 flex flex-col gap-4">
-                <div className="grid grid-cols-3 gap-4">
-                    {[
-                        { label: "Original",    value: loan.originalAmountPaisa ?? loan.amountPaisa, color: T.strong },
-                        { label: "Repaid",      value: repaid,              color: T.success },
-                        { label: "Outstanding", value: loan.amountPaisa,    color: T.danger },
-                    ].map(({ label, value, color }) => (
-                        <div key={label}>
-                            <div className="text-[10px] font-semibold mb-0.5" style={{ color: T.sub }}>{label}</div>
-                            <div className="text-[15px] font-bold tabular-nums" style={{ color }}>{fmtPaisa(value)}</div>
-                        </div>
-                    ))}
-                </div>
-                <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[11px]" style={{ color: T.sub }}>Repayment progress</span>
-                        <span className="text-[11px] font-bold" style={{ color: T.body }}>{progress}%</span>
-                    </div>
-                    <ProgBar value={progress} max={100} color={barColor} h={6} />
-                </div>
-            </div>
+            {!loading && (
+                <span className="text-xs text-muted-foreground">
+                    {sub}
+                </span>
+            )}
         </div>
     );
 }
 
-// ─── Table rows ───────────────────────────────────────────────────────────────
-function PayableRow({ liability, index }) {
-    const bucket   = agingBucket(liability.date);
-    const refLabel = REF_LABELS[liability.referenceType] ?? liability.referenceType;
-    return (
-        <tr
-            className={cn("border-b transition-colors", index % 2 === 1 && "bg-[var(--color-surface)]")}
-            style={{ borderColor: T.border }}
-        >
-            <td className="px-4 py-3 text-[12px] font-semibold" style={{ color: T.strong }}>
-                {liability.payeeType === "TENANT"
-                    ? (liability.tenant?.name ?? "Tenant")
-                    : (liability.notes ?? "External")}
-            </td>
-            <td className="px-4 py-3">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ background: T.accent + "22", color: T.accent }}>
-                    {refLabel}
-                </span>
-            </td>
-            <td className="px-4 py-3 text-[12px] tabular-nums font-bold" style={{ color: T.danger }}>
-                {fmtPaisa(liability.amountPaisa)}
-            </td>
-            <td className="px-4 py-3">
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ background: bucket.color + "22", color: bucket.color, border: `1px solid ${bucket.color}55` }}>
-                    {bucket.label}
-                </span>
-            </td>
-            <td className="px-4 py-3 text-[11px]" style={{ color: T.sub }}>
-                {new Date(liability.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-            </td>
-            <td className="px-4 py-3">
-                <span className={cn(
-                    "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
-                    liability.status === "SYNCED"
-                        ? "bg-[var(--color-success-bg)] text-[var(--color-success)] border border-[var(--color-success-border)]"
-                        : "bg-[var(--color-warning-bg)] text-[var(--color-warning)] border border-[var(--color-warning-border)]",
-                )}>
-                    {liability.status}
-                </span>
-            </td>
-        </tr>
-    );
-}
-
-function DepositRow({ liability, index }) {
-    return (
-        <tr
-            className={cn("border-b transition-colors", index % 2 === 1 && "bg-[var(--color-surface)]")}
-            style={{ borderColor: T.border }}
-        >
-            <td className="px-4 py-3 text-[12px] font-semibold" style={{ color: T.strong }}>
-                {liability.tenant?.name ?? "—"}
-            </td>
-            <td className="px-4 py-3 text-[11px]" style={{ color: T.sub }}>
-                {liability.tenant?.phone ?? "—"}
-            </td>
-            <td className="px-4 py-3 text-[12px] tabular-nums font-bold" style={{ color: T.danger }}>
-                {fmtPaisa(liability.amountPaisa)}
-            </td>
-            <td className="px-4 py-3 text-[11px]" style={{ color: T.sub }}>
-                {new Date(liability.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-            </td>
-            <td className="px-4 py-3">
-                <span className={cn(
-                    "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
-                    liability.status === "SYNCED"
-                        ? "bg-[var(--color-success-bg)] text-[var(--color-success)] border border-[var(--color-success-border)]"
-                        : "bg-[var(--color-warning-bg)] text-[var(--color-warning)] border border-[var(--color-warning-border)]",
-                )}>
-                    {liability.status}
-                </span>
-            </td>
-        </tr>
-    );
-}
-
-// ─── Table shell ──────────────────────────────────────────────────────────────
-function TableShell({ cols, loading, empty, children }) {
-    return (
-        <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-                <thead>
-                    <tr style={{ background: T.surface }}>
-                        {cols.map(h => (
-                            <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.07em] border-b"
-                                style={{ color: T.sub, borderColor: T.border }}>
-                                {h}
-                            </th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {loading && (
-                        <tr>
-                            <td colSpan={cols.length} className="py-8 text-center text-[12px]" style={{ color: T.sub }}>
-                                Loading…
-                            </td>
-                        </tr>
-                    )}
-                    {!loading && empty && (
-                        <tr><td colSpan={cols.length}>{empty}</td></tr>
-                    )}
-                    {!loading && !empty && children}
-                </tbody>
-            </table>
-        </div>
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUB-TAB CONTENT
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+// Overview
+// ─────────────────────────────────────────────────────────────
 
 function OverviewContent({ all, loading }) {
-    const totalPaisa   = all.reduce((s, l) => s + l.amountPaisa, 0);
-    const loans        = all.filter(l => l.referenceType === "LOAN");
-    const deposits     = all.filter(l => l.referenceType === "SECURITY_DEPOSIT");
-    const payables     = all.filter(l => l.referenceType !== "LOAN" && l.referenceType !== "SECURITY_DEPOSIT");
-    const overdueCount = all.filter(l => agingBucket(l.date).label === "90+ days").length;
+    const totalPaisa = all.reduce(
+        (s, l) => s + l.amountPaisa,
+        0
+    );
+
+    const loans = all.filter(
+        (l) => l.referenceType === "LOAN"
+    );
+
+    const deposits = all.filter(
+        (l) =>
+            l.referenceType === "SECURITY_DEPOSIT"
+    );
+
+    const payables = all.filter(
+        (l) =>
+            l.referenceType !== "LOAN" &&
+            l.referenceType !== "SECURITY_DEPOSIT"
+    );
+
+    const overdueCount = all.filter(
+        (l) =>
+            agingBucket(l.date).label === "90+ days"
+    ).length;
 
     const byCategory = useMemo(() => {
         const map = {};
+
         for (const l of all) {
-            const key = REF_LABELS[l.referenceType] ?? l.referenceType;
-            if (!map[key]) map[key] = { count: 0, paisa: 0 };
+            const key =
+                REF_LABELS[l.referenceType] ??
+                l.referenceType;
+
+            if (!map[key]) {
+                map[key] = {
+                    count: 0,
+                    paisa: 0,
+                };
+            }
+
             map[key].count++;
             map[key].paisa += l.amountPaisa;
         }
+
         return Object.entries(map)
             .sort((a, b) => b[1].paisa - a[1].paisa)
-            .map(([label, { count, paisa }]) => ({ label, count, paisa }));
+            .map(([label, data]) => ({
+                label,
+                ...data,
+            }));
     }, [all]);
-
-    const aging = useMemo(() => {
-        const buckets = { "0–30 days": 0, "31–60 days": 0, "61–90 days": 0, "90+ days": 0 };
-        for (const l of all) { buckets[agingBucket(l.date).label] += l.amountPaisa; }
-        return Object.entries(buckets).map(([label, paisa]) => ({ label, paisa }));
-    }, [all]);
-
-    const agingColors = {
-        "0–30 days": T.success, "31–60 days": T.warning, "61–90 days": T.warning, "90+ days": T.danger,
-    };
-
-    const kpis = [
-        {
-            label: "Total liabilities",
-            value: fmtPaisa(totalPaisa),
-            sub: `${all.length} obligations`,
-            className: "border-r border-b lg:border-b-0",
-        },
-        {
-            label: "Loan outstanding",
-            value: fmtPaisa(loans.reduce((s, l) => s + l.amountPaisa, 0)),
-            sub: `${loans.length} active loans`,
-            className: "border-b lg:border-b-0 lg:border-l",
-        },
-        {
-            label: "Deposit obligations",
-            value: fmtPaisa(deposits.reduce((s, l) => s + l.amountPaisa, 0)),
-            sub: `${deposits.length} tenants`,
-            className: "border-r border-t lg:border-t-0 lg:border-l",
-        },
-        {
-            label: "Overdue (90+ days)",
-            value: String(overdueCount),
-            sub: overdueCount > 0 ? "Needs attention" : "All on track",
-            className: "border-t lg:border-t-0 lg:border-l",
-            highlight: overdueCount > 0,
-        },
-    ];
 
     return (
-        <div className="flex flex-col gap-4">
-            {/* KPI strip — one surface, four cells */}
-            <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.border}`, background: T.raised }}>
+        <div className="space-y-4">
+            {/* KPI */}
+            <Card className="overflow-hidden shadow-none">
                 <div className="grid grid-cols-2 lg:grid-cols-4">
-                    {kpis.map(k => (
-                        <div key={k.label} className={cn("flex flex-col gap-1 px-5 py-4", k.className)} style={{ borderColor: T.border }}>
-                            <span className="text-[11px] font-medium" style={{ color: T.sub }}>{k.label}</span>
-                            {loading
-                                ? <Skeleton h={28} />
-                                : (
-                                    <span
-                                        className="text-[22px] font-bold tabular-nums leading-none"
-                                        style={{ color: k.highlight ? T.danger : T.strong, letterSpacing: "-0.02em" }}
-                                    >
-                                        {k.value}
-                                    </span>
-                                )}
-                            {!loading && <span className="text-[11px]" style={{ color: T.sub }}>{k.sub}</span>}
-                        </div>
-                    ))}
-                </div>
-            </div>
+                    <KPI
+                        label="Total liabilities"
+                        value={fmtRs(totalPaisa)}
+                        sub={`${all.length} obligations`}
+                        loading={loading}
+                    />
 
-            {/* Category + Aging */}
+                    <KPI
+                        label="Loan outstanding"
+                        value={fmtRs(
+                            loans.reduce(
+                                (s, l) => s + l.amountPaisa,
+                                0
+                            )
+                        )}
+                        sub={`${loans.length} active loans`}
+                        loading={loading}
+                    />
+
+                    <KPI
+                        label="Deposit obligations"
+                        value={fmtRs(
+                            deposits.reduce(
+                                (s, l) => s + l.amountPaisa,
+                                0
+                            )
+                        )}
+                        sub={`${deposits.length} tenants`}
+                        loading={loading}
+                    />
+
+                    <KPI
+                        label="Overdue (90+)"
+                        value={String(overdueCount)}
+                        sub={
+                            overdueCount > 0
+                                ? "Needs attention"
+                                : "All healthy"
+                        }
+                        loading={loading}
+                        danger={overdueCount > 0}
+                    />
+                </div>
+            </Card>
+
+            {/* Category */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Panel title="By category" subtitle="Where you owe the most">
-                    <div className="px-4 py-4 flex flex-col gap-4">
-                        {loading && [1, 2, 3].map(i => <Skeleton key={i} h={20} />)}
-                        {!loading && byCategory.length === 0 && <Empty message="No liabilities recorded" />}
-                        {!loading && byCategory.map(cat => (
-                            <CategoryRow key={cat.label} label={cat.label} amountPaisa={cat.paisa} total={totalPaisa} count={cat.count} />
-                        ))}
+                <Panel
+                    title="By category"
+                    subtitle="Where you owe the most"
+                >
+                    <div className="space-y-4">
+                        {loading &&
+                            [1, 2, 3].map((i) => (
+                                <Skeleton
+                                    key={i}
+                                    className="h-10 w-full"
+                                />
+                            ))}
+
+                        {!loading &&
+                            byCategory.map((cat) => (
+                                <div
+                                    key={cat.label}
+                                    className="space-y-2"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                {cat.label}
+                                            </p>
+
+                                            <p className="text-xs text-muted-foreground">
+                                                {cat.count} items
+                                            </p>
+                                        </div>
+
+                                        <span className="text-sm font-bold tabular-nums">
+                                            {fmtRs(cat.paisa)}
+                                        </span>
+                                    </div>
+
+                                    <Progress
+                                        value={pct(
+                                            cat.paisa,
+                                            totalPaisa
+                                        )}
+                                    />
+                                </div>
+                            ))}
                     </div>
                 </Panel>
 
-                <Panel title="Aging analysis" subtitle="How long you've owed">
-                    <div className="px-4 py-4 flex flex-col gap-4">
-                        {aging.map(({ label, paisa }) => {
-                            const color = agingColors[label] ?? T.info;
+                <Panel
+                    title="Aging analysis"
+                    subtitle="Outstanding duration"
+                >
+                    <div className="space-y-4">
+                        {[
+                            "0–30 days",
+                            "31–60 days",
+                            "61–90 days",
+                            "90+ days",
+                        ].map((bucket) => {
+                            const amount = all
+                                .filter(
+                                    (l) =>
+                                        agingBucket(l.date)
+                                            .label === bucket
+                                )
+                                .reduce(
+                                    (s, l) =>
+                                        s + l.amountPaisa,
+                                    0
+                                );
+
                             return (
-                                <div key={label} className="flex flex-col gap-1.5">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[12px] font-semibold" style={{ color }}>{label}</span>
-                                        <span className="text-[13px] font-bold tabular-nums" style={{ color: T.strong }}>
-                                            {fmtPaisa(paisa)}
+                                <div
+                                    key={bucket}
+                                    className="space-y-2"
+                                >
+                                    <div className="flex justify-between">
+                                        <span className="text-sm font-medium">
+                                            {bucket}
+                                        </span>
+
+                                        <span className="text-sm font-bold tabular-nums">
+                                            {fmtRs(amount)}
                                         </span>
                                     </div>
-                                    <ProgBar value={paisa} max={totalPaisa || 1} color={color} h={4} />
+
+                                    <Progress
+                                        value={pct(
+                                            amount,
+                                            totalPaisa
+                                        )}
+                                    />
                                 </div>
                             );
                         })}
                     </div>
+
                     {!loading && overdueCount > 0 && (
-                        <div className="mx-4 mb-4 flex items-center gap-2 px-3.5 py-3 rounded-lg"
-                            style={{ background: "var(--color-danger-bg)", border: "1px solid var(--color-danger-border)" }}>
-                            <AlertTriangleIcon size={13} style={{ color: T.danger }} className="shrink-0" />
-                            <span className="text-[11px] font-semibold" style={{ color: T.danger }}>
-                                {overdueCount} obligation{overdueCount > 1 ? "s" : ""} past 90 days — take action soon.
+                        <div
+                            className="mt-5 flex items-center gap-2 rounded-lg border px-3 py-2"
+                            style={{
+                                background: "var(--color-danger-bg)",
+                                color: "var(--color-danger)",
+                                borderColor: "var(--color-danger-border)",
+                            }}
+                        >
+                            <AlertTriangle className="h-4 w-4" />
+
+                            <span className="text-xs font-medium">
+                                {overdueCount} obligations
+                                past 90 days.
                             </span>
                         </div>
                     )}
                 </Panel>
             </div>
 
-            {/* Top payables */}
-            <Panel title="Top outstanding payables" subtitle="Largest unresolved obligations">
-                <div className="divide-y" style={{ borderColor: T.border }}>
-                    {loading && [1, 2, 3].map(i => (
-                        <div key={i} className="px-4 py-3"><Skeleton h={14} /></div>
-                    ))}
-                    {!loading && payables.length === 0 && <Empty message="No payables" />}
-                    {!loading && [...payables]
-                        .sort((a, b) => b.amountPaisa - a.amountPaisa)
-                        .slice(0, 6)
-                        .map((l, i) => {
-                            const bucket = agingBucket(l.date);
-                            return (
-                                <div key={l._id ?? i} className="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg)] transition-colors">
-                                    <div>
-                                        <div className="text-[12px] font-semibold" style={{ color: T.strong }}>
-                                            {l.notes || l.tenant?.name || "External"}
+            {/* Top Payables */}
+            <Panel
+                title="Top outstanding payables"
+                subtitle="Largest unresolved obligations"
+            >
+                <div className="divide-y">
+                    {!loading &&
+                        payables
+                            .sort(
+                                (a, b) =>
+                                    b.amountPaisa -
+                                    a.amountPaisa
+                            )
+                            .slice(0, 6)
+                            .map((l) => {
+                                const bucket =
+                                    agingBucket(l.date);
+
+                                return (
+                                    <div
+                                        key={l._id}
+                                        className="flex items-center justify-between py-3"
+                                    >
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                {l.notes ||
+                                                    l.tenant?.name ||
+                                                    "External"}
+                                            </p>
+
+                                            <p className="text-xs text-muted-foreground">
+                                                {
+                                                    REF_LABELS[
+                                                    l.referenceType
+                                                    ]
+                                                }
+                                            </p>
                                         </div>
-                                        <div className="text-[11px]" style={{ color: T.sub }}>{REF_LABELS[l.referenceType]}</div>
+
+                                        <div className="flex items-center gap-2">
+                                            <span
+                                                className="font-bold tabular-nums"
+                                                style={{ color: "var(--color-danger)" }}
+                                            >
+                                                {fmtRs(
+                                                    l.amountPaisa
+                                                )}
+                                            </span>
+
+                                            <Badge
+                                                variant="outline"
+                                                style={bucket.style}
+                                            >
+                                                {bucket.label}
+                                            </Badge>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2.5">
-                                        <span className="text-[13px] font-bold tabular-nums" style={{ color: T.danger }}>
-                                            {fmtPaisa(l.amountPaisa)}
-                                        </span>
-                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                                            style={{ background: bucket.color + "22", color: bucket.color, border: `1px solid ${bucket.color}55` }}>
-                                            {bucket.label}
-                                        </span>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
                 </div>
             </Panel>
         </div>
     );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Loans
+// ─────────────────────────────────────────────────────────────
+
 function LoansContent({ all, loading }) {
-    const loans            = all.filter(l => l.referenceType === "LOAN");
-    const totalOutstanding = loans.reduce((s, l) => s + l.amountPaisa, 0);
-    const totalOriginal    = loans.reduce((s, l) => s + (l.originalAmountPaisa ?? l.amountPaisa), 0);
-    const totalRepaid      = totalOriginal - totalOutstanding;
-    const overallProgress  = pct(totalRepaid, totalOriginal);
+    const loans = all.filter(
+        (l) => l.referenceType === "LOAN"
+    );
+
+    if (!loading && loans.length === 0) {
+        return <Empty message="No loans recorded" />;
+    }
 
     return (
-        <div className="flex flex-col gap-4">
-            <div className="rounded-xl overflow-hidden"
-                style={{ border: `1px solid ${T.border}`, borderLeft: `3px solid ${T.info}`, background: T.raised }}>
-                <div className="flex flex-wrap items-center justify-between px-5 py-4 gap-4">
-                    <div>
-                        <div className="text-[11px] font-medium mb-0.5" style={{ color: T.sub }}>Loan portfolio</div>
-                        <div className="text-[13px]" style={{ color: T.body }}>
-                            {loans.length} loan{loans.length !== 1 ? "s" : ""} ·{" "}
-                            <span className="font-bold" style={{ color: T.strong }}>{overallProgress}% repaid overall</span>
-                        </div>
-                    </div>
-                    <div className="flex gap-6">
-                        {[
-                            { label: "Outstanding", value: totalOutstanding, color: T.danger },
-                            { label: "Repaid",      value: totalRepaid,      color: T.success },
-                        ].map(({ label, value, color }) => (
-                            <div key={label} className="text-right">
-                                <div className="text-[11px]" style={{ color: T.sub }}>{label}</div>
-                                <div className="text-[18px] font-bold tabular-nums leading-none" style={{ color, letterSpacing: "-0.02em" }}>
-                                    {fmtPaisa(value)}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {loading &&
+                [1, 2].map((i) => (
+                    <Skeleton
+                        key={i}
+                        className="h-[220px] w-full"
+                    />
+                ))}
 
-            {loading && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[1, 2].map(i => <Skeleton key={i} h={180} />)}
-                </div>
-            )}
-            {!loading && loans.length === 0 && <Empty message="No loans recorded" />}
-            {!loading && loans.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {loans.map((loan, i) => <LoanCard key={loan._id ?? i} loan={loan} />)}
-                </div>
-            )}
+            {!loading &&
+                loans.map((loan) => {
+                    const status =
+                        LOAN_STATUS[
+                        loan.loanStatus
+                        ] ??
+                        LOAN_STATUS.ACTIVE;
+
+                    const repaid =
+                        (loan.originalAmountPaisa ??
+                            loan.amountPaisa) -
+                        loan.amountPaisa;
+
+                    const progress = pct(
+                        repaid,
+                        loan.originalAmountPaisa ??
+                        loan.amountPaisa
+                    );
+
+                    return (
+                        <Card
+                            key={loan._id}
+                            className="shadow-none"
+                        >
+                            <CardHeader className="flex-row items-center justify-between border-b">
+                                <div>
+                                    <h3 className="text-sm font-semibold">
+                                        {loan.notes ||
+                                            "Loan"}
+                                    </h3>
+
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {loan.source?.name ??
+                                            "—"}
+                                    </p>
+                                </div>
+
+                                <Badge
+                                    variant="outline"
+                                    style={status.style}
+                                >
+                                    {status.label}
+                                </Badge>
+                            </CardHeader>
+
+                            <CardContent className="space-y-5 pt-5">
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Original
+                                        </p>
+
+                                        <p className="text-lg font-bold tabular-nums">
+                                            {fmtRs(
+                                                loan.originalAmountPaisa ??
+                                                loan.amountPaisa
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Repaid
+                                        </p>
+
+                                        <p
+                                            className="text-lg font-bold tabular-nums"
+                                            style={{ color: "var(--color-success)" }}
+                                        >
+                                            {fmtRs(repaid)}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Outstanding
+                                        </p>
+
+                                        <p
+                                            className="text-lg font-bold tabular-nums"
+                                            style={{ color: "var(--color-danger)" }}
+                                        >
+                                            {fmtRs(
+                                                loan.amountPaisa
+                                            )}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="text-muted-foreground">
+                                            Repayment progress
+                                        </span>
+
+                                        <span className="font-semibold">
+                                            {progress}%
+                                        </span>
+                                    </div>
+
+                                    <Progress value={progress} />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
         </div>
     );
 }
 
-function PayablesContent({ all, loading }) {
-    const [filterType, setFilterType] = useState("ALL");
-    const payables = all.filter(l => l.referenceType !== "LOAN" && l.referenceType !== "SECURITY_DEPOSIT");
-    const types    = useMemo(() => ["ALL", ...new Set(payables.map(l => l.referenceType))], [payables]);
-    const filtered = filterType === "ALL" ? payables : payables.filter(l => l.referenceType === filterType);
+// ─────────────────────────────────────────────────────────────
+// Payables
+// ─────────────────────────────────────────────────────────────
+
+function PayablesContent({
+    all,
+    loading,
+}) {
+    const [filterType, setFilterType] =
+        useState("ALL");
+
+    const payables = all.filter(
+        (l) =>
+            l.referenceType !== "LOAN" &&
+            l.referenceType !==
+            "SECURITY_DEPOSIT"
+    );
+
+    const types = [
+        "ALL",
+        ...new Set(
+            payables.map(
+                (l) => l.referenceType
+            )
+        ),
+    ];
+
+    const filtered =
+        filterType === "ALL"
+            ? payables
+            : payables.filter(
+                (l) =>
+                    l.referenceType ===
+                    filterType
+            );
 
     return (
-        <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 flex-wrap">
-                <FilterIcon size={12} style={{ color: T.sub }} />
-                {types.map(t => (
-                    <button
+        <div className="space-y-4">
+            <div className="flex items-center flex-wrap gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+
+                {types.map((t) => (
+                    <Button
                         key={t}
-                        onClick={() => setFilterType(t)}
-                        className={cn(
-                            "px-3 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer",
-                            filterType === t ? "bg-[var(--color-accent)] text-white" : "",
-                        )}
-                        style={filterType !== t ? { background: T.raised, border: `1px solid ${T.border}`, color: T.sub } : undefined}
+                        size="sm"
+                        variant={
+                            filterType === t
+                                ? "default"
+                                : "outline"
+                        }
+                        onClick={() =>
+                            setFilterType(t)
+                        }
                     >
                         {REF_LABELS[t] ?? t}
-                    </button>
+                    </Button>
                 ))}
             </div>
 
             <Panel
                 title="All payables"
-                subtitle={`${filtered.length} records · ${fmtPaisa(filtered.reduce((s, l) => s + l.amountPaisa, 0))} total`}
+                subtitle={`${filtered.length} records`}
                 actions={
-                    <button
-                        onClick={() => window.print()}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors"
-                        style={{ border: `1px solid ${T.border}`, background: "transparent", color: T.body }}
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                            window.print()
+                        }
                     >
-                        <PrinterIcon size={11} /> Print
-                    </button>
+                        <Printer className="h-3.5 w-3.5 mr-1" />
+                        Print
+                    </Button>
                 }
             >
-                <TableShell
-                    cols={["Payee", "Type", "Amount", "Aging", "Date", "Status"]}
-                    loading={loading}
-                    empty={filtered.length === 0 ? <Empty message="No payables found" /> : null}
-                >
-                    {filtered.map((l, i) => <PayableRow key={l._id ?? i} liability={l} index={i} />)}
-                </TableShell>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>
+                                Payee
+                            </TableHead>
+                            <TableHead>
+                                Type
+                            </TableHead>
+                            <TableHead>
+                                Amount
+                            </TableHead>
+                            <TableHead>
+                                Aging
+                            </TableHead>
+                            <TableHead>
+                                Date
+                            </TableHead>
+                            <TableHead>
+                                Status
+                            </TableHead>
+                        </TableRow>
+                    </TableHeader>
+
+                    <TableBody>
+                        {!loading &&
+                            filtered.map((l) => {
+                                const bucket =
+                                    agingBucket(
+                                        l.englishDate
+                                    );
+
+                                return (
+                                    <TableRow
+                                        key={l._id}
+                                    >
+                                        <TableCell className="font-medium">
+                                            {l.payeeType ===
+                                                "TENANT"
+                                                ? l.tenant?.name
+                                                : l.notes}
+                                        </TableCell>
+
+                                        <TableCell>
+                                            <Badge variant="secondary">
+                                                {
+                                                    REF_LABELS[
+                                                    l.referenceType
+                                                    ]
+                                                }
+                                            </Badge>
+                                        </TableCell>
+
+                                        <TableCell
+                                            className="font-bold tabular-nums"
+                                            style={{ color: "var(--color-danger)" }}
+                                        >
+                                            {fmtRs(
+                                                l.amountPaisa
+                                            )}
+                                        </TableCell>
+
+                                        <TableCell>
+                                            <Badge
+                                                variant="outline"
+                                                style={bucket.style}
+                                            >
+                                                {bucket.label}
+                                            </Badge>
+                                        </TableCell>
+
+                                        <TableCell>
+                                            {l.nepaliDate}
+                                        </TableCell>
+
+                                        <TableCell>
+                                            <Badge
+                                                variant="outline"
+                                                style={
+                                                    l.status === "SYNCED"
+                                                        ? {
+                                                            background: "var(--color-success-bg)",
+                                                            color: "var(--color-success)",
+                                                            borderColor: "var(--color-success-border)",
+                                                        }
+                                                        : {
+                                                            background: "var(--color-warning-bg)",
+                                                            color: "var(--color-warning)",
+                                                            borderColor: "var(--color-warning-border)",
+                                                        }
+                                                }
+                                            >
+                                                {l.status}
+                                            </Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                    </TableBody>
+                </Table>
+
+                {!loading &&
+                    filtered.length === 0 && (
+                        <Empty message="No payables found" />
+                    )}
             </Panel>
         </div>
     );
 }
 
-function DepositsContent({ all, loading }) {
-    const deposits     = all.filter(l => l.referenceType === "SECURITY_DEPOSIT");
-    const totalDeposit = deposits.reduce((s, l) => s + l.amountPaisa, 0);
+// ─────────────────────────────────────────────────────────────
+// Deposits
+// ─────────────────────────────────────────────────────────────
+
+function DepositsContent({
+    all,
+    loading,
+}) {
+    const deposits = all.filter(
+        (l) =>
+            l.referenceType ===
+            "SECURITY_DEPOSIT"
+    );
 
     return (
-        <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl"
-                style={{
-                    background: "var(--color-warning-bg)",
-                    border: "1px solid var(--color-warning-border)",
-                    borderLeft: `3px solid ${T.warning}`,
-                }}>
-                <AlertCircleIcon size={13} style={{ color: T.warning }} className="shrink-0" />
-                <span className="text-[12px]" style={{ color: T.body }}>
-                    Security deposits are refundable. Total obligation:{" "}
-                    <span className="font-bold" style={{ color: T.strong }}>{fmtPaisa(totalDeposit)}</span>
-                </span>
-            </div>
+        <Panel
+            title="Deposit obligations"
+            subtitle={`${deposits.length} tenants`}
+        >
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>
+                            Tenant
+                        </TableHead>
+                        <TableHead>
+                            Phone
+                        </TableHead>
+                        <TableHead>
+                            Deposit
+                        </TableHead>
+                        <TableHead>
+                            Date
+                        </TableHead>
+                        <TableHead>
+                            Status
+                        </TableHead>
+                    </TableRow>
+                </TableHeader>
 
-            <Panel
-                title="Deposit obligations"
-                subtitle={`${deposits.length} tenants · ${fmtPaisa(totalDeposit)} to be returned`}
-            >
-                <TableShell
-                    cols={["Tenant", "Phone", "Deposit amount", "Date", "Status"]}
-                    loading={loading}
-                    empty={deposits.length === 0 ? <Empty message="No deposit obligations" /> : null}
-                >
-                    {deposits.map((l, i) => <DepositRow key={l._id ?? i} liability={l} index={i} />)}
-                </TableShell>
-            </Panel>
-        </div>
+                <TableBody>
+                    {!loading &&
+                        deposits.map((l) => (
+                            <TableRow
+                                key={l._id}
+                            >
+                                <TableCell className="font-medium">
+                                    {l.tenant?.name}
+                                </TableCell>
+
+                                <TableCell>
+                                    {l.tenant?.phone}
+                                </TableCell>
+
+                                <TableCell
+                                    className="font-bold tabular-nums"
+                                    style={{ color: "var(--color-danger)" }}
+                                >
+                                    {fmtRs(
+                                        l.amountPaisa
+                                    )}
+                                </TableCell>
+
+                                <TableCell>
+                                    {l.nepaliDate}
+                                </TableCell>
+
+                                <TableCell>
+                                    <Badge
+                                        variant="outline"
+                                        style={
+                                            l.status === "SYNCED"
+                                                ? {
+                                                    background: "var(--color-success-bg)",
+                                                    color: "var(--color-success)",
+                                                    borderColor: "var(--color-success-border)",
+                                                }
+                                                : {
+                                                    background: "var(--color-warning-bg)",
+                                                    color: "var(--color-warning)",
+                                                    borderColor: "var(--color-warning-border)",
+                                                }
+                                        }
+                                    >
+                                        {l.status}
+                                    </Badge>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                </TableBody>
+            </Table>
+
+            {!loading &&
+                deposits.length === 0 && (
+                    <Empty message="No deposits found" />
+                )}
+        </Panel>
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN EXPORT
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+// Main
+// ─────────────────────────────────────────────────────────────
+
 export default function LiabilitiesTab() {
-    const [activeTab, setActiveTab] = useState("overview");
-  
-    const { all, loading, refetch } = useLiabilities(activeEntityId);
-    const overdueCount = all.filter(l => agingBucket(l.date).label === "90+ days").length;
+    const { activeEntityId } =
+        useEntity();
+
+    const {
+        all,
+        loading,
+        refetch,
+    } = useLiabilities(activeEntityId);
+
+    const overdueCount = all.filter(
+        (l) =>
+            agingBucket(l.date).label ===
+            "90+ days"
+    ).length;
 
     return (
-        <div className="flex flex-col gap-4">
-
-            {/* ── Header: toggle + overdue badge + actions ──────────────────── */}
+        <Tabs defaultValue="overview" className="w-full space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                    <SectionToggle
-                        options={["Overview", "Loans", "Payables", "Deposits"]}
-                        value={activeTab}
-                        onChange={setActiveTab}
-                    />
+                <div className="flex items-center gap-3 flex-wrap">
+                    <TabsList>
+                        <TabsTrigger value="overview">
+                            Overview
+                        </TabsTrigger>
+                        <TabsTrigger value="loans">
+                            Loans
+                        </TabsTrigger>
+                        <TabsTrigger value="payables">
+                            Payables
+                        </TabsTrigger>
+                        <TabsTrigger value="deposits">
+                            Deposits
+                        </TabsTrigger>
+                    </TabsList>
+
                     {overdueCount > 0 && (
-                        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
-                            style={{ background: "var(--color-danger-bg)", color: T.danger, border: "1px solid var(--color-danger-border)" }}>
-                            <AlertCircleIcon size={9} />
+                        <Badge
+                            variant="outline"
+                            style={{
+                                background: "var(--color-danger-bg)",
+                                color: "var(--color-danger)",
+                                borderColor: "var(--color-danger-border)",
+                            }}
+                        >
+                            <AlertCircle className="h-3 w-3 mr-1" />
                             {overdueCount} overdue
-                        </span>
+                        </Badge>
                     )}
                 </div>
+
                 <div className="flex items-center gap-2">
-                    <button
+                    <Button
+                        variant="outline"
                         onClick={refetch}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold cursor-pointer transition-colors"
-                        style={{ border: `1px solid ${T.border}`, background: "transparent", color: T.body }}
                     >
-                        <RefreshCwIcon size={12} /> Refresh
-                    </button>
-                    <button
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[12px] font-bold cursor-pointer text-white"
-                        style={{ background: T.accent }}
-                    >
-                        <PlusIcon size={12} /> Add liability
-                    </button>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Refresh
+                    </Button>
+
+                    <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add liability
+                    </Button>
                 </div>
             </div>
 
-            {/* ── Content ───────────────────────────────────────────────────── */}
-            {activeTab === "overview"  && <OverviewContent  all={all} loading={loading} />}
-            {activeTab === "loans"     && <LoansContent     all={all} loading={loading} />}
-            {activeTab === "payables"  && <PayablesContent  all={all} loading={loading} />}
-            {activeTab === "deposits"  && <DepositsContent  all={all} loading={loading} />}
-        </div>
+            <TabsContent value="overview">
+                <OverviewContent all={all} loading={loading} />
+            </TabsContent>
+
+            <TabsContent value="loans">
+                <LoansContent all={all} loading={loading} />
+            </TabsContent>
+
+            <TabsContent value="payables">
+                <PayablesContent all={all} loading={loading} />
+            </TabsContent>
+
+            <TabsContent value="deposits">
+                <DepositsContent all={all} loading={loading} />
+            </TabsContent>
+        </Tabs>
     );
 }

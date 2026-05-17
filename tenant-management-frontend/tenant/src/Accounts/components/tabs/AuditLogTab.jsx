@@ -1,40 +1,64 @@
 import { useState } from "react";
 import { useAuditLog, useAuditEventTypes } from "../../hooks/useAuditLog";
 import { fmtRs } from "../../../utils/formatter";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-const EVENT_LABELS = {
-  TRANSACTION_CREATED:      "Transaction Created",
-  TRANSACTION_VOIDED:       "Transaction Voided",
-  TRANSACTION_REVERSED:     "Transaction Reversed",
-  PERIOD_CLOSED:            "Period Closed",
-  PERIOD_REOPENED:          "Period Reopened",
-  YEAR_END_CLOSED:          "Year-End Closed",
-  YEAR_END_REOPENED:        "Year-End Reopened",
-  TENANT_VACATED:           "Tenant Vacated",
-  LEDGER_LOCKED:            "Ledger Locked",
-  ADJUSTMENT_POSTED:        "Adjustment Posted",
-  DEBIT_NOTE_POSTED:        "Debit Note",
-  CREDIT_NOTE_POSTED:       "Credit Note",
-  BUDGET_CREATED:           "Budget Created",
-  BUDGET_UPDATED:           "Budget Updated",
-  ACCOUNT_BALANCE_REBUILT:  "Balance Rebuilt",
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+import { Button } from "@/components/ui/button";
+
+const EVENT_CATEGORY = {
+  TRANSACTION_CREATED: "success",
+  TRANSACTION_VOIDED: "danger",
+  TRANSACTION_REVERSED: "warning",
+  PERIOD_CLOSED: "info",
+  PERIOD_REOPENED: "warning",
+  YEAR_END_CLOSED: "accent",
+  YEAR_END_REOPENED: "warning",
+  TENANT_VACATED: "muted",
+  LEDGER_LOCKED: "danger",
+  ADJUSTMENT_POSTED: "info",
+  DEBIT_NOTE_POSTED: "warning",
+  CREDIT_NOTE_POSTED: "info",
+  BUDGET_CREATED: "success",
+  BUDGET_UPDATED: "info",
+  ACCOUNT_BALANCE_REBUILT: "muted",
 };
 
-const EVENT_COLORS = {
-  TRANSACTION_CREATED:     "bg-green-100 text-green-800",
-  TRANSACTION_VOIDED:      "bg-red-100 text-red-800",
-  TRANSACTION_REVERSED:    "bg-orange-100 text-orange-800",
-  PERIOD_CLOSED:           "bg-blue-100 text-blue-800",
-  PERIOD_REOPENED:         "bg-yellow-100 text-yellow-800",
-  YEAR_END_CLOSED:         "bg-purple-100 text-purple-800",
-  YEAR_END_REOPENED:       "bg-orange-100 text-orange-800",
-  TENANT_VACATED:          "bg-gray-100 text-gray-800",
-  LEDGER_LOCKED:           "bg-red-100 text-red-800",
-  ADJUSTMENT_POSTED:       "bg-teal-100 text-teal-800",
-  DEBIT_NOTE_POSTED:       "bg-amber-100 text-amber-800",
-  CREDIT_NOTE_POSTED:      "bg-sky-100 text-sky-800",
-  ACCOUNT_BALANCE_REBUILT: "bg-gray-100 text-gray-600",
+const CATEGORY_STYLE = {
+  success: { background: "var(--color-success-bg)", color: "var(--color-success)" },
+  danger: { background: "var(--color-danger-bg)", color: "var(--color-danger)" },
+  warning: { background: "var(--color-warning-bg)", color: "var(--color-warning)" },
+  info: { background: "var(--color-info-bg)", color: "var(--color-info)" },
+  accent: { background: "var(--color-accent-light)", color: "var(--color-accent)" },
+  muted: { background: "var(--color-surface)", color: "var(--color-text-sub)" },
 };
+
+function badgeStyle(eventType) {
+  const cat = EVENT_CATEGORY[eventType] ?? "muted";
+  return CATEGORY_STYLE[cat];
+}
+
+function labelFromType(eventType) {
+  return eventType
+    .split("_")
+    .map(w => w[0] + w.slice(1).toLowerCase())
+    .join(" ");
+}
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -44,42 +68,71 @@ function formatDate(iso) {
   });
 }
 
+function ActorCell({ log }) {
+  if (log.actorType === "system") {
+    return (
+      <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase",
+          color: "var(--color-accent)", background: "var(--color-accent-light)",
+          borderRadius: 4, padding: "1px 5px", display: "inline-block", width: "fit-content",
+        }}>
+          System
+        </span>
+        {log.systemActor && (
+          <span style={{ fontSize: 11, color: "var(--color-text-sub)", fontFamily: "var(--font-mono)" }}>
+            {log.systemActor}
+          </span>
+        )}
+      </span>
+    );
+  }
+  return <span style={{ color: "var(--color-text-body)" }}>{log.performedBy?.name ?? "—"}</span>;
+}
+
 export default function AuditLogTab({ entityId }) {
   const [eventType, setEventType] = useState("");
+  const [actorType, setActorType] = useState("");
   const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate]     = useState("");
-  const [page, setPage]           = useState(1);
+  const [endDate, setEndDate] = useState("");
+  const [page, setPage] = useState(1);
   const limit = 50;
 
   const eventTypes = useAuditEventTypes();
-  const { logs, total, pages, loading, error, refetch } = useAuditLog({
+  const { logs, total, pages, loading, error } = useAuditLog({
     entityId,
     eventType: eventType || undefined,
+    actorType: actorType || undefined,
     startDate: startDate || undefined,
-    endDate:   endDate   || undefined,
+    endDate: endDate || undefined,
     page,
     limit,
   });
 
+  const hasFilter = eventType || actorType || startDate || endDate;
+
   const exportCSV = () => {
-    const header = "Date,Event,Performed By,Amount (Rs),Period,Reason";
+    const header = "Date,Event,Actor Type,Performed By,Amount (Rs),Period,Reason";
     const rows = logs.map(l => {
-      const who    = l.performedBy?.name ?? l.performedBy ?? "—";
+      const actor = l.actorType === "system"
+        ? `system:${l.systemActor ?? ""}`
+        : (l.performedBy?.name ?? "—");
       const amount = l.amountPaisa != null ? (l.amountPaisa / 100).toFixed(2) : "";
-      const period = l.nepaliYear ? `${l.nepaliYear}/${String(l.nepaliMonth ?? "").padStart(2,"0")}` : "";
+      const period = l.nepaliYear ? `${l.nepaliYear}/${String(l.nepaliMonth ?? "").padStart(2, "0")}` : "";
       return [
         formatDate(l.performedAt),
-        EVENT_LABELS[l.eventType] ?? l.eventType,
-        who,
+        labelFromType(l.eventType),
+        l.actorType ?? "user",
+        actor,
         amount,
         period,
         (l.reason ?? "").replace(/,/g, ";"),
       ].join(",");
     });
-    const csv  = [header, ...rows].join("\n");
+    const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
     a.href = url;
     a.download = `audit-log-${Date.now()}.csv`;
     a.click();
@@ -98,48 +151,109 @@ export default function AuditLogTab({ entityId }) {
             Immutable record of all accounting actions — IRD compliant
           </p>
         </div>
-        <button
+        <Button
           onClick={exportCSV}
+          variant="outline"
+          size="sm"
+
           disabled={loading || logs.length === 0}
-          className="px-3 py-1.5 text-[12px] font-semibold rounded-lg border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-[var(--color-surface)] transition-colors disabled:opacity-40"
         >
           Export CSV
-        </button>
+        </Button>
       </div>
 
       {/* Filters */}
+      {/* Filters */}
       <div className="flex flex-wrap gap-3 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <select
-          value={eventType}
-          onChange={e => { setEventType(e.target.value); setPage(1); }}
-          className="text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
+        <Select
+          value={eventType || "all"}
+          onValueChange={(value) => {
+            setEventType(value === "all" ? "" : value);
+            setPage(1);
+          }}
         >
-          <option value="">All events</option>
-          {eventTypes.map(t => (
-            <option key={t} value={t}>{EVENT_LABELS[t] ?? t}</option>
-          ))}
-        </select>
+          <SelectTrigger className="w-[220px] text-[12px]">
+            <SelectValue placeholder="All events" />
+          </SelectTrigger>
+
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="all">
+                All events
+              </SelectItem>
+
+              {eventTypes.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {labelFromType(t)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={actorType || "all"}
+          onValueChange={(value) => {
+            setActorType(value === "all" ? "" : value);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-[180px] text-[12px]">
+            <SelectValue placeholder="All actors" />
+          </SelectTrigger>
+
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="all">
+                All actors
+              </SelectItem>
+
+              <SelectItem value="user">
+                User
+              </SelectItem>
+
+              <SelectItem value="system">
+                System
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
 
         <input
           type="date"
           value={startDate}
-          onChange={e => { setStartDate(e.target.value); setPage(1); }}
-          className="text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
-        />
-        <input
-          type="date"
-          value={endDate}
-          onChange={e => { setEndDate(e.target.value); setPage(1); }}
+          onChange={(e) => {
+            setStartDate(e.target.value);
+            setPage(1);
+          }}
           className="text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
         />
 
-        {(eventType || startDate || endDate) && (
-          <button
-            onClick={() => { setEventType(""); setStartDate(""); setEndDate(""); setPage(1); }}
-            className="text-[11px] px-2 py-1 rounded-lg text-[var(--color-text-sub)] hover:text-[var(--color-text-body)] hover:bg-[var(--color-surface)] transition-colors"
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => {
+            setEndDate(e.target.value);
+            setPage(1);
+          }}
+          className="text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
+        />
+
+        {hasFilter && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setEventType("");
+              setActorType("");
+              setStartDate("");
+              setEndDate("");
+              setPage(1);
+            }}
+            className="text-[11px]"
           >
             Clear
-          </button>
+          </Button>
         )}
 
         <span className="ml-auto text-[11px] text-[var(--color-text-sub)] self-center">
@@ -149,94 +263,130 @@ export default function AuditLogTab({ entityId }) {
 
       {/* Error */}
       {error && (
-        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-[12px] text-red-700">
+        <div className="p-3 rounded-xl text-[12px]" style={{
+          background: "var(--color-danger-bg)",
+          border: "1px solid var(--color-danger-border)",
+          color: "var(--color-danger)",
+        }}>
           {error}
         </div>
       )}
 
       {/* Table */}
       <div className="rounded-xl border border-[var(--color-border)] overflow-hidden">
-        <table className="w-full text-[12px]">
-          <thead>
-            <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-              <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Date</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Event</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Performed By</th>
-              <th className="text-right px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Amount</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Period</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Reason</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-[var(--color-surface)] hover:bg-[var(--color-surface)]">
+              <TableHead>Date</TableHead>
+              <TableHead>Event</TableHead>
+              <TableHead>Performed By</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Period</TableHead>
+              <TableHead>Reason</TableHead>
+            </TableRow>
+          </TableHeader>
+
+          <TableBody>
             {loading && (
-              <tr>
-                <td colSpan={6} className="text-center py-10 text-[var(--color-text-sub)]">
+              <TableRow>
+                <TableCell
+                  colSpan={6}
+                  className="text-center py-10 text-[var(--color-text-sub)]"
+                >
                   Loading...
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
+
             {!loading && logs.length === 0 && (
-              <tr>
-                <td colSpan={6} className="text-center py-10 text-[var(--color-text-sub)]">
+              <TableRow>
+                <TableCell
+                  colSpan={6}
+                  className="text-center py-10 text-[var(--color-text-sub)]"
+                >
                   No audit events found
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-            {!loading && logs.map((log, i) => (
-              <tr
-                key={log._id ?? i}
-                className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface)] transition-colors"
-              >
-                <td className="px-4 py-2.5 text-[var(--color-text-sub)] whitespace-nowrap">
-                  {formatDate(log.performedAt)}
-                </td>
-                <td className="px-4 py-2.5">
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${EVENT_COLORS[log.eventType] ?? "bg-gray-100 text-gray-600"}`}>
-                    {EVENT_LABELS[log.eventType] ?? log.eventType}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5 text-[var(--color-text-body)]">
-                  {log.performedBy?.name ?? "—"}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-[var(--color-text-body)]">
-                  {log.amountPaisa != null
-                    ? `Rs ${fmtRs(log.amountPaisa / 100)}`
-                    : "—"}
-                </td>
-                <td className="px-4 py-2.5 text-[var(--color-text-sub)]">
-                  {log.nepaliYear
-                    ? `${log.nepaliYear}/${String(log.nepaliMonth ?? "").padStart(2, "0")}`
-                    : "—"}
-                </td>
-                <td className="px-4 py-2.5 text-[var(--color-text-sub)] max-w-[200px] truncate">
-                  {log.reason ?? "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+            {!loading &&
+              logs.map((log, i) => (
+                <TableRow
+                  key={log._id ?? i}
+                  className="hover:bg-[var(--color-surface)]"
+                >
+                  <TableCell className="whitespace-nowrap text-[var(--color-text-sub)]">
+                    {formatDate(log.performedAt)}
+                  </TableCell>
+
+                  <TableCell>
+                    <span
+                      style={{
+                        ...badgeStyle(log.eventType),
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        display: "inline-block",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {labelFromType(log.eventType)}
+                    </span>
+                  </TableCell>
+
+                  <TableCell>
+                    <ActorCell log={log} />
+                  </TableCell>
+
+                  <TableCell className="text-right font-mono text-[var(--color-text-body)]">
+                    {log.amountPaisa != null
+                      ? `Rs ${fmtRs(log.amountPaisa)}`
+                      : "—"}
+                  </TableCell>
+
+                  <TableCell className="text-[var(--color-text-sub)]">
+                    {log.nepaliYear
+                      ? `${log.nepaliYear}/${String(
+                        log.nepaliMonth ?? ""
+                      ).padStart(2, "0")}`
+                      : "—"}
+                  </TableCell>
+
+                  <TableCell className="max-w-[220px] truncate text-[var(--color-text-sub)]">
+                    {log.reason ?? "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+          </TableBody>
+        </Table>
       </div>
 
       {/* Pagination */}
+      {/* Pagination */}
       {pages > 1 && (
         <div className="flex items-center justify-between mt-1">
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             disabled={page <= 1}
-            onClick={() => setPage(p => p - 1)}
-            className="px-3 py-1.5 text-[12px] font-semibold rounded-lg border border-[var(--color-border)] disabled:opacity-40 hover:bg-[var(--color-surface)] transition-colors"
+            onClick={() => setPage((p) => p - 1)}
           >
             Previous
-          </button>
+          </Button>
+
           <span className="text-[12px] text-[var(--color-text-sub)]">
             Page {page} of {pages}
           </span>
-          <button
+
+          <Button
+            variant="outline"
+            size="sm"
             disabled={page >= pages}
-            onClick={() => setPage(p => p + 1)}
-            className="px-3 py-1.5 text-[12px] font-semibold rounded-lg border border-[var(--color-border)] disabled:opacity-40 hover:bg-[var(--color-surface)] transition-colors"
+            onClick={() => setPage((p) => p + 1)}
           >
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

@@ -46,7 +46,7 @@ export default function YearEndCloseTab({ entityId }) {
   const [actionError, setActionError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const { status, history, loading, error, refetch, closeYear, reopenYear } =
+  const { status, history, loading, error, closeYear, reopenYear } =
     useYearEndClose(entityId, fiscalYear);
 
   const handleClose = async () => {

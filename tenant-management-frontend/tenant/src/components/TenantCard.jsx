@@ -106,12 +106,10 @@ export function getTenantLocationLabel(tenant) {
   );
 }
 
-const fmt = (val) =>
-  val != null && val > 0
-    ? `Rs. ${Number(val).toLocaleString("en-IN")}`
-    : "N/A";
+
 
 export function getTenantRentDisplay(tenant) {
+  const fmt = (v) => v != null ? `Rs. ${Number(v).toLocaleString("en-IN")}` : "N/A";
   if (tenant?.rentPaymentFrequency === "monthly") return fmt(tenant?.totalRent);
   if (tenant?.rentPaymentFrequency === "quarterly") return fmt(tenant?.quarterlyRentAmount);
   return "N/A";
@@ -249,7 +247,7 @@ export default function TenantCard({
         <div className="flex justify-between items-center mb-2">
           <div>
             <p className="text-lg font-bold">
-              Rs. {tenant?.totalRent?.toLocaleString("en-IN") || "N/A"}
+              {getTenantRentDisplay(tenant)}
             </p>
             <p className="text-[10px] opacity-60">
               {tenant?.rentPaymentFrequency}

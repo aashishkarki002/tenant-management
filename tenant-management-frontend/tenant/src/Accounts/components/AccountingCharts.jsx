@@ -10,8 +10,7 @@ import {
 } from "lucide-react";
 
 import { Skeleton, ProgBar, Gauge, ChartTip } from "./AccountingPrimitives";
-import { fmtRs } from "../../utils/formatter";
-import { toBSDate } from "../utils/nepaliCalendar";
+import { fmtRs, fmtK } from "../../utils/formatter";
 
 // ─── Shared design tokens ─────────────────────────────────────────────────────
 const CHR = {

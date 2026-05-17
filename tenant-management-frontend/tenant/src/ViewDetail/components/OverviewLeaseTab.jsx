@@ -114,8 +114,8 @@ export function OverviewLeaseTab({ tenant }) {
         {/* Personal Info */}
         <section>
           <SectionHeading>Personal Information</SectionHeading>
-          <InfoRow icon={Mail}  label="Email"   value={tenant?.email}   />
-          <InfoRow icon={Phone} label="Phone"   value={tenant?.phone}   />
+          <InfoRow icon={Mail} label="Email" value={tenant?.email} />
+          <InfoRow icon={Phone} label="Phone" value={tenant?.phone} />
           <InfoRow icon={MapPin} label="Address" value={tenant?.address} />
         </section>
 
@@ -145,9 +145,9 @@ export function OverviewLeaseTab({ tenant }) {
 
           {/* Date grid */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-5 pb-5 border-b border-border">
-            <DateBlock icon={CalendarDays} label="Start"        adDate={leaseStartAD}  bsDate={tenant?.leaseStartDateNepali} />
-            <DateBlock icon={CalendarDays} label="End"          adDate={leaseEndAD}    bsDate={tenant?.leaseEndDateNepali}   />
-            <DateBlock icon={Key}          label="Key Handover" adDate={keyHandoverAD} bsDate={tenant?.keyHandoverDateNepali} />
+            <DateBlock icon={CalendarDays} label="Start" adDate={leaseStartAD} bsDate={tenant?.leaseStartDateNepali} />
+            <DateBlock icon={CalendarDays} label="End" adDate={leaseEndAD} bsDate={tenant?.leaseEndDateNepali} />
+            <DateBlock icon={Key} label="Key Handover" adDate={keyHandoverAD} bsDate={tenant?.keyHandoverDateNepali} />
           </div>
 
           {/* Rent Escalation */}
@@ -274,7 +274,7 @@ export function OverviewLeaseTab({ tenant }) {
               </p>
               <div className="flex items-center justify-between">
                 <p className="text-xs" style={{ color: "var(--color-accent)" }}>
-                  3 months × {tenant?.netAmountFormatted}
+                  3 months × {tenant?.totalRentFormatted}
                 </p>
                 <p className="text-base font-bold tabular-nums" style={{ color: "var(--color-accent)" }}>
                   {tenant?.quarterlyRentAmountFormatted}

@@ -1,13 +1,3 @@
-/**
- * ProjectionsTab.jsx
- *
- * 6-month forward projections based on linear regression over the
- * last 12 months of actual data.
- *
- * Data: GET /api/accounting/projections
- * Scenarios: base (regression), optimistic (+15% rev / −8% exp), pessimistic (−15% / +8%)
- */
-
 import { useState } from "react";
 import {
     ComposedChart, Area, Line, Bar, XAxis, YAxis,
@@ -17,30 +7,30 @@ import {
 import { TrendingUp, TrendingDown, Minus, AlertCircle, Zap } from "lucide-react";
 import { useProjections } from "../../hooks/useProjections";
 import { Skeleton } from "../AccountingPrimitives";
-import { fmtK } from "../../../utils/formatter";
+import { fmtRs } from "../../../utils/formatter";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
-    revenue:     "var(--color-info)",
-    expenses:    "var(--color-warning)",
-    net:         "var(--color-success)",
-    netNeg:      "var(--color-danger)",
-    projected:   "#6c63ff",
-    optimistic:  "var(--color-success)",
+    revenue: "var(--color-info)",
+    expenses: "var(--color-warning)",
+    net: "var(--color-success)",
+    netNeg: "var(--color-danger)",
+    projected: "#6c63ff",
+    optimistic: "var(--color-success)",
     pessimistic: "var(--color-danger)",
-    border:      "var(--color-border)",
-    surface:     "var(--color-surface-raised)",
-    sub:         "var(--color-text-sub)",
-    body:        "var(--color-text-body)",
-    strong:      "var(--color-text-strong)",
-    muted:       "var(--color-muted)",
-    accent:      "var(--color-accent)",
-    accentBg:    "var(--color-accent-light)",
+    border: "var(--color-border)",
+    surface: "var(--color-surface-raised)",
+    sub: "var(--color-text-sub)",
+    body: "var(--color-text-body)",
+    strong: "var(--color-text-strong)",
+    muted: "var(--color-muted)",
+    accent: "var(--color-accent)",
+    accentBg: "var(--color-accent-light)",
 };
 
 const SCENARIOS = [
-    { key: "base",        label: "Base",        color: C.projected,   desc: "Pure regression trend" },
-    { key: "optimistic",  label: "Optimistic",  color: C.optimistic,  desc: "+15% revenue / −8% expenses" },
+    { key: "base", label: "Base", color: C.projected, desc: "Pure regression trend" },
+    { key: "optimistic", label: "Optimistic", color: C.optimistic, desc: "+15% revenue / −8% expenses" },
     { key: "pessimistic", label: "Pessimistic", color: C.pessimistic, desc: "−15% revenue / +8% expenses" },
 ];
 
@@ -48,31 +38,27 @@ const SCENARIOS = [
 
 function buildChartData(historical, projected, scenario) {
     const hist = (historical ?? []).map(m => ({
-        label:    m.label,
-        key:      m.key,
-        revenue:  m.revenue  ?? 0,
+        label: m.label,
+        key: m.key,
+        revenue: m.revenue ?? 0,
         expenses: m.expenses ?? 0,
-        net:      (m.revenue ?? 0) - (m.expenses ?? 0),
-        type:     "actual",
+        net: (m.revenue ?? 0) - (m.expenses ?? 0),
+        type: "actual",
     }));
 
     const proj = (projected ?? []).map(m => ({
-        label:    m.label,
-        key:      m.key,
-        revenue:  m[scenario]?.revenue  ?? 0,
+        label: m.label,
+        key: m.key,
+        revenue: m[scenario]?.revenue ?? 0,
         expenses: m[scenario]?.expenses ?? 0,
-        net:      m[scenario]?.net      ?? 0,
-        type:     "projected",
+        net: m[scenario]?.net ?? 0,
+        type: "projected",
     }));
 
     return [...hist, ...proj];
 }
 
-// ─── Primitives ───────────────────────────────────────────────────────────────
 
-function SectionHeader({ children }) {
-    return <div className="text-[9px] font-bold tracking-[0.14em] uppercase mb-3" style={{ color: C.sub }}>{children}</div>;
-}
 
 function StatCard({ label, value, suffix = "", color, sub, loading }) {
     return (
@@ -90,7 +76,7 @@ function StatCard({ label, value, suffix = "", color, sub, loading }) {
 
 function ModelBadge({ r2, dataPoints }) {
     const quality = r2 >= 0.8 ? "High confidence" : r2 >= 0.5 ? "Moderate confidence" : "Low confidence";
-    const color   = r2 >= 0.8 ? C.net : r2 >= 0.5 ? "var(--color-warning)" : "var(--color-danger)";
+    const color = r2 >= 0.8 ? C.net : r2 >= 0.5 ? "var(--color-warning)" : "var(--color-danger)";
     return (
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px]"
             style={{ borderColor: C.border, color: C.sub, background: C.surface }}>
@@ -114,17 +100,17 @@ function ProjectionChart({ historical, projected, scenario, loading }) {
             <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <defs>
                     <linearGradient id="projRevGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor={C.revenue} stopOpacity={0.15} />
+                        <stop offset="5%" stopColor={C.revenue} stopOpacity={0.15} />
                         <stop offset="95%" stopColor={C.revenue} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="projExpGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor={C.expenses} stopOpacity={0.15} />
+                        <stop offset="5%" stopColor={C.expenses} stopOpacity={0.15} />
                         <stop offset="95%" stopColor={C.expenses} stopOpacity={0} />
                     </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} stroke={C.border} strokeOpacity={0.5} />
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={v => `RS ${fmtK(v)}`} tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} width={56} />
+                <YAxis tickFormatter={v => `RS ${(v)}`} tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} width={56} />
                 <Tooltip
                     cursor={{ stroke: C.accent, strokeWidth: 1, strokeDasharray: "4 2" }}
                     content={({ active, payload, label }) => {
@@ -139,7 +125,7 @@ function ProjectionChart({ historical, projected, scenario, loading }) {
                                 {payload.filter(p => p.value != null && p.value !== 0).map(p => (
                                     <div key={p.dataKey} className="flex justify-between gap-4 text-[11px] font-semibold" style={{ color: p.color ?? "#fff" }}>
                                         <span>{p.dataKey}</span>
-                                        <span className="tabular-nums">RS {fmtK(p.value)}</span>
+                                        <span className="tabular-nums">RS {(p.value)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -150,9 +136,9 @@ function ProjectionChart({ historical, projected, scenario, loading }) {
                 {splitIdx >= 0 && splitIdx < data.length - 1 && (
                     <ReferenceLine x={data[splitIdx]?.label} stroke={C.projected} strokeDasharray="6 3" strokeWidth={1.5} />
                 )}
-                <Area type="monotone" dataKey="revenue"  stroke={C.revenue}  strokeWidth={1.5} fill="url(#projRevGrad)" dot={false} name="Revenue" />
+                <Area type="monotone" dataKey="revenue" stroke={C.revenue} strokeWidth={1.5} fill="url(#projRevGrad)" dot={false} name="Revenue" />
                 <Area type="monotone" dataKey="expenses" stroke={C.expenses} strokeWidth={1.5} fill="url(#projExpGrad)" dot={false} name="Expenses" />
-                <Line  type="monotone" dataKey="net"      stroke={C.net}      strokeWidth={2}   dot={false} name="Net" strokeDasharray="5 2" />
+                <Line type="monotone" dataKey="net" stroke={C.net} strokeWidth={2} dot={false} name="Net" strokeDasharray="5 2" />
                 <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 10, color: C.sub }} />
             </ComposedChart>
         </ResponsiveContainer>
@@ -164,9 +150,9 @@ function ScenarioCompareChart({ projected, loading }) {
     if (!projected?.length) return null;
 
     const data = projected.map(m => ({
-        label:       m.label,
-        Optimistic:  m.optimistic?.net  ?? 0,
-        Base:        m.base?.net        ?? 0,
+        label: m.label,
+        Optimistic: m.optimistic?.net ?? 0,
+        Base: m.base?.net ?? 0,
         Pessimistic: m.pessimistic?.net ?? 0,
     }));
 
@@ -175,7 +161,7 @@ function ScenarioCompareChart({ projected, loading }) {
             <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid vertical={false} stroke={C.border} strokeOpacity={0.5} />
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={v => `RS ${fmtK(v)}`} tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} width={52} />
+                <YAxis tickFormatter={v => `RS ${(v)}`} tick={{ fontSize: 9, fill: C.sub }} axisLine={false} tickLine={false} width={52} />
                 <Tooltip
                     cursor={{ fill: "rgba(0,0,0,0.04)" }}
                     content={({ active, payload, label }) => {
@@ -186,7 +172,7 @@ function ScenarioCompareChart({ projected, loading }) {
                                 {payload.map(p => (
                                     <div key={p.dataKey} className="flex justify-between gap-4 text-[11px] font-semibold" style={{ color: p.color }}>
                                         <span>{p.dataKey}</span>
-                                        <span className="tabular-nums">RS {fmtK(p.value)}</span>
+                                        <span className="tabular-nums">RS {(p.value)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -194,8 +180,8 @@ function ScenarioCompareChart({ projected, loading }) {
                     }}
                 />
                 <ReferenceLine y={0} stroke={C.border} />
-                <Bar dataKey="Optimistic"  fill={C.optimistic}  radius={[3, 3, 0, 0]} maxBarSize={24} />
-                <Bar dataKey="Base"        fill={C.projected}   radius={[3, 3, 0, 0]} maxBarSize={24} />
+                <Bar dataKey="Optimistic" fill={C.optimistic} radius={[3, 3, 0, 0]} maxBarSize={24} />
+                <Bar dataKey="Base" fill={C.projected} radius={[3, 3, 0, 0]} maxBarSize={24} />
                 <Bar dataKey="Pessimistic" fill={C.pessimistic} radius={[3, 3, 0, 0]} maxBarSize={24} />
                 <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 10, color: C.sub }} />
             </ComposedChart>
@@ -214,16 +200,16 @@ export default function ProjectionsTab({ filterProps, filterLabel }) {
     const { data, loading, error } = useProjections(fiscalYear, entityId);
 
     const historical = data?.historical ?? [];
-    const projected  = data?.projected  ?? [];
-    const model      = data?.model;
-    const stats      = data?.stats;
+    const projected = data?.projected ?? [];
+    const model = data?.model;
+    const stats = data?.stats;
 
     const scenarioData = SCENARIOS.find(s => s.key === scenario);
 
-    const projectedRevSum  = projected.reduce((s, m) => s + (m[scenario]?.revenue  ?? 0), 0);
-    const projectedExpSum  = projected.reduce((s, m) => s + (m[scenario]?.expenses ?? 0), 0);
-    const projectedNetSum  = projected.reduce((s, m) => s + (m[scenario]?.net      ?? 0), 0);
-    const growthPct        = stats?.revenueGrowthPct;
+    const projectedRevSum = projected.reduce((s, m) => s + (m[scenario]?.revenue ?? 0), 0);
+    const projectedExpSum = projected.reduce((s, m) => s + (m[scenario]?.expenses ?? 0), 0);
+    const projectedNetSum = projected.reduce((s, m) => s + (m[scenario]?.net ?? 0), 0);
+    const growthPct = stats?.revenueGrowthPct;
 
     if (error) {
         return (
@@ -258,7 +244,7 @@ export default function ProjectionsTab({ filterProps, filterLabel }) {
                             className="px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
                             style={{
                                 background: scenario === s.key ? s.color : "transparent",
-                                color:      scenario === s.key ? "#fff"   : C.sub,
+                                color: scenario === s.key ? "#fff" : C.sub,
                             }}
                         >
                             {s.label}
@@ -277,21 +263,21 @@ export default function ProjectionsTab({ filterProps, filterLabel }) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatCard
                     label="Avg Monthly Revenue (historical)"
-                    value={`RS ${fmtK(stats?.avgMonthlyRevenue ?? 0)}`}
+                    value={`RS ${(stats?.avgMonthlyRevenue ?? 0)}`}
                     color={C.revenue}
                     sub="last 12 months average"
                     loading={loading}
                 />
                 <StatCard
                     label="Projected 6-Month Revenue"
-                    value={`RS ${fmtK(projectedRevSum)}`}
+                    value={`RS ${(projectedRevSum)}`}
                     color={C.projected}
                     sub={`${scenario} scenario`}
                     loading={loading}
                 />
                 <StatCard
                     label="Projected 6-Month Net"
-                    value={`RS ${fmtK(Math.abs(projectedNetSum))}`}
+                    value={`RS ${(Math.abs(projectedNetSum))}`}
                     color={projectedNetSum >= 0 ? C.net : C.netNeg}
                     sub={projectedNetSum >= 0 ? "Surplus projected" : "Deficit projected"}
                     loading={loading}
@@ -363,7 +349,7 @@ export default function ProjectionsTab({ filterProps, filterLabel }) {
                                             ))}
                                         </tr>
                                     ))
-                                    : projected.map((m, i) => {
+                                    : projected.map((m) => {
                                         const s = m[scenario];
                                         const isPos = (s?.net ?? 0) >= 0;
                                         return (
@@ -375,13 +361,13 @@ export default function ProjectionsTab({ filterProps, filterLabel }) {
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ color: C.revenue }}>
-                                                    RS {fmtK(s?.revenue ?? 0)}
+                                                    RS {(s?.revenue ?? 0)}
                                                 </td>
                                                 <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ color: C.expenses }}>
-                                                    RS {fmtK(s?.expenses ?? 0)}
+                                                    RS {(s?.expenses ?? 0)}
                                                 </td>
                                                 <td className="px-4 py-2.5 text-right tabular-nums font-bold" style={{ color: isPos ? C.net : C.netNeg }}>
-                                                    {isPos ? "+" : "−"}RS {fmtK(Math.abs(s?.net ?? 0))}
+                                                    {isPos ? "+" : "−"}RS {(Math.abs(s?.net ?? 0))}
                                                 </td>
                                             </tr>
                                         );
@@ -391,13 +377,13 @@ export default function ProjectionsTab({ filterProps, filterLabel }) {
                                     <tr className="border-t-2" style={{ borderColor: C.border }}>
                                         <td className="px-4 py-2.5 font-bold text-[11px]" style={{ color: C.strong }}>Total</td>
                                         <td className="px-4 py-2.5 text-right font-black tabular-nums" style={{ color: C.revenue }}>
-                                            RS {fmtK(projectedRevSum)}
+                                            RS {(projectedRevSum)}
                                         </td>
                                         <td className="px-4 py-2.5 text-right font-black tabular-nums" style={{ color: C.expenses }}>
-                                            RS {fmtK(projectedExpSum)}
+                                            RS {(projectedExpSum)}
                                         </td>
                                         <td className="px-4 py-2.5 text-right font-black tabular-nums" style={{ color: projectedNetSum >= 0 ? C.net : C.netNeg }}>
-                                            {projectedNetSum >= 0 ? "+" : "−"}RS {fmtK(Math.abs(projectedNetSum))}
+                                            {projectedNetSum >= 0 ? "+" : "−"}RS {(Math.abs(projectedNetSum))}
                                         </td>
                                     </tr>
                                 )}
@@ -413,8 +399,8 @@ export default function ProjectionsTab({ filterProps, filterLabel }) {
                     <AlertCircle size={13} style={{ color: C.sub, marginTop: 1, flexShrink: 0 }} />
                     <div className="text-[10px] leading-relaxed" style={{ color: C.sub }}>
                         Projections use linear regression over <strong style={{ color: C.body }}>{model.dataPoints} months</strong> of actuals.
-                        Revenue model: R² = {model.revenue.r2}, slope RS {fmtK(model.revenue.slope)}/month.
-                        Expense model: R² = {model.expenses.r2}, slope RS {fmtK(model.expenses.slope)}/month.
+                        Revenue model: R² = {model.revenue.r2}, slope RS {(model.revenue.slope)}/month.
+                        Expense model: R² = {model.expenses.r2}, slope RS {(model.expenses.slope)}/month.
                         {model.revenue.r2 < 0.5 && " Low R² indicates irregular revenue — projections have wider uncertainty."}
                     </div>
                 </div>

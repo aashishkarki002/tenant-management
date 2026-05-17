@@ -4,8 +4,6 @@ import RevenueBreakDown from "../RevenueBreakDown";
 
 export default function RevenueTab({
     filterProps,
-    filterLabel,
-    totalRevenue,
     pendingAction,
     onDialogOpenHandled,
     onRevenueAdded,

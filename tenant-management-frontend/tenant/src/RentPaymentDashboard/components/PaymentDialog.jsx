@@ -314,7 +314,7 @@ export const PaymentDialog = ({
     !paymentAmount ||
     !formik.values?.paymentMethod ||
     !formik.values?.paymentDate ||
-    (needsBankAccount && !formik.values?.bankAccountCode) ||
+    (needsBankAccount && !formik.values?.bankAccountId) ||
     (isCheque && !formik.values?.chequeNumber?.trim()) ||
     unitAllocationMismatch ||
     tdsUploading;
@@ -332,7 +332,7 @@ export const PaymentDialog = ({
     isElecOverAllocated ||
     isPartialLateFee ||
     unitAllocationMismatch ||
-    (needsBankAccount && !formik.values?.bankAccountCode) ||
+    (needsBankAccount && !formik.values?.bankAccountId) ||
     (isCheque && !formik.values?.chequeNumber?.trim());
 
   // ── Submit handler ────────────────────────────────────────────────────────
@@ -1027,27 +1027,6 @@ export const PaymentDialog = ({
                 </Select>
               </div>
 
-              {/* Bank Account */}
-              {needsBankAccount && (
-                <div className="space-y-1.5">
-                  <Label className="text-[12px]">Deposit To *</Label>
-                  <BankAccountSelect
-                    bankAccounts={bankAccounts}
-                    value={selectedBankAccountId ? String(selectedBankAccountId) : ""}
-                    onValueChange={(id) => {
-                      const bank = bankAccounts.find((b) => String(b._id) === String(id));
-                      setSelectedBankAccountId(id);
-                      formik.setFieldValue("bankAccountId", id);
-                      formik.setFieldValue("bankAccountCode", bank?.accountCode || "");
-                    }}
-                    showBalance
-                    triggerClassName="w-full"
-                  />
-                  {needsBankAccount && !formik.values?.bankAccountCode && (
-                    <p className="text-[11px] text-destructive">Select a bank account to continue.</p>
-                  )}
-                </div>
-              )}
               {/* ══ Cheque Details ════════════════════════════════════════════════ */}
               {isCheque && (
                 <section>
@@ -1096,6 +1075,28 @@ export const PaymentDialog = ({
                     </div>
                   </div>
                 </section>
+              )}
+
+              {/* Bank Account */}
+              {needsBankAccount && (
+                <div className="space-y-1.5">
+                  <Label className="text-[12px]">Deposit To *</Label>
+                  <BankAccountSelect
+                    bankAccounts={bankAccounts}
+                    value={selectedBankAccountId ? String(selectedBankAccountId) : ""}
+                    onValueChange={(id) => {
+                      const bank = bankAccounts.find((b) => String(b._id) === String(id));
+                      setSelectedBankAccountId(id);
+                      formik.setFieldValue("bankAccountId", id);
+                      formik.setFieldValue("bankAccountCode", bank?.accountCode || "");
+                    }}
+                    showBalance
+                    triggerClassName="w-full"
+                  />
+                  {needsBankAccount && !formik.values?.bankAccountId && (
+                    <p className="text-[11px] text-destructive">Select a bank account to continue.</p>
+                  )}
+                </div>
               )}
 
               {/* Payment Date */}
@@ -1164,7 +1165,7 @@ export const PaymentDialog = ({
             {unitAllocationMismatch && (
               <p className="text-[11px] text-destructive">Unit allocations must sum to RS {rentAllocation.toFixed(2)}.</p>
             )}
-            {needsBankAccount && !formik.values?.bankAccountCode && (
+            {needsBankAccount && !formik.values?.bankAccountId && (
               <p className="text-[11px] text-destructive">Select a bank account.</p>
             )}
             {isCheque && !formik.values?.chequeNumber?.trim() && (

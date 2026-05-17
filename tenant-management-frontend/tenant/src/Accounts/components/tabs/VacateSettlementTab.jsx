@@ -4,7 +4,7 @@ import { useVacateSettlement, useVacateList } from "../../hooks/useVacateSettlem
 import api from "../../../../plugins/axios";
 import {Input} from "../../../components/ui/input";
 
-import { fmtK } from "../../../utils/formatter";
+import { fmtRs } from "../../../utils/formatter";
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -51,7 +51,7 @@ function PreviewCard({ preview }) {
           ) : row.value !== 0 && row.value != null ? (
             <div key={row.label} className="flex justify-between text-[12px]">
               <span className="text-[var(--color-text-sub)]">{row.label}</span>
-              <span className={row.color}>{fmtPaisa(row.value)}</span>
+              <span className={row.color}>{fmtRs(row.value)}</span>
             </div>
           ) : null
         )}
@@ -73,7 +73,7 @@ export default function VacateSettlementTab({ entityId }) {
 
   const { preview, computing, executing, error, compute, execute } =
     useVacateSettlement(entityId);
-  const { settlements, loading: listLoading, refetch: refetchList } =
+  const { settlements, refetch: refetchList } =
     useVacateList(entityId, undefined);
 
   // Load active tenants
@@ -282,8 +282,8 @@ export default function VacateSettlementTab({ entityId }) {
                   <tr key={s._id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface)]">
                     <td className="px-4 py-2.5 text-[var(--color-text-body)]">{s.tenant?.name ?? "—"}</td>
                     <td className="px-4 py-2.5"><StatusBadge status={s.status} /></td>
-                    <td className="px-4 py-2.5 text-right text-orange-600 font-mono">{fmtPaisa(s.totalArAtVacatePaisa)}</td>
-                    <td className="px-4 py-2.5 text-right text-blue-600 font-mono">{fmtPaisa(s.sdCashRefundPaisa)}</td>
+                    <td className="px-4 py-2.5 text-right text-orange-600 font-mono">{fmtRs(s.totalArAtVacatePaisa)}</td>
+                    <td className="px-4 py-2.5 text-right text-blue-600 font-mono">{fmtRs(s.sdCashRefundPaisa)}</td>
                     <td className="px-4 py-2.5 text-[var(--color-text-sub)]">{fmtDate(s.vacateDate)}</td>
                     <td className="px-4 py-2.5 text-[var(--color-text-sub)]">{s.settledBy?.name ?? "—"}</td>
                   </tr>

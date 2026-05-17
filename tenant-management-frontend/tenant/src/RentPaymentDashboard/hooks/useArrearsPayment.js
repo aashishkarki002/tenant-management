@@ -13,6 +13,7 @@ import api from "../../../plugins/axios";
 import {
   normalizeLedgerPaymentMethod,
   paymentMethodRequiresBankAccount,
+  isChequePayment,
 } from "@/constants/paymentMethods.js";
 
 /**
@@ -42,6 +43,10 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
   const [bankAccountCode, setBankAccountCode] = useState("");
   const [transactionRef, setTransactionRef] = useState("");
   const [note, setNote] = useState("");
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [chequeBankName, setChequeBankName] = useState("");
+  const [chequeAccountName, setChequeAccountName] = useState("");
+  const [chequeBranch, setChequeBranch] = useState("");
 
   // ── Fetch arrears when tenant changes ────────────────────────────────────────
   const fetchArrears = useCallback(async () => {
@@ -108,6 +113,7 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
   const amountPaisa = Math.round(amountNum * 100);
 
   const needsBankAccount = paymentMethodRequiresBankAccount(paymentMethod);
+  const isCheque = isChequePayment(paymentMethod);
 
   // ── Validation ────────────────────────────────────────────────────────────────
   const validationErrors = useMemo(() => {
@@ -117,8 +123,10 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
     if (amountPaisa > selectedTotalPaisa)
       errs.push("Amount exceeds total due for selected months.");
     if (!paymentMethod) errs.push("Select a payment method.");
-    if (needsBankAccount && !bankAccountCode)
+    if (needsBankAccount && !bankAccountId)
       errs.push("Select a bank account.");
+    if (isCheque && !chequeNumber.trim())
+      errs.push("Enter cheque number.");
     if (!paymentDate || !nepaliDate) errs.push("Select a payment date.");
     return errs;
   }, [
@@ -128,7 +136,9 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
     selectedTotalPaisa,
     paymentMethod,
     needsBankAccount,
-    bankAccountCode,
+    bankAccountId,
+    isCheque,
+    chequeNumber,
     paymentDate,
     nepaliDate,
   ]);
@@ -208,6 +218,10 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
         bankAccountCode: bankAccountCode || null,
         transactionRef: transactionRef || null,
         note: note || null,
+        chequeNumber: isCheque ? chequeNumber || null : null,
+        chequeBankName: isCheque ? chequeBankName || null : null,
+        chequeAccountName: isCheque ? chequeAccountName || null : null,
+        chequeBranch: isCheque ? chequeBranch || null : null,
         allocationStrategy: "proportional",
       };
 
@@ -265,6 +279,10 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
     setBankAccountCode("");
     setTransactionRef("");
     setNote("");
+    setChequeNumber("");
+    setChequeBankName("");
+    setChequeAccountName("");
+    setChequeBranch("");
     setSelectedIds(new Set(arrears.map((r) => r._id)));
   }, [arrears]);
 
@@ -308,7 +326,18 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
     amountNum,
     amountPaisa,
     needsBankAccount,
+    isCheque,
     fillFullAmount,
+
+    // Cheque fields
+    chequeNumber,
+    setChequeNumber,
+    chequeBankName,
+    setChequeBankName,
+    chequeAccountName,
+    setChequeAccountName,
+    chequeBranch,
+    setChequeBranch,
 
     // Validation
     validationErrors,

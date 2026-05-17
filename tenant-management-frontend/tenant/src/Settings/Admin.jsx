@@ -44,7 +44,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Settings, Users, TrendingUp, Building2, Shield, Plus, Trash2,
   Pencil, Camera, Upload, Lock, Save, Phone, CreditCard, Zap,
-  CheckCircle2, AlertTriangle, Info, Clock, Bell,
+  CheckCircle2, AlertTriangle, Info, Clock, Bell, Activity,
 } from "lucide-react";
 
 // Sub-components
@@ -52,6 +52,7 @@ import AddBankAccount from "./components/AddBankAccount";
 import EditBankAccount from "./components/EditBankAccount";
 import ElectricityRateTab from "./components/electricityRateTab";
 import NotificationSettings from "./components/NotificationSettings";
+import CronMonitorTab from "./components/CronMonitorTab";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 const getInitials = (name) =>
@@ -657,7 +658,7 @@ export default function AdminRoot() {
 
   const searchParams = new URLSearchParams(location.search);
   const urlTab = searchParams.get("tab");
-  const initialTab = ["general", "staff", "rates", "organization"].includes(urlTab) ? urlTab : "general";
+  const initialTab = ["general", "staff", "rates", "organization", "cron"].includes(urlTab) ? urlTab : "general";
 
   const getBankAccounts = async () => {
     try {
@@ -683,6 +684,7 @@ export default function AdminRoot() {
 
     { value: "rates", Icon: TrendingUp, label: "Rates & Fees", adminOnly: true },
     { value: "notification", Icon: Bell, label: "Notification" },
+    { value: "cron", Icon: Activity, label: "Cron Monitor", adminOnly: true },
   ];
   const visibleNav = NAV.filter((tab) => !tab.adminOnly || isAdmin);
 
@@ -733,6 +735,10 @@ export default function AdminRoot() {
 
           <TabsContent value="notification">
             <NotificationSettings />
+          </TabsContent>
+
+          <TabsContent value="cron">
+            <CronMonitorTab />
           </TabsContent>
         </Tabs>
       </div>

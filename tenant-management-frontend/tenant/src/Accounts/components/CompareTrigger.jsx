@@ -30,7 +30,7 @@ import {
     QUARTER_LABELS,
 } from "../utils/nepaliCalendar";
 
-import { buildCompareLabel, isValidDraft } from "./AccountingPage";
+import { buildCompareLabel, isValidDraft } from "../utils/filterHelpers";
 
 // ─── Quarter list (static, no date math needed) ───────────────────────────────
 const QUARTERS = [

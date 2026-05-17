@@ -1,94 +1,114 @@
-/**
- * TrialBalanceTab.jsx
- *
- * Shows all accounts with debit/credit totals.
- * A balanced ledger always has totalDebit === totalCredit.
- * Data source: GET /api/ledger/trial-balance
- */
+import { AlertTriangleIcon, CheckCircle2Icon } from "lucide-react";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 
-import { CheckCircle2Icon, AlertTriangleIcon, ScaleIcon } from "lucide-react";
-import { Card, Lbl, Skeleton } from "../AccountingPrimitives";
+import { Skeleton } from "../AccountingPrimitives";
 import { useTrialBalance } from "../../hooks/useTrialBalance";
 import { useEntity } from "../../../context/EntityContext";
-
-function fmtPaisa(paisa = 0) {
-  const abs = Math.abs(paisa);
-  const sign = paisa < 0 ? "−" : "";
-  return `${sign}Rs ${(abs / 100).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
+import { fmtRs } from "../../../utils/formatter";
 
 const TYPE_LABELS = {
-  ASSET:     "Assets",
+  ASSET: "Assets",
   LIABILITY: "Liabilities",
-  EQUITY:    "Equity",
-  REVENUE:   "Revenue",
-  EXPENSE:   "Expenses",
+  EQUITY: "Equity",
+  REVENUE: "Revenue",
+  EXPENSE: "Expenses",
 };
 
-const TYPE_COLORS = {
-  ASSET:     "var(--color-info)",
-  LIABILITY: "var(--color-danger)",
-  EQUITY:    "var(--color-success)",
-  REVENUE:   "var(--color-primary)",
-  EXPENSE:   "var(--color-warning)",
-};
-
-const NORMAL_SIDE = { ASSET: "DR", EXPENSE: "DR", LIABILITY: "CR", REVENUE: "CR", EQUITY: "CR" };
+const TYPE_ORDER = [
+  "ASSET",
+  "LIABILITY",
+  "EQUITY",
+  "REVENUE",
+  "EXPENSE",
+];
 
 function SectionHeader({ type }) {
-  const color = TYPE_COLORS[type] ?? "var(--color-text-sub)";
   return (
-    <tr>
-      <td
+    <TableRow className="hover:bg-transparent border-0">
+      <TableCell
         colSpan={4}
-        className="pt-4 pb-1 text-[10px] font-bold tracking-[0.12em] uppercase"
-        style={{ color }}
+        className="pt-6 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
       >
         {TYPE_LABELS[type] ?? type}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
 function AccountRow({ row }) {
+  const debit =
+    row.balanceSide === "DR" ||
+    row.balanceSide === "CR (abnormal)";
+
+  const credit =
+    row.balanceSide === "CR" ||
+    row.balanceSide === "DR (abnormal)";
+
   const isAbnormal = row.balanceSide?.includes("abnormal");
+
   return (
-    <tr className="border-b border-[var(--color-border)]/30 hover:bg-[var(--color-surface-hover)] transition-colors">
-      <td className="py-2 pr-4 text-xs font-mono text-[var(--color-text-sub)] w-20">
+    <TableRow className="h-11">
+      <TableCell className="text-xs text-muted-foreground w-[90px]">
         {row.code}
-      </td>
-      <td className="py-2 pr-4 text-xs text-[var(--color-text)]">{row.name}</td>
-      <td className="py-2 pr-4 text-right text-xs font-mono">
-        {row.balanceSide === "DR" || row.balanceSide === "CR (abnormal)"
-          ? fmtPaisa(row.balance?.paisa ?? 0)
-          : "—"}
-      </td>
-      <td className="py-2 text-right text-xs font-mono">
-        {row.balanceSide === "CR" || row.balanceSide === "DR (abnormal)"
-          ? <span className={isAbnormal ? "text-[var(--color-danger)]" : ""}>
-              {fmtPaisa(row.balance?.paisa ?? 0)}
-            </span>
-          : "—"}
-      </td>
-    </tr>
+      </TableCell>
+
+      <TableCell className="text-sm font-medium">
+        <div className="flex items-center gap-2">
+          <span>{row.name}</span>
+
+          {isAbnormal && (
+            <AlertTriangleIcon className="h-3.5 w-3.5 text-destructive" />
+          )}
+        </div>
+      </TableCell>
+
+      <TableCell className="text-right text-sm tabular-nums">
+        {debit ? fmtRs(row.balance?.paisa ?? 0) : "—"}
+      </TableCell>
+
+      <TableCell
+        className={`text-right text-sm tabular-nums ${isAbnormal ? "text-destructive" : ""
+          }`}
+      >
+        {credit ? fmtRs(row.balance?.paisa ?? 0) : "—"}
+      </TableCell>
+    </TableRow>
   );
 }
 
 export default function TrialBalanceTab({ filterProps = {} }) {
   const { activeEntityId } = useEntity();
-  const { data, loading, error, refetch } = useTrialBalance(
+
+  const {
+    data,
+    loading,
+    error,
+    refetch,
+  } = useTrialBalance(
     activeEntityId ?? null,
     filterProps,
   );
 
   if (loading) {
     return (
-      <div className="space-y-3 p-4">
+      <div className="space-y-2">
         {[...Array(8)].map((_, i) => (
-          <Skeleton key={i} className="h-8 w-full" />
+          <Skeleton
+            key={i}
+            className="h-10 w-full rounded-xl"
+          />
         ))}
       </div>
     );
@@ -96,106 +116,148 @@ export default function TrialBalanceTab({ filterProps = {} }) {
 
   if (error) {
     return (
-      <div className="p-6 text-center text-sm text-[var(--color-danger)]">
-        {error}
-        <button
-          onClick={refetch}
-          className="block mx-auto mt-2 text-xs underline text-[var(--color-text-sub)]"
-        >
-          Retry
-        </button>
-      </div>
+      <Card className="border-destructive/30">
+        <CardContent className="flex flex-col items-center justify-center gap-3 py-10">
+          <AlertTriangleIcon className="h-5 w-5 text-destructive" />
+
+          <p className="text-sm text-muted-foreground">
+            {error}
+          </p>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refetch}
+          >
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   if (!data) return null;
 
-  const { rows = [], totals, isBalanced, discrepancy } = data;
+  const {
+    rows = [],
+    totals,
+    isBalanced,
+    discrepancy,
+  } = data;
 
-  // Group rows by type for section headers
-  const TYPE_ORDER = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"];
   const grouped = {};
+
   for (const row of rows) {
-    (grouped[row.type] = grouped[row.type] ?? []).push(row);
+    (grouped[row.type] = grouped[row.type] ?? []).push(
+      row,
+    );
   }
 
   return (
     <div className="space-y-4">
-      {/* Balance indicator */}
-      <div
-        className="flex items-center gap-3 px-5 py-4 rounded-xl"
-        style={{
-          background: isBalanced ? "var(--color-success-bg)" : "var(--color-danger-bg)",
-          border: `1px solid ${isBalanced ? "var(--color-success)" : "var(--color-danger)"}`,
-        }}
-      >
-        <div
-          className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-          style={{ background: isBalanced ? "var(--color-success)" : "var(--color-danger)" }}
-        >
-          {isBalanced
-            ? <CheckCircle2Icon size={16} color="#fff" />
-            : <AlertTriangleIcon size={16} color="#fff" />}
-        </div>
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">
-            {isBalanced ? "Ledger Balanced" : "Out of Balance"}
-          </div>
-          <div className="text-sm font-semibold text-[var(--color-text)]">
-            {isBalanced
-              ? `Total Debits = Total Credits = ${fmtPaisa(totals?.totalDebit?.paisa ?? 0)}`
-              : `Discrepancy: ${fmtPaisa(discrepancy?.paisa ?? 0)}`}
-          </div>
-        </div>
-      </div>
-
-      {/* Trial balance table */}
+      {/* Status */}
       <Card>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)]">
-                <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)] w-20">
-                  Code
-                </th>
-                <th className="py-2 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">
-                  Account
-                </th>
-                <th className="py-2 pr-4 text-right text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">
-                  Debit
-                </th>
-                <th className="py-2 text-right text-[10px] font-bold uppercase tracking-widest text-[var(--color-text-sub)]">
-                  Credit
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {TYPE_ORDER.map((type) =>
-                grouped[type]?.length ? (
-                  <>
-                    <SectionHeader key={`hdr-${type}`} type={type} />
-                    {grouped[type].map((row) => (
-                      <AccountRow key={`${row.code}-${type}`} row={row} />
-                    ))}
-                  </>
-                ) : null,
-              )}
+        <CardContent className="flex items-center justify-between py-4">
+          <div>
+            <p className="text-sm font-medium">
+              Trial Balance
+            </p>
 
-              {/* Totals row */}
-              <tr className="border-t-2 border-[var(--color-border)] font-bold">
-                <td colSpan={2} className="pt-3 pb-2 text-xs text-[var(--color-text-sub)] uppercase tracking-widest">
-                  Grand Total
-                </td>
-                <td className="pt-3 pb-2 text-right text-sm font-mono">
-                  {fmtPaisa(totals?.totalDebit?.paisa ?? 0)}
-                </td>
-                <td className="pt-3 pb-2 text-right text-sm font-mono">
-                  {fmtPaisa(totals?.totalCredit?.paisa ?? 0)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Debit and credit summary of all ledger
+              accounts.
+            </p>
+          </div>
+
+          <div
+            className={`flex items-center gap-2 text-sm font-medium ${isBalanced
+                ? "text-green-600"
+                : "text-destructive"
+              }`}
+          >
+            {isBalanced ? (
+              <>
+                <CheckCircle2Icon className="h-4 w-4" />
+                Balanced
+              </>
+            ) : (
+              <>
+                <AlertTriangleIcon className="h-4 w-4" />
+                Difference:{" "}
+                {fmtRs(discrepancy?.paisa ?? 0)}
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[90px]">
+                    Code
+                  </TableHead>
+
+                  <TableHead>Account</TableHead>
+
+                  <TableHead className="text-right">
+                    Debit
+                  </TableHead>
+
+                  <TableHead className="text-right">
+                    Credit
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+
+              <TableBody>
+                {TYPE_ORDER.map((type) =>
+                  grouped[type]?.length ? (
+                    <>
+                      <SectionHeader
+                        key={`hdr-${type}`}
+                        type={type}
+                      />
+
+                      {grouped[type].map((row) => (
+                        <AccountRow
+                          key={`${row.code}-${type}`}
+                          row={row}
+                        />
+                      ))}
+                    </>
+                  ) : null,
+                )}
+
+                {/* Total */}
+                <TableRow className="border-t-2 font-semibold bg-muted/30">
+                  <TableCell
+                    colSpan={2}
+                    className="text-sm"
+                  >
+                    Grand Total
+                  </TableCell>
+
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {fmtRs(
+                      totals?.totalDebit?.paisa ?? 0,
+                    )}
+                  </TableCell>
+
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {fmtRs(
+                      totals?.totalCredit?.paisa ?? 0,
+                    )}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
       </Card>
     </div>
   );

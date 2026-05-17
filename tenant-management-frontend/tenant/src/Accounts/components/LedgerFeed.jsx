@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Skeleton } from "./AccountingPrimitives";
 import { toBSDate } from "../utils/nepaliCalendar";
-import { fmtRs} from "../../utils/formatter"
 
 export default function LedgerFeed({ entries = [], loading, onViewAll }) {
     if (loading) {
@@ -31,7 +30,7 @@ export default function LedgerFeed({ entries = [], loading, onViewAll }) {
     }
 
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col p-2">
             {/* Column header */}
             <div className="flex items-center px-2 pb-1.5 mb-0.5 border-b border-[var(--color-border)]/60">
                 <span className="text-[9px] font-bold tracking-[0.12em] uppercase text-[var(--color-text-sub)] flex-1">
@@ -46,7 +45,7 @@ export default function LedgerFeed({ entries = [], loading, onViewAll }) {
             <div className="flex flex-col">
                 {recent.map((e, i) => {
                     const isDebit = (e.debit ?? 0) > 0;
-                    const amt = e.debit ?? e.credit ?? 0;
+                    const amt = isDebit ? (e.debit ?? 0) : (e.credit ?? 0);
                     const description = e.description ?? e.account?.name ?? "—";
 
                     return (
@@ -84,7 +83,7 @@ export default function LedgerFeed({ entries = [], loading, onViewAll }) {
                                             : "text-[var(--color-success)]",
                                     )}
                                 >
-                                    {isDebit ? "−" : "+"}RS {fmtRs(amt)}
+                                    {isDebit ? "−" : "+"}RS {(amt)}
                                 </div>
                             </div>
                         </div>

@@ -225,7 +225,7 @@ function TrialBalanceStrip({ trialBalance }) {
 
         <div
           className={cn(
-            "px-2 py-1 rounded-full text-xs font-bold text-white",
+            "px-2 py-2 rounded-full text-xs font-bold text-white",
             isBalanced ? "bg-emerald-600" : "bg-red-600"
           )}
         >
@@ -317,18 +317,13 @@ export default function BalanceSheetTab({
         </button>
       </div>
 
-      <EquationBanner
-        isBalanced={isBalanced}
-        totalAssets={totalAssets}
-        totalLiabilitiesAndEquity={totalLiabilitiesAndEquity}
-        discrepancy={discrepancy}
-      />
+
 
       {/* sections */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <SectionCard
           title="Assets"
-     
+
           accounts={assetAccounts}
           totalLabel="Total Assets"
           totalAmountObj={totalAssets}
@@ -336,7 +331,7 @@ export default function BalanceSheetTab({
 
         <SectionCard
           title="Liabilities"
-        
+
           accounts={liabilityAccounts}
           totalLabel="Total Liabilities"
           totalAmountObj={totalLiabilities}
@@ -344,7 +339,7 @@ export default function BalanceSheetTab({
 
         <SectionCard
           title="Equity"
-   
+
           accounts={equityAccounts}
           extraRows={retainedEarnings ? [retainedEarnings] : []}
           totalLabel="Total Equity"
@@ -353,7 +348,7 @@ export default function BalanceSheetTab({
       </div>
 
       <TrialBalanceStrip trialBalance={trialBalance} />
-  
+
     </div>
   );
 }

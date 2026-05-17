@@ -34,7 +34,7 @@ function triggerDownload(blob, filename) {
 }
 
 function sanitizeFilename(label) {
-  return String(label ?? "all").replace(/[^a-zA-Z0-9_\-\.]/g, "_");
+  return String(label ?? "all").replace(/[^a-zA-Z0-9_\-.]/g, "_");
 }
 
 function todayLabel() {
@@ -50,10 +50,6 @@ const MARGIN_L = 14;
 const MARGIN_R = 14;
 const BODY_W = PAGE_W - MARGIN_L - MARGIN_R;
 
-function addPage(doc) {
-  doc.addPage();
-  return MARGIN_L;
-}
 
 function drawHR(doc, y, color = [220, 220, 220]) {
   doc.setDrawColor(...color);
@@ -474,7 +470,6 @@ export function exportBalanceSheetPDF(
     doc.text(code, xx + indent, yy);
 
     // Truncate name
-    const maxW = (xx === MARGIN_L ? COL_L_W : COL_R_W) - 30 - indent;
     const nameStr = name.length > 35 ? name.slice(0, 34) + "…" : name;
     doc.setTextColor(40, 40, 40);
     doc.text(nameStr, xx + indent + 12, yy);

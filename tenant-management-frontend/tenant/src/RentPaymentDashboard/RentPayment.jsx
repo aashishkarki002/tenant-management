@@ -11,7 +11,7 @@ import { RentMetricsStrip } from "./components/RentMetricsStrip";
 import { exportRentsToCsv } from "./utils/rentExport";
 import api from "../../plugins/axios";
 import { NEPALI_MONTH_NAMES } from "@/utils/nepaliDate";
-import { NEPALI_QUARTERS, getQuarterForMonth } from "./utils/quarterUtils";
+import { NEPALI_QUARTERS, getQuarterForMonth, getQuarterMonthRange } from "./utils/quarterUtils";
 import { TdsTab } from "./components/TdsTab";
 import { useHeaderSlot } from "../context/HeaderSlotContext";
 import { cn } from "@/lib/utils";
@@ -218,6 +218,22 @@ const RentPayment = () => {
     return { paid, total };
   }, [frequencyFilteredRents]);
 
+  const tenantsWithArrears = useMemo(
+    () =>
+      frequencyFilteredRents.filter((r) => {
+        const pb = r.prevBalance;
+        if (!pb) return false;
+        const pbYear = pb.oldestOverdueNepaliYear;
+        const pbMonth = pb.oldestOverdueNepaliMonth;
+        if (pbYear == null || pbMonth == null) return false;
+        return (
+          pbYear < defaultRentYear ||
+          (pbYear === defaultRentYear && pbMonth < defaultRentMonth)
+        );
+      }).length,
+    [frequencyFilteredRents, defaultRentYear, defaultRentMonth],
+  );
+
   const activeFilterCount = useMemo(() => {
     let c = 0;
     if (filterStatus !== "all") c++;
@@ -260,6 +276,17 @@ const RentPayment = () => {
     setFilterPropertyId("");
     setSearchQuery("");
   };
+
+  // When quarter changes, sync electricity month to that quarter's first month.
+  // Changing filterRentMonth in quarterly mode only re-fetches electricity —
+  // getRents uses the full month range (getQuarterMonthRange), not filterRentMonth.
+  const handleQuarterChange = useCallback(
+    (q) => {
+      setFilterQuarter(q);
+      setFilterRentMonth(NEPALI_QUARTERS[q].months[0]);
+    },
+    [setFilterQuarter, setFilterRentMonth],
+  );
 
   const handleExportVisibleRents = useCallback(() => {
     exportRentsToCsv(displayRents, cams);
@@ -440,9 +467,38 @@ const RentPayment = () => {
               onFrequencyChange={setFrequencyView}
               quarter={filterQuarter}
               defaultQuarter={defaultQuarter}
-              onQuarterChange={setFilterQuarter}
+              onQuarterChange={handleQuarterChange}
             />
           </div>
+
+          {/* Quarterly electricity month selector */}
+          {frequencyView === "quarterly" && NEPALI_QUARTERS[filterQuarter] && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground shrink-0">
+                Electricity month:
+              </span>
+              <div className="flex items-center gap-1">
+                {NEPALI_QUARTERS[filterQuarter].months.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setFilterRentMonth(m)}
+                    className={cn(
+                      "h-6 px-2.5 rounded text-xs transition-colors",
+                      filterRentMonth === m
+                        ? "bg-muted text-foreground font-medium border border-border"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                    )}
+                  >
+                    {NEPALI_MONTH_NAMES[m - 1]}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-muted-foreground/60">
+                (rent &amp; CAM cover full quarter)
+              </span>
+            </div>
+          )}
 
           {/* Overdue callout */}
           {overdueCount > 0 && filterStatus !== "overdue" && (
@@ -456,6 +512,18 @@ const RentPayment = () => {
               year={filterRentYear}
               onShowOverdue={() => setFilterStatus("overdue")}
             />
+          )}
+
+          {/* Arrears from previous periods */}
+          {tenantsWithArrears > 0 && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-200/60 bg-amber-50/40 px-3 py-2 dark:bg-amber-950/15 dark:border-amber-900/40">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                <span className="font-medium">{tenantsWithArrears}</span>{" "}
+                {tenantsWithArrears === 1 ? "tenant has" : "tenants have"}{" "}
+                unpaid balances from previous periods — arrears shown per row in the table
+              </p>
+            </div>
           )}
 
           {/* Muted inline metrics summary */}
@@ -578,6 +646,9 @@ const RentPayment = () => {
                 onReset={handleClearRentFilters}
                 frequencyView={frequencyView}
                 onFrequencyChange={setFrequencyView}
+                quarter={filterQuarter}
+                defaultQuarter={defaultQuarter}
+                onQuarterChange={handleQuarterChange}
               />
             </div>
 

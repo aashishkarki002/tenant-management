@@ -44,6 +44,7 @@ import {
   Calendar,
   User,
   Building2,
+  RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -61,6 +62,7 @@ import TenantFinancials from "./components/TenantFinancials";
 import TenantDocuments from "./components/TenantDocument";
 import TenantPropertyAssignment from "./components/TenantPropertyAssignment";
 import Breadcrumb from "./components/Breadcrumb";
+import RentFrequencyModal from "./components/RentFrequencyModal";
 
 // Import custom hooks
 import { useTenantEdit } from "./hooks/useTenantEdit";
@@ -124,6 +126,7 @@ function EditTenant() {
 
   const [showComparison, setShowComparison] = useState(true);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [showFrequencyModal, setShowFrequencyModal] = useState(false);
 
   // Initialize formik
   const formik = useFormik({
@@ -357,9 +360,26 @@ function EditTenant() {
         {/* Section 4: Financial Details */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              <CardTitle>Financial Details</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                <CardTitle>Financial Details</CardTitle>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFrequencyModal(true)}
+                className="shrink-0"
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                Change Frequency
+                {tenant?.rentPaymentFrequency && (
+                  <Badge variant="secondary" className="ml-2 text-xs capitalize">
+                    {tenant.rentPaymentFrequency}
+                  </Badge>
+                )}
+              </Button>
             </div>
             <CardDescription>
               Rent, CAM charges, and security deposit
@@ -424,6 +444,15 @@ function EditTenant() {
           </div>
         </div>
       </form>
+
+      {/* Rent Frequency Change Modal */}
+      <RentFrequencyModal
+        open={showFrequencyModal}
+        onOpenChange={setShowFrequencyModal}
+        tenantId={id}
+        currentFrequency={tenant?.rentPaymentFrequency ?? "monthly"}
+        onSuccess={() => fetchTenant()}
+      />
 
       {/* Unsaved Changes Warning Dialog */}
       <Dialog open={showUnsavedWarning} onOpenChange={setShowUnsavedWarning}>

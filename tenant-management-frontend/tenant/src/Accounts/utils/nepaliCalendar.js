@@ -11,6 +11,7 @@ import {
   getTodayNepali,
   getCurrentNepaliYear,
   getCurrentNepaliMonth,
+  getCurrentNepaliMonthYear,
   getCurrentNepaliQuarter,
 
   // Month / quarter / year utilities
@@ -56,6 +57,7 @@ export {
   getTodayNepali,
   getCurrentNepaliYear,
   getCurrentNepaliMonth,
+  getCurrentNepaliMonthYear,
   getCurrentNepaliQuarter,
 
   // Month / quarter / year utilities

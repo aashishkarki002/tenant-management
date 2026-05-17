@@ -27,6 +27,7 @@ export function useAuditLog(filters = {}) {
       const params = {};
       if (filters.entityId)    params.entityId    = filters.entityId;
       if (filters.eventType)   params.eventType   = filters.eventType;
+      if (filters.actorType)   params.actorType   = filters.actorType;
       if (filters.performedBy) params.performedBy = filters.performedBy;
       if (filters.startDate)   params.startDate   = filters.startDate;
       if (filters.endDate)     params.endDate     = filters.endDate;
@@ -44,7 +45,7 @@ export function useAuditLog(filters = {}) {
       setLoading(false);
     }
   }, [
-    filters.entityId, filters.eventType, filters.performedBy,
+    filters.entityId, filters.eventType, filters.actorType, filters.performedBy,
     filters.startDate, filters.endDate, filters.page, filters.limit,
   ]);
 

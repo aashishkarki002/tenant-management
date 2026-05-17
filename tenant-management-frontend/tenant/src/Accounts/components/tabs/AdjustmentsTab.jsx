@@ -273,7 +273,7 @@ function PostAdjustmentModal({ entityId, onClose, onPosted }) {
                                 "mt-2 text-xs font-semibold",
                                 manualBalance.balanced ? "text-[var(--color-success)]" : "text-[var(--color-danger)]",
                             )}>
-                                DR {fmtPaisa(manualBalance.dr)} / CR {fmtPaisa(manualBalance.cr)}
+                                DR {fmtRs(manualBalance.dr)} / CR {fmtRs(manualBalance.cr)}
                                 {manualBalance.balanced ? " — Balanced" : " — Unbalanced"}
                             </div>
                         </div>
@@ -380,7 +380,7 @@ function AdjRow({ item }) {
                     </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-[var(--color-text-body)] font-semibold">
-                    {item.amountPaisa != null ? fmtPaisa(item.amountPaisa) : "—"}
+                    {item.amountPaisa != null ? fmtRs(item.amountPaisa) : "—"}
                 </td>
                 <td className="px-4 py-3 text-sm text-[var(--color-text-sub)]">{item.reason ?? "—"}</td>
                 <td className="px-4 py-3 text-xs text-[var(--color-text-sub)]">
@@ -422,7 +422,7 @@ function AdjRow({ item }) {
                                     <tr key={i} className="border-t border-[var(--color-border)]">
                                         <td className="py-1 pr-4 font-mono">{e.accountCode}</td>
                                         <td className={cn("py-1 pr-4 font-bold", e.side === "DR" ? "text-orange-600" : "text-blue-600")}>{e.side}</td>
-                                        <td className="py-1 text-right font-semibold">{fmtPaisa(e.amountPaisa)}</td>
+                                        <td className="py-1 text-right font-semibold">{fmtRs(e.amountPaisa)}</td>
                                     </tr>
                                 ))}
                             </tbody>

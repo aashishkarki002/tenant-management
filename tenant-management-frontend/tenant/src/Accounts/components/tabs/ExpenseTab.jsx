@@ -1,8 +1,6 @@
 import ExpenseBreakDown from "../ExpenseBreakDown";
 export default function ExpensesTab({
     filterProps,
-    filterLabel,
-    totalExpenses,
     pendingAction,
     onDialogOpenHandled,
     onExpenseAdded,

@@ -15,12 +15,12 @@ export const NAV_GROUPS = [
         label: "Financials",
         Icon: LayoutDashboard,
         tabs: [
-            { id: "overview",         label: "Overview" },
-            { id: "profit-loss",      label: "Profit & Loss" },
-            { id: "balance-sheet",    label: "Balance Sheet" },
-            { id: "cash-flow",        label: "Cash Flow" },
+            { id: "overview", label: "Overview" },
+            { id: "profit-loss", label: "Profit & Loss" },
+            { id: "balance-sheet", label: "Balance Sheet" },
+            { id: "cash-flow", label: "Cash Flow" },
             { id: "financial-ratios", label: "Ratios" },
-            { id: "trial-balance",    label: "Trial Balance" },
+            { id: "trial-balance", label: "Trial Balance" },
         ],
     },
     {
@@ -28,10 +28,10 @@ export const NAV_GROUPS = [
         label: "Income",
         Icon: TrendingUp,
         tabs: [
-            { id: "revenue",          label: "Revenue" },
-            { id: "ar-aging",         label: "AR Aging" },
+            { id: "revenue", label: "Revenue" },
+            { id: "ar-aging", label: "AR Aging" },
             { id: "tenant-statement", label: "Tenant Statement" },
-            { id: "advance-rent",     label: "Advance Rent" },
+            { id: "advance-rent", label: "Advance Rent" },
         ],
     },
     {
@@ -39,11 +39,10 @@ export const NAV_GROUPS = [
         label: "Expenses",
         Icon: TrendingDown,
         tabs: [
-            { id: "expenses",           label: "Expenses" },
-            { id: "vendor-bills",       label: "Vendor Bills" },
-            { id: "budget",             label: "Budget" },
-            { id: "petty-cash",         label: "Petty Cash" },
-            { id: "cam-reconciliation", label: "CAM Recon" },
+            { id: "expenses", label: "Expenses" },
+            { id: "vendor-bills", label: "Vendor Bills" },
+
+
         ],
     },
     {
@@ -51,8 +50,8 @@ export const NAV_GROUPS = [
         label: "Banking",
         Icon: Landmark,
         tabs: [
-            { id: "banking",             label: "Banking" },
-            { id: "ledger",              label: "Ledger" },
+            { id: "banking", label: "Banking" },
+            { id: "ledger", label: "Ledger" },
             { id: "bank-reconciliation", label: "Bank Recon" },
         ],
     },
@@ -61,12 +60,12 @@ export const NAV_GROUPS = [
         label: "Operations",
         Icon: Settings2,
         tabs: [
-            { id: "liabilities",        label: "Liabilities" },
-            { id: "projections",        label: "Projections" },
-            { id: "adjustments",        label: "Adjustments" },
-            { id: "owner-distribution", label: "Owner Distribution" },
-            { id: "vacate-settlement",  label: "Vacate Settlement" },
-            { id: "property-pl",        label: "Property P&L" },
+            { id: "liabilities", label: "Liabilities" },
+            { id: "projections", label: "Projections" },
+            { id: "adjustments", label: "Adjustments" },
+
+            { id: "vacate-settlement", label: "Vacate Settlement" },
+
         ],
     },
     {
@@ -74,8 +73,8 @@ export const NAV_GROUPS = [
         label: "Compliance",
         Icon: ShieldCheck,
         tabs: [
-            { id: "tds-filing",     label: "TDS Filing" },
-            { id: "audit-log",      label: "Audit Log" },
+            { id: "tds-filing", label: "TDS Filing" },
+            { id: "audit-log", label: "Audit Log" },
             { id: "year-end-close", label: "Year-End Close" },
             { id: "coa-management", label: "Chart of Accounts" },
         ],

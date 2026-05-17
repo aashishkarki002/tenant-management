@@ -108,19 +108,6 @@ function getEntityTypeLabel(type) {
   }
 }
 
-function ownershipEntityIdFromBlock(block) {
-  if (!block) return "";
-  const ref = block.ownershipEntityId ?? block.ownershipEntity;
-  const id = ref?._id ?? ref;
-  return id != null ? String(id) : "";
-}
-
-function blocksForOwnershipEntity(blocks, entityId) {
-  if (!entityId || !Array.isArray(blocks)) return [];
-  const target = String(entityId);
-  return blocks.filter((b) => ownershipEntityIdFromBlock(b) === target);
-}
-
 function getInitialValues() {
   const date = new Date().toISOString().split("T")[0];
   return {
@@ -195,7 +182,6 @@ export function AddExpenseDialog({
   // Fetch all ownership entities and blocks via hook
   const {
     entities: rawEntities,
-    blocks,
     loading: entitiesLoading,
     getBlocksForEntity
   } = useOwnership();
@@ -482,7 +468,8 @@ export function AddExpenseDialog({
           <div className="space-y-2">
             <FieldLabel>Payee Type</FieldLabel>
             <div className="grid grid-cols-3 gap-2">
-              {PAYEE_TYPES.map(({ value, label, icon: Icon, description }) => {
+              {PAYEE_TYPES.map(({ value, label, icon, description }) => {
+                const IconCmp = icon;
                 const active = payeeType === value;
                 return (
                   <button
@@ -513,7 +500,7 @@ export function AddExpenseDialog({
                     {active && (
                       <CheckCircle2 className="absolute top-2 right-2 w-3.5 h-3.5 text-primary" />
                     )}
-                    <Icon className="w-5 h-5" />
+                    <IconCmp className="w-5 h-5" />
                     <span className="text-xs font-semibold">{label}</span>
                     <span className="text-[10px] leading-tight opacity-70 hidden sm:block">
                       {description}

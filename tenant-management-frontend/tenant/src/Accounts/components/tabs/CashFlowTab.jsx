@@ -223,9 +223,12 @@ export default function CashFlowTab({
     chartData = [],
     loadingChart,
 }) {
-    const inflows = summary?.incomeStreams?.breakdown ?? [];
-    const outflows = summary?.expensesBreakdown ?? [];
-    const { totalRevenue = 0, totalExpenses = 0, netCashFlow = 0 } = totals;
+    const cfb = summary?.cashFlowBreakdown;
+    const inflows = cfb?.inflows ?? [];
+    const outflows = cfb?.outflows ?? [];
+    const totalRevenue = cfb?.totalIn ?? 0;
+    const totalExpenses = cfb?.totalOut ?? 0;
+    const netCashFlow = cfb?.net ?? 0;
     const isDeficit = netCashFlow < 0;
     const netColor = isDeficit ? C.netNeg : C.net;
     const margin = totalRevenue > 0 ? ((netCashFlow / totalRevenue) * 100).toFixed(1) : "—";

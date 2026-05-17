@@ -35,5 +35,11 @@ export function useAdvanceRent(entityId = null) {
     return res.data?.data;
   }, [fetch]);
 
-  return { data, loading, error, refetch: fetch, receive, recognize };
+  const allocate = useCallback(async (advanceRentId, payload) => {
+    const res = await api.post(`/api/advance-rent/${advanceRentId}/allocate`, payload);
+    await fetch();
+    return res.data?.data;
+  }, [fetch]);
+
+  return { data, loading, error, refetch: fetch, receive, recognize, allocate };
 }
