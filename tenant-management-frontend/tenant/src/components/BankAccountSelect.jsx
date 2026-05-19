@@ -65,7 +65,7 @@ export default function BankAccountSelect({
     >
       <SelectTrigger
         id={id}
-        className={`min-h-[64px] px-4 py-3 ${triggerClassName ?? className}`}
+        className={`min-h-[40px] px-4 py-3 ${triggerClassName ?? className}`}
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
