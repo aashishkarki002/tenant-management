@@ -20,6 +20,7 @@ import {
   Megaphone,
   CalendarDays,
   ShieldCheck,
+  FlaskConical,
 } from "lucide-react";
 
 import {
@@ -63,7 +64,7 @@ const NAV_GROUPS = [
   {
     label: "Core",
     items: [
-      { title: "Buildings", url: "/buildings", icon: Building2 },
+      // { title: "Buildings", url: "/buildings", icon: Building2 },
       { title: "Units", url: "/units", icon: DoorOpen },
       { title: "Tenants", url: "/tenants", icon: Users },
       { title: "Staff", url: "/staff", icon: UserCog },
@@ -101,6 +102,12 @@ const NAV_GROUPS = [
       { title: "Vendors", url: "/vendors", icon: Store },
     ],
   },
+  ...(import.meta.env.DEV ? [{
+    label: "Dev",
+    items: [
+      { title: "Dev Tools", url: "/dev-tools", icon: FlaskConical },
+    ],
+  }] : []),
 ];
 
 /* ─── HELPERS ────────────────────────────────────────────────────────────── */

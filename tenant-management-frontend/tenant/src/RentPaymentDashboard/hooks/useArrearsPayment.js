@@ -109,6 +109,16 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
     [selectedArrears],
   );
 
+  const selectedCamPaisa = useMemo(
+    () => selectedArrears.reduce((sum, r) => sum + (r.camRemainingPaisa ?? 0), 0),
+    [selectedArrears],
+  );
+
+  const selectedElectricityPaisa = useMemo(
+    () => selectedArrears.reduce((sum, r) => sum + (r.electricityRemainingPaisa ?? 0), 0),
+    [selectedArrears],
+  );
+
   const amountNum = parseFloat(amount) || 0;
   const amountPaisa = Math.round(amountNum * 100);
 
@@ -300,6 +310,8 @@ export const useArrearsPayment = ({ tenant, onSuccess, onClose } = {}) => {
     selectedTotalPaisa,
     selectedRentOnlyPaisa,
     selectedLateFeePaisa,
+    selectedCamPaisa,
+    selectedElectricityPaisa,
     toggleMonth,
     selectAll,
     deselectAll,

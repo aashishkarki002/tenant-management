@@ -18,80 +18,9 @@ import {
 import { exportBalanceSheetPDF } from "../../utils/exportUtils";
 import { useEntity } from "../../../context/EntityContext";
 import { fmtRs } from "../../../utils/formatter";
+import HashLoader from "react-spinners/HashLoader";
 
 
-// ─────────────────────────────────────────────
-// Equation Banner
-// ─────────────────────────────────────────────
-function EquationBanner({
-  isBalanced,
-  totalAssets,
-  totalLiabilitiesAndEquity,
-  discrepancy,
-}) {
-  const color = isBalanced ? "text-emerald-600" : "text-red-600";
-  const bg = isBalanced ? "bg-emerald-50" : "bg-red-50";
-  const Icon = isBalanced ? CheckCircle2Icon : AlertTriangleIcon;
-
-  return (
-    <div className={cn("p-4 rounded-xl border flex flex-col gap-3", bg)}>
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center">
-            <ScaleIcon size={18} className="text-white" />
-          </div>
-
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
-              Balance Sheet Equation
-            </p>
-            <p className="text-sm font-semibold">
-              Assets = Liabilities + Equity
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6">
-          <div className="text-right">
-            <p className="text-[10px] uppercase text-muted-foreground">
-              Assets
-            </p>
-            <p className={cn("font-bold text-sm", color)}>
-              {fmtRs(totalAssets?.paisa ?? 0)}
-            </p>
-          </div>
-
-          <span className="font-bold text-muted-foreground">=</span>
-
-          <div className="text-right">
-            <p className="text-[10px] uppercase text-muted-foreground">
-              L + E
-            </p>
-            <p className={cn("font-bold text-sm", color)}>
-              {fmtRs(totalLiabilitiesAndEquity?.paisa ?? 0)}
-            </p>
-          </div>
-
-          <div
-            className={cn(
-              "flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold text-white",
-              isBalanced ? "bg-emerald-600" : "bg-red-600"
-            )}
-          >
-            <Icon size={12} />
-            {isBalanced ? "Balanced" : "Out of Balance"}
-          </div>
-        </div>
-      </div>
-
-      {!isBalanced && discrepancy?.paisa > 0 && (
-        <p className="text-xs text-red-600 font-medium">
-          Discrepancy: {fmtRs(discrepancy.paisa)} — check ledger integrity.
-        </p>
-      )}
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────
 // Account Row
@@ -109,7 +38,7 @@ function AccountRow({ account }) {
       )}
     >
       <div className="flex gap-2 min-w-0">
-        <span className="text-[10px] font-mono text-muted-foreground">
+        <span className="text-[10px] text-muted-foreground">
           {account.code}
         </span>
         <span
@@ -257,7 +186,12 @@ export default function BalanceSheetTab({
   const entityName =
     entities?.find((e) => e._id === activeEntityId)?.name ?? "";
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-[70vh] w-full">
+        <HashLoader color="#1a5276" />
+      </div>
+    );
 
   if (error)
     return (

@@ -12,8 +12,6 @@
  */
 
 import { EntityBadge } from "./EntityBadge";
-import { Button } from "@/components/ui/button";
-import { ArrowLeftRight } from "lucide-react";
 
 const fmtPaisa = (p) =>
     p != null
@@ -59,19 +57,19 @@ export function BlockCard({ block, selected, onSelect, onMigrate }) {
             <div className="grid grid-cols-3 gap-2 mb-4">
                 <div className="rounded-lg bg-secondary px-2.5 py-2">
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Revenue</p>
-                    <p className="text-xs font-bold text-foreground font-mono leading-tight">
+                    <p className="text-xs font-bold text-foreground  leading-tight">
                         {fmtPaisa(block.monthlyRevenuePaisa ?? block.revenuePaisa)}
                     </p>
                 </div>
                 <div className="rounded-lg bg-secondary px-2.5 py-2">
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Tenants</p>
-                    <p className="text-xs font-bold text-foreground font-mono">
+                    <p className="text-xs font-bold text-foreground ">
                         {block.activeTenants ?? block.tenants ?? "—"}
                     </p>
                 </div>
                 <div className={`rounded-lg px-2.5 py-2 ${outstanding > 0 ? "bg-destructive/10" : "bg-secondary"}`}>
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Due</p>
-                    <p className={`text-xs font-bold font-mono ${outstanding > 0 ? "text-destructive" : "text-foreground"}`}>
+                    <p className={`text-xs font-bold  ${outstanding > 0 ? "text-destructive" : "text-foreground"}`}>
                         {outstanding > 0 ? fmtPaisa(outstanding) : "—"}
                     </p>
                 </div>
@@ -81,7 +79,7 @@ export function BlockCard({ block, selected, onSelect, onMigrate }) {
             <div className="mb-4">
                 <div className="flex justify-between text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wider">
                     <span>Occupancy</span>
-                    <span className="font-mono">{occupiedUnits}/{totalUnits} · {occupancy}%</span>
+                    <span className="">{occupiedUnits}/{totalUnits} · {occupancy}%</span>
                 </div>
                 <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
                     <div
@@ -96,15 +94,6 @@ export function BlockCard({ block, selected, onSelect, onMigrate }) {
                 <p className="text-[11px] text-muted-foreground truncate">
                     {block.ownershipEntity?.name ?? "No entity assigned"}
                 </p>
-                {selected && (
-                    <Button
-                        size="sm"
-                        className="h-7 text-[11px] px-3 gap-1 ml-2 shrink-0"
-                        onClick={(e) => { e.stopPropagation(); onMigrate(); }}
-                    >
-                        <ArrowLeftRight className="w-3 h-3" />Migrate
-                    </Button>
-                )}
             </div>
         </button>
     );

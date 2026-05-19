@@ -1,10 +1,3 @@
-/**
- * Buildings.jsx — /buildings route
- *
- * Renders the full organization view: entities, block cards,
- * migration wizard, and audit log.
- */
-
 import { OrganizationTab } from "./organization/OrganizationTab";
 
 export default function Buildings() {

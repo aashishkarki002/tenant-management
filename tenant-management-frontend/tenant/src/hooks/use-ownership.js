@@ -17,7 +17,9 @@ function useOwnership() {
         ]);
 
         if (entitiesRes.data.success) {
-          setEntities(entitiesRes.data.data || []);
+          const allEntities = entitiesRes.data.data || [];
+          // Exclude head_office — only relevant in full multi-entity mode
+          setEntities(allEntities.filter(e => e.type !== "head_office"));
         } else {
           throw new Error(entitiesRes.data.message || "Failed to fetch entities");
         }

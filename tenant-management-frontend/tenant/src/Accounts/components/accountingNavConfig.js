@@ -29,6 +29,7 @@ export const NAV_GROUPS = [
         Icon: TrendingUp,
         tabs: [
             { id: "revenue", label: "Revenue" },
+            { id: "revenue-collection", label: "Collection" },
             { id: "ar-aging", label: "AR Aging" },
             { id: "tenant-statement", label: "Tenant Statement" },
             { id: "advance-rent", label: "Advance Rent" },

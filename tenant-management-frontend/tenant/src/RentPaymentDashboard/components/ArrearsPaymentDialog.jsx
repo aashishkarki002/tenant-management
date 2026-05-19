@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
     Select,
@@ -33,31 +34,20 @@ import { cn } from "@/lib/utils";
 import { useArrearsPayment } from "../hooks/useArrearsPayment";
 import DualCalendarTailwind from "../../components/dualDate";
 import BankAccountSelect from "@/components/BankAccountSelect";
-import {
-    getLedgerPaymentMethodSelectOptions,
-} from "@/constants/paymentMethods.js";
+import { getLedgerPaymentMethodSelectOptions } from "@/constants/paymentMethods.js";
+import { STATUS_LABEL, STATUS_BADGE_STYLES } from "../constants/paymentConstants";
 
-// ── Nepali month names ────────────────────────────────────────────────────────
-const NEPALI_MONTHS = [
-    "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
-    "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
-];
-
-// ── Status badge ──────────────────────────────────────────────────────────────
-const STATUS_CLASS = {
-    overdue: "bg-red-50 text-red-700 border-red-200",
-    pending: "bg-amber-50 text-amber-700 border-amber-200",
-    partially_paid: "bg-orange-50 text-orange-700 border-orange-200",
-};
-
-const STATUS_LABEL = {
-    overdue: "Overdue",
-    pending: "Pending",
-    partially_paid: "Partial",
-};
-
+// ── Shared helpers ────────────────────────────────────────────────────────────
 const fmtRs = (n) =>
-    `Rs ${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+    `RS ${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+function SectionLabel({ children }) {
+    return (
+        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-2">
+            {children}
+        </p>
+    );
+}
 
 // ── Month row ─────────────────────────────────────────────────────────────────
 const MonthRow = ({ record, checked, onToggle }) => (
@@ -65,7 +55,7 @@ const MonthRow = ({ record, checked, onToggle }) => (
         className={cn(
             "flex items-start gap-3 px-3 py-2.5 border-b border-border last:border-b-0",
             "cursor-pointer select-none transition-colors",
-            checked ? "bg-amber-50/50" : "hover:bg-accent/40",
+            checked ? "bg-primary/5" : "hover:bg-accent/40",
         )}
         onClick={() => onToggle(record._id)}
     >
@@ -87,14 +77,14 @@ const MonthRow = ({ record, checked, onToggle }) => (
                 <Badge
                     className={cn(
                         "capitalize border text-[10px] px-1.5 py-0.5 font-medium",
-                        STATUS_CLASS[record.status] ?? "bg-gray-100 text-gray-700 border-gray-200",
+                        STATUS_BADGE_STYLES[record.status] ?? "bg-muted text-muted-foreground border-transparent",
                     )}
                 >
                     {STATUS_LABEL[record.status] ?? record.status}
                 </Badge>
             </div>
             {record.hasLateFee && (
-                <p className="text-[10px] text-rose-600 mt-0.5">
+                <p className="text-[10px] text-destructive mt-0.5">
                     + {fmtRs(record.remainingLateFee)} late fee
                 </p>
             )}
@@ -106,8 +96,10 @@ const MonthRow = ({ record, checked, onToggle }) => (
                 {fmtRs(record.totalRemaining)}
             </p>
             {record.remainingRentPaisa !== record.totalRemainingPaisa && (
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
                     rent {fmtRs(record.remainingRent)}
+                    {(record.camRemainingPaisa ?? 0) > 0 && ` · cam ${fmtRs(record.camRemaining)}`}
+                    {(record.electricityRemainingPaisa ?? 0) > 0 && ` · elec ${fmtRs(record.electricityRemaining)}`}
                 </p>
             )}
         </div>
@@ -134,6 +126,8 @@ export const ArrearsPaymentDialog = ({
         selectedTotal,
         selectedRentOnlyPaisa,
         selectedLateFeePaisa,
+        selectedCamPaisa,
+        selectedElectricityPaisa,
         toggleMonth,
         selectAll,
         deselectAll,
@@ -173,7 +167,6 @@ export const ArrearsPaymentDialog = ({
     const allSelected = arrears.length > 0 && selectedIds.size === arrears.length;
     const paymentMethodOptions = getLedgerPaymentMethodSelectOptions();
 
-    // Balance display
     const balancePaisa = Math.round(amountNum * 100) - (selectedIds.size > 0
         ? selectedArrears.reduce((s, r) => s + r.totalRemainingPaisa, 0)
         : 0);
@@ -228,9 +221,7 @@ export const ArrearsPaymentDialog = ({
                     {!loading && arrears.length > 0 && (
                         <div>
                             <div className="flex items-center justify-between mb-1.5">
-                                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                                    Select months
-                                </p>
+                                <SectionLabel>Select months</SectionLabel>
                                 <button
                                     type="button"
                                     className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
@@ -254,42 +245,66 @@ export const ArrearsPaymentDialog = ({
 
                     {/* ── Summary strip ───────────────────────────────────────────────── */}
                     {selectedIds.size > 0 && (
-                        <div className="grid grid-cols-3 gap-3 rounded-md bg-muted/40 border border-border px-4 py-3">
-                            <div>
-                                <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                                    Months
-                                </p>
-                                <p className="text-sm font-semibold mt-0.5">{selectedIds.size}</p>
+                        <div className="rounded-md bg-muted/40 border border-border px-4 py-3 space-y-2">
+                            <div className="grid grid-cols-3 gap-3">
+                                <div>
+                                    <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                                        Months
+                                    </p>
+                                    <p className="text-sm font-semibold mt-0.5">{selectedIds.size}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                                        Rent
+                                    </p>
+                                    <p className="text-sm font-semibold mt-0.5 tabular-nums">
+                                        {fmtRs(selectedRentOnlyPaisa / 100)}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                                        Late fees
+                                    </p>
+                                    <p className={cn(
+                                        "text-sm font-semibold mt-0.5 tabular-nums",
+                                        selectedLateFeePaisa > 0 ? "text-destructive" : "text-muted-foreground",
+                                    )}>
+                                        {selectedLateFeePaisa > 0 ? fmtRs(selectedLateFeePaisa / 100) : "—"}
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                                    Rent
-                                </p>
-                                <p className="text-sm font-semibold mt-0.5 tabular-nums">
-                                    {fmtRs(selectedRentOnlyPaisa / 100)}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                                    Late fees
-                                </p>
-                                <p className={cn(
-                                    "text-sm font-semibold mt-0.5 tabular-nums",
-                                    selectedLateFeePaisa > 0 ? "text-rose-600" : "text-muted-foreground",
-                                )}>
-                                    {selectedLateFeePaisa > 0 ? fmtRs(selectedLateFeePaisa / 100) : "—"}
-                                </p>
-                            </div>
+                            {(selectedCamPaisa > 0 || selectedElectricityPaisa > 0) && (
+                                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/60">
+                                    {selectedCamPaisa > 0 && (
+                                        <div>
+                                            <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                                                CAM
+                                            </p>
+                                            <p className="text-sm font-semibold mt-0.5 tabular-nums">
+                                                {fmtRs(selectedCamPaisa / 100)}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {selectedElectricityPaisa > 0 && (
+                                        <div>
+                                            <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                                                Electricity
+                                            </p>
+                                            <p className="text-sm font-semibold mt-0.5 tabular-nums">
+                                                {fmtRs(selectedElectricityPaisa / 100)}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 
                     <Separator />
 
                     {/* ── Payment date ─────────────────────────────────────────────────── */}
-                    <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                            Payment date
-                        </p>
+                    <div className="space-y-1.5">
+                        <Label className="text-[12px]">Payment date</Label>
                         <DualCalendarTailwind
                             value={paymentDate}
                             nepaliValue={nepaliDate}
@@ -301,10 +316,8 @@ export const ArrearsPaymentDialog = ({
                     </div>
 
                     {/* ── Amount ──────────────────────────────────────────────────────── */}
-                    <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                            Amount received (Rs)
-                        </p>
+                    <div className="space-y-1.5">
+                        <Label className="text-[12px]">Amount received (Rs)</Label>
                         <div className="flex items-center gap-2">
                             <Input
                                 type="number"
@@ -327,11 +340,14 @@ export const ArrearsPaymentDialog = ({
                             </Button>
                         </div>
 
-                        {/* Over/under indicator */}
                         {amountNum > 0 && selectedIds.size > 0 && (
                             <p className={cn(
-                                "text-[11px] mt-1.5",
-                                overpaying ? "text-amber-600" : underpaying ? "text-sky-600" : "text-emerald-600",
+                                "text-[11px] mt-1",
+                                overpaying
+                                    ? "text-amber-600"
+                                    : underpaying
+                                        ? "text-muted-foreground"
+                                        : "text-emerald-600",
                             )}>
                                 {overpaying
                                     ? `RS ${Math.abs(balancePaisa / 100).toLocaleString()} more than due — will be noted`
@@ -343,10 +359,8 @@ export const ArrearsPaymentDialog = ({
                     </div>
 
                     {/* ── Payment method ───────────────────────────────────────────────── */}
-                    <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                            Payment method
-                        </p>
+                    <div className="space-y-1.5">
+                        <Label className="text-[12px]">Payment method</Label>
                         <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                             <SelectTrigger className="h-8 text-sm">
                                 <SelectValue placeholder="Select method…" />
@@ -365,19 +379,15 @@ export const ArrearsPaymentDialog = ({
                     {isCheque && (
                         <div>
                             <div className="flex items-center justify-between mb-2">
-                                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                                    Cheque details
-                                </p>
+                                <SectionLabel>Cheque details</SectionLabel>
                                 <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">
                                     Pending clearance
                                 </span>
                             </div>
                             <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                                            Cheque number *
-                                        </p>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[12px]">Cheque number *</Label>
                                         <Input
                                             placeholder="e.g. 001234"
                                             value={chequeNumber}
@@ -385,10 +395,8 @@ export const ArrearsPaymentDialog = ({
                                             className="h-8 text-xs"
                                         />
                                     </div>
-                                    <div>
-                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                                            Issuing bank *
-                                        </p>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[12px]">Issuing bank *</Label>
                                         <Input
                                             placeholder="e.g. Nabil Bank"
                                             value={chequeBankName}
@@ -398,10 +406,11 @@ export const ArrearsPaymentDialog = ({
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                                            Account holder <span className="normal-case font-normal">(optional)</span>
-                                        </p>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[12px]">
+                                            Account holder{" "}
+                                            <span className="normal-case font-normal text-muted-foreground">(optional)</span>
+                                        </Label>
                                         <Input
                                             placeholder="Name on cheque"
                                             value={chequeAccountName}
@@ -409,10 +418,11 @@ export const ArrearsPaymentDialog = ({
                                             className="h-8 text-xs"
                                         />
                                     </div>
-                                    <div>
-                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                                            Branch <span className="normal-case font-normal">(optional)</span>
-                                        </p>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[12px]">
+                                            Branch{" "}
+                                            <span className="normal-case font-normal text-muted-foreground">(optional)</span>
+                                        </Label>
                                         <Input
                                             placeholder="e.g. New Baneshwor"
                                             value={chequeBranch}
@@ -427,10 +437,8 @@ export const ArrearsPaymentDialog = ({
 
                     {/* ── Bank account ─────────────────────────────────────────────────── */}
                     {needsBankAccount && (
-                        <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                                Bank account
-                            </p>
+                        <div className="space-y-1.5">
+                            <Label className="text-[12px]">Bank account</Label>
                             <BankAccountSelect
                                 bankAccounts={bankAccounts}
                                 value={bankAccountId}
@@ -445,10 +453,11 @@ export const ArrearsPaymentDialog = ({
 
                     {/* ── Optional fields ──────────────────────────────────────────────── */}
                     <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                                Transaction ref
-                            </p>
+                        <div className="space-y-1.5">
+                            <Label className="text-[12px]">
+                                Transaction ref{" "}
+                                <span className="font-normal text-muted-foreground">(optional)</span>
+                            </Label>
                             <Input
                                 value={transactionRef}
                                 onChange={(e) => setTransactionRef(e.target.value)}
@@ -456,10 +465,11 @@ export const ArrearsPaymentDialog = ({
                                 className="h-8 text-xs"
                             />
                         </div>
-                        <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                                Note
-                            </p>
+                        <div className="space-y-1.5">
+                            <Label className="text-[12px]">
+                                Note{" "}
+                                <span className="font-normal text-muted-foreground">(optional)</span>
+                            </Label>
                             <Input
                                 value={note}
                                 onChange={(e) => setNote(e.target.value)}
@@ -471,8 +481,8 @@ export const ArrearsPaymentDialog = ({
 
                     {/* ── Partial payment notice ───────────────────────────────────────── */}
                     {underpaying && amountNum > 0 && (
-                        <div className="flex items-start gap-2 rounded-md bg-sky-50 border border-sky-200 px-3 py-2.5 text-xs text-sky-700">
-                            <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+                        <div className="flex items-start gap-2 rounded-md bg-muted/40 border border-border px-3 py-2.5 text-xs text-muted-foreground">
+                            <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-amber-500" />
                             <span>
                                 Amount is less than selected total. Oldest months are cleared
                                 first; remaining balance stays outstanding.

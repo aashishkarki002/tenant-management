@@ -8,7 +8,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { C, fmtRupees } from "../../Loans/loan.constants";
+import { C } from "../../Loans/loan.constants";
+import { formatPaisa } from "../../utils/formatter";
 import { bounceCheque, cancelCheque } from "../hooks/useChequeDrafts";
 
 /**
@@ -56,7 +57,7 @@ export function BounceDialog({ draft, mode = "bounce", open, onOpenChange, onSuc
         <DialogHeader>
           <DialogTitle style={{ color: C.text }}>{title}</DialogTitle>
           <p className="text-[12px]" style={{ color: C.textMuted }}>
-            Cheque #{draft.chequeNumber} · {fmtRupees(draft.amountPaisa)}
+            Cheque #{draft.chequeNumber} · {formatPaisa(draft.amountPaisa)}
           </p>
         </DialogHeader>
 

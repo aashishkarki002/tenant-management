@@ -1,5 +1,6 @@
 import { ArrowUpRight, ArrowDownLeft, Clock, TrendingUp } from "lucide-react";
-import { C, fmtRupees } from "../../Loans/loan.constants";
+import { C } from "../../Loans/loan.constants";
+import { formatPaisa } from "../../utils/formatter";
 
 function KpiCard({ label, value, sub, color, bgColor, icon: Icon }) {
   return (
@@ -41,16 +42,9 @@ export function ChequeDraftKpiStrip({ summary, loading, entitySelected }) {
     );
   }
 
-  if (!entitySelected || !summary) {
-    return (
-      <div
-        className="rounded-2xl border px-4 py-3 text-[12px]"
-        style={{ borderColor: C.border, color: C.textMuted, background: C.surface }}
-      >
-        Select an entity to view cheque summary.
-      </div>
-    );
-  }
+
+
+  if (!summary) return null;
 
   const { pendingIssued, pendingReceived } = summary;
 
@@ -58,7 +52,7 @@ export function ChequeDraftKpiStrip({ summary, loading, entitySelected }) {
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
       <KpiCard
         label="Issued Pending"
-        value={fmtRupees(pendingIssued.totalAmountPaisa)}
+        value={formatPaisa(pendingIssued.totalAmountPaisa)}
         sub={`${pendingIssued.count} cheque${pendingIssued.count !== 1 ? "s" : ""}`}
         color={C.negative}
         bgColor={C.negativeBg}
@@ -66,7 +60,7 @@ export function ChequeDraftKpiStrip({ summary, loading, entitySelected }) {
       />
       <KpiCard
         label="Received Pending"
-        value={fmtRupees(pendingReceived.totalAmountPaisa)}
+        value={formatPaisa(pendingReceived.totalAmountPaisa)}
         sub={`${pendingReceived.count} cheque${pendingReceived.count !== 1 ? "s" : ""}`}
         color={C.positive}
         bgColor={C.positiveBg}
@@ -82,7 +76,7 @@ export function ChequeDraftKpiStrip({ summary, loading, entitySelected }) {
       />
       <KpiCard
         label="Net Exposure"
-        value={fmtRupees(Math.abs(pendingReceived.totalAmountPaisa - pendingIssued.totalAmountPaisa))}
+        value={formatPaisa(Math.abs(pendingReceived.totalAmountPaisa - pendingIssued.totalAmountPaisa))}
         sub={pendingReceived.totalAmountPaisa >= pendingIssued.totalAmountPaisa ? "net receivable" : "net payable"}
         color={C.info}
         bgColor={C.infoBg}

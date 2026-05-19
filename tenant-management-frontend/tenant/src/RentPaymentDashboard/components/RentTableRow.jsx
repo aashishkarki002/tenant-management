@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, MoreHorizontal, Zap, FileDown, Send, Mail, Copy, History } from "lucide-react";
+import { AlertTriangle, MoreHorizontal, Zap, FileDown, Send, Mail, Copy, History, User } from "lucide-react";
 import { TableRow, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import api from "../../../plugins/axios";
 import { STATUS_LABEL, STATUS_BADGE_STYLES } from "../constants/paymentConstants";
+import { Input } from "@/components/ui/input";
 
 
 const StatusPill = ({ status }) => (
@@ -80,23 +81,13 @@ export const RentTableRow = ({
 
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const handleDownloadInvoice = async () => {
-    const tenantId = rent.tenant?._id;
-    if (!tenantId || !rent.nepaliYear) return;
+    if (!rent._id) return;
     setInvoiceLoading(true);
     try {
-      const params = new URLSearchParams({
-        nepaliYear: rent.nepaliYear,
-        tenantId,
-      });
-      if (rent.nepaliMonth) params.append("nepaliMonth", rent.nepaliMonth);
-      const res = await api.get(`/api/rent/export/pdf?${params.toString()}`, {
-        responseType: "blob",
-      });
+      const res = await api.get(`/api/rent/${rent._id}/invoice`, { responseType: "blob" });
       const name = (rent.tenant?.name || "tenant").replace(/\s+/g, "-");
       const month = rent.nepaliMonth ? `-M${rent.nepaliMonth}` : "";
-      const url = URL.createObjectURL(
-        new Blob([res.data], { type: "application/pdf" }),
-      );
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       const a = document.createElement("a");
       a.href = url;
       a.download = `Invoice-${name}-${rent.nepaliYear}${month}.pdf`;
@@ -121,6 +112,7 @@ export const RentTableRow = ({
       const res = await api.post("/api/rent/send-email-to-tenants", {
         nepaliMonth: rent.nepaliMonth,
         nepaliYear: rent.nepaliYear,
+        tenantId: rent.tenant?._id,
       });
       if (res.data.success) {
         toast.success(res.data.message || "Reminder sent.");
@@ -188,7 +180,7 @@ export const RentTableRow = ({
     rent.lateFeePaisa > 0 &&
     rent.lateFeeStatus !== "paid";
 
-  // Compute total electricity still due for this tenant/month
+
   const totalElectricityDue = electricityRecords.reduce((sum, r) => {
     const remaining =
       r.remainingAmount ?? Math.max(0, (r.totalAmount || 0) - (r.paidAmount || 0));
@@ -243,14 +235,14 @@ export const RentTableRow = ({
       className={cn(
         "group border-b border-border/50 last:border-0 transition-colors",
         status === "overdue"
-          ? "bg-red-50/20 hover:bg-red-50/40 dark:bg-red-950/10 dark:hover:bg-red-950/20"
+          ? "bg-danger hover:bg-danger dark:bg-red-950/10 dark:hover:bg-red-950/20"
           : "hover:bg-muted/25",
       )}
       data-state={selected ? "selected" : undefined}
     >
       {/* Checkbox */}
       <TableCell className="w-10 px-3 py-3 align-middle">
-        <input
+        <Input
           type="checkbox"
           checked={selected}
           onChange={onToggleSelected}
@@ -370,7 +362,7 @@ export const RentTableRow = ({
                   className="text-xs gap-2"
                   onClick={() => navigate(`/tenant/viewDetail/${tenantId}`)}
                 >
-                  <span className="size-3.5 opacity-60">👤</span>
+                  <User />
                   View tenant
                 </DropdownMenuItem>
               )}

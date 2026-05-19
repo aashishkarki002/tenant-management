@@ -59,30 +59,6 @@ const GRANULARITIES = [
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
-function EntityPill({ label, dot, isActive, onClick }) {
-    return (
-        <button
-            onClick={onClick}
-            title={label}
-            className={cn(
-                "inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-medium",
-                "transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer border",
-                isActive
-                    ? "text-white border-transparent"
-                    : "border-[var(--color-border)] bg-transparent text-[var(--color-text-body)]",
-                !isActive && "hover:bg-[var(--color-accent-light)]/50 hover:border-[var(--color-accent-mid)]",
-            )}
-            style={isActive ? { background: dot, borderColor: dot } : {}}
-        >
-            <span
-                className="w-[6px] h-[6px] rounded-full shrink-0"
-                style={{ background: isActive ? "rgba(255,255,255,0.6)" : dot }}
-            />
-            <span className="max-w-[120px] truncate">{label}</span>
-        </button>
-    );
-}
-
 function GranularitySegment({ value, onChange }) {
     return (
         <div className="flex items-center rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-[3px] gap-[2px] shrink-0">
@@ -133,7 +109,7 @@ function MobileFilterBar({
     selectedQuarter, onQuarterChange,
     selectedMonth, onMonthChange,
     selectedFiscalYear, onFiscalYearChange,
-    filterLabel, entities, activeEntityId, onEntitySelect,
+    filterLabel,
 }) {
     const [open, setOpen] = useState(false);
     const FISCAL_YEARS = [selectedFiscalYear, selectedFiscalYear - 1, selectedFiscalYear - 2];
@@ -170,31 +146,6 @@ function MobileFilterBar({
                     </SheetHeader>
 
                     <div className="mt-5 flex flex-col gap-5 pb-2">
-
-                        {/* Entity scope */}
-                        {entities.length > 1 && (
-                            <div>
-                                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--color-text-sub)] mb-3">
-                                    Scope
-                                </p>
-                                <div className="flex flex-wrap gap-2">
-                                    {[{ _id: null, name: "All Entities" }, ...entities.filter(e => e.type !== "head_office")].map(e => (
-                                        <button
-                                            key={e._id ?? "all"}
-                                            onClick={() => onEntitySelect(e._id ?? null)}
-                                            className={cn(
-                                                "px-4 h-8 rounded-full border text-[12px] font-semibold cursor-pointer transition-colors",
-                                                (activeEntityId === null && !e._id) || activeEntityId === e._id
-                                                    ? "bg-[var(--color-accent)] border-[var(--color-accent)] text-white"
-                                                    : "border-[var(--color-border)] text-[var(--color-text-body)] hover:border-[var(--color-accent-mid)]",
-                                            )}
-                                        >
-                                            {e.name}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
 
                         {/* Granularity */}
                         <div>
@@ -328,7 +279,6 @@ function MobileFilterBar({
 // ─── Desktop bar ──────────────────────────────────────────────────────────────
 
 export default function FilterControlBar({
-    entities = [], activeEntityId, onEntitySelect,
     filterGranularity, onGranularityChange,
     selectedQuarter, onQuarterChange,
     selectedMonth, onMonthChange,
@@ -341,7 +291,6 @@ export default function FilterControlBar({
     const isMobile = useIsMobile();
     const [showCustom, setShowCustom] = useState(false);
     const customRef = useRef(null);
-    const showEntities = entities.length > 1;
 
     const FISCAL_YEARS = useMemo(
         () => [selectedFiscalYear, selectedFiscalYear - 1, selectedFiscalYear - 2],
@@ -379,8 +328,6 @@ export default function FilterControlBar({
         return "Set range";
     }, [filterGranularity, selectedFiscalYear, selectedQuarter, selectedMonth, customStart, customEnd]);
 
-    const entityDot = (type) => type === "private" ? "#16a34a" : "var(--color-accent)";
-
     if (isMobile) {
         return (
             <MobileFilterBar
@@ -393,9 +340,6 @@ export default function FilterControlBar({
                 selectedFiscalYear={selectedFiscalYear}
                 onFiscalYearChange={onFiscalYearChange}
                 filterLabel={filterLabel}
-                entities={entities}
-                activeEntityId={activeEntityId}
-                onEntitySelect={onEntitySelect}
             />
         );
     }
@@ -403,30 +347,6 @@ export default function FilterControlBar({
     return (
         <div className="no-print sticky top-0 z-20 flex-shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur-sm">
             <div className="flex items-center h-12 min-w-0">
-
-                {/* ── ZONE A: Entity scope ─────────────────────────────────── */}
-                {showEntities && (
-                    <div className="flex items-center gap-1.5 shrink-0 h-full px-4 lg:px-6 border-r border-[var(--color-border)]">
-                        <EntityPill
-                            label="All"
-                            dot="var(--color-accent)"
-                            isActive={activeEntityId === null}
-                            onClick={() => onEntitySelect(null)}
-                        />
-                        {entities
-                            .filter(e => e.type !== "head_office")
-                            .map(entity => (
-                                <EntityPill
-                                    key={entity._id}
-                                    label={entity.name}
-                                    dot={entityDot(entity.type)}
-                                    isActive={activeEntityId === entity._id}
-                                    onClick={() => onEntitySelect(entity._id)}
-                                />
-                            ))
-                        }
-                    </div>
-                )}
 
                 {/* ── ZONE B: Period controls ──────────────────────────────── */}
                 <div className="flex items-center gap-2.5 h-full flex-1 min-w-0 px-4 lg:px-5">

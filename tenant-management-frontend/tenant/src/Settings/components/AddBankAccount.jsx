@@ -34,6 +34,17 @@ function entityOptionLabel(entity) {
     return "Entity";
 }
 
+function EntityField({ entity }) {
+    return (
+        <Input
+            value={`${entity.name}${entity.type ? ` (${entity.type.replace(/_/g, " ")})` : ""}`}
+            readOnly
+            disabled
+            className="bg-slate-100 text-slate-600 cursor-default"
+        />
+    );
+}
+
 export default function AddBankAccount({ formik }) {
     const { entities, loading, error } = useOwnership();
     const activeEntities = useMemo(
@@ -62,35 +73,39 @@ export default function AddBankAccount({ formik }) {
                 {error && (
                     <p className="text-xs text-destructive">{error}</p>
                 )}
-                <Select
-                    value={formik.values.entityId || undefined}
-                    onValueChange={(v) => formik.setFieldValue("entityId", v)}
-                    disabled={loading || activeEntities.length === 0}
-                >
-                    <SelectTrigger id="entityId" className="w-full">
-                        <SelectValue
-                            placeholder={
-                                loading
-                                    ? "Loading entities…"
-                                    : activeEntities.length === 0
-                                      ? "No entities available"
-                                      : "Select entity"
-                            }
-                        />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {activeEntities.map((ent) => (
-                            <SelectItem key={String(ent._id)} value={String(ent._id)}>
-                                {entityOptionLabel(ent)}
-                                {ent.type ? (
-                                    <span className="text-muted-foreground text-xs ml-1">
-                                        ({ent.type.replace(/_/g, " ")})
-                                    </span>
-                                ) : null}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                {activeEntities.length === 1 ? (
+                    <EntityField entity={activeEntities[0]} />
+                ) : (
+                    <Select
+                        value={formik.values.entityId || undefined}
+                        onValueChange={(v) => formik.setFieldValue("entityId", v)}
+                        disabled={loading || activeEntities.length === 0}
+                    >
+                        <SelectTrigger id="entityId" className="w-full">
+                            <SelectValue
+                                placeholder={
+                                    loading
+                                        ? "Loading entities…"
+                                        : activeEntities.length === 0
+                                            ? "No entities available"
+                                            : "Select entity"
+                                }
+                            />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {activeEntities.map((ent) => (
+                                <SelectItem key={String(ent._id)} value={String(ent._id)}>
+                                    {entityOptionLabel(ent)}
+                                    {ent.type ? (
+                                        <span className="text-muted-foreground text-xs ml-1">
+                                            ({ent.type.replace(/_/g, " ")})
+                                        </span>
+                                    ) : null}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
                 <p className="text-xs text-slate-500">
                     Bank and chart-of-accounts rows are created for this entity. Account codes must be unique per entity.
                 </p>
@@ -175,10 +190,10 @@ export default function AddBankAccount({ formik }) {
                         formik.setFieldValue("accountCode", e.target.value.toUpperCase())
                     }
                     onBlur={formik.handleBlur}
-                    className="font-mono uppercase"
+                    className=" uppercase"
                     required
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-primary">
                     Convention: <code className="bg-slate-100 px-1 rounded">1010-BANKNAME</code>.
                     Used to route payment journal entries to the correct bank ledger account.
                 </p>

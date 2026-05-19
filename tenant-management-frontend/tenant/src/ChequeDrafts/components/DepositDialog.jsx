@@ -8,7 +8,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { C, fmtRupees, toBSDate } from "../../Loans/loan.constants";
+import { C } from "../../Loans/loan.constants";
+import { formatPaisa } from "../../utils/formatter";
 import { depositCheque } from "../hooks/useChequeDrafts";
 
 export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
@@ -50,7 +51,7 @@ export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
         <DialogHeader>
           <DialogTitle style={{ color: C.text }}>Mark as Deposited</DialogTitle>
           <p className="text-[12px]" style={{ color: C.textMuted }}>
-            Cheque #{draft.chequeNumber} · {fmtRupees(draft.amountPaisa)}
+            Cheque #{draft.chequeNumber} · {formatPaisa(draft.amountPaisa)}
             {draft.partyName ? ` · ${draft.partyName}` : ""}
           </p>
         </DialogHeader>
@@ -80,7 +81,7 @@ export function DepositDialog({ draft, open, onOpenChange, onSuccess }) {
           </div>
           <div className="text-center">
             <p className="text-[10px] font-bold tabular-nums" style={{ color: C.positive }}>
-              {fmtRupees(draft.amountPaisa)}
+              {formatPaisa(draft.amountPaisa)}
             </p>
           </div>
         </div>

@@ -18,7 +18,7 @@ import api from "../../../plugins/axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Clock, RefreshCw, AlertCircle, Building2 } from "lucide-react";
+import { Clock, RefreshCw, AlertCircle, Building2 } from "lucide-react";
 
 import { useOwnership } from "../../Settings/hooks/useOwnership";
 import { EntityBadge } from "./EntityBadge";
@@ -55,7 +55,7 @@ function KpiStrip({ blocks }) {
                         ? "border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5"
                         : "border-[var(--color-border)]"}`}>
                     <p className="text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-1">{kpi.label}</p>
-                    <p className={`text-base font-bold font-mono ${kpi.danger ? "text-[var(--color-danger)]" : "text-[var(--color-text-body)]"}`}>
+                    <p className={`text-base font-bold  ${kpi.danger ? "text-[var(--color-danger)]" : "text-[var(--color-text-body)]"}`}>
                         {kpi.value}
                     </p>
                     <p className="text-[10px] text-[var(--color-text-sub)] mt-0.5">{kpi.sub}</p>
@@ -130,7 +130,7 @@ function AuditLog() {
                                             {" → "}
                                             <span className="font-semibold">{toName}</span>
                                         </p>
-                                        <p className="text-[10px] text-[var(--color-text-sub)] font-mono mt-0.5">
+                                        <p className="text-[10px] text-[var(--color-text-sub)]  mt-0.5">
                                             {date} · by {byName}
                                         </p>
                                         {ev.snapshotData && (
@@ -277,26 +277,16 @@ export function OrganizationTab() {
                         Ownership Entities
                         <Badge variant="secondary" className="text-[11px] font-semibold">{entities.length}</Badge>
                     </h3>
-                    <Button
-                        size="sm"
-                        className="gap-2 h-8 text-xs px-3"
-                        onClick={() => { setEntityToEdit(null); setEntityDialogOpen(true); }}
-                    >
-                        <Plus className="w-3.5 h-3.5" />New Entity
-                    </Button>
+                    {/* New Entity hidden — single-entity mode */}
                 </div>
                 <div className="p-4">
                     {entities.length === 0 ? (
                         <div className="text-center py-10 border-2 border-dashed border-[var(--color-border)] rounded-xl">
                             <Building2 className="w-8 h-8 text-[var(--color-text-sub)]/30 mx-auto mb-2" />
-                            <p className="text-sm font-medium text-[var(--color-text-sub)]">No entities yet</p>
-                            <p className="text-xs text-[var(--color-text-sub)]/60 mt-1 mb-4">
-                                Create a private or company entity to assign buildings.
+                            <p className="text-sm font-medium text-[var(--color-text-sub)]">No active entity</p>
+                            <p className="text-xs text-[var(--color-text-sub)]/60 mt-1">
+                                Contact your administrator to activate an entity.
                             </p>
-                            <Button size="sm" className="gap-1.5 h-8 text-xs"
-                                onClick={() => { setEntityToEdit(null); setEntityDialogOpen(true); }}>
-                                <Plus className="w-3.5 h-3.5" />Create First Entity
-                            </Button>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

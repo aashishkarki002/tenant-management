@@ -14,7 +14,15 @@ export function useAccounts(entityId = null, type = null) {
       if (entityId) params.entityId = entityId;
       if (type)     params.type     = type;
       const res = await api.get("/api/ledger/accounts", { params });
-      setData(res.data?.data ?? []);
+      const raw = res.data?.data ?? [];
+      // Without entityId filter the backend returns accounts from all entities —
+      // deduplicate by code so each account appears only once.
+      if (!params.entityId) {
+        const seen = new Set();
+        setData(raw.filter(a => { if (seen.has(a.code)) return false; seen.add(a.code); return true; }));
+      } else {
+        setData(raw);
+      }
     } catch (err) {
       setError(err.response?.data?.message ?? "Failed to load chart of accounts");
     } finally {

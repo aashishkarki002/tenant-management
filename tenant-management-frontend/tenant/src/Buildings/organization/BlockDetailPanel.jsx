@@ -13,7 +13,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EntityBadge } from "./EntityBadge";
-import { ArrowLeftRight, X } from "lucide-react";
+import { X } from "lucide-react";
 
 const fmtPaisa = (p) =>
     p != null
@@ -72,7 +72,7 @@ export function BlockDetailPanel({ block, onClose, onMigrate }) {
                     {fields.map(({ k, v }) => (
                         <div key={k} className="rounded-lg bg-secondary border border-border px-3 py-2">
                             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">{k}</p>
-                            <p className="text-xs font-bold text-foreground font-mono capitalize truncate">{v}</p>
+                            <p className="text-xs font-bold text-foreground  capitalize truncate">{v}</p>
                         </div>
                     ))}
                 </div>
@@ -87,7 +87,7 @@ export function BlockDetailPanel({ block, onClose, onMigrate }) {
                                 const to = h.toEntityId?.name ?? "—";
                                 return (
                                     <div key={i} className="flex items-start gap-2 text-[11px] text-muted-foreground py-1.5 border-b border-border/50 last:border-0">
-                                        <span className="font-mono text-[10px] shrink-0 pt-px">{fmtDate(h.migratedAt)}</span>
+                                        <span className=" text-[10px] shrink-0 pt-px">{fmtDate(h.migratedAt)}</span>
                                         <span className="text-border shrink-0">·</span>
                                         <span className="flex-1 min-w-0">
                                             <span className="font-semibold text-foreground">{from}</span>
@@ -102,16 +102,13 @@ export function BlockDetailPanel({ block, onClose, onMigrate }) {
                     </div>
                 )}
 
-                {/* Footer CTA */}
-                <div className="flex items-center justify-between pt-3 border-t border-border">
+                {/* Footer */}
+                <div className="flex items-center pt-3 border-t border-border">
                     <p className="text-[11px] text-muted-foreground">
                         {block.migrationHistory?.length
                             ? `${block.migrationHistory.length} prior migration(s)`
                             : "No migration history"}
                     </p>
-                    <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={onMigrate}>
-                        <ArrowLeftRight className="w-3.5 h-3.5" />Initiate Migration
-                    </Button>
                 </div>
             </CardContent>
         </Card>

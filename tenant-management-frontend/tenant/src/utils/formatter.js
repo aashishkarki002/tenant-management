@@ -1,12 +1,12 @@
 // Basic rupee formatter (from paisa) - Latin numerals
-export const fmtRs = (paisa = 0) => 
+export const fmtRs = (paisa = 0) =>
     (paisa / 100).toLocaleString("en-NP", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     });
 
 // Devanagari numerals option
-export const fmtRsNe = (paisa = 0) => 
+export const fmtRsNe = (paisa = 0) =>
     (paisa / 100).toLocaleString("ne-NP", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -34,12 +34,12 @@ export const fmtKLatin = (v) => {
 export const fmtCurrency = (paisa = 0, { compact = false, nepali = false } = {}) => {
     const rs = paisa / 100;
     const symbol = nepali ? "रू " : "Rs. ";
-    
+
     if (compact && Math.abs(rs) >= 1000) {
         const formatted = nepali ? fmtK(rs) : fmtKLatin(rs);
         return symbol + formatted;
     }
-    
+
     const formatted = nepali ? fmtRsNe(paisa) : fmtRs(paisa);
     return symbol + formatted;
 };
@@ -47,16 +47,25 @@ export const fmtCurrency = (paisa = 0, { compact = false, nepali = false } = {})
 // Accounting style (parentheses for negatives)
 export const fmtAccounting = (paisa = 0, { compact = false, nepali = false } = {}) => {
     const rs = Math.abs(paisa / 100);
-    const formatted = compact 
+    const formatted = compact
         ? (nepali ? fmtK(rs) : fmtKLatin(rs))
         : rs.toLocaleString(nepali ? "ne-NP" : "en-NP", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
-          });
-    
+        });
+
     return paisa < 0 ? `(${formatted})` : formatted;
 };
 
 // Non-currency numbers (counts, IDs, etc.)
-export const fmtN = (n = 0, nepali = false) => 
+export const fmtN = (n = 0, nepali = false) =>
     Math.abs(n).toLocaleString(nepali ? "ne-NP" : "en-NP");
+
+// Paisa → "रू 1,050.00" — canonical display for raw API amounts
+export const formatPaisa = (paisa = 0) => {
+    if (paisa == null) return "—";
+    return `${(Number(paisa) / 100).toLocaleString("en-NP", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
+};

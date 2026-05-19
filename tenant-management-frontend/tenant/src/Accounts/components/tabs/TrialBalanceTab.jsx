@@ -88,8 +88,9 @@ function AccountRow({ row }) {
   );
 }
 
-export default function TrialBalanceTab({ filterProps = {} }) {
+export default function TrialBalanceTab({ filterProps = {}, entityId: entityIdProp }) {
   const { activeEntityId } = useEntity();
+  const resolvedEntityId = entityIdProp ?? activeEntityId ?? null;
 
   const {
     data,
@@ -97,7 +98,7 @@ export default function TrialBalanceTab({ filterProps = {} }) {
     error,
     refetch,
   } = useTrialBalance(
-    activeEntityId ?? null,
+    resolvedEntityId,
     filterProps,
   );
 

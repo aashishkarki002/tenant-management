@@ -249,7 +249,7 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <p className="text-sm font-semibold text-foreground">{ent.name}</p>
-                                                <p className="text-[11px] text-muted-foreground font-mono">
+                                                <p className="text-[11px] text-muted-foreground ">
                                                     Prefix: {ent.chartOfAccountsPrefix}
                                                     {ent.pan ? ` · PAN: ${ent.pan}` : ""}
                                                 </p>
@@ -356,7 +356,7 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
 
                             <div className="space-y-1.5">
                                 <Label className="text-xs text-muted-foreground">
-                                    Type <span className="font-mono font-bold text-foreground">{block.name}</span> to confirm
+                                    Type <span className=" font-bold text-foreground">{block.name}</span> to confirm
                                 </Label>
                                 <Input
                                     value={confirmName}
@@ -390,7 +390,7 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
                                             strokeDashoffset={`${2 * Math.PI * 24 * (1 - progressPct / 100)}`}
                                         />
                                     </svg>
-                                    <span className="absolute inset-0 flex items-center justify-center text-sm font-bold font-mono text-foreground">
+                                    <span className="absolute inset-0 flex items-center justify-center text-sm font-bold  text-foreground">
                                         {progressPct}%
                                     </span>
                                 </div>
@@ -454,7 +454,7 @@ export function MigrationWizard({ block, entities, onClose, onDone }) {
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Rollback available until</span>
-                                    <span className="font-semibold font-mono text-foreground">+48 hrs</span>
+                                    <span className="font-semibold  text-foreground">+48 hrs</span>
                                 </div>
                             </div>
 

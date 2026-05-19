@@ -351,6 +351,14 @@ export function AddExpenseDialog({
     }
   };
 
+  // Auto-select the only entity when entity mode is disabled (single entity)
+  useEffect(() => {
+    if (!open || entitiesLoading || allEntities.length !== 1) return;
+    if (formik.values.entityId) return;
+    handleEntityChange(allEntities[0]._id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entitiesLoading, allEntities]);
+
   // Populate the staff dropdown when the parent doesn't pass `staffList`.
   useEffect(() => {
     if (!open) return;
@@ -696,34 +704,43 @@ export function AddExpenseDialog({
           {/* ── Receiving Entity ── */}
           <div className="space-y-2">
             <FieldLabel>Receiving Entity</FieldLabel>
-            <Select
-              value={formik.values.entityId ?? ""}
-              onValueChange={handleEntityChange}
-              disabled={entitiesLoading}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue
-                  placeholder={
-                    entitiesLoading ? "Loading entities…" : "— select entity —"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {allEntities.map((e) => (
-                  <SelectItem key={e._id} value={e._id}>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
-                      >
-                        {getEntityTypeLabel(e.type)}
-                      </span>
-                      {e.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {formik.values.entityId && (
+            {allEntities.length === 1 ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm">
+                <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(allEntities[0].type)}`}>
+                  {getEntityTypeLabel(allEntities[0].type)}
+                </span>
+                <span>{allEntities[0].name}</span>
+              </div>
+            ) : (
+              <Select
+                value={formik.values.entityId ?? ""}
+                onValueChange={handleEntityChange}
+                disabled={entitiesLoading}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={
+                      entitiesLoading ? "Loading entities…" : "— select entity —"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {allEntities.map((e) => (
+                    <SelectItem key={e._id} value={e._id}>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${getEntityBadgeColor(e.type)}`}
+                        >
+                          {getEntityTypeLabel(e.type)}
+                        </span>
+                        {e.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {formik.values.entityId && allEntities.length !== 1 && (
               <p className="text-[11px] text-muted-foreground">
                 Expense will be recorded under the selected entity.
               </p>

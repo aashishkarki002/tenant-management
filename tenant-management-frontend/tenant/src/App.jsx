@@ -10,7 +10,6 @@ import StaffDashboard from "./Dashboard/StaffDashboard";
 import Account from "./Accounts/Account";
 import ElectricityPage from "./electricity/ElectricityPage";
 import Maintenance from "./Maintenance/Maintenance";
-import ChequeDrafts from "./cheque-drafts/Cheque_drafts";
 import ChequeDraftsPage from "./ChequeDrafts/ChequeDraftsPage";
 import Payments from "./payments";
 import AddTenants from "./Tenant/addTenant/addTenants";
@@ -30,7 +29,7 @@ import AdminDailyChecks from "./adminDailyChecks/dailychecks";
 import Units from "./units/units";
 import api from "../plugins/axios";
 import { useAuth } from "./context/AuthContext";
-import Buildings from "./Buildings/Buildings";
+// import Buildings from "./Buildings/Buildings";
 import Staff from "./staff/staff";
 import CheckListResultDetails from "./adminDailyChecks/checkListResultDetails/checkListResultDetails";
 import VendorsPage from "./Vendors/VendorsPage";
@@ -38,6 +37,7 @@ import VendorDetailPage from "./Vendors/VendorDetailPage";
 import ForgetPassword from "./Auth/forgetPassword";
 import CalendarPage from "./Calendar/CalendarPage";
 import TdsVerificationPage from "./TDS/TdsVerificationPage";
+import DevToolsPage from "./DevTools/DevToolsPage";
 
 // Roles that can access admin-level features
 const ADMIN_ROLES = ["admin", "super_admin"];
@@ -138,9 +138,7 @@ export default function App() {
       <Route path="/cheque-drafts"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><ChequeDraftsPage /></RoleRoute></ProtectedRoutes>}
       />
-      <Route path="/cheque-drafts/print"
-        element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><ChequeDrafts /></RoleRoute></ProtectedRoutes>}
-      />
+
       <Route path="/tenant/addTenants"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><AddTenants /></RoleRoute></ProtectedRoutes>}
       />
@@ -169,9 +167,9 @@ export default function App() {
       <Route path="/admin-daily-checks"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><AdminDailyChecks /></RoleRoute></ProtectedRoutes>}
       />
-      <Route path="/buildings"
+      {/* <Route path="/buildings"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><Buildings /></RoleRoute></ProtectedRoutes>}
-      />
+      /> */}
       <Route path="/admin-daily-checks/check-result-details/:id"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><CheckListResultDetails /></RoleRoute></ProtectedRoutes>}
       />
@@ -187,6 +185,12 @@ export default function App() {
       <Route path="/tds-verification"
         element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><TdsVerificationPage /></RoleRoute></ProtectedRoutes>}
       />
+
+      {import.meta.env.DEV && (
+        <Route path="/dev-tools"
+          element={<ProtectedRoutes><RoleRoute allowedRoles={ADMIN_ROLES}><DevToolsPage /></RoleRoute></ProtectedRoutes>}
+        />
+      )}
 
     </Routes>
 

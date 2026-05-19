@@ -101,8 +101,19 @@ function EntityResolutionBanner({
   onManualEntityChange,
   payerType,
 }) {
-  // For external payers — always show manual selector
+  // For external payers — show static display when only one entity, else manual selector
   if (payerType === "external") {
+    if (allEntities.length === 1) {
+      return (
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/30 text-sm">
+          <Building2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+          <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border`}>
+            {getOwnershipTypeLabel(allEntities[0].type)}
+          </span>
+          <span className="font-medium">{allEntities[0].name}</span>
+        </div>
+      );
+    }
     return (
       <div className="space-y-2">
         <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
@@ -548,12 +559,18 @@ export function AddRevenueDialog({
       setManualEntityId("");
     } else {
       setManualEntityId(value);
-      // If they pick an entity manually, update block tracking too
       if (showManualOverride) {
-        setResolvedBlock(null); // block unknown in manual mode
+        setResolvedBlock(null);
       }
     }
   };
+
+  // Auto-select when entity mode is disabled (single entity available)
+  useEffect(() => {
+    if (entitiesLoading || allEntities.length !== 1) return;
+    if (!manualEntityId) setManualEntityId(allEntities[0]._id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entitiesLoading, allEntities]);
 
   const payerType = formik.values.payerType ?? "tenant";
   const isEntityResolved = !!resolvedEntityId;

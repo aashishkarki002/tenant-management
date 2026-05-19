@@ -43,6 +43,12 @@ function getDocLabel(type) {
   return map[type] ?? type;
 }
 
+// Force Cloudinary to serve PDFs inline (browser viewer) instead of downloading
+function toInlinePdfUrl(url) {
+  if (!url) return url;
+  return url.includes("/upload/") ? url.replace("/upload/", "/upload/fl_inline/") : url;
+}
+
 function getFileName(url, docLabel, index, ext) {
   const urlParts = url.split("/");
   const raw = urlParts[urlParts.length - 1].split("?")[0];
@@ -158,7 +164,7 @@ function Lightbox({ files, currentIndex, onClose, onPrev, onNext }) {
 
         {file.isPdf ? (
           <iframe
-            src={file.url}
+            src={toInlinePdfUrl(file.url)}
             className="w-full max-w-4xl h-[70vh] rounded-lg border border-white/10 bg-white"
             title="PDF Preview"
           />
@@ -391,7 +397,7 @@ function SidebarPreviewView({ files, selectedFile, onSelectFile }) {
             <div className="flex-1 overflow-auto bg-gray-100 p-2 sm:p-4 md:p-8 flex items-center justify-center">
               {selectedFile.isPdf ? (
                 <iframe
-                  src={selectedFile.url}
+                  src={toInlinePdfUrl(selectedFile.url)}
                   className="w-full h-full min-h-[300px] sm:min-h-[400px] md:min-h-[500px] border border-border rounded-lg shadow-lg bg-white"
                   title="PDF Preview"
                 />

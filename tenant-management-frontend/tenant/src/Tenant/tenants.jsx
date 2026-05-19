@@ -155,7 +155,7 @@ function KpiStrip({ items }) {
               {item.label}
             </p>
             <p
-              className="text-base font-bold font-mono tabular-nums leading-none"
+              className="text-base font-bold  tabular-nums leading-none"
               style={{ color: valueColor }}
             >
               {item.value}
@@ -635,36 +635,36 @@ function TenantHeaderSlot({
           <div className="flex-1" />
 
           {/* View toggle — Grid / Table */}
-     <ToggleGroup
-  type="single"
-  value={viewMode}
-  onValueChange={(value) => {
-    if (value) onViewModeChange(value);
-  }}
-  className="border rounded-lg p-0.5 gap-0"
-  style={{
-    background: "var(--color-surface)",
-    borderColor: "var(--color-border)",
-  }}
->
-  <ToggleGroupItem
-    value="grid"
-    className="h-8 px-3 gap-1.5 text-[11px] font-medium rounded-md data-[state=on]:shadow-sm"
- 
-  >
-    <LayoutGrid className="w-3.5 h-3.5" />
-    <span className="hidden md:inline">Grid</span>
-  </ToggleGroupItem>
+          <ToggleGroup
+            type="single"
+            value={viewMode}
+            onValueChange={(value) => {
+              if (value) onViewModeChange(value);
+            }}
+            className="border rounded-lg p-0.5 gap-0"
+            style={{
+              background: "var(--color-surface)",
+              borderColor: "var(--color-border)",
+            }}
+          >
+            <ToggleGroupItem
+              value="grid"
+              className="h-8 px-3 gap-1.5 text-[11px] font-medium rounded-md data-[state=on]:shadow-sm"
 
-  <ToggleGroupItem
-    value="table"
-    className="h-8 px-3 gap-1.5 text-[11px] font-medium rounded-md data-[state=on]:shadow-sm"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Grid</span>
+            </ToggleGroupItem>
 
-  >
-    <ListIcon className="w-3.5 h-3.5" />
-    <span className="hidden md:inline">Table</span>
-  </ToggleGroupItem>
-</ToggleGroup>
+            <ToggleGroupItem
+              value="table"
+              className="h-8 px-3 gap-1.5 text-[11px] font-medium rounded-md data-[state=on]:shadow-sm"
+
+            >
+              <ListIcon className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Table</span>
+            </ToggleGroupItem>
+          </ToggleGroup>
 
           {/* Divider */}
           <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
@@ -769,7 +769,7 @@ function TerminateLeaseDialog({ tenant, onClose, onConfirmed }) {
                         <div key={row.label} className="flex items-center justify-between px-3 py-2">
                           <span className="text-xs" style={{ color: "var(--color-text-sub)" }}>{row.label}</span>
                           <span
-                            className="text-xs font-semibold font-mono tabular-nums"
+                            className="text-xs font-semibold  tabular-nums"
                             style={{ color: row.value > 0 ? "var(--color-danger)" : "var(--color-text-weak)" }}
                           >
                             Rs. {row.value.toLocaleString("en-IN")}
@@ -779,7 +779,7 @@ function TerminateLeaseDialog({ tenant, onClose, onConfirmed }) {
                       <div className="flex items-center justify-between px-3 py-2.5" style={{ background: "var(--color-surface-raised)" }}>
                         <span className="text-xs font-semibold" style={{ color: "var(--color-text-strong)" }}>Total Due</span>
                         <span
-                          className="text-sm font-bold font-mono tabular-nums"
+                          className="text-sm font-bold  tabular-nums"
                           style={{ color: hasDue ? "var(--color-danger)" : "var(--color-success)" }}
                         >
                           Rs. {summary.totalDue.toLocaleString("en-IN")}
@@ -800,7 +800,7 @@ function TerminateLeaseDialog({ tenant, onClose, onConfirmed }) {
                       </p>
                     </div>
                     <span
-                      className="text-sm font-bold font-mono tabular-nums"
+                      className="text-sm font-bold  tabular-nums"
                       style={{ color: summary.securityDeposit > 0 ? "var(--color-info)" : "var(--color-text-weak)" }}
                     >
                       Rs. {summary.securityDeposit.toLocaleString("en-IN")}
@@ -1219,7 +1219,7 @@ export default function Tenants() {
                         <span className="text-xs" style={{ color: "var(--color-text-sub)" }}>{getTenantLocationLabel(tenant)}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm font-semibold font-mono tabular-nums" style={{ color: "var(--color-text-strong)" }}>
+                        <span className="text-sm font-semibold  tabular-nums" style={{ color: "var(--color-text-strong)" }}>
                           {getTenantRentDisplay(tenant)}
                         </span>
                       </TableCell>
@@ -1243,14 +1243,14 @@ export default function Tenants() {
                             {badge.label}
                           </span>
                           {(tenant?.overdueBalance ?? 0) > 0 && (
-                            <span className="text-[10px] font-mono font-semibold" style={{ color: "var(--color-danger)" }}>
+                            <span className="text-[10px]  font-semibold" style={{ color: "var(--color-danger)" }}>
                               Rs. {tenant.overdueBalance.toLocaleString("en-IN")} arrears
                             </span>
                           )}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs font-mono" style={{ color: "var(--color-text-sub)" }}>
+                        <span className="text-xs " style={{ color: "var(--color-text-sub)" }}>
                           {tenant?.leaseEndDateNepali || "—"}
                         </span>
                       </TableCell>

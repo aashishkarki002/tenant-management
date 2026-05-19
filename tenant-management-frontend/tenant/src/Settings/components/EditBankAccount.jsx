@@ -8,7 +8,7 @@
  * Usage: <EditBankAccount formik={editBankFormik} balanceDisplay="Rs 1,234.00" onCancel={() => close()} />
  */
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -30,12 +30,32 @@ function entityOptionLabel(entity) {
     return "Entity";
 }
 
+function EntityField({ entity }) {
+    return (
+        <Input
+            value={`${entity.name}${entity.type ? ` (${entity.type.replace(/_/g, " ")})` : ""}`}
+            readOnly
+            disabled
+            className="bg-slate-100 text-slate-600 cursor-default"
+        />
+    );
+}
+
 export default function EditBankAccount({ formik, balanceDisplay, onCancel }) {
     const { entities, loading, error } = useOwnership();
     const activeEntities = useMemo(
         () => entities.filter((e) => e.isActive !== false),
         [entities],
     );
+
+    useEffect(() => {
+        if (loading || activeEntities.length !== 1) return;
+        const onlyId = String(activeEntities[0]._id);
+        if (!formik.values.entityId) {
+            formik.setFieldValue("entityId", onlyId);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loading, activeEntities, formik.values.entityId, formik.setFieldValue]);
 
     return (
         <form onSubmit={formik.handleSubmit} className="space-y-4">
@@ -60,35 +80,39 @@ export default function EditBankAccount({ formik, balanceDisplay, onCancel }) {
             <div className="space-y-1.5">
                 <Label htmlFor="edit-entityId">Ownership entity *</Label>
                 {error && <p className="text-xs text-destructive">{error}</p>}
-                <Select
-                    value={formik.values.entityId || undefined}
-                    onValueChange={(v) => formik.setFieldValue("entityId", v)}
-                    disabled={loading || activeEntities.length === 0}
-                >
-                    <SelectTrigger id="edit-entityId" className="w-full">
-                        <SelectValue
-                            placeholder={
-                                loading
-                                    ? "Loading entities…"
-                                    : activeEntities.length === 0
-                                      ? "No entities available"
-                                      : "Select entity"
-                            }
-                        />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {activeEntities.map((ent) => (
-                            <SelectItem key={String(ent._id)} value={String(ent._id)}>
-                                {entityOptionLabel(ent)}
-                                {ent.type ? (
-                                    <span className="text-muted-foreground text-xs ml-1">
-                                        ({ent.type.replace(/_/g, " ")})
-                                    </span>
-                                ) : null}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                {activeEntities.length === 1 ? (
+                    <EntityField entity={activeEntities[0]} />
+                ) : (
+                    <Select
+                        value={formik.values.entityId || undefined}
+                        onValueChange={(v) => formik.setFieldValue("entityId", v)}
+                        disabled={loading || activeEntities.length === 0}
+                    >
+                        <SelectTrigger id="edit-entityId" className="w-full">
+                            <SelectValue
+                                placeholder={
+                                    loading
+                                        ? "Loading entities…"
+                                        : activeEntities.length === 0
+                                          ? "No entities available"
+                                          : "Select entity"
+                                }
+                            />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {activeEntities.map((ent) => (
+                                <SelectItem key={String(ent._id)} value={String(ent._id)}>
+                                    {entityOptionLabel(ent)}
+                                    {ent.type ? (
+                                        <span className="text-muted-foreground text-xs ml-1">
+                                            ({ent.type.replace(/_/g, " ")})
+                                        </span>
+                                    ) : null}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
             </div>
 
             <div className="space-y-1.5">

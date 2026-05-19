@@ -17,7 +17,7 @@ createRoot(document.getElementById("root")).render(
         <EntityProvider>
           <LanguageProvider>
             <Toaster />
-            <Suspense fallback={<HashLoader color="var(--color-accent)" />}>
+            <Suspense fallback={<HashLoader color="#1a5276" />}>
               <App />
             </Suspense>
           </LanguageProvider>

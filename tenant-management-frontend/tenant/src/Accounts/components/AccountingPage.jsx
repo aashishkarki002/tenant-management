@@ -49,6 +49,7 @@ import BankReconciliationTab from "./tabs/BankReconciliationTab";
 import BudgetTab from "./tabs/BudgetTab";
 import AdvanceRentTab from "./tabs/AdvanceRentTab";
 import CamReconciliationTab from "./tabs/CamReconciliationTab";
+import RevenueCollectionTab from "./tabs/RevenueCollectionTab";
 import PettyCashTab from "./tabs/PettyCashTab";
 import CoaManagementTab from "./tabs/CoaManagementTab";
 
@@ -187,9 +188,6 @@ export default function AccountingPage() {
 
             {/* Filter bar — pinned at top, full width */}
             <FilterControlBar
-                entities={entities}
-                activeEntityId={activeEntityId}
-                onEntitySelect={setActiveEntityId}
                 filterGranularity={filterGranularity}
                 onGranularityChange={setFilterGranularity}
                 selectedQuarter={selectedQuarter}
@@ -255,6 +253,10 @@ export default function AccountingPage() {
                                 onDialogOpenHandled={() => setPendingAction(null)}
                                 onRevenueAdded={refetch}
                             />
+                        )}
+
+                        {activeTab === "revenue-collection" && (
+                            <RevenueCollectionTab filterProps={filterProps} />
                         )}
 
                         {activeTab === "expenses" && (
@@ -335,7 +337,7 @@ export default function AccountingPage() {
                             <AdjustmentsTab entityId={resolvedEntityId} />
                         )}
                         {activeTab === "trial-balance" && (
-                            <TrialBalanceTab filterProps={filterProps} />
+                            <TrialBalanceTab filterProps={filterProps} entityId={resolvedEntityId} />
                         )}
                         {activeTab === "ar-aging" && (
                             <ArAgingTab entityId={resolvedEntityId} />

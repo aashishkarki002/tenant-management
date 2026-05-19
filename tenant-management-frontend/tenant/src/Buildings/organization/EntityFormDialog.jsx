@@ -183,11 +183,11 @@ export function EntityFormDialog({ open, onOpenChange, entity, onSave }) {
                                 formik.setFieldValue("chartOfAccountsPrefix", e.target.value.toUpperCase())
                             }
                             onBlur={formik.handleBlur}
-                            className="h-9 font-mono uppercase w-32"
+                            className="h-9 uppercase w-32"
                             maxLength={10}
                         />
                         <p className="text-[11px] text-muted-foreground">
-                            Used as a prefix for ledger accounts (e.g. <span className="font-mono">PVT-4000</span>). Must be unique.
+                            Used as a prefix for ledger accounts (e.g. <span>PVT-4000</span>). Must be unique.
                         </p>
                     </div>
 
@@ -196,7 +196,7 @@ export function EntityFormDialog({ open, onOpenChange, entity, onSave }) {
                         <div className="space-y-1.5">
                             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">PAN</Label>
                             <Input name="pan" placeholder="123-456-789" value={formik.values.pan}
-                                onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-9 font-mono" />
+                                onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-9 " />
                         </div>
                         <div className="space-y-1.5">
                             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contact Email</Label>
@@ -216,12 +216,12 @@ export function EntityFormDialog({ open, onOpenChange, entity, onSave }) {
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">VAT Number</Label>
                                 <Input name="vatNumber" placeholder="VR-00123" value={formik.values.vatNumber}
-                                    onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-9 font-mono" />
+                                    onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-9  " />
                             </div>
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Registration No.</Label>
                                 <Input name="registrationNo" placeholder="REG-2024-001" value={formik.values.registrationNo}
-                                    onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-9 font-mono" />
+                                    onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-9 " />
                             </div>
                         </div>
                     )}

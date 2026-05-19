@@ -1,10 +1,3 @@
-/**
- * AdminRoot.jsx
- *
- * Full Admin Settings page — four tabs, real API data, clean prop drilling.
- * OrganizationTab is self-contained (owns useOwnership hook internally).
- * All other tabs receive only the props they need from the root.
- */
 
 import React, { useState, useEffect, useRef } from "react";
 import { useFormik } from "formik";
@@ -690,7 +683,7 @@ export default function AdminRoot() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className=" mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Page heading */}
         <div className="mb-6 flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center shrink-0">

@@ -35,7 +35,7 @@ export function EntityCard({ entity, blockCount = 0, onEdit }) {
                         <div className="min-w-0">
                             <p className="text-sm font-bold text-foreground truncate">{entity.name}</p>
                             {entity.pan && (
-                                <p className="text-[11px] text-muted-foreground font-mono">PAN {entity.pan}</p>
+                                <p className="text-[11px] text-muted-foreground ">PAN {entity.pan}</p>
                             )}
                         </div>
                     </div>
@@ -55,7 +55,7 @@ export function EntityCard({ entity, blockCount = 0, onEdit }) {
                         </span>
                     )}
                     {isCompany && entity.registrationNo && (
-                        <span className="flex items-center gap-1 font-mono">
+                        <span className="flex items-center gap-1">
                             Reg. {entity.registrationNo}
                         </span>
                     )}
