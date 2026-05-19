@@ -39,7 +39,7 @@ import VendorPayment from "../vendors/vendorPayment.model.js";
 import { CronLog } from "../../cron/model/CronLog.js";
 import { Tenant } from "../tenant/Tenant.Model.js";
 import { DocumentCounter } from "../documentCounter/DocumentCounter.Model.js";
-import Unit from "../units/Unit.Model.js";
+import Unit from "../units/unit.model.js";
 
 const TRANSACTIONAL_MODELS = [
   { name: "Tenant",               model: Tenant },
