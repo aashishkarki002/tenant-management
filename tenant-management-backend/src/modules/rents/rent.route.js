@@ -24,6 +24,7 @@ import {
   backfillTenantRentsController,
   generateTdsCertificateController,
   exportRentRollPdfController,
+  downloadRentInvoiceController,
 } from "./rent.controller.js";
 import { protect } from "../../middleware/protect.js";
 import { validateTdsDocumentMiddleware } from "../../utils/fileValidation.js";
@@ -65,6 +66,9 @@ router.post("/tds/batch-mark-paid", protect, batchMarkTdsPaidController);
 
 // ── Rent Roll PDF Export ──────────────────────────────────────────────────────
 router.get("/export/pdf", protect, exportRentRollPdfController);
+
+// ── Single-rent invoice PDF ───────────────────────────────────────────────────
+router.get("/:rentId/invoice", protect, downloadRentInvoiceController);
 
 // ── TDS Management ────────────────────────────────────────────────────────────
 // Support TDS document upload for marking TDS as paid separately

@@ -42,6 +42,11 @@ const fieldMap = {
     label: "Other Documents",
     allowedMimes: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
   },
+  sd_others: {
+    folder: "tenants/sd-others",
+    label: "Security Deposit (Open Cheque)",
+    allowedMimes: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
+  },
 };
 
 const uploadOptions = {

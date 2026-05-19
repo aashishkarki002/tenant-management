@@ -28,6 +28,7 @@ import {
   recordLateFeeRevenue,
 } from "../revenue/revenue.service.js";
 import { emitPaymentNotification } from "../../utils/payment.Notification.js";
+import { smsTenant } from "../../config/nestsms.templates.js";
 import { handleReceiptSideEffects } from "../../reciepts/reciept.service.js";
 import {
   rupeesToPaisa,
@@ -52,6 +53,9 @@ import {
 import { resolveEntityFromBlock } from "../../helper/resolveEntity.js";
 import { handleTdsDocumentUpload } from "../rents/rent.tds.service.js";
 import { syncTenantBalance } from "../tenantBalance/tenantBalance.service.js";
+import { electricityService } from "../electricity/electricity.service.js";
+import { createChequeDraft } from "../chequeDrafts/chequeDraft.service.js";
+import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE PAYMENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,7 +86,7 @@ export async function createPayment(paymentData) {
     if (allocations?.rent) {
       const rentAmountRupees =
         typeof allocations.rent.amount === "number" &&
-        Number.isFinite(allocations.rent.amount)
+          Number.isFinite(allocations.rent.amount)
           ? allocations.rent.amount
           : null;
       if (rentAmountRupees != null && rentAmountRupees > 0) {
@@ -102,7 +106,7 @@ export async function createPayment(paymentData) {
     if (allocations?.cam?.paidAmount != null) {
       const camAmount =
         typeof allocations.cam.paidAmount === "number" &&
-        Number.isFinite(allocations.cam.paidAmount)
+          Number.isFinite(allocations.cam.paidAmount)
           ? allocations.cam.paidAmount
           : 0;
       allocations.cam.paidAmountPaisa =
@@ -114,7 +118,7 @@ export async function createPayment(paymentData) {
           unitId: ua.unitId,
           amountPaisa:
             typeof ua.amountPaisa === "number" &&
-            Number.isInteger(ua.amountPaisa)
+              Number.isInteger(ua.amountPaisa)
               ? ua.amountPaisa
               : rupeesToPaisa(ua.amount || 0),
         }),
@@ -186,7 +190,7 @@ export async function createPayment(paymentData) {
             ub.paidAmountPaisa = (ub.paidAmountPaisa || 0) + unitAmt;
             ub.status =
               ub.paidAmountPaisa >=
-              ub.grossRentAmountPaisa - (ub.tdsAmountPaisa || 0)
+                ub.grossRentAmountPaisa - (ub.tdsAmountPaisa || 0)
                 ? "paid"
                 : "partially_paid";
           }
@@ -266,7 +270,39 @@ export async function createPayment(paymentData) {
       await cam.save({ session });
     }
 
-    const blockIdForEntity = rent?.block ?? cam?.block ?? null;
+    // ── Step 4.5: Handle electricity payments ────────────────────────────────
+    // Electricity records are updated within this transaction; bank balance is
+    // handled once by applyPaymentToBank below (skipBankUpdate = true here).
+    const electricityResults = [];
+    if (Array.isArray(allocations?.electricity) && allocations.electricity.length > 0) {
+      for (const elecAlloc of allocations.electricity) {
+        const amountPaisa =
+          elecAlloc.amountPaisa !== undefined
+            ? elecAlloc.amountPaisa
+            : rupeesToPaisa(elecAlloc.amount || 0);
+        elecAlloc.amountPaisa = amountPaisa;
+        if (amountPaisa <= 0) continue;
+
+        const result = await electricityService.recordElectricityPayment(
+          {
+            electricityId: elecAlloc.electricityId,
+            amountPaisa,
+            paymentDate: paymentData.paymentDate,
+            nepaliDate: paymentData.nepaliDate,
+            paymentMethod: paymentData.paymentMethod,
+            bankAccountId: paymentData.bankAccountId,
+            bankAccountCode: paymentData.bankAccountCode,
+            createdBy: paymentData.adminId ?? paymentData.receivedBy,
+          },
+          session,
+          { skipBankUpdate: true },
+        );
+        electricityResults.push(result);
+      }
+    }
+
+    const blockIdForEntity =
+      rent?.block ?? cam?.block ?? electricityResults[0]?.electricity?.unit?.block ?? null;
     const entityId =
       paymentData.entityId ??
       (blockIdForEntity
@@ -288,64 +324,101 @@ export async function createPayment(paymentData) {
     // ── Step 6: Create payment record ─────────────────────────────────────────
     const rentPayload = rent
       ? buildRentPaymentPayload({
-          tenantId: paymentData.tenantId,
-          amountPaisa: allocations.rent.amountPaisa,
-          paymentDate: paymentData.paymentDate,
-          nepaliDate: paymentData.nepaliDate,
-          paymentMethod: paymentData.paymentMethod,
-          paymentStatus: paymentData.paymentStatus,
-          receivedBy: paymentData.receivedBy,
-          note: paymentData.note,
-          transactionRef: paymentData.transactionRef,
-          adminId: paymentData.adminId,
-          bankAccountId: paymentData.bankAccountId,
-          rentId: rent._id,
-          allocations: { rent: allocations.rent },
-        })
+        tenantId: paymentData.tenantId,
+        amountPaisa: allocations.rent.amountPaisa,
+        paymentDate: paymentData.paymentDate,
+        nepaliDate: paymentData.nepaliDate,
+        paymentMethod: paymentData.paymentMethod,
+        paymentStatus: paymentData.paymentStatus,
+        receivedBy: paymentData.receivedBy,
+        note: paymentData.note,
+        transactionRef: paymentData.transactionRef,
+        adminId: paymentData.adminId,
+        bankAccountId: paymentData.bankAccountId,
+        rentId: rent._id,
+        allocations: { rent: allocations.rent },
+      })
       : null;
 
     const camPayload = cam
       ? buildCamPaymentPayload({
-          tenantId: paymentData.tenantId,
-          amountPaisa: allocations.cam.paidAmountPaisa,
-          paymentDate: paymentData.paymentDate,
-          nepaliDate: paymentData.nepaliDate,
-          paymentMethod: paymentData.paymentMethod,
-          paymentStatus: paymentData.paymentStatus,
-          receivedBy: paymentData.receivedBy,
-          note: paymentData.note,
-          transactionRef: paymentData.transactionRef,
-          adminId: paymentData.adminId,
-          bankAccountId: paymentData.bankAccountId,
-          camId: cam._id,
-          allocations: { cam: allocations.cam },
-        })
+        tenantId: paymentData.tenantId,
+        amountPaisa: allocations.cam.paidAmountPaisa,
+        paymentDate: paymentData.paymentDate,
+        nepaliDate: paymentData.nepaliDate,
+        paymentMethod: paymentData.paymentMethod,
+        paymentStatus: paymentData.paymentStatus,
+        receivedBy: paymentData.receivedBy,
+        note: paymentData.note,
+        transactionRef: paymentData.transactionRef,
+        adminId: paymentData.adminId,
+        bankAccountId: paymentData.bankAccountId,
+        camId: cam._id,
+        allocations: { cam: allocations.cam },
+      })
       : null;
 
     const lateFeePayload =
       allocations?.lateFee?.amountPaisa > 0
         ? buildLateFeePaymentPayload({
-            tenantId: paymentData.tenantId,
-            amountPaisa: allocations.lateFee.amountPaisa,
-            paymentDate: paymentData.paymentDate,
-            nepaliDate: paymentData.nepaliDate,
-            paymentMethod: paymentData.paymentMethod,
-            paymentStatus: paymentData.paymentStatus,
-            note: paymentData.note,
-            transactionRef: paymentData.transactionRef,
-            adminId: paymentData.adminId,
-            bankAccountId: paymentData.bankAccountId,
-            receivedBy: paymentData.receivedBy,
-            rentId: rent?._id || null,
-            allocations: { lateFee: allocations.lateFee },
-          })
+          tenantId: paymentData.tenantId,
+          amountPaisa: allocations.lateFee.amountPaisa,
+          paymentDate: paymentData.paymentDate,
+          nepaliDate: paymentData.nepaliDate,
+          paymentMethod: paymentData.paymentMethod,
+          paymentStatus: paymentData.paymentStatus,
+          note: paymentData.note,
+          transactionRef: paymentData.transactionRef,
+          adminId: paymentData.adminId,
+          bankAccountId: paymentData.bankAccountId,
+          receivedBy: paymentData.receivedBy,
+          rentId: rent?._id || null,
+          allocations: { lateFee: allocations.lateFee },
+        })
         : null;
 
-    const payload = mergePaymentPayloads(
-      rentPayload,
-      camPayload,
-      lateFeePayload,
+    // Build merged Payment record — handle electricity-only case where no
+    // rent/CAM/lateFee payloads exist (cheque paid entirely for electricity)
+    let payload;
+    if (rentPayload || camPayload || lateFeePayload) {
+      payload = mergePaymentPayloads(rentPayload, camPayload, lateFeePayload);
+    } else {
+      payload = {
+        tenant: paymentData.tenantId,
+        amountPaisa: 0,
+        amount: 0,
+        paymentDate: paymentData.paymentDate,
+        nepaliDate: paymentData.nepaliDate,
+        paymentMethod: paymentData.paymentMethod,
+        paymentStatus: paymentData.paymentStatus || "paid",
+        note: paymentData.note || null,
+        transactionRef: paymentData.transactionRef || null,
+        createdBy: paymentData.adminId
+          ? new mongoose.Types.ObjectId(paymentData.adminId)
+          : undefined,
+        rent: null,
+        cam: null,
+        allocations: { rent: null, cam: null, lateFee: null },
+        bankAccount: paymentData.bankAccountId || null,
+      };
+    }
+
+    // Add electricity total to the unified Payment record amount
+    const electricityAmountPaisa = electricityResults.reduce(
+      (sum, r) => sum + (r.electricity?.paidAmountPaisa ?? 0),
+      0,
     );
+    // electricityAmountPaisa above sums NEW amounts paid in this tx;
+    // use allocation paisa directly for accuracy
+    const electricityAllocPaisa = (allocations?.electricity || []).reduce(
+      (sum, e) => sum + (e.amountPaisa || 0),
+      0,
+    );
+    if (electricityAllocPaisa > 0) {
+      payload.amountPaisa = (payload.amountPaisa || 0) + electricityAllocPaisa;
+      payload.amount = payload.amountPaisa / 100;
+    }
+
     const payment = await createPaymentRecord(payload, session);
 
     // ── Step 7: Ledger entries ────────────────────────────────────────────────
@@ -366,7 +439,7 @@ export async function createPayment(paymentData) {
 
     if (cam) {
       const camJournalPayload = buildCamPaymentReceivedJournal(
-        payment,
+        { ...payment.toObject(), amountPaisa: allocations.cam.paidAmountPaisa },
         cam,
         bankAccountCode,
       );
@@ -441,14 +514,64 @@ export async function createPayment(paymentData) {
         session,
       });
     }
+    // ── Step 8.5: Create ChequeDraft for received cheque payments ─────────────
+    // The receipt-side journals (DR 1150 / CR AR for rent+CAM+electricity) were
+    // already posted in Steps 7–8 and within electricityService.recordElectricityPayment.
+    // We create ONE PENDING ChequeDraft for the full cheque face-value so the
+    // accountant can later mark it DEPOSITED (DR Bank / CR 1150) or BOUNCED.
+    //
+    // payment.amountPaisa is the authoritative total — it includes rent, CAM,
+    // late fee, AND electricity allocations (added at Step 6).
+    if (paymentData.paymentMethod === "cheque" && !paymentData.chequeNumber?.trim()) {
+      console.warn(`[createPayment] chequeNumber missing for cheque payment ${payment._id} — draft NOT created`);
+    } else if (paymentData.paymentMethod === "cheque" && !entityId) {
+      console.warn(`[createPayment] entityId null for cheque payment ${payment._id} — draft NOT created`);
+    }
+
+    if (
+      paymentData.paymentMethod === "cheque" &&
+      paymentData.chequeNumber?.trim() &&
+      entityId &&
+      payment.amountPaisa > 0
+    ) {
+      const chequePeriodMonth =
+        rent?.nepaliMonth ?? cam?.nepaliMonth ??
+        electricityResults[0]?.electricity?.nepaliMonth ?? null;
+      const chequePeriodYear =
+        rent?.nepaliYear ?? cam?.nepaliYear ??
+        electricityResults[0]?.electricity?.nepaliYear ?? null;
+
+      await createChequeDraft(
+        {
+          chequeNumber: paymentData.chequeNumber.trim(),
+          chequeDate: paymentData.paymentDate ? new Date(paymentData.paymentDate) : new Date(),
+          direction: "RECEIVED",
+          amountPaisa: payment.amountPaisa,  // full face-value including electricity
+          bankAccountCode: paymentData.bankAccountCode,
+          referenceAccountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, // "1200" — for bounce reversal
+          referenceType: null,
+          referenceId: null,
+          entityId,
+          partyName: paymentData.partyName ?? null,
+          nepaliDate: paymentData.nepaliDate ?? null,
+          nepaliMonth: chequePeriodMonth,
+          nepaliYear: chequePeriodYear,
+          createdBy: paymentData.adminId ?? paymentData.receivedBy,
+          skipReceiptJournal: true, // receipt journals already posted in Steps 7–8
+        },
+        session,
+      );
+    }
+
     const tenantIdForSync =
       paymentData.tenantId ??
       rent?.tenant?._id?.toString() ??
       cam?.tenant?._id?.toString() ??
       null;
 
+    let balanceAfterPayment = null;
     if (tenantIdForSync) {
-      await syncTenantBalance(tenantIdForSync, session);
+      balanceAfterPayment = await syncTenantBalance(tenantIdForSync, session);
     }
 
     // ── Step 9: Commit ────────────────────────────────────────────────────────
@@ -456,6 +579,19 @@ export async function createPayment(paymentData) {
     session.endSession();
 
     // ── Step 10: Async side effects ───────────────────────────────────────────
+    const tenantPhone =
+      rent?.tenant?.phone ?? cam?.tenant?.phone ?? null;
+    const tenantName =
+      rent?.tenant?.name ?? cam?.tenant?.name ?? null;
+    // if (tenantPhone && tenantName && balanceAfterPayment) {
+    //   smsTenant.paymentConfirmed(tenantPhone, {
+    //     tenantName,
+    //     amountRupees: Math.round(totalAmountPaisa / 100),
+    //     receiptNo: payment.documentNumber ?? payment._id.toString().slice(-8).toUpperCase(),
+    //     totalDuePaisa: balanceAfterPayment.totalDuePaisa,
+    //   });
+    // }
+
     emitPaymentNotification(
       {
         paymentId: payment._id,
@@ -502,15 +638,15 @@ export async function createPayment(paymentData) {
       },
       rent: rent
         ? {
-            id: rent._id,
-            status: rent.status,
-            paidAmountPaisa: rent.paidAmountPaisa,
-            remainingPaisa: calculateRentRemaining(rent),
-            useUnitBreakdown: rent.useUnitBreakdown,
-            unitDetails: rent.useUnitBreakdown
-              ? getUnitPaymentDetails(rent)
-              : null,
-          }
+          id: rent._id,
+          status: rent.status,
+          paidAmountPaisa: rent.paidAmountPaisa,
+          remainingPaisa: calculateRentRemaining(rent),
+          useUnitBreakdown: rent.useUnitBreakdown,
+          unitDetails: rent.useUnitBreakdown
+            ? getUnitPaymentDetails(rent)
+            : null,
+        }
         : null,
       cam: cam ? { id: cam._id, status: cam.status } : null,
       message: "Payment recorded successfully",
@@ -551,7 +687,8 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
       .populate("tenant")
       .populate("rent")
       .populate("cam")
-      .populate("bankAccount");
+      .populate("bankAccount")
+      .populate("receivedBy", "name");
 
     if (!payment) throw new Error("Payment not found");
     if (!payment.tenant?.email) throw new Error("Tenant email not found");
@@ -595,26 +732,30 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
     const camAmountPaisa =
       payment.allocations?.cam?.paidAmountPaisa ??
       rupeesToPaisa(payment.allocations?.cam?.paidAmount || 0);
-    // FIX: extract late fee paisa for receipt display
     const lateFeeAmountPaisa =
       payment.allocations?.lateFee?.amountPaisa ??
       rupeesToPaisa(payment.allocations?.lateFee?.amount || 0);
+    const electricityAmountPaisa = (payment.allocations?.electricity ?? [])
+      .reduce((sum, e) => sum + (e.amountPaisa ?? rupeesToPaisa(e.amount || 0)), 0);
+
+    const receiptNo = payment.documentNumber || payment._id.toString();
 
     const pdfData = {
-      receiptNo: payment._id.toString(),
+      receiptNo,
       amount: payment.amountPaisa / 100,
       paymentDate: formattedDate,
+      nepaliDate: payment.nepaliDate || "",
       tenantName: rent?.tenant?.name || payment.tenant?.name || "N/A",
       property: rent?.property?.name || "N/A",
       paidFor,
       paymentMethod:
         { cheque: "Cheque", cash: "Cash" }[payment.paymentMethod] ??
         "Bank Transfer",
-      receivedBy: rent?.lastPaidBy || "",
+      receivedBy: payment.receivedBy?.name || "",
       rentAmount: rentAmountPaisa / 100,
       camAmount: camAmountPaisa / 100,
-      // FIX: pass late fee to PDF generator
       lateFeeAmount: lateFeeAmountPaisa / 100,
+      electricityAmount: electricityAmountPaisa / 100,
       unitBreakdown: null,
     };
 
@@ -662,9 +803,10 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
   </p>
   <p style="color:#555555;font-size:14px;line-height:1.5;margin-top:20px;">
     <strong>Receipt Details:</strong><br>
-    Receipt No: ${payment._id.toString()}<br>
+    Receipt No: ${receiptNo}<br>
     ${rentAmountPaisa > 0 ? `Rent: ${formatMoneySafe(rentAmountPaisa)}<br>` : ""}
     ${camAmountPaisa > 0 ? `CAM: ${formatMoneySafe(camAmountPaisa)}<br>` : ""}
+    ${electricityAmountPaisa > 0 ? `Electricity: ${formatMoneySafe(electricityAmountPaisa)}<br>` : ""}
     ${lateFeeAmountPaisa > 0 ? `Late Fee: ${formatMoneySafe(lateFeeAmountPaisa)}<br>` : ""}
     Total: ${formatMoneySafe(payment.amountPaisa)}<br>
     Date: ${formattedDate}<br>
@@ -681,11 +823,11 @@ export const sendPaymentReceiptEmail = async (paymentId) => {
 
     await sendEmail({
       to: payment.tenant.email,
-      subject: "Payment Receipt - Rent and CAM Payment Confirmation",
+      subject: `Payment Receipt — ${paidFor}`,
       html,
       attachments: [
         {
-          filename: `receipt-${payment._id}.pdf`,
+          filename: `receipt-${receiptNo}.pdf`,
           content: pdfBuffer,
           contentType: "application/pdf",
         },
@@ -776,7 +918,7 @@ export const getPaymentActivities = async (paymentId) => {
 
 /**
  * Apply one payment across multiple rent months (oldest first).
- * Each slice is recorded via createPayment (rent + optional late fee only; no CAM).
+ * Waterfall order per month: rent → late fee → CAM → electricity.
  */
 export async function createBulkArrearsPayment(params) {
   const {
@@ -792,6 +934,8 @@ export async function createBulkArrearsPayment(params) {
     transactionRef,
     note,
     allocationStrategy = "proportional",
+    chequeNumber = null,
+    partyName = null,
   } = params;
 
   const rents = await Rent.find({ _id: { $in: rentIds } })
@@ -806,67 +950,99 @@ export async function createBulkArrearsPayment(params) {
     .filter(Boolean);
 
   if (orderedRents.length === 0) {
-    return {
-      success: false,
-      error: "No valid rent records found for provided IDs",
-    };
+    return { success: false, error: "No valid rent records found for provided IDs" };
+  }
+
+  // Batch-fetch CAM and electricity for all selected months
+  const periodFilter = {
+    tenant: tenantId,
+    status: { $in: ["pending", "partially_paid"] },
+    $or: orderedRents.map((r) => ({ nepaliYear: r.nepaliYear, nepaliMonth: r.nepaliMonth })),
+  };
+
+  const { Electricity } = await import("../electricity/Electricity.Model.js");
+  const [camRecords, elecRecords] = await Promise.all([
+    Cam.find(periodFilter).select("_id tenant nepaliYear nepaliMonth amountPaisa paidAmountPaisa").lean(),
+    Electricity.find({ ...periodFilter, billTo: "tenant" }).select("_id tenant nepaliYear nepaliMonth totalAmountPaisa paidAmountPaisa").lean(),
+  ]);
+
+  const camMap = new Map();
+  for (const c of camRecords) {
+    camMap.set(`${c.nepaliYear}_${c.nepaliMonth}`, c);
+  }
+  const elecMap = new Map();
+  for (const e of elecRecords) {
+    const key = `${e.nepaliYear}_${e.nepaliMonth}`;
+    if (!elecMap.has(key)) elecMap.set(key, []);
+    elecMap.get(key).push(e);
   }
 
   let budgetPaisa = rupeesToPaisa(totalAmount);
-
   const plan = [];
 
   for (const rent of orderedRents) {
     if (budgetPaisa <= 0) break;
 
+    const key = `${rent.nepaliYear}_${rent.nepaliMonth}`;
+
     const grossPaisa = rent.grossRentAmountPaisa ?? 0;
     const tdsPaisa = rent.tdsAmountPaisa ?? 0;
     const paidPaisa = rent.paidAmountPaisa ?? 0;
-    const effectiveDuePaisa = grossPaisa - tdsPaisa;
-    const remainingRentPaisa = Math.max(0, effectiveDuePaisa - paidPaisa);
+    const remainingRentPaisa = Math.max(0, grossPaisa - tdsPaisa - paidPaisa);
 
-    const hasLateFee =
-      rent.lateFeeApplied &&
-      (rent.lateFeePaisa ?? 0) > 0 &&
-      rent.lateFeeStatus !== "paid";
-    const remainingLateFeePaisa = hasLateFee
-      ? (rent.lateFeePaisa ?? 0) - (rent.latePaidAmountPaisa ?? 0)
-      : 0;
+    const hasLateFee = rent.lateFeeApplied && (rent.lateFeePaisa ?? 0) > 0 && rent.lateFeeStatus !== "paid";
+    const remainingLateFeePaisa = hasLateFee ? (rent.lateFeePaisa ?? 0) - (rent.latePaidAmountPaisa ?? 0) : 0;
 
-    if (remainingRentPaisa === 0 && remainingLateFeePaisa === 0) continue;
+    const cam = camMap.get(key) ?? null;
+    const remainingCamPaisa = cam ? Math.max(0, (cam.amountPaisa ?? 0) - (cam.paidAmountPaisa ?? 0)) : 0;
 
+    const elecList = elecMap.get(key) ?? [];
+
+    const hasAnything = remainingRentPaisa > 0 || remainingLateFeePaisa > 0 || remainingCamPaisa > 0 ||
+      elecList.some((e) => (e.totalAmountPaisa ?? 0) > (e.paidAmountPaisa ?? 0));
+    if (!hasAnything) continue;
+
+    // Waterfall: rent → late fee → cam → electricity (oldest month first)
     const allocatedRentPaisa = Math.min(remainingRentPaisa, budgetPaisa);
     budgetPaisa -= allocatedRentPaisa;
 
     let allocatedLateFeePaisa = 0;
-    if (
-      hasLateFee &&
-      budgetPaisa >= remainingLateFeePaisa &&
-      allocatedRentPaisa >= remainingRentPaisa
-    ) {
+    if (hasLateFee && budgetPaisa >= remainingLateFeePaisa && allocatedRentPaisa >= remainingRentPaisa) {
       allocatedLateFeePaisa = remainingLateFeePaisa;
       budgetPaisa -= allocatedLateFeePaisa;
     }
 
-    if (allocatedRentPaisa > 0 || allocatedLateFeePaisa > 0) {
-      plan.push({ rent, allocatedRentPaisa, allocatedLateFeePaisa });
+    let allocatedCamPaisa = 0;
+    if (cam && budgetPaisa > 0 && remainingCamPaisa > 0) {
+      allocatedCamPaisa = Math.min(remainingCamPaisa, budgetPaisa);
+      budgetPaisa -= allocatedCamPaisa;
+    }
+
+    const allocatedElectricity = [];
+    for (const e of elecList) {
+      if (budgetPaisa <= 0) break;
+      const elecRemaining = Math.max(0, (e.totalAmountPaisa ?? 0) - (e.paidAmountPaisa ?? 0));
+      if (elecRemaining <= 0) continue;
+      const alloc = Math.min(elecRemaining, budgetPaisa);
+      budgetPaisa -= alloc;
+      allocatedElectricity.push({ electricityId: e._id.toString(), amountPaisa: alloc });
+    }
+
+    const totalSlicePaisa = allocatedRentPaisa + allocatedLateFeePaisa + allocatedCamPaisa +
+      allocatedElectricity.reduce((s, a) => s + a.amountPaisa, 0);
+
+    if (totalSlicePaisa > 0) {
+      plan.push({ rent, cam, allocatedRentPaisa, allocatedLateFeePaisa, allocatedCamPaisa, allocatedElectricity, totalSlicePaisa });
     }
   }
 
   if (plan.length === 0) {
-    return {
-      success: false,
-      error: "All selected rents are already fully paid",
-    };
+    return { success: false, error: "All selected rents are already fully paid" };
   }
 
-  const results = {
-    succeeded: [],
-    failed: [],
-    totalPaidPaisa: 0,
-  };
+  const results = { succeeded: [], failed: [], totalPaidPaisa: 0 };
 
-  for (const { rent, allocatedRentPaisa, allocatedLateFeePaisa } of plan) {
+  for (const { rent, cam, allocatedRentPaisa, allocatedLateFeePaisa, allocatedCamPaisa, allocatedElectricity, totalSlicePaisa } of plan) {
     const allocations = {
       rent: {
         rentId: rent._id.toString(),
@@ -883,10 +1059,26 @@ export async function createBulkArrearsPayment(params) {
       };
     }
 
+    if (allocatedCamPaisa > 0 && cam?._id) {
+      allocations.cam = {
+        camId: cam._id.toString(),
+        paidAmount: allocatedCamPaisa / 100,
+        paidAmountPaisa: allocatedCamPaisa,
+      };
+    }
+
+    if (allocatedElectricity.length > 0) {
+      allocations.electricity = allocatedElectricity.map((a) => ({
+        electricityId: a.electricityId,
+        amountPaisa: a.amountPaisa,
+        amount: a.amountPaisa / 100,
+      }));
+    }
+
     const paymentData = {
       adminId,
       tenantId,
-      amount: (allocatedRentPaisa + allocatedLateFeePaisa) / 100,
+      amount: totalSlicePaisa / 100,
       paymentDate,
       nepaliDate,
       paymentMethod,
@@ -898,6 +1090,8 @@ export async function createBulkArrearsPayment(params) {
       allocations,
       allocationStrategy,
       receivedBy: adminId,
+      chequeNumber: chequeNumber || null,
+      partyName: partyName || null,
     };
 
     const result = await createPayment(paymentData);
@@ -907,11 +1101,11 @@ export async function createBulkArrearsPayment(params) {
         rentId: rent._id.toString(),
         nepaliMonth: rent.nepaliMonth,
         nepaliYear: rent.nepaliYear,
-        paidPaisa: allocatedRentPaisa + allocatedLateFeePaisa,
+        paidPaisa: totalSlicePaisa,
         paymentId: result.payment?.id,
         rentStatus: result.rent?.status,
       });
-      results.totalPaidPaisa += allocatedRentPaisa + allocatedLateFeePaisa;
+      results.totalPaidPaisa += totalSlicePaisa;
     } else {
       results.failed.push({
         rentId: rent._id.toString(),

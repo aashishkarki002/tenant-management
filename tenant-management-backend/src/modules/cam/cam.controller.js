@@ -12,10 +12,12 @@ export const createCamController = async (req, res) => {
 
 export const getCamsController = async (req, res) => {
   try {
-    const { nepaliMonth, nepaliYear } = req.query;
+    const { nepaliMonth, nepaliYear, tenantId, status } = req.query;
     const filters = {};
     if (nepaliMonth != null) filters.nepaliMonth = Number(nepaliMonth);
     if (nepaliYear != null) filters.nepaliYear = Number(nepaliYear);
+    if (tenantId) filters.tenantId = tenantId;
+    if (status) filters.status = status.includes(",") ? status.split(",") : status;
     const cams = await getCams(filters);
     res.status(200).json({ success: true, cams });
   } catch (error) {

@@ -20,6 +20,8 @@ import { createCam } from "../cam/cam.service.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildRentChargeJournal } from "../ledger/journal-builders/index.js";
 import { buildCamChargeJournal } from "../ledger/journal-builders/camCharge.js";
+import { TenantBalance } from "../tenantBalance/tenantBalance.model.js";
+import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
 import { resolveEntityFromBlock } from "../../helper/resolveEntity.js";
 import { getNepaliMonthDates, getRentCycleDates } from "../../utils/nepaliDateHelper.js";
 
@@ -51,6 +53,7 @@ export async function createTenant(body, files, adminId) {
     "bank_guarantee",
     "cheque",
     "other",
+    "sd_others",
   ];
   const hasDocuments =
     files &&
@@ -83,6 +86,12 @@ export async function createTenant(body, files, adminId) {
 
   const session = await mongoose.startSession();
   session.startTransaction();
+
+  // Inject sd_others image URL into body so createTenantTransaction can store it
+  const sdOthersDoc = documents.find((d) => d.type === "sd_others");
+  if (sdOthersDoc?.files?.[0]?.url) {
+    body.sdOthersImageUrl = sdOthersDoc.files[0].url;
+  }
 
   try {
     const tenant = await createTenantTransaction(body, documents, adminId, session);
@@ -1420,6 +1429,212 @@ async function updatePendingCAMRecords(tenant, newFinancials, session) {
   }
 
   return { updated: updatedCount };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHANGE RENT FREQUENCY
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Change a tenant's rent payment frequency (monthly ↔ quarterly).
+ *
+ * strategy "clear":
+ *   Cancels all pending/overdue Rent + CAM records, posts reversal journals,
+ *   zeroes TenantBalance. A clean slate for the new billing cycle.
+ *
+ * strategy "carry_forward":
+ *   Leaves pending/overdue records untouched. The outstanding amounts remain
+ *   in TenantBalance and must be collected before or alongside the new cycle.
+ *
+ * Metadata (rentFrequencyChangedAt, rentFrequencyChangedBy,
+ * rentFrequencyChangedReason) is always written to the Tenant document.
+ */
+export async function changeRentFrequency(tenantId, { newFrequency, reason, strategy, adminId }) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const tenant = await Tenant.findById(tenantId).session(session);
+    if (!tenant) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 404, message: "Tenant not found" };
+    }
+
+    if (tenant.rentPaymentFrequency === newFrequency) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 400, message: `Frequency is already ${newFrequency}` };
+    }
+
+    if (!["monthly", "quarterly"].includes(newFrequency)) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 400, message: "Invalid frequency. Must be monthly or quarterly" };
+    }
+
+    if (!["clear", "carry_forward"].includes(strategy)) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 400, message: "Invalid strategy. Must be clear or carry_forward" };
+    }
+
+    if (!reason || !reason.trim()) {
+      await session.abortTransaction();
+      session.endSession();
+      return { success: false, statusCode: 400, message: "Reason is required" };
+    }
+
+    const entityId = await resolveEntityFromBlock(tenant.block.toString(), session);
+    const now = new Date();
+
+    let cancelledRents = 0;
+    let cancelledCams = 0;
+
+    if (strategy === "clear") {
+      // ── Cancel pending / overdue Rent records ───────────────────────────
+      const pendingRents = await Rent.find({
+        tenant: tenant._id,
+        status: { $in: ["pending", "overdue", "partially_paid"] },
+      }).session(session);
+
+      for (const rent of pendingRents) {
+        const netUnpaidPaisa =
+          (rent.grossRentAmountPaisa - (rent.tdsAmountPaisa || 0)) -
+          (rent.paidAmountPaisa || 0);
+
+        if (netUnpaidPaisa > 0) {
+          const reversal = {
+            transactionType: "RENT_CHARGE_CANCELLED",
+            referenceType: "Rent",
+            referenceId: rent._id,
+            transactionDate: now,
+            nepaliDate: rent.nepaliDate ?? null,
+            nepaliMonth: rent.nepaliMonth,
+            nepaliYear: rent.nepaliYear,
+            description: `Rent charge cancelled — frequency change to ${newFrequency}. ${reason.trim()}`,
+            createdBy: adminId ?? null,
+            totalAmountPaisa: netUnpaidPaisa,
+            tenant: tenant._id,
+            property: tenant.property,
+            entries: [
+              {
+                accountCode: ACCOUNT_CODES.REVENUE,
+                debitAmountPaisa: netUnpaidPaisa,
+                creditAmountPaisa: 0,
+                description: "Reverse unearned rental income",
+              },
+              {
+                accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+                debitAmountPaisa: 0,
+                creditAmountPaisa: netUnpaidPaisa,
+                description: "Clear tenant rent receivable",
+              },
+            ],
+          };
+          await ledgerService.postJournalEntry(reversal, session, entityId);
+        }
+
+        rent.status = "cancelled";
+        rent.notes = (rent.notes || "") + `\nCancelled on ${now.toISOString()}: frequency change to ${newFrequency}. ${reason.trim()}`;
+        await rent.save({ session });
+        cancelledRents++;
+      }
+
+      // ── Cancel pending / overdue CAM records ────────────────────────────
+      const pendingCams = await Cam.find({
+        tenant: tenant._id,
+        status: { $in: ["pending", "overdue", "partially_paid"] },
+      }).session(session);
+
+      for (const cam of pendingCams) {
+        const unpaidPaisa = (cam.amountPaisa || 0) - (cam.paidAmountPaisa || 0);
+
+        if (unpaidPaisa > 0) {
+          const reversal = {
+            transactionType: "CAM_CHARGE_CANCELLED",
+            referenceType: "Cam",
+            referenceId: cam._id,
+            transactionDate: now,
+            nepaliDate: cam.nepaliDate ?? null,
+            nepaliMonth: cam.nepaliMonth,
+            nepaliYear: cam.nepaliYear,
+            description: `CAM charge cancelled — frequency change to ${newFrequency}. ${reason.trim()}`,
+            createdBy: adminId ?? null,
+            totalAmountPaisa: unpaidPaisa,
+            tenant: tenant._id,
+            property: tenant.property,
+            entries: [
+              {
+                accountCode: ACCOUNT_CODES.CAM_REVENUE,
+                debitAmountPaisa: unpaidPaisa,
+                creditAmountPaisa: 0,
+                description: "Reverse unearned CAM income",
+              },
+              {
+                accountCode: ACCOUNT_CODES.CAM_RECEIVABLE,
+                debitAmountPaisa: 0,
+                creditAmountPaisa: unpaidPaisa,
+                description: "Clear tenant CAM receivable",
+              },
+            ],
+          };
+          await ledgerService.postJournalEntry(reversal, session, entityId);
+        }
+
+        cam.status = "cancelled";
+        cam.notes = (cam.notes || "") + `\nCancelled on ${now.toISOString()}: frequency change to ${newFrequency}. ${reason.trim()}`;
+        await cam.save({ session });
+        cancelledCams++;
+      }
+
+      // ── Zero TenantBalance ───────────────────────────────────────────────
+      await TenantBalance.findOneAndUpdate(
+        { tenant: tenant._id },
+        { $set: { rentDuePaisa: 0, camDuePaisa: 0, lateFeeDuePaisa: 0, totalDuePaisa: 0 } },
+        { session, upsert: false },
+      );
+    }
+
+    // ── Update Tenant frequency + audit metadata ─────────────────────────
+    const updateData = {
+      rentPaymentFrequency: newFrequency,
+      rentFrequencyChangedAt: now,
+      rentFrequencyChangedBy: adminId ?? null,
+      rentFrequencyChangedReason: reason.trim(),
+    };
+
+    if (newFrequency === "quarterly") {
+      updateData.quarterlyRentAmountPaisa = tenant.totalRentPaisa * 3;
+    } else {
+      updateData.quarterlyRentAmountPaisa = 0;
+    }
+
+    await Tenant.findByIdAndUpdate(tenantId, { $set: updateData }, { session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: `Rent frequency changed to ${newFrequency}. ${strategy === "clear" ? `Cancelled ${cancelledRents} rent and ${cancelledCams} CAM record(s).` : "Existing pending records carried forward."}`,
+      cancelledRents,
+      cancelledCams,
+      strategy,
+      newFrequency,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("changeRentFrequency error:", error);
+    return {
+      success: false,
+      statusCode: 500,
+      message: "Failed to change rent frequency",
+      error: error.message,
+    };
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

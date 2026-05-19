@@ -11,6 +11,7 @@
  * createCam and getCams are character-for-character identical to the original.
  */
 
+import mongoose from "mongoose";
 import { Cam } from "./cam.model.js";
 import { ledgerService } from "../ledger/ledger.service.js";
 import { buildCamChargeJournal } from "../ledger/journal-builders/index.js";
@@ -22,6 +23,10 @@ import {
   formatMoney,
 } from "../../utils/moneyUtil.js";
 import { buildEntityMapForBlocks } from "../../helper/resolveEntity.js"; // ← NEW
+import {
+  generateDocumentNumber,
+  DOCUMENT_TYPES,
+} from "../documentCounter/documentNumber.service.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -65,8 +70,28 @@ async function createCam(camData, createdBy, session = null) {
 export { createCam };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CRON: handleMonthlyCams — entity-aware via buildEntityMapForBlocks
+// CRON: handleMonthlyCams — handles both monthly and quarterly tenants
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns true if `currentMonth` (1-12) is a quarter-start month for a tenant
+ * whose billing cycle starts on `quarterStartMonth` (1-12).
+ * Quarters repeat every 3 months: startMonth, startMonth+3, startMonth+6, startMonth+9.
+ */
+function isQuarterStartMonth(currentMonth, quarterStartMonth) {
+  return ((currentMonth - quarterStartMonth + 12) % 3) === 0;
+}
+
+/**
+ * For a quarterly period starting at (year, month1), return the ending month/year
+ * after `periodMonths` months (e.g. 3).
+ */
+function getQuarterEnd(startYear, startMonth1, periodMonths = 3) {
+  const totalMonth0 = (startMonth1 - 1) + (periodMonths - 1); // 0-based index of last month
+  const endMonth1 = (totalMonth0 % 12) + 1;
+  const endYear   = startYear + Math.floor(totalMonth0 / 12);
+  return { nepaliMonthEnd: endMonth1, nepaliYearEnd: endYear };
+}
 
 export const handleMonthlyCams = async (adminId) => {
   const createdBy = adminId || process.env.SYSTEM_ADMIN_ID;
@@ -81,7 +106,7 @@ export const handleMonthlyCams = async (adminId) => {
   } = getNepaliMonthDates();
 
   try {
-    // Step 1: Mark overdue (unchanged)
+    // Step 1: Mark overdue CAMs from past periods
     const overdueResult = await Cam.updateMany(
       {
         $and: [
@@ -98,13 +123,13 @@ export const handleMonthlyCams = async (adminId) => {
     );
     console.log("Overdue cams updated:", overdueResult.modifiedCount);
 
-    // Step 2: Active tenants (unchanged)
+    // Step 2: Load active tenants
     const tenants = await Tenant.find({ status: "active" }).lean();
     if (!tenants.length) {
       return { success: false, message: "No tenants found", count: 0 };
     }
 
-    // Step 3: Idempotency (unchanged)
+    // Step 3: Idempotency — skip tenants already charged for this billing period
     const existingCams = await Cam.find({
       nepaliMonth: npMonth,
       nepaliYear: npYear,
@@ -113,30 +138,44 @@ export const handleMonthlyCams = async (adminId) => {
       existingCams.map((c) => c.tenant.toString()),
     );
 
-    const tenantsToProcess = tenants.filter(
-      (t) => !existingTenantIds.has(t._id.toString()),
-    );
+    // Step 4: Filter to tenants that need a CAM this month
+    // - Monthly tenants: always
+    // - Quarterly tenants: only when current month is their quarter-start month
+    const tenantsToProcess = tenants.filter((t) => {
+      if (existingTenantIds.has(t._id.toString())) return false;
+      if (t.rentPaymentFrequency !== "quarterly") return true; // monthly — always charge
+      const quarterStart = t.camQuarterStartMonth;
+      if (!quarterStart) return true; // fallback: treat as monthly
+      return isQuarterStartMonth(npMonth, quarterStart);
+    });
 
     if (!tenantsToProcess.length) {
       return {
         success: true,
-        message: "All CAMs for this month already exist",
+        message: "No CAMs to create this period",
         count: 0,
         updatedOverdueCount: overdueResult.modifiedCount,
       };
     }
 
-    // Step 4: Batch-resolve entityId — ONE query for all blocks ← NEW
+    // Step 5: Batch-resolve entityId
     const entityByBlock = await buildEntityMapForBlocks(
       tenantsToProcess.map((t) => t.block),
     );
 
-    // Step 5: Build CAM documents (unchanged shape)
-    const camsToInsert = tenantsToProcess.map((tenant) => {
-      const amountPaisa =
-        tenant.camChargesPaisa || rupeesToPaisa(tenant.camCharges || 0);
+    // Step 6: Build CAM documents — sequential loop so documentNumbers are gapless
+    const camsToInsert = [];
+    for (const tenant of tenantsToProcess) {
+      const isQuarterly = tenant.rentPaymentFrequency === "quarterly";
+      const monthlyPaisa = tenant.camChargesPaisa || rupeesToPaisa(tenant.camCharges || 0);
+      const periodMonths = isQuarterly ? 3 : 1;
+      const amountPaisa = Math.round(monthlyPaisa * periodMonths);
+      const { nepaliMonthEnd, nepaliYearEnd } = isQuarterly
+        ? getQuarterEnd(npYear, npMonth, periodMonths)
+        : { nepaliMonthEnd: null, nepaliYearEnd: null };
+      const documentNumber = await generateDocumentNumber(DOCUMENT_TYPES.CAM, { fiscalYear: npYear });
 
-      return {
+      camsToInsert.push({
         tenant: tenant._id,
         property: tenant.property,
         block: tenant.block,
@@ -151,27 +190,34 @@ export const handleMonthlyCams = async (adminId) => {
         year: englishYear,
         month: englishMonth,
         nepaliDueDate: lastDay,
-        englishDueDate: englishDueDate,
+        englishDueDate,
         status: "pending",
-      };
-    });
-
-    if (!camsToInsert.length) {
-      return {
-        success: true,
-        message: "No new monthly cams to create",
-        count: 0,
-        updatedOverdueCount: overdueResult.modifiedCount,
-      };
+        camFrequency: isQuarterly ? "quarterly" : "monthly",
+        nepaliMonthEnd,
+        nepaliYearEnd,
+        documentNumber,
+      });
     }
 
-    // Step 6: Bulk insert (unchanged)
-    const insertedCams = await Cam.insertMany(camsToInsert);
+    // Step 7: Bulk insert — ordered:false skips duplicates without aborting the batch
+    let insertedCams = [];
+    try {
+      insertedCams = await Cam.insertMany(camsToInsert, { ordered: false });
+    } catch (bulkErr) {
+      if (bulkErr.code === 11000 || bulkErr.name === "MongoBulkWriteError") {
+        insertedCams = bulkErr.insertedDocs ?? [];
+        console.warn(
+          `[handleMonthlyCams] ${bulkErr.writeErrors?.length ?? "?"} duplicate(s) skipped, ` +
+          `${insertedCams.length} inserted`,
+        );
+      } else {
+        throw bulkErr;
+      }
+    }
 
-    // Step 7: Post journal per CAM — entity-tagged ← CHANGED
+    // Step 8: Post journal per CAM — entity-tagged
     for (const cam of insertedCams) {
       const entityId = entityByBlock.get(cam.block?.toString()) ?? null;
-
       try {
         const camChargePayload = buildCamChargeJournal(cam, { createdBy });
         await ledgerService.postJournalEntry(camChargePayload, null, entityId);
@@ -183,12 +229,16 @@ export const handleMonthlyCams = async (adminId) => {
       }
     }
 
-    console.log("Monthly cams created:", camsToInsert.length);
+    const monthlyCount = camsToInsert.filter(c => c.camFrequency === "monthly").length;
+    const quarterlyCount = camsToInsert.filter(c => c.camFrequency === "quarterly").length;
+    console.log(`CAMs created: ${monthlyCount} monthly, ${quarterlyCount} quarterly`);
 
     return {
       success: true,
-      message: "Monthly cams handled successfully",
-      count: camsToInsert.length,
+      message: "CAMs handled successfully",
+      count: insertedCams.length,
+      monthlyCount,
+      quarterlyCount,
       updatedOverdueCount: overdueResult.modifiedCount,
     };
   } catch (error) {
@@ -205,6 +255,8 @@ export const getCams = async (filters = {}) => {
   const query = {};
   if (filters.nepaliMonth != null) query.nepaliMonth = filters.nepaliMonth;
   if (filters.nepaliYear != null) query.nepaliYear = filters.nepaliYear;
+  if (filters.tenantId != null) query.tenant = new mongoose.Types.ObjectId(String(filters.tenantId));
+  if (filters.status != null) query.status = Array.isArray(filters.status) ? { $in: filters.status } : filters.status;
 
   const cams = await Cam.find(query)
     .populate("tenant")

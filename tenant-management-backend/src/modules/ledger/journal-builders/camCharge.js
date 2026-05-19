@@ -1,65 +1,80 @@
 /**
- * camCharge.js  (FIXED)
+ * camCharge.js
  *
- * Builds the journal payload for a CAM charge:
- *   DR  Accounts Receivable  (ASSET ↑ — tenant owes CAM)
- *   CR  Revenue              (REVENUE ↑ — CAM income earned)
- *
- * FIX: nepaliDate now always stored as a BS "YYYY-MM-DD" string,
- *      never as a raw Date object.
+ * Journal payload for a CAM charge:
+ *   DR  CAM Receivable  (1210) — tenant owes CAM
+ *   CR  CAM Revenue     (4050) — income earned
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
-import { buildJournalPayload } from "../../../utils/journalPayloadUtils.js";
 import { getRawPaisa } from "../../../utils/moneyUtil.js";
 import {
   assertNepaliFields,
   formatNepaliISO,
+  NEPALI_MONTH_NAMES,
 } from "../../../utils/nepaliDateHelper.js";
+import { getFiscalQuarterFromMonth, FISCAL_QUARTERS } from "../../../config/fiscalCalendar.js";
 import NepaliDate from "nepali-datetime";
 
-function resolveNepaliDateString(raw, fallback) {
-  if (typeof raw === "string" && raw.length > 0) return raw;
-  const base = raw instanceof Date ? raw : fallback;
-  return formatNepaliISO(new NepaliDate(base));
+/**
+ * Returns the BS month name for a 1-based nepaliMonth (1=Baisakh … 12=Chaitra).
+ */
+function bsMonthName(month1Based) {
+  return NEPALI_MONTH_NAMES[month1Based - 1] ?? String(month1Based);
 }
 
 /**
- * @param {Object} cam  - Cam document (Mongoose doc or plain object)
- *   Must have:  _id, tenant, property, nepaliMonth, nepaliYear, amountPaisa
- *   Optional:   createdAt, createdBy, nepaliDate, tenant.name
+ * @param {Object} cam  Cam document (Mongoose doc or plain object)
+ *   Required: _id, tenant, property, nepaliMonth, nepaliYear, amountPaisa
+ *   Optional: createdAt, createdBy, nepaliDate, camFrequency, nepaliMonthEnd, nepaliYearEnd
  *
- * @param {Object} options
- *   @param {*} options.createdBy  - Admin ObjectId
- *
- * @returns {Object} Canonical journal payload for postJournalEntry
+ * @param {Object} [options]
+ *   @param {*} [options.createdBy]
  */
 export function buildCamChargeJournal(cam, options = {}) {
-  // ── 1. Validate ───────────────────────────────────────────────────────────
-  assertNepaliFields({
-    nepaliYear: cam.nepaliYear,
-    nepaliMonth: cam.nepaliMonth,
-  });
+  // ── 1. Validate ──────────────────────────────────────────────────────────
+  assertNepaliFields({ nepaliYear: cam.nepaliYear, nepaliMonth: cam.nepaliMonth });
 
-  // ── 2. Extract raw paisa ──────────────────────────────────────────────────
+  // ── 2. Amount ────────────────────────────────────────────────────────────
   const amountPaisa = getRawPaisa(cam, "amountPaisa");
 
-  // ── 3. Metadata ───────────────────────────────────────────────────────────
+  // ── 3. Dates — no AD round-trip ──────────────────────────────────────────
   const { nepaliMonth, nepaliYear } = cam;
+  // Keep billingPeriodBS as the NepaliDate instance so formatNepaliISO never
+  // round-trips through UTC (which shifts Baisakh 1 → Chaitra 30 on UTC+5:45).
+  const billingPeriodBS = new NepaliDate(nepaliYear, nepaliMonth - 1, 1);
+  const transactionDate = billingPeriodBS.getDateObject();
 
-  // M5 FIX: use first day of billing period as transactionDate for correct accrual period.
-  const transactionDate = new NepaliDate(nepaliYear, nepaliMonth - 1, 1).getDateObject();
+  const nepaliDate =
+    typeof cam.nepaliDate === "string" && cam.nepaliDate.length > 0
+      ? cam.nepaliDate
+      : formatNepaliISO(billingPeriodBS); // same instance — no round-trip
 
-  const nepaliDate = resolveNepaliDateString(cam.nepaliDate, transactionDate);
-  const tenantName = cam.tenant?.name ?? "Tenant";
-  const createdBy = options.createdBy ?? cam.createdBy ?? null;
-  const description = `CAM charge for ${nepaliMonth}/${nepaliYear} from ${tenantName}`;
+  // ── 4. Narration ─────────────────────────────────────────────────────────
+  const tenantName       = cam.tenant?.name ?? "Tenant";
+  const createdBy        = options.createdBy ?? cam.createdBy ?? null;
+  const billingFrequency = cam.camFrequency ?? "monthly";
 
-  // ── 4. Build canonical payload ────────────────────────────────────────────
-  return buildJournalPayload({
-    transactionType: "CAM_CHARGE",
-    referenceType: "Cam",
-    referenceId: cam._id,
+  let description;
+  let entryPeriodLabel;
+
+  if (billingFrequency === "quarterly") {
+    const quarter = getFiscalQuarterFromMonth(nepaliMonth);
+    const qMeta   = FISCAL_QUARTERS.find((q) => q.quarter === quarter);
+    const [startMonth, , endMonth] = qMeta.nepaliMonths;
+    description      = `CAM charge – Q${quarter} FY${nepaliYear} (${startMonth}–${endMonth}) – ${tenantName}`;
+    entryPeriodLabel = `Q${quarter} FY${nepaliYear} (${startMonth}–${endMonth})`;
+  } else {
+    const monthName  = bsMonthName(nepaliMonth);
+    description      = `CAM charge – ${monthName} ${nepaliYear} – ${tenantName}`;
+    entryPeriodLabel = `${monthName} ${nepaliYear}`;
+  }
+
+  // ── 5. Payload (direct — no buildJournalPayload, which silently drops BS string) ──
+  return {
+    transactionType:  "CAM_CHARGE",
+    referenceType:    "Cam",
+    referenceId:      cam._id,
     transactionDate,
     nepaliDate,
     nepaliMonth,
@@ -67,23 +82,22 @@ export function buildCamChargeJournal(cam, options = {}) {
     description,
     createdBy,
     totalAmountPaisa: amountPaisa,
-    tenant: cam.tenant,
-    property: cam.property,
+    tenant:           cam.tenant ?? null,
+    property:         cam.property ?? null,
+    billingFrequency,
     entries: [
       {
-        accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
-        debitAmountPaisa: amountPaisa,
+        accountCode:       ACCOUNT_CODES.CAM_RECEIVABLE,
+        debitAmountPaisa:  amountPaisa,
         creditAmountPaisa: 0,
-        description: `CAM receivable for ${nepaliMonth}/${nepaliYear} from ${tenantName}`,
+        description:       `CAM receivable – ${entryPeriodLabel} – ${tenantName}`,
       },
       {
-        // CAM income goes to its own revenue account (4050) — NOT Rental Income (4000).
-        // This keeps CAM income separately reportable from rent income on the P&L.
-        accountCode: ACCOUNT_CODES.CAM_REVENUE,
-        debitAmountPaisa: 0,
+        accountCode:       ACCOUNT_CODES.CAM_REVENUE,
+        debitAmountPaisa:  0,
         creditAmountPaisa: amountPaisa,
-        description: `CAM income for ${nepaliMonth}/${nepaliYear} from ${tenantName}`,
+        description:       `CAM income – ${entryPeriodLabel} – ${tenantName}`,
       },
     ],
-  });
+  };
 }

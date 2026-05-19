@@ -414,13 +414,22 @@ export async function rebuildAccountBalance(
 /**
  * Snapshot of all account balances for one entity (or all entities).
  *
+ * LEDGER-FIRST: All balances derived exclusively from LedgerEntry aggregations.
+ * Account.currentBalancePaisa is NOT used here — it remains a write-side cache
+ * that can be verified/repaired via rebuildAccountBalance().
+ *
+ * Balance logic:
+ *   BS accounts (ASSET/LIABILITY/EQUITY): cumulative from all time up to endDate.
+ *   IS accounts (REVENUE/EXPENSE): period range [startDate, endDate].
+ *   If no period given → all-time for both (single aggregation, no date filter).
+ *
  * @param {Object} options
  * @param {string|ObjectId} [options.entityId]   — scope to one entity; omit for consolidated
  * @param {string[]}         [options.types]      — e.g. ["ASSET", "LIABILITY"]
  * @param {string[]}         [options.codes]      — specific account codes
  * @param {boolean}          [options.nonZeroOnly]
- * @param {string}           [options.startDate]  — ISO date string (Gregorian); enables period mode
- * @param {string}           [options.endDate]    — ISO date string (Gregorian); enables period mode
+ * @param {string}           [options.startDate]  — ISO date string (Gregorian)
+ * @param {string}           [options.endDate]    — ISO date string (Gregorian)
  */
 export async function getBalanceSummary(options = {}) {
   const { entityId, types, codes, nonZeroOnly = false, startDate, endDate } = options;
@@ -436,61 +445,68 @@ export async function getBalanceSummary(options = {}) {
     .sort({ code: 1 })
     .lean();
 
-  // C3 FIX: Balance sheet accounts (ASSET/LIABILITY/EQUITY) need CUMULATIVE balances
-  // up to endDate — not just period movements. Income statement accounts (REVENUE/EXPENSE)
-  // correctly use only the period range.
   const BALANCE_SHEET_TYPES = new Set(["ASSET", "LIABILITY", "EQUITY"]);
 
-  // bsBalanceMap  — cumulative up to endDate (for ASSET/LIABILITY/EQUITY)
-  // isBalanceMap  — period range only       (for REVENUE/EXPENSE)
-  let bsBalanceMap = new Map();
-  let isBalanceMap = new Map();
+  const entityMatch = entityId
+    ? { entityId: new mongoose.Types.ObjectId(String(entityId)) }
+    : {};
 
-  if (hasPeriod) {
+  // ── Always aggregate from LedgerEntry ────────────────────────────────────────
+  let bsBalanceMap, isBalanceMap;
+
+  if (!hasPeriod) {
+    // All-time: one aggregation, no date filter — serves both BS and IS accounts
+    const agg = await LedgerEntry.aggregate([
+      { $match: entityMatch },
+      {
+        $group: {
+          _id:         "$account",
+          totalDebit:  { $sum: "$debitAmountPaisa" },
+          totalCredit: { $sum: "$creditAmountPaisa" },
+        },
+      },
+    ]);
+    const map = new Map(agg.map((e) => [String(e._id), e]));
+    bsBalanceMap = map;
+    isBalanceMap = map;
+  } else {
+    // Period mode: BS gets cumulative-to-endDate, IS gets period range
     const endObj = endDate ? new Date(endDate) : null;
     if (endObj) endObj.setHours(23, 59, 59, 999);
 
-    // Balance sheet: ALL history up to endDate
-    const bsDateMatch = endObj ? { $lte: endObj } : {};
-    const bsLedgerMatch = Object.keys(bsDateMatch).length
-      ? { transactionDate: bsDateMatch }
-      : {};
-    if (entityId) bsLedgerMatch.entityId = new mongoose.Types.ObjectId(String(entityId));
+    const bsMatch = { ...entityMatch };
+    if (endObj) bsMatch.transactionDate = { $lte: endObj };
 
-    const bsAgg = await LedgerEntry.aggregate([
-      { $match: bsLedgerMatch },
-      {
-        $group: {
-          _id: "$account",
-          totalDebit:  { $sum: "$debitAmountPaisa" },
-          totalCredit: { $sum: "$creditAmountPaisa" },
-        },
-      },
-    ]);
-    for (const e of bsAgg) {
-      bsBalanceMap.set(String(e._id), { totalDebit: e.totalDebit, totalCredit: e.totalCredit });
-    }
-
-    // Income statement: only entries within [startDate, endDate]
+    const isMatch = { ...entityMatch };
     const isDateMatch = {};
     if (startDate) isDateMatch.$gte = new Date(startDate);
     if (endObj) isDateMatch.$lte = endObj;
-    const isLedgerMatch = { transactionDate: isDateMatch };
-    if (entityId) isLedgerMatch.entityId = new mongoose.Types.ObjectId(String(entityId));
+    if (Object.keys(isDateMatch).length) isMatch.transactionDate = isDateMatch;
 
-    const isAgg = await LedgerEntry.aggregate([
-      { $match: isLedgerMatch },
-      {
-        $group: {
-          _id: "$account",
-          totalDebit:  { $sum: "$debitAmountPaisa" },
-          totalCredit: { $sum: "$creditAmountPaisa" },
+    const [bsAgg, isAgg] = await Promise.all([
+      LedgerEntry.aggregate([
+        { $match: bsMatch },
+        {
+          $group: {
+            _id:         "$account",
+            totalDebit:  { $sum: "$debitAmountPaisa" },
+            totalCredit: { $sum: "$creditAmountPaisa" },
+          },
         },
-      },
+      ]),
+      LedgerEntry.aggregate([
+        { $match: isMatch },
+        {
+          $group: {
+            _id:         "$account",
+            totalDebit:  { $sum: "$debitAmountPaisa" },
+            totalCredit: { $sum: "$creditAmountPaisa" },
+          },
+        },
+      ]),
     ]);
-    for (const e of isAgg) {
-      isBalanceMap.set(String(e._id), { totalDebit: e.totalDebit, totalCredit: e.totalCredit });
-    }
+    bsBalanceMap = new Map(bsAgg.map((e) => [String(e._id), e]));
+    isBalanceMap = new Map(isAgg.map((e) => [String(e._id), e]));
   }
 
   // Deduplicate by _id before processing (guards against duplicate Account docs in DB)
@@ -503,31 +519,17 @@ export async function getBalanceSummary(options = {}) {
   });
 
   const rows = uniqueAccounts
-    .filter((a) => {
-      if (!nonZeroOnly) return true;
-      if (hasPeriod) {
-        const map = BALANCE_SHEET_TYPES.has(a.type) ? bsBalanceMap : isBalanceMap;
-        const e = map.get(String(a._id));
-        return e ? (e.totalDebit !== 0 || e.totalCredit !== 0) : false;
-      }
-      return (a.currentBalancePaisa ?? 0) !== 0;
-    })
     .map((a) => {
-      let balancePaisa;
-      if (hasPeriod) {
-        const map = BALANCE_SHEET_TYPES.has(a.type) ? bsBalanceMap : isBalanceMap;
-        const e = map.get(String(a._id));
-        if (e) {
-          const isDebitNormal = NORMAL_SIDE[a.type] ?? true;
-          balancePaisa = isDebitNormal
-            ? e.totalDebit - e.totalCredit
-            : e.totalCredit - e.totalDebit;
-        } else {
-          balancePaisa = 0;
-        }
-      } else {
-        balancePaisa = Number.isInteger(a.currentBalancePaisa) ? a.currentBalancePaisa : 0;
+      const map = BALANCE_SHEET_TYPES.has(a.type) ? bsBalanceMap : isBalanceMap;
+      const e = map.get(String(a._id));
+      let balancePaisa = 0;
+      if (e) {
+        const isDebitNormal = NORMAL_SIDE[a.type] ?? true;
+        balancePaisa = isDebitNormal
+          ? e.totalDebit - e.totalCredit
+          : e.totalCredit - e.totalDebit;
       }
+      if (nonZeroOnly && balancePaisa === 0) return null;
       return {
         code: a.code,
         name: a.name,
@@ -536,11 +538,29 @@ export async function getBalanceSummary(options = {}) {
         balance: formatBalance(balancePaisa),
         balanceSide: getBalanceSide(a.type, balancePaisa),
       };
-    });
+    })
+    .filter(Boolean);
+
+  // Without entityId, same account code appears once per entity — aggregate to one row per code.
+  const displayRows = entityId ? rows : (() => {
+    const codeMap = new Map();
+    for (const row of rows) {
+      if (codeMap.has(row.code)) {
+        codeMap.get(row.code)._paisa += row.balance.paisa;
+      } else {
+        codeMap.set(row.code, { ...row, _paisa: row.balance.paisa });
+      }
+    }
+    return [...codeMap.values()].map(r => ({
+      ...r,
+      balance:     formatBalance(r._paisa),
+      balanceSide: getBalanceSide(r.type, r._paisa),
+    }));
+  })();
 
   // Group by type
   const grouped = {};
-  for (const row of rows) {
+  for (const row of displayRows) {
     (grouped[row.type] = grouped[row.type] ?? []).push(row);
   }
 
@@ -553,9 +573,8 @@ export async function getBalanceSummary(options = {}) {
     subtotals[type] = formatBalance(total);
   }
 
-  // Trial balance — scoped to entity and period when applicable
-  const matchStage = {};
-  if (entityId) matchStage.entityId = new mongoose.Types.ObjectId(String(entityId));
+  // Trial balance — period-scoped when period given, all-time otherwise
+  const trialMatch = { ...entityMatch };
   if (hasPeriod) {
     const dateMatch = {};
     if (startDate) dateMatch.$gte = new Date(startDate);
@@ -564,11 +583,11 @@ export async function getBalanceSummary(options = {}) {
       end.setHours(23, 59, 59, 999);
       dateMatch.$lte = end;
     }
-    matchStage.transactionDate = dateMatch;
+    trialMatch.transactionDate = dateMatch;
   }
 
   const [trialResult] = await LedgerEntry.aggregate([
-    { $match: matchStage },
+    { $match: trialMatch },
     {
       $group: {
         _id:              null,
@@ -585,9 +604,9 @@ export async function getBalanceSummary(options = {}) {
     accounts: grouped,
     subtotals,
     trialBalance: {
-      totalDebit: formatBalance(totalDebitPaisa),
+      totalDebit:  formatBalance(totalDebitPaisa),
       totalCredit: formatBalance(totalCreditPaisa),
-      isBalanced: totalDebitPaisa === totalCreditPaisa,
+      isBalanced:  totalDebitPaisa === totalCreditPaisa,
       discrepancy: formatBalance(Math.abs(totalDebitPaisa - totalCreditPaisa)),
     },
   };

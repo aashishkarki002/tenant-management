@@ -24,6 +24,11 @@ import {
 } from "../../utils/moneyUtil.js";
 import { calculateRentTotals } from "./helpers/rentTotal.helper.js";
 import { buildEntityMapForBlocks } from "../../helper/resolveEntity.js"; // ← NEW
+import { linkRentToQuarter } from "../tds/tds.quarterly.service.js";
+import {
+  generateDocumentNumber,
+  DOCUMENT_TYPES,
+} from "../documentCounter/documentNumber.service.js";
 
 dotenv.config();
 
@@ -392,6 +397,25 @@ export async function createNewRent(rentData, session = null, entityId = null) {
       });
     }
 
+    // ── Generate invoice document number ───────────────────────────────────
+    // Nepali fiscal year starts Shrawan (month 4). If nepaliMonth < 4, the
+    // document belongs to the previous fiscal year.
+    const nepaliMonth = rentData.nepaliMonth;
+    const nepaliYear = rentData.nepaliYear;
+    if (nepaliYear) {
+      const fiscalYear = nepaliMonth >= 4 ? nepaliYear : nepaliYear - 1;
+      try {
+        rentData.documentNumber = await generateDocumentNumber(DOCUMENT_TYPES.INV, {
+          fiscalYear,
+          entityId: entityId?.toString() ?? null,
+          session,
+        });
+      } catch (docNumErr) {
+        // Document numbering must not block rent creation — log and continue.
+        console.error("[createNewRent] Failed to generate INV document number:", docNumErr.message);
+      }
+    }
+
     const opts = session ? { session } : {};
     const created = await Rent.create([rentData], opts);
 
@@ -453,6 +477,9 @@ export async function recordTdsLedgerEntry(rent, session, entityId) {
     { $set: { tdsRecordedInLedger: true } },
     session ? { session } : {},
   );
+
+  // Auto-link rent to its quarterly TDS bucket for remittance tracking
+  await linkRentToQuarter(rent, session);
 
   return { success: true };
 }
@@ -533,6 +560,12 @@ export async function markTdsPaidToGovernment(
 // CRON: handleMonthlyRents — entity-aware via buildEntityMapForBlocks
 // ─────────────────────────────────────────────────────────────────────────────
 
+// True if currentMonth is a quarter-start month for a tenant whose cycle starts at quarterStartMonth.
+// Quarters repeat every 3 months: start, start+3, start+6, start+9.
+function isQuarterStartMonth(currentMonth, quarterStartMonth) {
+  return ((currentMonth - quarterStartMonth + 12) % 3) === 0;
+}
+
 export async function handleMonthlyRents(adminId) {
   const createdBy = adminId || process.env.SYSTEM_ADMIN_ID;
   const {
@@ -586,9 +619,15 @@ export async function handleMonthlyRents(adminId) {
       existingRents.map((r) => r.tenant.toString()),
     );
 
-    const tenantsToProcess = tenants.filter(
-      (t) => !existingTenantIds.has(t._id.toString()),
-    );
+    // Quarterly tenants only get a rent on their quarter-start months.
+    // camQuarterStartMonth is the billing anchor (1-12) set at onboarding.
+    const tenantsToProcess = tenants.filter((t) => {
+      if (existingTenantIds.has(t._id.toString())) return false;
+      if (t.rentPaymentFrequency !== "quarterly") return true;
+      const anchor = t.camQuarterStartMonth;
+      if (!anchor) return true; // no anchor set — treat as monthly (fallback)
+      return isQuarterStartMonth(npMonth, anchor);
+    });
 
     if (!tenantsToProcess.length) {
       return {
@@ -611,9 +650,12 @@ export async function handleMonthlyRents(adminId) {
       tenantsToProcess.map((t) => t.block),
     );
 
+    // Exclude prevNpMonth/prevNpYear — already captured in carryForwardMap by buildCarryForwardMap.
+    // Including it here would double-count tenants with prev-month outstanding balances.
     const overdueRents = await Rent.find({
       tenant: { $in: tenantsToProcess.map((t) => t._id) },
       status: "overdue",
+      $nor: [{ nepaliYear: prevNpYear, nepaliMonth: prevNpMonth }],
     })
       .select(
         "tenant grossRentAmountPaisa tdsAmountPaisa paidAmountPaisa lateFeePaisa latePaidAmountPaisa",
@@ -626,15 +668,18 @@ export async function handleMonthlyRents(adminId) {
       const remainingPaisa = effectivePaisa - (r.paidAmountPaisa || 0);
       const lateFeeRemainingPaisa =
         (r.lateFeePaisa || 0) - (r.latePaidAmountPaisa || 0);
-      const prev = carryForwardMap.get(tId) || 0;
-      carryForwardMap.set(
-        tId,
-        prev + Math.max(0, remainingPaisa) + Math.max(0, lateFeeRemainingPaisa),
-      );
+      const prev = carryForwardMap.get(tId);
+      const prevAmount = prev ? (prev.remainingAmountPaisa ?? 0) : 0;
+      const prevId = prev?.carryForwardFromRentId ?? null;
+      carryForwardMap.set(tId, {
+        remainingAmountPaisa: prevAmount + Math.max(0, remainingPaisa) + Math.max(0, lateFeeRemainingPaisa),
+        carryForwardFromRentId: prevId ?? r._id,
+      });
     }
 
-    // Step 5: Build rent documents (unchanged shape)
-    const rentsToInsert = tenantsToProcess.map((tenant) => {
+    // Step 5: Build rent documents — sequential loop so documentNumbers are gapless
+    const rentsToInsert = [];
+    for (const tenant of tenantsToProcess) {
       // grossRentAmountPaisa must be GROSS (= net + TDS) so that:
       //   RENT_CHARGE  → DR AR = GROSS
       //   TDS_WITHHELD → CR AR = TDS  →  net AR = GROSS - TDS = NET cash owed
@@ -646,15 +691,17 @@ export async function handleMonthlyRents(adminId) {
       //
       // tdsAmountPaisa: derive from gross - net (NOT from tdsPaisa which is a
       // per-sqft rate, not the total monthly TDS amount).
-      const grossPaisa = tenant.grossAmountPaisa || 0;
-      const netPaisa =
-        tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0);
+      const isQuarterly = tenant.rentPaymentFrequency === "quarterly";
+      const multiplier  = isQuarterly ? 3 : 1;
+      const grossPaisa  = (tenant.grossAmountPaisa || 0) * multiplier;
+      const netPaisa    = (tenant.totalRentPaisa || rupeesToPaisa(tenant.totalRent || 0)) * multiplier;
       const grossRentAmountPaisa = grossPaisa || netPaisa;
       const tdsAmountPaisa =
         grossPaisa > 0 ? Math.max(0, grossPaisa - netPaisa) : 0;
       const cf = carryForwardMap.get(tenant._id.toString());
+      const documentNumber = await generateDocumentNumber(DOCUMENT_TYPES.INV, { fiscalYear: npYear });
 
-      return {
+      rentsToInsert.push({
         tenant: tenant._id,
         innerBlock: tenant.innerBlock,
         block: tenant.block,
@@ -674,13 +721,28 @@ export async function handleMonthlyRents(adminId) {
         englishYear,
         status: "pending",
         rentFrequency: tenant.rentPaymentFrequency || "monthly",
-        carryForwardBalancePaisa: cf.remainingAmountPaisa ?? 0,
-        carryForwardFromRentId: cf.carryForwardFromRentId ?? null,
-      };
-    });
+        carryForwardBalancePaisa: cf?.remainingAmountPaisa ?? 0,
+        carryForwardFromRentId: cf?.carryForwardFromRentId ?? null,
+        documentNumber,
+      });
+    }
 
-    // Step 6: Bulk insert (unchanged)
-    const insertedRents = await Rent.insertMany(rentsToInsert);
+    // Step 6: Bulk insert — ordered:false lets non-duplicate docs succeed even if one tenant
+    // already has a rent for this month (e.g. cron ran twice due to crash recovery).
+    let insertedRents = [];
+    try {
+      insertedRents = await Rent.insertMany(rentsToInsert, { ordered: false });
+    } catch (bulkErr) {
+      if (bulkErr.code === 11000 || bulkErr.name === "MongoBulkWriteError") {
+        insertedRents = bulkErr.insertedDocs ?? [];
+        console.warn(
+          `[handleMonthlyRents] ${bulkErr.writeErrors?.length ?? "?"} duplicate(s) skipped, ` +
+          `${insertedRents.length} inserted`,
+        );
+      } else {
+        throw bulkErr;
+      }
+    }
 
     // Step 7: Post journal per rent — entity-tagged ← CHANGED
     const journalLog = { success: 0, failed: 0, errors: [] };
@@ -1046,26 +1108,60 @@ export async function backfillTenantRents(tenantId, monthsToCreate, adminId) {
 // CRON: sendEmailToTenants (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function sendEmailToTenants() {
+const NEPALI_MONTHS_REMINDER = [
+  "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
+  "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
+];
+
+export async function sendEmailToTenants({ nepaliMonth: overrideMonth, nepaliYear: overrideYear, tenantId = null, forceResend = false } = {}) {
   try {
-    const { npMonth, npYear, lastDay } = getNepaliMonthDates();
+    const { npMonth: currentMonth, npYear: currentYear, lastDay } = getNepaliMonthDates();
+    const npMonth = overrideMonth ?? currentMonth;
+    const npYear = overrideYear ?? currentYear;
+    const monthName = NEPALI_MONTHS_REMINDER[npMonth - 1] || `Month ${npMonth}`;
+    const periodLabel = `${monthName} ${npYear}`;
 
-    const rents = await Rent.find({
-      status: { $in: ["pending", "partially_paid"] },
-      nepaliMonth: npMonth,
-      nepaliYear: npYear,
-      emailReminderSent: false,
-    }).populate("tenant");
+    const reminderFilter = forceResend ? {} : { emailReminderSent: false };
+    const tenantFilter = tenantId ? { tenant: tenantId } : {};
 
-    const cams = await Cam.find({
-      status: { $in: ["pending", "partially_paid"] },
-      nepaliMonth: npMonth,
-      nepaliYear: npYear,
-      emailReminderSent: false,
-    }).populate("tenant");
+    const [rents, cams] = await Promise.all([
+      Rent.find({
+        status: { $in: ["pending", "partially_paid"] },
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        ...tenantFilter,
+        ...reminderFilter,
+      }).populate("tenant"),
+      Cam.find({
+        status: { $in: ["pending", "partially_paid"] },
+        nepaliMonth: npMonth,
+        nepaliYear: npYear,
+        ...tenantFilter,
+        ...reminderFilter,
+      }).populate("tenant"),
+    ]);
 
     if (![...rents, ...cams].length) {
       return { success: true, message: "No pending rents or CAMs this month" };
+    }
+
+    // Fetch unpaid electricity for all tenants this month in one query
+    const { Electricity } = await import("../electricity/Electricity.Model.js");
+    const electricityDocs = await Electricity.find({
+      nepaliMonth: npMonth,
+      nepaliYear: npYear,
+      status: { $in: ["pending", "partially_paid"] },
+      meterType: "unit",
+    }).lean();
+
+    // Group electricity remaining (paisa) by tenantId
+    const electricityByTenant = new Map();
+    for (const e of electricityDocs) {
+      const tid = e.tenant?.toString();
+      if (!tid) continue;
+      const remaining = Math.max(0, (e.totalAmountPaisa || 0) - (e.paidAmountPaisa || 0));
+      if (remaining <= 0) continue;
+      electricityByTenant.set(tid, (electricityByTenant.get(tid) || 0) + remaining);
     }
 
     const io = getIO();
@@ -1076,17 +1172,12 @@ export async function sendEmailToTenants() {
           admin: admin._id,
           type: "RENT_REMINDER",
           title: "Rent Payment Reminder",
-          message: `${rents.length} tenant(s) have pending rent for ${npYear}-${npMonth}`,
-          data: {
-            pendingCount: rents.length,
-            monthYear: `${npYear}-${npMonth}`,
-          },
+          message: `${rents.length} tenant(s) have pending rent for ${periodLabel}`,
+          data: { pendingCount: rents.length, monthYear: periodLabel },
           isRead: false,
         });
         if (io)
-          io.to(`admin:${admin._id}`).emit("new-notification", {
-            notification,
-          });
+          io.to(`admin:${admin._id}`).emit("new-notification", { notification });
       }),
     );
 
@@ -1103,6 +1194,7 @@ export async function sendEmailToTenants() {
 
     const sentRentIds = [];
     const sentCamIds = [];
+    const emailResults = [];
 
     await Promise.all(
       Array.from(tenantMap.values()).map(
@@ -1111,52 +1203,123 @@ export async function sendEmailToTenants() {
             (s, r) => s + calculateRentTotals(r).remainingAmountPaisa,
             0,
           );
-          const camTotal = tCams.reduce((s, c) => s + (c.amountPaisa || 0), 0);
-          const total = rentTotal + camTotal;
+          const camTotal = tCams.reduce((s, c) => {
+            const remaining = Math.max(0, (c.amountPaisa || 0) - (c.paidAmountPaisa || 0));
+            return s + remaining;
+          }, 0);
+          const electricityTotal = electricityByTenant.get(tenant._id.toString()) || 0;
+          // electricityTotal from Electricity.totalAmount is in paisa via electricity service
+          // but Electricity.Model stores amounts — check if paisa or rupees.
+          // Using as-is (matches totalAmount field on Electricity document).
+          const total = rentTotal + camTotal + electricityTotal;
 
+          // Per-tenant period and due date — depends on rent frequency
+          const ref = tRents[0] || tCams[0];
+          const isQuarterly = tRents[0]?.rentFrequency === "quarterly";
+          const refMonth = ref?.nepaliMonth || npMonth;
+          const refYear = ref?.nepaliYear || npYear;
+
+          let tenantPeriodLabel;
           let dueDateStr = "";
-          try {
-            const ref = tRents[0] || tCams[0];
-            dueDateStr = new NepaliDate(
-              ref.nepaliYear,
-              (ref.nepaliMonth || 1) - 1,
-              30,
-            ).format("YYYY-MMMM-DD");
-          } catch {
-            dueDateStr = lastDay?.format?.("YYYY-MMMM-DD") ?? "";
+
+          if (isQuarterly) {
+            // Quarter spans 3 months starting at refMonth
+            const endMonthRaw = refMonth + 2;
+            const endMonth = endMonthRaw > 12 ? endMonthRaw - 12 : endMonthRaw;
+            const endYear = endMonthRaw > 12 ? refYear + 1 : refYear;
+            const startName = NEPALI_MONTHS_REMINDER[refMonth - 1];
+            const endName = NEPALI_MONTHS_REMINDER[endMonth - 1];
+            tenantPeriodLabel = `${startName}–${endName} ${refYear}`;
+            try {
+              dueDateStr = new NepaliDate(endYear, endMonth - 1, 30).format("DD MMMM YYYY");
+            } catch {
+              dueDateStr = `30 ${endName} ${endYear}`;
+            }
+          } else {
+            tenantPeriodLabel = `${NEPALI_MONTHS_REMINDER[refMonth - 1]} ${refYear}`;
+            try {
+              dueDateStr = new NepaliDate(refYear, refMonth - 1, 30).format("DD MMMM YYYY");
+            } catch {
+              dueDateStr = lastDay?.format?.("DD MMMM YYYY") ?? "";
+            }
           }
 
-          let details = "";
-          if (tRents.length)
-            details += `<tr><td style="padding:8px 0;border-bottom:1px solid #e0e0e0"><strong>Rent:</strong> ${formatMoney(rentTotal)}</td></tr>`;
-          if (tCams.length)
-            details += `<tr><td style="padding:8px 0;border-bottom:1px solid #e0e0e0"><strong>CAM:</strong> ${formatMoney(camTotal)}</td></tr>`;
+          const row = (label, paisa) =>
+            paisa > 0
+              ? `<tr><td style="padding:8px 12px;border-bottom:1px solid #e8eef3">
+                   <span style="color:#555">${label}</span>
+                 </td><td style="padding:8px 12px;border-bottom:1px solid #e8eef3;text-align:right">
+                   <strong>${formatMoney(paisa)}</strong>
+                 </td></tr>`
+              : "";
 
-          const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif">
-        <table style="max-width:600px;margin:20px auto;border:1px solid #e0e0e0;border-radius:8px">
-          <tr><td style="padding:20px">
-            <h2>Hello ${tenant.name},</h2>
-            <p>Reminder: pending payments for <strong>${npYear}-${npMonth}</strong>.</p>
-            <table width="100%">${details}
-              <tr><td style="padding:12px 0;border-top:2px solid #333;border-bottom:2px solid #333">
-                <strong>Total: ${formatMoney(total)}</strong></td></tr>
-            </table>
-            <p>Please pay before <strong>${dueDateStr}</strong>.</p>
-            <p>Thank you,<br><strong>Management Team</strong></p>
-          </td></tr>
-        </table></body></html>`;
+          const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Payment Reminder</title></head>
+<body style="margin:0;padding:0;background-color:#f0f4f7;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f4f7;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:4px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+        <tr><td style="background-color:#1A5276;padding:28px 40px;">
+          <p style="margin:0;font-size:20px;font-weight:700;color:#fff;letter-spacing:0.5px;">Sallyan House</p>
+          <p style="margin:4px 0 0;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.55);">Property Management</p>
+        </td></tr>
+        <tr><td style="height:3px;background:linear-gradient(90deg,#1A5276 0%,#2e86c1 60%,#aed6f1 100%);"></td></tr>
+        <tr><td style="padding:36px 40px;">
+          <p style="margin:0 0 4px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#1A5276;font-weight:600;">Payment Reminder</p>
+          <h2 style="margin:0 0 24px;font-size:24px;color:#0d2137;">Hello ${tenant.name},</h2>
+          <p style="color:#3d5166;font-size:15px;line-height:1.7;margin:0 0 24px;">
+            You have outstanding payments due for <strong>${tenantPeriodLabel}</strong>. Please settle before <strong>${dueDateStr}</strong>.
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e8eef3;border-radius:4px;overflow:hidden;margin-bottom:24px;">
+            <tr style="background:#f6f9fc;">
+              <td style="padding:10px 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5276;">Description</td>
+              <td style="padding:10px 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5276;text-align:right;">Amount</td>
+            </tr>
+            ${row("Rent", rentTotal)}
+            ${row("CAM Charges", camTotal)}
+            ${row("Electricity", electricityTotal)}
+            <tr style="background:#f6f9fc;">
+              <td style="padding:12px;border-top:2px solid #1A5276;font-weight:700;color:#0d2137;">Total Due</td>
+              <td style="padding:12px;border-top:2px solid #1A5276;text-align:right;font-weight:700;color:#1A5276;">${formatMoney(total)}</td>
+            </tr>
+          </table>
+          <p style="color:#3d5166;font-size:14px;line-height:1.6;">Thank you,<br><strong>Sallyan House Management</strong></p>
+        </td></tr>
+        <tr><td style="background:#f6f9fc;border-top:1px solid #e8eef3;padding:20px 40px;">
+          <p style="margin:0;font-size:12px;color:#8fa3b1;">Contact: info@sallyanhouse.com · +977-9812345678</p>
+          <p style="margin:4px 0 0;font-size:12px;color:#8fa3b1;">Automated reminder — please do not reply.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 
+          const emailRecord = {
+            tenantId: tenant._id.toString(),
+            name: tenant.name ?? "",
+            email: tenant.email,
+            sentAt: null,
+            status: "pending",
+            error: null,
+          };
           try {
             await sendEmail({
               to: tenant.email,
-              subject: "Reminder for Rent and CAM Payment",
+              subject: `Payment Reminder — ${tenantPeriodLabel}`,
               html,
             });
+            emailRecord.status = "sent";
+            emailRecord.sentAt = new Date().toISOString();
             tRents.forEach((r) => sentRentIds.push(r._id));
             tCams.forEach((c) => sentCamIds.push(c._id));
           } catch (e) {
+            emailRecord.status = "failed";
+            emailRecord.error = e.message;
             console.error(`[sendEmailToTenants] ${tenant.email}:`, e.message);
           }
+          emailResults.push(emailRecord);
         },
       ),
     );
@@ -1172,12 +1335,13 @@ export async function sendEmailToTenants() {
         { $set: { emailReminderSent: true } },
       );
 
-    const sent = Array.from(tenantMap.values()).filter(
-      ({ tenant }) => tenant?.email,
-    ).length;
+    const sentCount = emailResults.filter((e) => e.status === "sent").length;
+    const failedCount = emailResults.filter((e) => e.status === "failed").length;
     return {
       success: true,
-      message: `Emails sent to ${sent} of ${tenantMap.size} tenants`,
+      message: `Emails sent to ${sentCount} of ${tenantMap.size} tenants`,
+      count: sentCount,
+      details: { emails: emailResults, total: tenantMap.size, sent: sentCount, failed: failedCount },
     };
   } catch (error) {
     console.error("[sendEmailToTenants]", error.message);

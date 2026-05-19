@@ -25,7 +25,9 @@ export { buildCamPaymentReceivedJournal } from "./camPaymentReceived.js";
 export {
   buildElectricityChargeJournal,
   buildElectricityPaymentJournal,
-  buildElectricityNeaCostJournal,
+  buildElectricityDemandChargeJournal,
+  buildNeaBillEnergyCostJournal,
+  buildNeaBillPaymentJournal,
 } from "./electricity.js";
 
 // NEA bill payment (clears NEA_PAYABLE 2050)
@@ -77,4 +79,4 @@ export { buildOwnerDistributionJournal } from "./ownerDistribution.js";
 export { buildVendorBillEntryJournal, buildVendorBillPaymentJournal } from "./vendorBill.js";
 
 // Advance / prepaid rent
-export { buildAdvanceRentReceiptJournal, buildAdvanceRentRecognitionJournal } from "./advanceRent.js";
+export { buildAdvanceRentReceiptJournal, buildAdvanceRentRecognitionJournal, buildAdvanceRentAllocationJournal } from "./advanceRent.js";

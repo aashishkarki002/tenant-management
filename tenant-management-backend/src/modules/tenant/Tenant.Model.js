@@ -23,6 +23,7 @@ const tenantSchema = new mongoose.Schema(
         files: [
           {
             url: String,
+            publicId: String,
             uploadedAt: { type: Date, default: Date.now },
           },
         ],
@@ -87,6 +88,9 @@ const tenantSchema = new mongoose.Schema(
     },
     nextRentDueDate: { type: Date },
     lastRentChargedDate: { type: Date },
+    // BS month (1-12) the quarterly billing cycle starts on for this tenant.
+    // Set at onboarding. Used by the CAM cron to decide when to charge.
+    camQuarterStartMonth: { type: Number, min: 1, max: 12, default: null },
     rentFrequencyChangedAt: { type: Date },
     rentFrequencyChangedBy: {
       type: mongoose.Schema.Types.ObjectId,

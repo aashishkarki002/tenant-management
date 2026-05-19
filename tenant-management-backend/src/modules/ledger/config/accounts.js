@@ -81,8 +81,23 @@ export const ACCOUNT_CODES = {
    */
   MOBILE_WALLET: "1050",
 
-  /** Amounts owed by tenants: rent, CAM, electricity, late fees. */
+  /** Amounts owed by tenants: rent, electricity, late fees. */
   ACCOUNTS_RECEIVABLE: "1200",
+
+  /**
+   * CAM amounts owed by tenants — split from rent AR to allow separate reporting.
+   *
+   * CAM_CHARGE journal:
+   *   DR  1210  amountPaisa   (ASSET ↑ — tenant owes CAM)
+   *   CR  4050  amountPaisa   (REVENUE ↑ — CAM income earned)
+   *
+   * CAM_PAYMENT_RECEIVED journal:
+   *   DR  Cash/Bank           (ASSET ↑ — money in)
+   *   CR  1210  amountPaisa   (ASSET ↓ — CAM AR cleared)
+   *
+   * Must be seeded for each OwnershipEntity — run seedCamReceivableAccount.js.
+   */
+  CAM_RECEIVABLE: "1210",
 
   /**
    * TDS withheld by tenants and paid directly to the government.
@@ -110,13 +125,13 @@ export const ACCOUNT_CODES = {
    */
   TDS_VERIFIED_PAID: "1350",
 
-  // ── Liabilities ────────────────────────────────────────────────────────────
-
   /**
    * Petty cash float maintained for day-to-day minor expenses.
    * Separate from CASH (1000) which is the main cash-on-hand account.
    */
   PETTY_CASH: "1100",
+
+  // ── Liabilities ────────────────────────────────────────────────────────────
 
   /** Trade payables to vendors and contractors. */
   ACCOUNTS_PAYABLE: "2000",
@@ -270,7 +285,53 @@ export const ACCOUNT_CODES = {
    * Must be seeded: run seedAccount.js after adding this code.
    */
   EVENT_EXPENSE: "5450",
+  /**
+   * Current asset: NEA energy charges recoverable from tenants.
+   *
+   * Created when a NEA bill is uploaded (energy portion only):
+   *   DR  1400  energyChargePaisa   (ASSET ↑ — owner's advance on behalf of tenants)
+   *   CR  2050  energyChargePaisa   (LIABILITY ↑ — owed to NEA)
+   *
+   * Drained when a tenant electricity charge is recorded:
+   *   DR  1200  totalAmountPaisa    (ASSET ↑ — tenant owes at custom rate)
+   *   CR  1400  neaCostPaisa        (ASSET ↓ — cost recovered from tenant)
+   *   CR  4100  marginPaisa         (REVENUE ↑ — profit = custom rate − NEA rate)
+   *
+   * Balance should trend to zero once all units are billed for the month.
+   * Positive balance = unbilled NEA cost still on hand.
+   * This account must never be used for demand charges (those go to 5616).
+   *
+   * Must be seeded for each OwnershipEntity.
+   */
+  ELECTRICITY_RECOVERABLE: "1400",
+
   ELECTRICITY_EXPENSE_NEA: "5610",
+
+  /**
+   * Common area / parking / sub-meter electricity operating expense.
+   * Posted when a property-billed sub-meter reading is recorded.
+   * No tenant AR involved — pure building operating cost.
+   *
+   * Journal on sub-meter reading:
+   *   DR  5615  neaCostPaisa   (EXPENSE ↑ — operating cost)
+   *   CR  2050  neaCostPaisa   (LIABILITY ↑ — owed to NEA)
+   *
+   * Must be seeded for each OwnershipEntity.
+   */
+  ELECTRICITY_EXPENSE_COMMON: "5615",
+
+  /**
+   * NEA fixed monthly demand charge expense.
+   * Posted when the NEA bill is uploaded/finalized (separate from per-unit costs).
+   *
+   * Journal on NEA bill finalization:
+   *   DR  5616  demandChargePaisa   (EXPENSE ↑ — fixed monthly demand)
+   *   CR  2050  demandChargePaisa   (LIABILITY ↑ — owed to NEA)
+   *
+   * Must be seeded for each OwnershipEntity.
+   */
+  ELECTRICITY_DEMAND_CHARGE_EXPENSE: "5616",
+
   NEA_PAYABLE: "2050",
 
   /**

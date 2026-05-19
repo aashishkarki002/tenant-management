@@ -209,7 +209,6 @@ export async function uploadSingleFile(file, options = {}) {
       ? {
           resource_type: "image", // NOT "raw" — needed for PDF preview support
           format: "pdf",
-          flags: "attachment",
         }
       : {
           resource_type: "image",

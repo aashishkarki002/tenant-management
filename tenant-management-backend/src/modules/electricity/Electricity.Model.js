@@ -1,21 +1,3 @@
-/**
- * Electricity.Model.js — updated
- *
- * Key addition: dual-rate billing fields
- *
- *   ratePerUnitPaisa     → custom rate (what tenant pays) — was already here
- *   neaRatePerUnitPaisa  → NEA cost rate (what owner pays NEA) — NEW
- *   totalAmountPaisa     → consumption × customRate  (tenant invoice amount)
- *   neaCostPaisa         → consumption × neaRate     (owner's actual NEA cost) — NEW
- *   marginPaisa          → totalAmountPaisa - neaCostPaisa  (owner's profit) — NEW
- *
- * Billing responsibility (enforced by pre-save):
- *   meterType "unit"        → billTo "tenant",   tenant + unit required
- *   meterType "common_area" → billTo "property",  subMeter required
- *   meterType "parking"     → billTo "property",  subMeter required
- *   meterType "sub_meter"   → billTo "property",  subMeter required
- */
-
 import mongoose from "mongoose";
 import {
   paisaToRupees,

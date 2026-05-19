@@ -3,32 +3,31 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Journal payload builders for electricity charges and payments.
  *
- * buildElectricityChargeJournal   — charge raised against tenant
- *   DR  Accounts Receivable    (ASSET ↑  — tenant owes)
- *   CR  Utility Revenue        (REVENUE ↑ — income earned)
+ * buildElectricityChargeJournal   — charge raised against tenant (UNIT meters only)
+ *   DR  Accounts Receivable              (ASSET ↑  — tenant owes at custom rate)
+ *   CR  Electricity Recoverable (1400)   (ASSET ↓  — NEA cost portion recovered)
+ *   CR  Utility Revenue (4100)           (REVENUE ↑ — margin only: custom − NEA rate)
+ *
+ *   Fallback (neaCostPaisa not set): 2-entry form, full amount to Utility Revenue.
  *
  * buildElectricityPaymentJournal  — payment received from tenant
  *   DR  Cash / Bank sub-account  (ASSET ↑  — money in)
  *   CR  Accounts Receivable      (ASSET ↓  — tenant owes less)
  *
- * buildElectricityNeaCostJournal  — NEA cost recognised at time of charge (NEW)
- *   DR  Electricity Expense – NEA  (EXPENSE ↑ — owner's cost from NEA)
- *   CR  NEA Payable                (LIABILITY ↑ — owner owes NEA)
+ * buildNeaBillEnergyCostJournal   — NEA energy cost when monthly bill is uploaded
+ *   DR  Electricity Recoverable (1400)   (ASSET ↑  — recoverable from tenants)
+ *   CR  NEA Payable (2050)               (LIABILITY ↑ — owner owes NEA)
  *
- * Changes in this update:
- *   1. All three builders now carry unit, block, and entityId on the payload
- *      so LedgerEntry documents are fully scoped for per-entity reporting.
- *   2. buildElectricityNeaCostJournal is a new export — was previously an
- *      inline helper in electricity.service.js using string account codes.
- *      Moved here and wired to real ACCOUNT_CODES constants.
- *   3. buildElectricityChargeJournal and buildElectricityPaymentJournal accept
- *      the electricity doc's unit and block references (resolved from the
- *      populated Unit document) and the ownershipEntityId from the Block.
+ *   Energy charges are NOT an expense — they are a recoverable asset.
+ *   Only demand charges (buildElectricityDemandChargeJournal) hit the P&L.
+ *
+ * NOTE: NEA cost is NOT posted per unit reading. It is posted when the actual
+ * monthly NEA bill is uploaded (neaBill.controller.js), using the real bill amount.
  */
 
 import { ACCOUNT_CODES } from "../config/accounts.js";
 import { rupeesToPaisa, paisaToRupees } from "../../../utils/moneyUtil.js";
-import { formatNepaliISO } from "../../../utils/nepaliDateHelper.js";
+import { formatNepaliISO, assertNepaliFields } from "../../../utils/nepaliDateHelper.js";
 import {
   getDebitAccountForPayment,
   assertValidPaymentMethod,
@@ -91,15 +90,27 @@ function resolveScope(electricity) {
 /**
  * Build journal payload for an electricity charge raised against a tenant.
  *
+ * THREE-ENTRY form (when neaCostPaisa is available):
+ *   DR  Accounts Receivable (1200)       totalAmountPaisa  — tenant owes at custom rate
+ *   CR  Electricity Recoverable (1400)   neaCostPaisa      — drains the asset created by NEA bill
+ *   CR  Utility Revenue (4100)           marginPaisa       — profit = custom rate − NEA rate
+ *
+ * TWO-ENTRY fallback (neaCostPaisa not set / legacy readings):
+ *   DR  Accounts Receivable (1200)       totalAmountPaisa
+ *   CR  Utility Revenue (4100)           totalAmountPaisa
+ *
  * @param {Object} electricity  — Mongoose document or plain object
  *   Required: _id, readingDate, nepaliDate, nepaliMonth, nepaliYear,
  *             consumption, totalAmountPaisa (or totalAmount), createdBy,
  *             tenant (populated or ObjectId), property
+ *   Preferred: neaCostPaisa — NEA cost for this reading (enables 3-entry form)
  *   Expected populated: unit.block.ownershipEntityId
  *
  * @returns {Object} Journal payload for ledgerService.postJournalEntry()
  */
 export function buildElectricityChargeJournal(electricity) {
+  assertNepaliFields({ nepaliYear: electricity.nepaliYear, nepaliMonth: electricity.nepaliMonth });
+
   const transactionDate = electricity.readingDate || new Date();
   const nepaliDate = resolveNepaliDateString(
     electricity.nepaliDate,
@@ -117,6 +128,11 @@ export function buildElectricityChargeJournal(electricity) {
   );
   const rateDisplay = paisaToRupees(ratePerUnitPaisa);
 
+  // NEA cost at NEA rate — if present, enables the recoverable split.
+  // marginPaisa = profit = custom rate billing − NEA cost.
+  const neaCostPaisa = electricity.neaCostPaisa ?? 0;
+  const marginPaisa  = totalAmountPaisa - neaCostPaisa;
+
   const tenantName = electricity?.tenant?.name;
   const tenantId = electricity.tenant?._id ?? electricity.tenant;
   const propertyId = electricity.property?._id ?? electricity.property;
@@ -131,6 +147,47 @@ export function buildElectricityChargeJournal(electricity) {
     .filter(Boolean)
     .join(" — ");
 
+  // Build entries: 3-entry form when NEA cost is known, 2-entry fallback otherwise.
+  let entries;
+  if (neaCostPaisa > 0) {
+    entries = [
+      {
+        accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+        debitAmountPaisa: totalAmountPaisa,
+        creditAmountPaisa: 0,
+        description: `Electricity receivable — ${electricity.consumption} units @ Rs.${rateDisplay}`,
+      },
+      {
+        accountCode: ACCOUNT_CODES.ELECTRICITY_RECOVERABLE,
+        debitAmountPaisa: 0,
+        creditAmountPaisa: neaCostPaisa,
+        description: `Electricity recoverable — NEA cost (${electricity.consumption} units)`,
+      },
+      {
+        accountCode: ACCOUNT_CODES.UTILITY_REVENUE,
+        debitAmountPaisa: marginPaisa < 0 ? -marginPaisa : 0,
+        creditAmountPaisa: marginPaisa >= 0 ? marginPaisa : 0,
+        description: `Electricity margin — ${electricity.consumption} units @ Rs.${rateDisplay}`,
+      },
+    ];
+  } else {
+    // Legacy / no NEA rate set — full amount to revenue (original 2-entry behavior)
+    entries = [
+      {
+        accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+        debitAmountPaisa: totalAmountPaisa,
+        creditAmountPaisa: 0,
+        description: `Electricity receivable — ${electricity.consumption} units @ Rs.${rateDisplay}`,
+      },
+      {
+        accountCode: ACCOUNT_CODES.UTILITY_REVENUE,
+        debitAmountPaisa: 0,
+        creditAmountPaisa: totalAmountPaisa,
+        description: `Electricity revenue — ${electricity.consumption} units @ Rs.${rateDisplay}`,
+      },
+    ];
+  }
+
   return {
     transactionType: "ELECTRICITY_CHARGE",
     referenceType: "Electricity",
@@ -144,23 +201,10 @@ export function buildElectricityChargeJournal(electricity) {
     totalAmountPaisa,
     tenant: tenantId,
     property: propertyId,
-    unit: unitId, // ← NEW: scoped to unit
-    block: blockId, // ← NEW: scoped to block (building)
-    entityId, // ← NEW: scoped to ownership entity
-    entries: [
-      {
-        accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
-        debitAmountPaisa: totalAmountPaisa,
-        creditAmountPaisa: 0,
-        description: `Electricity receivable — ${electricity.consumption} units @ Rs.${rateDisplay}`,
-      },
-      {
-        accountCode: ACCOUNT_CODES.UTILITY_REVENUE,
-        debitAmountPaisa: 0,
-        creditAmountPaisa: totalAmountPaisa,
-        description: `Electricity revenue — ${electricity.consumption} units @ Rs.${rateDisplay}`,
-      },
-    ],
+    unit: unitId,
+    block: blockId,
+    entityId,
+    entries,
   };
 }
 
@@ -254,50 +298,59 @@ export function buildElectricityPaymentJournal(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. NEA cost journal  (NEW)
+// 3. Common area / parking / sub-meter expense journal
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Build journal payload for the owner's NEA electricity cost.
- * Posted at the same time as the charge journal, in the same session.
+ * Build journal payload for common area, parking, or sub-meter electricity.
+ * These are property-billed readings — no tenant AR, no revenue.
+ * The entire cost is an operating expense.
  *
- * This is what creates the margin in P&L:
- *   Electricity Revenue  (CR from charge journal)   Rs 2,000
- *   Electricity Expense  (DR from this journal)     Rs 1,500
- *   ───────────────────────────────────────────────────────
- *   Net margin                                       Rs   500
+ *   DR  Electricity Expense – Common (5615)   neaCostPaisa (or totalAmountPaisa fallback)
+ *   CR  NEA Payable (2050)                    same amount
  *
- * Only called when electricity.neaCostPaisa is set (i.e. NEA rate was
- * configured at time of reading). The service guards this before calling.
- *
- * @param {Object} electricity
- *   Required: _id, neaCostPaisa, neaRatePerUnitPaisa, consumption,
- *             nepaliMonth, nepaliYear, readingDate, nepaliDate,
- *             createdBy, property
- *   Expected populated: unit.block.ownershipEntityId
- *
- * @returns {Object} Journal payload
+ * @param {Object} electricity — Mongoose document or plain object
+ *   Required: _id, readingDate, nepaliDate, nepaliMonth, nepaliYear,
+ *             consumption, neaCostPaisa (preferred) or totalAmountPaisa,
+ *             neaRatePerUnitPaisa, createdBy, property
+ *   Expected populated: subMeter.block.ownershipEntityId
  */
-export function buildElectricityNeaCostJournal(electricity) {
+export function buildElectricityCommonAreaJournal(electricity) {
   const transactionDate = electricity.readingDate || new Date();
-  const nepaliDate = resolveNepaliDateString(
-    electricity.nepaliDate,
-    transactionDate,
-  );
-  const neaCostPaisa = electricity.neaCostPaisa;
-  const neaRateDisplay = electricity.neaRatePerUnitPaisa
+  const nepaliDate = resolveNepaliDateString(electricity.nepaliDate, transactionDate);
+
+  // Use NEA cost (actual cost at 12.50/unit) if available, else fall back to totalAmountPaisa
+  const expenseAmountPaisa = electricity.neaCostPaisa ?? electricity.totalAmountPaisa;
+  const rateDisplay = electricity.neaRatePerUnitPaisa
     ? paisaToRupees(electricity.neaRatePerUnitPaisa)
-    : "?";
+    : paisaToRupees(electricity.ratePerUnitPaisa ?? 0);
+
+  const meterLabel =
+    electricity.meterType === "common_area"
+      ? "Common area"
+      : electricity.meterType === "parking"
+        ? "Parking"
+        : "Sub-meter";
 
   const propertyId = electricity.property?._id ?? electricity.property;
-  const { unitId, blockId, entityId } = resolveScope(electricity);
+
+  // For sub-meters, scope comes from subMeter.block (unit is null)
+  const subMeter = electricity.subMeter;
+  const block =
+    (typeof subMeter === "object" && subMeter?.block) ?? electricity.block ?? null;
+  const blockId = block?._id ?? block ?? null;
+  const entityId =
+    block?.ownershipEntityId?._id ??
+    block?.ownershipEntityId ??
+    electricity.entityId ??
+    null;
 
   const description =
-    `NEA electricity cost — ${electricity.consumption} units @ Rs.${neaRateDisplay} ` +
+    `${meterLabel} electricity — ${electricity.consumption} units @ Rs.${rateDisplay} ` +
     `(${electricity.nepaliMonth}/${electricity.nepaliYear})`;
 
   return {
-    transactionType: "ELECTRICITY_NEA_COST",
+    transactionType: "ELECTRICITY_COMMON_EXPENSE",
     referenceType: "Electricity",
     referenceId: electricity._id,
     transactionDate,
@@ -306,25 +359,229 @@ export function buildElectricityNeaCostJournal(electricity) {
     nepaliYear: electricity.nepaliYear,
     description,
     createdBy: electricity.createdBy,
-    totalAmountPaisa: neaCostPaisa,
+    totalAmountPaisa: expenseAmountPaisa,
     property: propertyId,
-    unit: unitId, // ← scoped to unit
-    block: blockId, // ← scoped to block
-    entityId, // ← scoped to ownership entity
+    block: blockId,
+    entityId,
     entries: [
       {
-        // DR  Electricity Expense – NEA  (expense rises — owner pays NEA)
-        accountCode: ACCOUNT_CODES.ELECTRICITY_EXPENSE_NEA,
-        debitAmountPaisa: neaCostPaisa,
+        accountCode: ACCOUNT_CODES.ELECTRICITY_EXPENSE_COMMON,
+        debitAmountPaisa: expenseAmountPaisa,
         creditAmountPaisa: 0,
-        description: `NEA cost — ${electricity.consumption} units @ Rs.${neaRateDisplay}`,
+        description: `${meterLabel} electricity cost — ${electricity.consumption} units @ Rs.${rateDisplay}`,
       },
       {
-        // CR  NEA Payable  (liability rises — owner owes NEA)
         accountCode: ACCOUNT_CODES.NEA_PAYABLE,
         debitAmountPaisa: 0,
-        creditAmountPaisa: neaCostPaisa,
+        creditAmountPaisa: expenseAmountPaisa,
         description: `NEA payable — ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
+      },
+    ],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. NEA demand charge journal
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build journal payload for the fixed monthly NEA demand charge.
+ * Called when a NEA bill is uploaded/finalized and demandChargePaisa > 0.
+ *
+ *   DR  Electricity Demand Charge Expense (5616)   demandChargePaisa
+ *   CR  NEA Payable (2050)                         demandChargePaisa
+ *
+ * @param {Object} neaBill — NeaBill Mongoose document or plain object
+ *   Required: _id, demandChargePaisa, nepaliMonth, nepaliYear, uploadedBy
+ * @param {ObjectId|null} entityId — OwnershipEntity for this property
+ */
+export function buildElectricityDemandChargeJournal(neaBill, entityId) {
+  const transactionDate = neaBill.billDate || new Date();
+  const nepaliDate =
+    typeof neaBill.nepaliDate === "string"
+      ? neaBill.nepaliDate
+      : `${neaBill.nepaliYear}-${String(neaBill.nepaliMonth).padStart(2, "0")}-01`;
+
+  const description =
+    `NEA demand charge — ${neaBill.nepaliMonth}/${neaBill.nepaliYear}` +
+    ` (Rs.${paisaToRupees(neaBill.demandChargePaisa)})`;
+
+  return {
+    transactionType: "ELECTRICITY_DEMAND_CHARGE",
+    referenceType: "NeaBill",
+    referenceId: neaBill._id,
+    transactionDate,
+    nepaliDate,
+    nepaliMonth: neaBill.nepaliMonth,
+    nepaliYear: neaBill.nepaliYear,
+    description,
+    createdBy: neaBill.uploadedBy,
+    totalAmountPaisa: neaBill.demandChargePaisa,
+    property: neaBill.property?._id ?? neaBill.property,
+    entityId,
+    entries: [
+      {
+        accountCode: ACCOUNT_CODES.ELECTRICITY_DEMAND_CHARGE_EXPENSE,
+        debitAmountPaisa: neaBill.demandChargePaisa,
+        creditAmountPaisa: 0,
+        description: `NEA demand charge — ${neaBill.nepaliMonth}/${neaBill.nepaliYear}`,
+      },
+      {
+        accountCode: ACCOUNT_CODES.NEA_PAYABLE,
+        debitAmountPaisa: 0,
+        creditAmountPaisa: neaBill.demandChargePaisa,
+        description: `NEA payable — demand charge ${neaBill.nepaliMonth}/${neaBill.nepaliYear}`,
+      },
+    ],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. NEA bill payment journal
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build journal payload for paying the NEA bill (owner → NEA).
+ *
+ *   DR  NEA Payable (2050)   totalAmountPaisa   ← clears the liability
+ *   CR  Cash / Bank          totalAmountPaisa   ← money exits
+ *
+ * @param {Object} neaBill — NeaBill document
+ * @param {Object} paymentData
+ *   Required: paymentMethod, paymentDate, createdBy
+ *   Optional: bankAccountCode (required for bank_transfer / cheque)
+ * @param {ObjectId|null} entityId
+ */
+export function buildNeaBillPaymentJournal(neaBill, paymentData, entityId) {
+  assertValidPaymentMethod(paymentData.paymentMethod);
+
+  const drAccountCode = ACCOUNT_CODES.NEA_PAYABLE; // DR: clears liability
+  const crAccountCode = getDebitAccountForPayment(
+    paymentData.paymentMethod,
+    paymentData.bankAccountCode,
+  );
+
+  const transactionDate = paymentData.paymentDate
+    ? new Date(paymentData.paymentDate)
+    : new Date();
+  const nepaliDate = resolveNepaliDateString(
+    paymentData.nepaliDate,
+    transactionDate,
+  );
+  const amountPaisa = neaBill.totalAmountPaisa;
+
+  const description = `NEA bill payment — ${neaBill.nepaliMonth}/${neaBill.nepaliYear} (Rs.${paisaToRupees(amountPaisa)})`;
+
+  return {
+    transactionType: "NEA_PAYMENT",
+    referenceType: "NeaBill",
+    referenceId: neaBill._id,
+    transactionDate,
+    nepaliDate,
+    nepaliMonth: neaBill.nepaliMonth,
+    nepaliYear: neaBill.nepaliYear,
+    description,
+    createdBy: paymentData.createdBy,
+    totalAmountPaisa: amountPaisa,
+    property: neaBill.property?._id ?? neaBill.property,
+    entityId,
+    entries: [
+      {
+        accountCode: drAccountCode,
+        debitAmountPaisa: amountPaisa,
+        creditAmountPaisa: 0,
+        description,
+      },
+      {
+        accountCode: crAccountCode,
+        debitAmountPaisa: 0,
+        creditAmountPaisa: amountPaisa,
+        description,
+      },
+    ],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. NEA bill energy cost journal  (posted when monthly NEA bill is uploaded)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build journal payload for the energy (unit-consumption) portion of the
+ * monthly NEA bill. Called in neaBill.controller.js when the bill is uploaded.
+ *
+ * Amount = neaBill.totalAmountPaisa − neaBill.demandChargePaisa
+ * (demand charge is posted separately via buildElectricityDemandChargeJournal)
+ *
+ * CORRECT ACCOUNTING — energy charges are a RECOVERABLE ASSET, NOT an expense:
+ *
+ *   DR  Electricity Recoverable (1400)   energyChargePaisa   ← ASSET ↑
+ *   CR  NEA Payable (2050)               energyChargePaisa   ← LIABILITY ↑
+ *
+ *   DR  Electricity Demand Charge (5616) demandChargePaisa   ← EXPENSE ↑
+ *   CR  NEA Payable (2050)               demandChargePaisa   ← LIABILITY ↑
+ *   ──────────────────────────────────────────────────────────────────────
+ *   Total NEA Payable = totalAmountPaisa  ✓  (matches payNeaBill DR)
+ *
+ * Balance sheet impact:
+ *   Assets   ↑  Electricity Recoverable = energyChargePaisa
+ *   Liabilities ↑ NEA Payable           = totalAmountPaisa
+ *   Equity   ↓  only by demandChargePaisa (retained earnings unaffected by energy)
+ *
+ * The asset drains when tenants are billed (buildElectricityChargeJournal):
+ *   DR  AR (1200)     totalAmountPaisa at custom rate
+ *   CR  1400          neaCostPaisa     ← asset drains
+ *   CR  Revenue 4100  marginPaisa      ← only the margin hits P&L
+ *
+ * Idempotent: ledgerService guards on (entityId, transactionType, referenceType, referenceId).
+ *
+ * @param {Object} neaBill  — NeaBill Mongoose document or plain object
+ *   Required: _id, totalAmountPaisa, demandChargePaisa, nepaliMonth, nepaliYear, uploadedBy
+ * @param {ObjectId|null} entityId — OwnershipEntity for this property
+ */
+export function buildNeaBillEnergyCostJournal(neaBill, entityId) {
+  const transactionDate = neaBill.billDate || new Date();
+  const nepaliDate =
+    typeof neaBill.nepaliDate === "string"
+      ? neaBill.nepaliDate
+      : `${neaBill.nepaliYear}-${String(neaBill.nepaliMonth).padStart(2, "0")}-01`;
+
+  // Energy charge = total bill minus demand charge component
+  const energyChargePaisa =
+    neaBill.totalAmountPaisa - (neaBill.demandChargePaisa ?? 0);
+
+  const description =
+    `NEA energy recoverable — ${neaBill.nepaliMonth}/${neaBill.nepaliYear}` +
+    ` (Rs.${paisaToRupees(energyChargePaisa)})`;
+
+  return {
+    transactionType: "NEA_BILL_ENERGY_COST",
+    referenceType: "NeaBill",
+    referenceId: neaBill._id,
+    transactionDate,
+    nepaliDate,
+    nepaliMonth: neaBill.nepaliMonth,
+    nepaliYear: neaBill.nepaliYear,
+    description,
+    createdBy: neaBill.uploadedBy,
+    totalAmountPaisa: energyChargePaisa,
+    property: neaBill.property?._id ?? neaBill.property,
+    entityId,
+    entries: [
+      {
+        // CORRECTED: energy is a recoverable ASSET, not an expense.
+        // Old code used ELECTRICITY_EXPENSE_NEA (5610) which incorrectly reduced
+        // retained earnings and caused P&L to overstate expenses.
+        accountCode: ACCOUNT_CODES.ELECTRICITY_RECOVERABLE,
+        debitAmountPaisa: energyChargePaisa,
+        creditAmountPaisa: 0,
+        description: `Electricity recoverable — NEA energy ${neaBill.nepaliMonth}/${neaBill.nepaliYear}`,
+      },
+      {
+        accountCode: ACCOUNT_CODES.NEA_PAYABLE,
+        debitAmountPaisa: 0,
+        creditAmountPaisa: energyChargePaisa,
+        description: `NEA payable — energy ${neaBill.nepaliMonth}/${neaBill.nepaliYear}`,
       },
     ],
   };

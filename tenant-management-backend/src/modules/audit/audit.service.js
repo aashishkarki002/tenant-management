@@ -37,9 +37,10 @@ class AuditService {
   async log(eventType, performedBy, opts = {}) {
     try {
       await AuditLog.create({
+        actorType:    "user",
         eventType,
         performedBy,
-        performedAt: new Date(),
+        performedAt:  new Date(),
         entityId:     opts.entityId     ?? null,
         resourceType: opts.resourceType ?? null,
         resourceId:   opts.resourceId   ?? null,
@@ -53,8 +54,37 @@ class AuditService {
         nepaliMonth:  opts.nepaliMonth  ?? null,
       });
     } catch (err) {
-      // Audit log failures must not crash the main request
       console.error("[audit] Failed to write audit log:", err.message);
+    }
+  }
+
+  /**
+   * Log a system-initiated event (cron job, background task).
+   *
+   * @param {string} eventType   - AuditLog.eventType enum value
+   * @param {string} systemActor - Job identifier, e.g. "master-cron/rent-charge"
+   * @param {Object} [opts]      - Same shape as log() opts, minus ipAddress/userAgent
+   */
+  async logSystem(eventType, systemActor, opts = {}) {
+    try {
+      await AuditLog.create({
+        actorType:    "system",
+        eventType,
+        performedBy:  null,
+        systemActor,
+        performedAt:  new Date(),
+        entityId:     opts.entityId     ?? null,
+        resourceType: opts.resourceType ?? null,
+        resourceId:   opts.resourceId   ?? null,
+        before:       opts.before       ?? null,
+        after:        opts.after        ?? null,
+        amountPaisa:  opts.amountPaisa  ?? null,
+        reason:       opts.reason       ?? null,
+        nepaliYear:   opts.nepaliYear   ?? null,
+        nepaliMonth:  opts.nepaliMonth  ?? null,
+      });
+    } catch (err) {
+      console.error("[audit] Failed to write system audit log:", err.message);
     }
   }
 
@@ -81,6 +111,7 @@ class AuditService {
 
     if (filters.entityId)     query.entityId     = filters.entityId;
     if (filters.eventType)    query.eventType    = filters.eventType;
+    if (filters.actorType)    query.actorType    = filters.actorType;
     if (filters.performedBy)  query.performedBy  = filters.performedBy;
     if (filters.resourceType) query.resourceType = filters.resourceType;
     if (filters.resourceId)   query.resourceId   = filters.resourceId;

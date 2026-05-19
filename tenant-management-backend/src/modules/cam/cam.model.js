@@ -57,28 +57,54 @@ const camSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    documentNumber: {
+      type: String,
+      default: null,
+      index: { sparse: true },
+    },
+
+    // ── Frequency ────────────────────────────────────────────────────────────
+    camFrequency: {
+      type: String,
+      enum: ["monthly", "quarterly"],
+      default: "monthly",
+      required: true,
+    },
+
+    // For quarterly CAM records: the ending BS month/year of the quarter.
+    // e.g. a Baisakh-Jestha-Ashadh quarter has nepaliMonth=1, nepaliMonthEnd=3.
+    nepaliMonthEnd: { type: Number, min: 1, max: 12, default: null },
+    nepaliYearEnd:  { type: Number, default: null },
   },
   { timestamps: true },
 );
 
-// Unique index to prevent duplicate CAM entries for same tenant + month/year
+// Unique index: one CAM record per tenant per billing period start month/year
 camSchema.index({ tenant: 1, nepaliMonth: 1, nepaliYear: 1 }, { unique: true });
+camSchema.index({ camFrequency: 1 });
 
 camSchema.virtual("remainingAmountPaisa").get(function () {
   return this.amountPaisa - this.paidAmountPaisa;
 });
 
+// Round paisa before validation runs
+camSchema.pre("validate", function () {
+  if (this.amountPaisa != null && !Number.isInteger(this.amountPaisa)) {
+    this.amountPaisa = Math.round(this.amountPaisa);
+  }
+  if (this.paidAmountPaisa != null && !Number.isInteger(this.paidAmountPaisa)) {
+    this.paidAmountPaisa = Math.round(this.paidAmountPaisa);
+  }
+});
+
 camSchema.pre("save", function () {
-  // Ensure amounts are integers
+  // Ensure amounts are integers (guard — pre-validate already rounded)
   if (!Number.isInteger(this.amountPaisa)) {
-    throw new Error(
-      `CAM amount must be integer paisa, got: ${this.amountPaisa}`,
-    );
+    this.amountPaisa = Math.round(this.amountPaisa);
   }
   if (!Number.isInteger(this.paidAmountPaisa)) {
-    throw new Error(
-      `Paid amount must be integer paisa, got: ${this.paidAmountPaisa}`,
-    );
+    this.paidAmountPaisa = Math.round(this.paidAmountPaisa);
   }
 
   // Validate paid amount doesn't exceed CAM amount (in paisa)

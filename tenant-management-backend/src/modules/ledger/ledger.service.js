@@ -5,7 +5,6 @@ import { Transaction } from "./transactions/Transaction.Model.js";
 import { LedgerEntry } from "./Ledger.Model.js";
 import { ClosedPeriod } from "./ClosedPeriod.Model.js";
 import { VacateSettlement } from "./vacateSettlement/VacateSettlement.Model.js";
-import { getMonthsInQuarter } from "../../utils/nepaliMonthQuarter.js";
 import { paisaToRupees, formatMoney } from "../../utils/moneyUtil.js";
 import { buildEntityFilter } from "../../utils/buildEntityFilter.js";
 import {
@@ -14,93 +13,16 @@ import {
   resolveAccountsByEntity,
 } from "./domains/accountBalanceManger.js";
 import { auditService } from "../audit/audit.service.js";
+import {
+  getFiscalQuarterMonths,
+  resolveFiscalGregorianRange
+} from "../../config/fiscalCalendar.js";
+import { assignVoucherNumber } from "./vouchers/voucherNumbering.js";
 
-/** Nepal fiscal quarters (0-based BS month), aligned with accounting.service.js */
-const FISCAL_QUARTER_MONTHS = {
-  1: [3, 4, 5],
-  2: [6, 7, 8],
-  3: [9, 10, 11],
-  4: [0, 1, 2],
-};
+// Inside getLedger(filters = {})
+// ...
 
-const FISCAL_YEAR_MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
-
-function bsMonthToDateRange(year, month0) {
-  const firstNp = new NepaliDate(year, month0, 1);
-  const lastDay = NepaliDate.getDaysOfMonth(year, month0);
-  const lastNp = new NepaliDate(year, month0, lastDay);
-  const toISO = (nd) => nd.getDateObject().toISOString().split("T")[0];
-  return { startDate: toISO(firstNp), endDate: toISO(lastNp) };
-}
-
-function getQuarterMonths(quarter, fiscalYear) {
-  const year = fiscalYear ?? new NepaliDate().getYear();
-  return FISCAL_QUARTER_MONTHS[quarter].map((month0) => ({
-    year: month0 <= 2 ? year + 1 : year,
-    month0,
-  }));
-}
-
-function getFiscalYearMonths(fiscalYear) {
-  return FISCAL_YEAR_MONTH_ORDER.map((month0) => {
-    const year = month0 <= 2 ? fiscalYear + 1 : fiscalYear;
-    return { year, month0 };
-  });
-}
-
-function resolveMonthToDateRange(month, fiscalYear) {
-  const month0 = month - 1;
-  const fy = fiscalYear ?? new NepaliDate().getYear();
-  const calendarYear = month0 <= 2 ? fy + 1 : fy;
-  return bsMonthToDateRange(calendarYear, month0);
-}
-
-/**
- * Match accounting summary precedence: explicit start/end > month > quarter > full FY.
- * When none apply, returns no range (caller may still use nepaliMonth / legacy quarter).
- */
-function resolveLedgerGregorianRange(filters) {
-  if (filters.startDate || filters.endDate) {
-    return {
-      resolvedStart: filters.startDate,
-      resolvedEnd: filters.endDate,
-    };
-  }
-
-  const fyRaw = filters.fiscalYear;
-  const fiscalYear =
-    fyRaw !== undefined && fyRaw !== null && fyRaw !== ""
-      ? Number(fyRaw)
-      : undefined;
-
-  if (filters.month) {
-    const r = resolveMonthToDateRange(Number(filters.month), fiscalYear);
-    return { resolvedStart: r.startDate, resolvedEnd: r.endDate };
-  }
-
-  if (filters.quarter) {
-    const months = getQuarterMonths(Number(filters.quarter), fiscalYear);
-    const first = bsMonthToDateRange(months[0].year, months[0].month0);
-    const last = bsMonthToDateRange(
-      months[months.length - 1].year,
-      months[months.length - 1].month0,
-    );
-    return { resolvedStart: first.startDate, resolvedEnd: last.endDate };
-  }
-
-  if (fiscalYear != null && Number.isFinite(fiscalYear)) {
-    const fyMonths = getFiscalYearMonths(fiscalYear);
-    const first = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
-    const last = bsMonthToDateRange(
-      fyMonths[fyMonths.length - 1].year,
-      fyMonths[fyMonths.length - 1].month0,
-    );
-    return { resolvedStart: first.startDate, resolvedEnd: last.endDate };
-  }
-
-  return { resolvedStart: undefined, resolvedEnd: undefined };
-}
-
+// ...
 class LedgerService {
   // ─────────────────────────────────────────────────────────────────────────
   // Backward-compat shim
@@ -130,8 +52,8 @@ class LedgerService {
     if (!session) {
       console.warn(
         "[ledger] WARNING: postJournalEntry called without a Mongoose session. " +
-          "Atomicity is not guaranteed — partial failures will not auto-rollback. " +
-          "Pass a ClientSession to ensure all-or-nothing posting.",
+        "Atomicity is not guaranteed — partial failures will not auto-rollback. " +
+        "Pass a ClientSession to ensure all-or-nothing posting.",
       );
     }
 
@@ -141,7 +63,7 @@ class LedgerService {
     if (!resolvedEntityId) {
       throw new Error(
         "postJournalEntry: entityId is required. " +
-          "Every journal must be scoped to an OwnershipEntity.",
+        "Every journal must be scoped to an OwnershipEntity.",
       );
     }
 
@@ -177,7 +99,7 @@ class LedgerService {
       if (lockedSettlement?.ledgerLockedAt) {
         throw new Error(
           `Tenant ledger is locked — this tenant has been vacated and their ledger is closed. ` +
-            `No new journal entries can be posted.`,
+          `No new journal entries can be posted.`,
         );
       }
     }
@@ -194,7 +116,7 @@ class LedgerService {
       if (closedPeriod) {
         throw new Error(
           `Period ${nepaliYear}/${String(nepaliMonth).padStart(2, "0")} is closed for this entity. ` +
-            `Reopen the period before posting new entries.`,
+          `Reopen the period before posting new entries.`,
         );
       }
     }
@@ -235,13 +157,20 @@ class LedgerService {
     if (totalDebitPaisa !== totalCreditPaisa) {
       throw new Error(
         `Journal entries do not balance: debits ${formatMoney(totalDebitPaisa)} ` +
-          `vs credits ${formatMoney(totalCreditPaisa)}`,
+        `vs credits ${formatMoney(totalCreditPaisa)}`,
       );
     }
 
     // ── Resolve accounts (code, entityId) pair ──────────────────────────────
     const accountByCode = await resolveAccountsByEntity(
       entries,
+      resolvedEntityId,
+      session,
+    );
+
+    // ── Assign voucher number ───────────────────────────────────────────────
+    const { voucherNo, voucherType } = await assignVoucherNumber(
+      transactionType,
       resolvedEntityId,
       session,
     );
@@ -262,6 +191,8 @@ class LedgerService {
           status: "POSTED",
           billingFrequency,
           quarter,
+          voucherNo,
+          voucherType,
         },
       ],
       { session },
@@ -315,9 +246,184 @@ class LedgerService {
       amountPaisa: totalAmountPaisa,
       nepaliYear,
       nepaliMonth,
-    }).catch(() => {}); // swallow — audit failure must not affect posting
+    }).catch(() => { }); // swallow — audit failure must not affect posting
 
     return { transaction, ledgerEntries };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // postReversalEntry
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * Post an accounting reversal for a previously posted transaction.
+   *
+   * A reversal is an equal-and-opposite journal entry that nullifies the
+   * effect of the original transaction. The original Transaction is never
+   * mutated — this preserves the immutable audit trail.
+   *
+   * Rules:
+   *  - Original transaction must exist and have status "POSTED".
+   *  - Every debit in the original becomes a credit in the reversal, and vice versa.
+   *  - The reversed transaction's status is set to "VOIDED" after the reversal posts.
+   *  - The reversal Transaction type uses the original type + "_REVERSAL" suffix.
+   *  - Idempotency is inherited from postJournalEntry (same guard applies).
+   *
+   * @param {Object} options
+   * @param {string|ObjectId}  options.transactionId   — _id of the Transaction to reverse
+   * @param {string}           options.reason          — Human-readable reason (required)
+   * @param {ObjectId}         options.reversedBy      — Admin performing the reversal
+   * @param {string}           [options.nepaliDate]    — Override posting date (BS "YYYY-MM-DD")
+   * @param {number}           [options.nepaliMonth]   — Override posting period month
+   * @param {number}           [options.nepaliYear]    — Override posting period year
+   * @param {mongoose.ClientSession} [options.session] — Pass for atomicity with caller
+   *
+   * @returns {Promise<{ reversalTransaction, ledgerEntries, voidedTransaction }>}
+   *
+   * @throws {Error} If transaction not found, already voided, or period is closed.
+   */
+  async postReversalEntry(options = {}) {
+    const {
+      transactionId,
+      reason,
+      reversedBy,
+      nepaliDate: overrideNepaliDate,
+      nepaliMonth: overrideMonth,
+      nepaliYear: overrideYear,
+      session: externalSession = null,
+    } = options;
+
+    if (!transactionId) throw new Error("postReversalEntry: transactionId is required");
+    if (!reason?.trim()) throw new Error("postReversalEntry: reason is required");
+    if (!reversedBy) throw new Error("postReversalEntry: reversedBy is required");
+
+    // Use caller's session if provided; otherwise manage our own.
+    const ownSession = !externalSession;
+    const session = externalSession ?? (await mongoose.startSession());
+    if (ownSession) session.startTransaction();
+
+    try {
+      // ── Fetch original transaction + its ledger entries ──────────────────
+      const original = await Transaction.findById(transactionId).session(session);
+      if (!original) {
+        throw new Error(`Transaction ${transactionId} not found`);
+      }
+      if (original.status === "VOIDED") {
+        throw new Error(
+          `Transaction ${transactionId} is already voided — cannot reverse again`,
+        );
+      }
+      if (original.status !== "POSTED") {
+        throw new Error(
+          `Transaction ${transactionId} has status "${original.status}" — only POSTED transactions can be reversed`,
+        );
+      }
+
+      const originalEntries = await LedgerEntry.find({
+        transaction: original._id,
+      }).session(session).lean();
+
+      if (!originalEntries.length) {
+        throw new Error(
+          `Transaction ${transactionId} has no ledger entries — cannot build reversal`,
+        );
+      }
+
+      // ── Build reversal entries (flip debit/credit) ───────────────────────
+      const reversalEntryDefs = originalEntries.map((e) => {
+        // Fetch the account code from the Account document referenced by e.account
+        // We store the accountCode on the entry for this purpose.
+        return {
+          accountCode: null,          // filled below after account lookup
+          _accountId: e.account,      // raw ObjectId — used for lookup
+          debitAmountPaisa: e.creditAmountPaisa,  // flipped
+          creditAmountPaisa: e.debitAmountPaisa,  // flipped
+          description: `REVERSAL: ${e.description} — ${reason}`,
+          tenant: e.tenant ?? null,
+          property: e.property ?? null,
+        };
+      });
+
+      // Resolve account codes from Account collection
+      const accountIds = [...new Set(reversalEntryDefs.map((e) => e._accountId.toString()))];
+      const accounts = await Account.find({ _id: { $in: accountIds } }).session(session).lean();
+      const accountCodeById = {};
+      for (const acc of accounts) accountCodeById[acc._id.toString()] = acc.code;
+
+      for (const entry of reversalEntryDefs) {
+        entry.accountCode = accountCodeById[entry._accountId.toString()];
+        if (!entry.accountCode) {
+          throw new Error(
+            `Cannot find account code for Account ${entry._accountId} while building reversal`,
+          );
+        }
+        delete entry._accountId;
+      }
+
+      // ── Determine reversal period ────────────────────────────────────────
+      const reversalDate = new Date();
+      const reversalNepaliDate = overrideNepaliDate ?? original.nepaliDate;
+      const reversalNepaliMonth = overrideMonth ?? original.nepaliMonth;
+      const reversalNepaliYear = overrideYear ?? original.nepaliYear;
+
+      // ── Post reversal via postJournalEntry (inherits all guards) ─────────
+      const reversalType = `${original.type}_REVERSAL`;
+
+      // Add REVERSAL types to Transaction.type enum dynamically via allowedValues fallback.
+      // Because Mongoose validates on save, we disable enum for reversal by setting
+      // the type field directly after creation. postJournalEntry passes `transactionType`
+      // which is the `type` field — we need to ensure this value is in the enum.
+      // We extend the Transaction type enum in the model with _REVERSAL variants.
+      const reversalPayload = {
+        transactionType: reversalType,
+        referenceType: original.referenceType,
+        referenceId: original.referenceId,
+        transactionDate: reversalDate,
+        nepaliDate: reversalNepaliDate,
+        nepaliMonth: reversalNepaliMonth,
+        nepaliYear: reversalNepaliYear,
+        description: `REVERSAL of ${original.type} (${original._id}) — ${reason}`,
+        createdBy: reversedBy,
+        totalAmountPaisa: original.totalAmountPaisa,
+        entries: reversalEntryDefs,
+        entityId: original.entityId,
+      };
+
+      const { transaction: reversalTransaction, ledgerEntries } =
+        await this.postJournalEntry(reversalPayload, session, original.entityId);
+
+      // ── Mark original transaction as VOIDED ──────────────────────────────
+      original.status = "VOIDED";
+      original.voidedBy = reversedBy;
+      original.voidedAt = reversalDate;
+      original.voidReason = reason;
+      await original.save({ session });
+
+      // ── Audit log ────────────────────────────────────────────────────────
+      auditService.log("TRANSACTION_REVERSED", reversedBy, {
+        entityId: original.entityId,
+        resourceType: "Transaction",
+        resourceId: original._id,
+        reversalTransactionId: reversalTransaction._id,
+        reason,
+      }).catch(() => { });
+
+      if (ownSession) {
+        await session.commitTransaction();
+        session.endSession();
+      }
+
+      return {
+        reversalTransaction,
+        ledgerEntries,
+        voidedTransaction: original,
+      };
+    } catch (err) {
+      if (ownSession) {
+        await session.abortTransaction();
+        session.endSession();
+      }
+      throw err;
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -340,12 +446,11 @@ class LedgerService {
         Object.assign(query, buildEntityFilter(filters.entityId));
       }
 
-      const { resolvedStart, resolvedEnd } = resolveLedgerGregorianRange(filters);
+      const { resolvedStart, resolvedEnd } = resolveFiscalGregorianRange(filters);
 
       if (resolvedStart || resolvedEnd) {
         query.transactionDate = {};
-        if (resolvedStart)
-          query.transactionDate.$gte = new Date(resolvedStart);
+        if (resolvedStart) query.transactionDate.$gte = new Date(resolvedStart);
         if (resolvedEnd) {
           const end = new Date(resolvedEnd);
           end.setHours(23, 59, 59, 999);
@@ -355,7 +460,7 @@ class LedgerService {
         if (filters.nepaliYear) query.nepaliYear = Number(filters.nepaliYear);
         if (filters.nepaliMonth) query.nepaliMonth = Number(filters.nepaliMonth);
         if (filters.quarter) {
-          const months = getMonthsInQuarter(parseInt(filters.quarter));
+          const months = getFiscalQuarterMonths(filters.quarter);
           query.nepaliMonth = { $in: months };
         }
       }
@@ -421,7 +526,7 @@ class LedgerService {
 
       const entries = await LedgerEntry.find(query)
         .populate("account", "code name type")
-        .populate("transaction", "type description transactionDate nepaliDate")
+        .populate("transaction", "type description transactionDate nepaliDate voucherNo voucherType")
         .populate("tenant", "name email phone")
         .populate("property", "name address type")
         .populate("entityId", "name type")
@@ -464,6 +569,8 @@ class LedgerService {
           property: entry.property,
           tenant: entry.tenant,
           transaction: entry.transaction,
+          voucherNo: entry.transaction?.voucherNo ?? null,
+          voucherType: entry.transaction?.voucherType ?? null,
           createdAt: entry.createdAt,
           paisa: {
             debit: entry.debitAmountPaisa,
@@ -531,7 +638,7 @@ class LedgerService {
       }
 
       if (filters.quarter) {
-        const months = getMonthsInQuarter(parseInt(filters.quarter));
+        const months = getFiscalQuarterMonths(parseInt(filters.quarter));
         query.nepaliMonth = { $in: months };
       }
 
@@ -653,7 +760,7 @@ class LedgerService {
         matchStage.entityId = new mongoose.Types.ObjectId(filters.entityId);
 
       if (filters.quarter) {
-        const months = getMonthsInQuarter(parseInt(filters.quarter));
+        const months = getFiscalQuarterMonths(parseInt(filters.quarter));
         matchStage.nepaliMonth = { $in: months };
       }
 
@@ -861,7 +968,7 @@ class LedgerService {
       nepaliYear: Number(nepaliYear),
       nepaliMonth: Number(nepaliMonth),
       reason: note,
-    }).catch(() => {});
+    }).catch(() => { });
 
     return result;
   }
@@ -904,7 +1011,7 @@ class LedgerService {
       nepaliYear: Number(nepaliYear),
       nepaliMonth: Number(nepaliMonth),
       reason: note,
-    }).catch(() => {});
+    }).catch(() => { });
 
     return result;
   }
@@ -942,16 +1049,17 @@ class LedgerService {
     if (startDate || endDate) {
       matchStage.transactionDate = {};
       if (startDate) matchStage.transactionDate.$gte = new Date(startDate);
-      if (endDate)   { const e = new Date(endDate); e.setHours(23,59,59,999); matchStage.transactionDate.$lte = e; }
+      if (endDate) { const e = new Date(endDate); e.setHours(23, 59, 59, 999); matchStage.transactionDate.$lte = e; }
     }
 
     const rows = await LedgerEntry.aggregate([
       { $match: matchStage },
       { $lookup: { from: "accounts", localField: "account", foreignField: "_id", as: "acct" } },
       { $unwind: "$acct" },
-      { $group: {
+      {
+        $group: {
           _id: { accountCode: "$acct.code", accountName: "$acct.name", accountType: "$acct.type" },
-          totalDebit:  { $sum: "$debitAmountPaisa" },
+          totalDebit: { $sum: "$debitAmountPaisa" },
           totalCredit: { $sum: "$creditAmountPaisa" },
         },
       },
@@ -975,9 +1083,9 @@ class LedgerService {
       filters,
       revenueLines,
       expenseLines,
-      totalRevenue:  { paisa: revenuePaisa,  formatted: formatMoney(revenuePaisa) },
-      totalExpense:  { paisa: expensePaisa,  formatted: formatMoney(expensePaisa) },
-      netProfit:     { paisa: netProfitPaisa, formatted: formatMoney(netProfitPaisa) },
+      totalRevenue: { paisa: revenuePaisa, formatted: formatMoney(revenuePaisa) },
+      totalExpense: { paisa: expensePaisa, formatted: formatMoney(expensePaisa) },
+      netProfit: { paisa: netProfitPaisa, formatted: formatMoney(netProfitPaisa) },
     };
   }
 
@@ -994,17 +1102,17 @@ class LedgerService {
     for (const bank of banks) {
       const ledgerAccount = await Account.findOne({ code: bank.accountCode, entityId: new mongoose.Types.ObjectId(String(entityId)) }).lean();
       const ledgerBalancePaisa = ledgerAccount?.currentBalancePaisa ?? 0;
-      const bankBalancePaisa   = bank.balancePaisa ?? 0;
-      const differencePaisa    = ledgerBalancePaisa - bankBalancePaisa;
+      const bankBalancePaisa = bank.balancePaisa ?? 0;
+      const differencePaisa = ledgerBalancePaisa - bankBalancePaisa;
 
       results.push({
-        bankName:         bank.bankName,
-        accountNumber:    bank.accountNumber,
-        accountCode:      bank.accountCode,
-        ledgerBalance:    { paisa: ledgerBalancePaisa, formatted: formatMoney(ledgerBalancePaisa) },
-        bankBalance:      { paisa: bankBalancePaisa,   formatted: formatMoney(bankBalancePaisa) },
-        difference:       { paisa: differencePaisa,    formatted: formatMoney(Math.abs(differencePaisa)) },
-        isReconciled:     differencePaisa === 0,
+        bankName: bank.bankName,
+        accountNumber: bank.accountNumber,
+        accountCode: bank.accountCode,
+        ledgerBalance: { paisa: ledgerBalancePaisa, formatted: formatMoney(ledgerBalancePaisa) },
+        bankBalance: { paisa: bankBalancePaisa, formatted: formatMoney(bankBalancePaisa) },
+        difference: { paisa: differencePaisa, formatted: formatMoney(Math.abs(differencePaisa)) },
+        isReconciled: differencePaisa === 0,
         note: differencePaisa !== 0
           ? "Ledger and operational bank balance differ. Run rebuild-balance or check for unposted transactions."
           : null,
@@ -1012,15 +1120,15 @@ class LedgerService {
     }
 
     const totalLedger = results.reduce((s, r) => s + r.ledgerBalance.paisa, 0);
-    const totalBank   = results.reduce((s, r) => s + r.bankBalance.paisa, 0);
+    const totalBank = results.reduce((s, r) => s + r.bankBalance.paisa, 0);
 
     return {
       entityId,
       accounts: results,
       totals: {
         ledger: { paisa: totalLedger, formatted: formatMoney(totalLedger) },
-        bank:   { paisa: totalBank,   formatted: formatMoney(totalBank) },
-        diff:   { paisa: totalLedger - totalBank, formatted: formatMoney(Math.abs(totalLedger - totalBank)) },
+        bank: { paisa: totalBank, formatted: formatMoney(totalBank) },
+        diff: { paisa: totalLedger - totalBank, formatted: formatMoney(Math.abs(totalLedger - totalBank)) },
       },
       allReconciled: results.every((r) => r.isReconciled),
     };
@@ -1052,49 +1160,49 @@ class LedgerService {
       if (!tenantMap[tid]) {
         tenantMap[tid] = {
           tenantId: tid,
-          tenantName:     rent.tenant?.name ?? "Unknown",
-          tenantPan:      rent.tenant?.panNumber ?? null,
-          propertyName:   rent.property?.name ?? null,
+          tenantName: rent.tenant?.name ?? "Unknown",
+          tenantPan: rent.tenant?.panNumber ?? null,
+          propertyName: rent.property?.name ?? null,
           monthlyBreakdown: [],
           totalGrossPaisa: 0,
-          totalTdsPaisa:   0,
-          tdsPaidToGovt:   0,
-          tdsPending:      0,
+          totalTdsPaisa: 0,
+          tdsPaidToGovt: 0,
+          tdsPending: 0,
         };
       }
       const t = tenantMap[tid];
       t.monthlyBreakdown.push({
-        nepaliMonth:    rent.nepaliMonth,
+        nepaliMonth: rent.nepaliMonth,
         grossRentPaisa: rent.grossRentAmountPaisa,
-        tdsPaisa:       rent.tdsAmountPaisa,
-        paidToGovt:     rent.tdsPaidToGovernment ?? false,
+        tdsPaisa: rent.tdsAmountPaisa,
+        paidToGovt: rent.tdsPaidToGovernment ?? false,
       });
       t.totalGrossPaisa += rent.grossRentAmountPaisa;
-      t.totalTdsPaisa   += rent.tdsAmountPaisa;
+      t.totalTdsPaisa += rent.tdsAmountPaisa;
       if (rent.tdsPaidToGovernment) t.tdsPaidToGovt += rent.tdsAmountPaisa;
       else t.tdsPending += rent.tdsAmountPaisa;
     }
 
     const tenants = Object.values(tenantMap);
     const grandTotalGross = tenants.reduce((s, t) => s + t.totalGrossPaisa, 0);
-    const grandTotalTds   = tenants.reduce((s, t) => s + t.totalTdsPaisa, 0);
-    const grandPaid       = tenants.reduce((s, t) => s + t.tdsPaidToGovt, 0);
-    const grandPending    = tenants.reduce((s, t) => s + t.tdsPending, 0);
+    const grandTotalTds = tenants.reduce((s, t) => s + t.totalTdsPaisa, 0);
+    const grandPaid = tenants.reduce((s, t) => s + t.tdsPaidToGovt, 0);
+    const grandPending = tenants.reduce((s, t) => s + t.tdsPending, 0);
 
     const fmt = (p) => ({ paisa: p, formatted: formatMoney(p) });
     return {
       nepaliYear,
       tenants: tenants.map((t) => ({
         ...t,
-        totalGross:   fmt(t.totalGrossPaisa),
-        totalTds:     fmt(t.totalTdsPaisa),
-        paidToGovt:   fmt(t.tdsPaidToGovt),
-        pending:      fmt(t.tdsPending),
+        totalGross: fmt(t.totalGrossPaisa),
+        totalTds: fmt(t.totalTdsPaisa),
+        paidToGovt: fmt(t.tdsPaidToGovt),
+        pending: fmt(t.tdsPending),
       })),
       grandTotal: {
-        gross:   fmt(grandTotalGross),
-        tds:     fmt(grandTotalTds),
-        paid:    fmt(grandPaid),
+        gross: fmt(grandTotalGross),
+        tds: fmt(grandTotalTds),
+        paid: fmt(grandPaid),
         pending: fmt(grandPending),
       },
     };
@@ -1119,35 +1227,35 @@ class LedgerService {
       const tid = String(cam.tenant?._id ?? cam.tenant);
       if (!tenantMap[tid]) {
         tenantMap[tid] = {
-          tenantId:   tid,
+          tenantId: tid,
           tenantName: cam.tenant?.name ?? "Unknown",
           billedPaisa: 0,
-          paidPaisa:   0,
-          months:      [],
+          paidPaisa: 0,
+          months: [],
         };
       }
       const t = tenantMap[tid];
       t.billedPaisa += cam.amount ?? 0;
-      t.paidPaisa   += cam.paidAmount ?? 0;
+      t.paidPaisa += cam.paidAmount ?? 0;
       t.months.push({ nepaliMonth: cam.nepaliMonth, billed: cam.amount, paid: cam.paidAmount, status: cam.status });
     }
 
     const tenants = Object.values(tenantMap).map((t) => ({
       ...t,
       outstandingPaisa: t.billedPaisa - t.paidPaisa,
-      billed:      formatMoney(t.billedPaisa),
-      paid:        formatMoney(t.paidPaisa),
+      billed: formatMoney(t.billedPaisa),
+      paid: formatMoney(t.paidPaisa),
       outstanding: formatMoney(t.billedPaisa - t.paidPaisa),
     }));
 
-    const totalBilled  = tenants.reduce((s, t) => s + t.billedPaisa, 0);
-    const totalPaid    = tenants.reduce((s, t) => s + t.paidPaisa, 0);
+    const totalBilled = tenants.reduce((s, t) => s + t.billedPaisa, 0);
+    const totalPaid = tenants.reduce((s, t) => s + t.paidPaisa, 0);
     return {
       nepaliYear,
       tenants,
       grandTotal: {
-        billed:      formatMoney(totalBilled),
-        paid:        formatMoney(totalPaid),
+        billed: formatMoney(totalBilled),
+        paid: formatMoney(totalPaid),
         outstanding: formatMoney(totalBilled - totalPaid),
       },
     };
@@ -1167,7 +1275,7 @@ class LedgerService {
     if (!tenantId) throw new Error("tenantId is required");
     const { startDate, endDate, fiscalYear, entityId } = filters;
 
-    const { resolvedStart, resolvedEnd } = resolveLedgerGregorianRange(filters);
+    const { resolvedStart, resolvedEnd } = resolveFiscalGregorianRange(filters);
 
     const ledger = await this.getLedger({ tenantId, startDate: resolvedStart, endDate: resolvedEnd, entityId });
 
@@ -1178,15 +1286,15 @@ class LedgerService {
       const net = (e.debitAmountPaisa ?? 0) - (e.creditAmountPaisa ?? 0);
       runningPaisa += net;
       return {
-        date:        e.transactionDate,
-        nepaliDate:  e.nepaliDate,
+        date: e.transactionDate,
+        nepaliDate: e.nepaliDate,
         description: e.description,
         chargesPaisa: e.debitAmountPaisa > 0 ? e.debitAmountPaisa : 0,
         paymentsPaisa: e.creditAmountPaisa > 0 ? e.creditAmountPaisa : 0,
-        balancePaisa:  runningPaisa,
-        charges:   formatMoney(e.debitAmountPaisa > 0 ? e.debitAmountPaisa : 0),
-        payments:  formatMoney(e.creditAmountPaisa > 0 ? e.creditAmountPaisa : 0),
-        balance:   formatMoney(runningPaisa),
+        balancePaisa: runningPaisa,
+        charges: formatMoney(e.debitAmountPaisa > 0 ? e.debitAmountPaisa : 0),
+        payments: formatMoney(e.creditAmountPaisa > 0 ? e.creditAmountPaisa : 0),
+        balance: formatMoney(runningPaisa),
       };
     });
 
@@ -1197,7 +1305,7 @@ class LedgerService {
       closingBalance: formatMoney(runningPaisa),
       closingBalancePaisa: runningPaisa,
       statement,
-      totalChargesPaisa:  statement.reduce((s, r) => s + r.chargesPaisa, 0),
+      totalChargesPaisa: statement.reduce((s, r) => s + r.chargesPaisa, 0),
       totalPaymentsPaisa: statement.reduce((s, r) => s + r.paymentsPaisa, 0),
     };
   }
@@ -1222,9 +1330,9 @@ class LedgerService {
 
   async updateAccount(accountId, { name, description, isActive }) {
     const updates = {};
-    if (name        !== undefined) updates.name        = name;
+    if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
-    if (isActive    !== undefined) updates.isActive    = isActive;
+    if (isActive !== undefined) updates.isActive = isActive;
     const updated = await Account.findByIdAndUpdate(accountId, { $set: updates }, { new: true }).lean();
     if (!updated) throw new Error("Account not found");
     return updated;
@@ -1252,7 +1360,7 @@ class LedgerService {
     const { Tenant } = await import("../tenant/Tenant.Model.js");
 
     const now = new NepaliDate();
-    const currentBSYear  = now.getYear();
+    const currentBSYear = now.getYear();
     const currentBSMonth = now.getMonth() + 1; // getMonth() is 0-based
 
     // Total BS months elapsed since a given rent period
@@ -1289,11 +1397,11 @@ class LedgerService {
     const BUCKETS = ["current", "1_month", "2_months", "3_months", "over_3"];
 
     const emptyBuckets = () => ({
-      current:  0,
+      current: 0,
       "1_month": 0,
       "2_months": 0,
       "3_months": 0,
-      over_3:   0,
+      over_3: 0,
     });
 
     for (const rent of rents) {
@@ -1306,29 +1414,29 @@ class LedgerService {
 
       const age = monthsOld(rent.nepaliYear, rent.nepaliMonth);
       let bucket;
-      if (age <= 0)      bucket = "current";
+      if (age <= 0) bucket = "current";
       else if (age === 1) bucket = "1_month";
       else if (age === 2) bucket = "2_months";
       else if (age === 3) bucket = "3_months";
-      else               bucket = "over_3";
+      else bucket = "over_3";
 
       const tenantId = String(rent.tenant?._id ?? rent.tenant);
       if (!tenantMap[tenantId]) {
         tenantMap[tenantId] = {
           tenantId,
-          tenantName:   rent.tenant?.name   ?? "Unknown",
-          tenantEmail:  rent.tenant?.email  ?? null,
-          tenantPhone:  rent.tenant?.phone  ?? null,
+          tenantName: rent.tenant?.name ?? "Unknown",
+          tenantEmail: rent.tenant?.email ?? null,
+          tenantPhone: rent.tenant?.phone ?? null,
           propertyName: rent.property?.name ?? null,
-          totalPaisa:   0,
-          buckets:      emptyBuckets(),
-          rentCount:    0,
+          totalPaisa: 0,
+          buckets: emptyBuckets(),
+          rentCount: 0,
         };
       }
 
       tenantMap[tenantId].buckets[bucket] += outstanding;
-      tenantMap[tenantId].totalPaisa      += outstanding;
-      tenantMap[tenantId].rentCount       += 1;
+      tenantMap[tenantId].totalPaisa += outstanding;
+      tenantMap[tenantId].rentCount += 1;
     }
 
     const tenants = Object.values(tenantMap).sort(

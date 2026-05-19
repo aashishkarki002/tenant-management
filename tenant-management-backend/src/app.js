@@ -55,6 +55,9 @@ import budgetRoute from "./modules/budget/budget.route.js";
 import ownerDistributionRoute from "./modules/ownerDistribution/ownerDistribution.route.js";
 import vendorBillsRoute from "./modules/vendorBills/vendorBills.route.js";
 import advanceRentRoute from "./modules/advanceRent/advanceRent.route.js";
+import cronLogRoute from "./cron/cronLog.route.js";
+import tdsQuarterlyRoute from "./modules/tds/tds.quarterly.route.js";
+import devToolsRoute from "./modules/devTools/devTools.route.js";
 const app = express();
 
 app.disable("x-powered-by");
@@ -150,6 +153,9 @@ app.use("/api/budget", budgetRoute);
 app.use("/api/owner-distribution", ownerDistributionRoute);
 app.use("/api/vendor-bills", vendorBillsRoute);
 app.use("/api/advance-rent", advanceRentRoute);
+app.use("/api/cron-logs", cronLogRoute);
+app.use("/api/tds", tdsQuarterlyRoute);
+app.use("/api/dev", devToolsRoute);
 app.get("/api/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 // -------------------- ERROR HANDLERS --------------------

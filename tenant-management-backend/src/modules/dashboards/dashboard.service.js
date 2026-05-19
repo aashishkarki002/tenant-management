@@ -16,6 +16,7 @@ import { Payment } from "../payment/payment.model.js";
 import { Transaction } from "../ledger/transactions/Transaction.Model.js";
 import { Generator } from "../maintenance/generators/Generator.Model.js";
 import { Cam } from "../cam/cam.model.js";
+import { Electricity } from "../electricity/Electricity.Model.js";
 import { ChecklistResult } from "../dailyChecks/checkListResult.model.js";
 import Notification from "../notifications/notification.model.js";
 
@@ -384,6 +385,9 @@ export async function getDashboardStatsData({ adminId } = {}) {
     revenueByMonthAgg,
     revenueBreakdownAgg,
     revenueBreakdownThisMonthAgg,
+    rentByMonthAgg,
+    camByMonthAgg,
+    elecByMonthAgg,
     lateFeeAgg,
   ] = await Promise.all([
     Rent.aggregate([
@@ -544,6 +548,50 @@ export async function getDashboardStatsData({ adminId } = {}) {
       { $sort: { totalAmountPaisa: -1 } },
     ]),
 
+    // ── Per-stream monthly booked vs collected (both FY years) ──────────────────
+    // Powers the stacked bar chart in the dashboard (BookedVsEarnedPanel).
+    // All values in rupees (÷100) to match existing revenueByMonth[].total unit.
+    Rent.aggregate([
+      { $match: { nepaliYear: { $in: [npYear, npYear - 1] } } },
+      {
+        $group: {
+          _id: { year: "$nepaliYear", month: "$nepaliMonth" },
+          bookedRupees: {
+            $sum: {
+              $divide: [
+                { $subtract: ["$grossRentAmountPaisa", { $ifNull: ["$tdsAmountPaisa", 0] }] },
+                100,
+              ],
+            },
+          },
+          collectedRupees: { $sum: { $divide: ["$paidAmountPaisa", 100] } },
+        },
+      },
+    ]),
+
+    Cam.aggregate([
+      { $match: { nepaliYear: { $in: [npYear, npYear - 1] } } },
+      {
+        $group: {
+          _id: { year: "$nepaliYear", month: "$nepaliMonth" },
+          bookedRupees: { $sum: { $divide: ["$amountPaisa", 100] } },
+          collectedRupees: { $sum: { $divide: ["$paidAmountPaisa", 100] } },
+        },
+      },
+    ]),
+
+    // Filter billTo:"tenant" — exclude property/vendor meter bills
+    Electricity.aggregate([
+      { $match: { nepaliYear: { $in: [npYear, npYear - 1] }, billTo: "tenant" } },
+      {
+        $group: {
+          _id: { year: "$nepaliYear", month: "$nepaliMonth" },
+          bookedRupees: { $sum: { $divide: ["$totalAmountPaisa", 100] } },
+          collectedRupees: { $sum: { $divide: ["$paidAmountPaisa", 100] } },
+        },
+      },
+    ]),
+
     // ── Late fee summary — current FY (lateFeeApplied=true means fee was charged) ──
     // Surfaces late fee data that is otherwise invisible on the dashboard.
     // Uses the index { status: 1, lateFeeApplied: 1 } defined in rent.Model.js.
@@ -598,11 +646,35 @@ export async function getDashboardStatsData({ adminId } = {}) {
   const quarterlyThisYear = buildQuarterly(revenueThisYear);
   const quarterlyLastYear = buildQuarterly(revenueLastYear);
 
-  const revenueByMonth = revenueByMonthAgg.map((r) => ({
-    year: r._id.year,
-    month: r._id.month,
-    total: r.total,
-  }));
+  // Build lookup maps for O(1) per-stream access
+  const rentMonthMap  = new Map(rentByMonthAgg.map((r)  => [`${r._id.year}-${r._id.month}`, r]));
+  const camMonthMap   = new Map(camByMonthAgg.map((r)   => [`${r._id.year}-${r._id.month}`, r]));
+  const elecMonthMap  = new Map(elecByMonthAgg.map((r)  => [`${r._id.year}-${r._id.month}`, r]));
+
+  const revenueByMonth = revenueByMonthAgg.map((r) => {
+    const key  = `${r._id.year}-${r._id.month}`;
+    const rent = rentMonthMap.get(key);
+    const cam  = camMonthMap.get(key);
+    const elec = elecMonthMap.get(key);
+
+    return {
+      year:  r._id.year,
+      month: r._id.month,
+      total: r.total, // legacy field — rupees, kept for backward compat
+
+      // Per-stream booked vs collected — rupees, powers the stacked bar chart
+      booked: {
+        rent:        rent?.bookedRupees    ?? 0,
+        cam:         cam?.bookedRupees     ?? 0,
+        electricity: elec?.bookedRupees    ?? 0,
+      },
+      collected: {
+        rent:        rent?.collectedRupees ?? 0,
+        cam:         cam?.collectedRupees  ?? 0,
+        electricity: elec?.collectedRupees ?? 0,
+      },
+    };
+  });
 
   /* ===============================
      3️⃣ OVERDUE RENTS (TOP 3) + OUTSTANDING CONTEXT

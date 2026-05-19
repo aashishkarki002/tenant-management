@@ -16,7 +16,7 @@ import {
   deleteElectricityReading,
   generateElectricityBill,
 } from "./electricity.controller.js";
-import { uploadNeaBill, getNeaBills } from "./neaBill.controller.js";
+import { uploadNeaBill, getNeaBills, parseNeaBillPdf, payNeaBill } from "./neaBill.controller.js";
 import {
   getElectricityRate,
   setElectricityRate,
@@ -64,7 +64,11 @@ router.post(
 // ── Bill generation (tenant-facing PDF → FTP) ─────────────────────────────────
 router.post("/generate-bill/:id", protect, generateElectricityBill);
 
-// ── NEA bill upload (property owner's utility bill → FTP) ────────────────────
+// ── NEA bill ──────────────────────────────────────────────────────────────────
+// IMPORTANT: specific paths before parameterised ones to avoid route collisions.
+// /parse and /:billId/pay must come before /:propertyId (GET/POST).
+router.post("/nea-bill/:propertyId/parse", protect, upload.single("neaBillPdf"), parseNeaBillPdf);
+router.post("/nea-bill/:propertyId/:billId/pay", protect, payNeaBill);
 router.post("/nea-bill/:propertyId", protect, upload.single("neaBillPdf"), uploadNeaBill);
 router.get("/nea-bill/:propertyId", protect, getNeaBills);
 

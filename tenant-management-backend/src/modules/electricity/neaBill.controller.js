@@ -5,8 +5,9 @@
  * PDF upload is optional — manual entry without PDF is supported.
  *
  * Routes:
- *   POST /api/electricity/nea-bill/:propertyId   — create/update NEA bill (multipart, PDF optional)
- *   GET  /api/electricity/nea-bill/:propertyId   — list all NEA bills + reconciliation
+ *   POST /api/electricity/nea-bill/:propertyId/parse  — parse-only, no DB write
+ *   POST /api/electricity/nea-bill/:propertyId        — create/update NEA bill (multipart, PDF optional)
+ *   GET  /api/electricity/nea-bill/:propertyId        — list all NEA bills + reconciliation
  *
  * Reconciliation (two dimensions):
  *   Cost:  totalAmountPaisa vs  sum(Electricity.neaCostPaisa)  — rupee shortfall/surplus
@@ -21,18 +22,66 @@ import { NeaBill } from "./NeaBill.Model.js";
 import { Electricity } from "./Electricity.Model.js";
 import ftpClient from "../../config/ftpClient.js";
 import { rupeesToPaisa, paisaToRupees } from "../../utils/moneyUtil.js";
+import { parseNeaBill } from "../../utils/parseNeaBill.js";
+import { ledgerService } from "../ledger/ledger.service.js";
+import {
+  buildElectricityDemandChargeJournal,
+  buildNeaBillEnergyCostJournal,
+  buildNeaBillPaymentJournal,
+} from "../ledger/journal-builders/electricity.js";
+import { applyDisbursementFromBank } from "../banks/bank.domain.js";
+
+// Helper: resolve ownershipEntityId for a property via its first Block
+async function resolveEntityForProperty(propertyId, session = null) {
+  const { Block } = await import("../blocks/Block.Model.js");
+  const block = await Block.findOne({ property: propertyId })
+    .select("ownershipEntityId")
+    .session(session)
+    .lean();
+  const raw = block?.ownershipEntityId ?? null;
+  return raw?._id ?? raw ?? null;
+}
 
 const TEMP_DIR = path.join(process.cwd(), "tmp");
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
+
+// ─── Parse-only endpoint ──────────────────────────────────────────────────────
+
+/**
+ * POST /api/electricity/nea-bill/:propertyId/parse
+ * Body: multipart — neaBillPdf (required)
+ *
+ * No DB writes. Returns extracted fields for frontend pre-fill.
+ * Frontend calls this on file select; user reviews and confirms before saving.
+ */
+export const parseNeaBillPdf = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: "No PDF uploaded" });
+  }
+
+  try {
+    const parsed = await parseNeaBill(req.file.buffer);
+
+    return res.status(200).json({ success: true, data: parsed });
+  } catch (err) {
+    console.error("[NEA parse]", err.message);
+    // 422 Unprocessable — file was received but couldn't be parsed.
+    // Do NOT 500 here; it's not a server fault, it's a bad/unreadable PDF.
+    return res.status(422).json({
+      success: false,
+      message: "Could not extract data from this PDF — please fill fields manually.",
+    });
+  }
+};
 
 // ─── Upload / create NEA bill ─────────────────────────────────────────────────
 
 /**
  * POST /api/electricity/nea-bill/:propertyId
  * Body (multipart, all text fields + optional PDF):
- *   totalAmount       — total NEA charge (rupees, required)
- *   nepaliMonth       — 1–12 (required)
- *   nepaliYear        — (required)
+ *   totalAmount       — total NEA charge (rupees, required unless PDF auto-parsed)
+ *   nepaliMonth       — 1–12 (required unless PDF auto-parsed)
+ *   nepaliYear        — (required unless PDF auto-parsed)
  *   totalUnits?       — total kWh purchased from NEA
  *   demandCharge?     — demand charge component (rupees)
  *   energyCharge?     — energy charge component (rupees)
@@ -40,16 +89,44 @@ if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
  *   status?           — 'draft' | 'finalized' | 'paid' (default: 'finalized')
  *   notes?
  *   neaBillPdf?       — PDF file (optional)
+ *
+ * Auto-parse fallback: if a PDF is attached but a required field is missing,
+ * the controller attempts to extract it from the PDF before rejecting the request.
  */
 export const uploadNeaBill = async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const {
+
+    let {
       totalAmount, nepaliMonth, nepaliYear,
       totalUnits, demandCharge, energyCharge, billDate,
       status, notes,
     } = req.body;
 
+    // ── Auto-parse fallback ───────────────────────────────────────────────────
+    // If required fields are absent but a PDF was uploaded, try to extract them.
+    // This handles the edge case where the frontend skipped auto-parse
+    // (e.g. user uploaded PDF and clicked Save immediately without waiting).
+    const missingRequired = !totalAmount || !nepaliMonth || !nepaliYear;
+
+    if (missingRequired && req.file) {
+      try {
+        const parsed = await parseNeaBill(req.file.buffer);
+
+        // Only fill what's missing — never overwrite an explicit value sent by the client
+        if (!totalAmount  && parsed.totalAmount  != null) totalAmount  = String(parsed.totalAmount);
+        if (!nepaliMonth  && parsed.nepaliMonth  != null) nepaliMonth  = String(parsed.nepaliMonth);
+        if (!nepaliYear   && parsed.nepaliYear   != null) nepaliYear   = String(parsed.nepaliYear);
+        if (!totalUnits   && parsed.totalUnits   != null) totalUnits   = String(parsed.totalUnits);
+        if (!demandCharge && parsed.demandCharge != null) demandCharge = String(parsed.demandCharge);
+        if (!energyCharge && parsed.energyCharge != null) energyCharge = String(parsed.energyCharge);
+      } catch (parseErr) {
+        // Parse failure is non-fatal — validation below will catch still-missing fields
+        console.warn("[NEA upload] PDF auto-parse fallback failed:", parseErr.message);
+      }
+    }
+
+    // ── Validation ────────────────────────────────────────────────────────────
     if (!totalAmount || !nepaliMonth || !nepaliYear) {
       return res.status(400).json({
         success: false,
@@ -61,12 +138,12 @@ export const uploadNeaBill = async (req, res) => {
     const yearNum          = parseInt(nepaliYear,  10);
     const totalAmountPaisa = rupeesToPaisa(parseFloat(totalAmount));
 
-    const demandChargePaisa        = demandCharge  ? rupeesToPaisa(parseFloat(demandCharge))  : null;
-    const energyChargeAmountPaisa  = energyCharge  ? rupeesToPaisa(parseFloat(energyCharge))  : null;
-    const totalUnitsNum            = totalUnits    ? parseFloat(totalUnits)                    : null;
-    const billDateParsed           = billDate      ? new Date(billDate)                        : null;
+    const demandChargePaisa       = demandCharge  ? rupeesToPaisa(parseFloat(demandCharge))  : null;
+    const energyChargeAmountPaisa = energyCharge  ? rupeesToPaisa(parseFloat(energyCharge))  : null;
+    const totalUnitsNum           = totalUnits    ? parseFloat(totalUnits)                    : null;
+    const billDateParsed          = billDate      ? new Date(billDate)                        : null;
 
-    // Optional PDF upload to FTP
+    // ── Optional PDF upload to FTP ────────────────────────────────────────────
     let ftpPath = null;
     if (req.file) {
       const filename   = `nea-bill-${yearNum}-${monthNum}.pdf`;
@@ -105,6 +182,39 @@ export const uploadNeaBill = async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
 
+    // ── Post NEA cost journals ─────────────────────────────────────────────────
+    // Both journals are idempotent: ledgerService guards on (entityId, type, referenceType, referenceId).
+    // Re-uploading the same bill (same neaBill._id) will not double-post.
+    const entityId = await resolveEntityForProperty(propertyId);
+    const billDoc = { ...neaBill.toObject(), uploadedBy: neaBill.uploadedBy ?? req.admin?.id };
+
+    // 1. Energy cost: DR Electricity Expense NEA (5610) | CR NEA Payable (2050)
+    //    Amount = totalAmountPaisa − demandChargePaisa
+    //    This is the actual per-kWh cost from the real NEA bill — NOT estimated per reading.
+    const energyChargePaisa = neaBill.totalAmountPaisa - (neaBill.demandChargePaisa ?? 0);
+    if (energyChargePaisa > 0) {
+      try {
+        const energyPayload = buildNeaBillEnergyCostJournal(billDoc, entityId);
+        await ledgerService.postJournalEntry(energyPayload, null, entityId);
+      } catch (journalErr) {
+        if (!journalErr.message?.includes("already exists")) {
+          console.error("[NEA energy cost journal]", journalErr.message);
+        }
+      }
+    }
+
+    // 2. Demand charge: DR Electricity Demand Charge Expense (5616) | CR NEA Payable (2050)
+    if (neaBill.demandChargePaisa && neaBill.demandChargePaisa > 0) {
+      try {
+        const demandPayload = buildElectricityDemandChargeJournal(billDoc, entityId);
+        await ledgerService.postJournalEntry(demandPayload, null, entityId);
+      } catch (journalErr) {
+        if (!journalErr.message?.includes("already exists")) {
+          console.error("[NEA demand charge journal]", journalErr.message);
+        }
+      }
+    }
+
     // ── Reconciliation aggregation (cost + units) ─────────────────────────────
     const aggResult = await Electricity.aggregate([
       {
@@ -125,7 +235,7 @@ export const uploadNeaBill = async (req, res) => {
     ]);
 
     let systemNeaCostPaisa = 0;
-    let meteredUnitUnits   = 0; // kWh from unit (tenant) meters only
+    let meteredUnitUnits   = 0;
 
     for (const row of aggResult) {
       systemNeaCostPaisa += row.systemNeaCostPaisa;
@@ -133,8 +243,6 @@ export const uploadNeaBill = async (req, res) => {
     }
 
     const costDifferencePaisa = totalAmountPaisa - systemNeaCostPaisa;
-
-    // Unit loss = NEA purchased - tenant-metered (common area + leakage + unmetered usage)
     const unitLoss = totalUnitsNum != null ? totalUnitsNum - meteredUnitUnits : null;
     const lossPercent = totalUnitsNum && totalUnitsNum > 0
       ? ((unitLoss / totalUnitsNum) * 100).toFixed(1)
@@ -146,19 +254,17 @@ export const uploadNeaBill = async (req, res) => {
       data: {
         neaBill: neaBill.toObject({ virtuals: true }),
         reconciliation: {
-          // Cost reconciliation
           neaBillTotal:      paisaToRupees(totalAmountPaisa),
           demandCharge:      demandChargePaisa != null ? paisaToRupees(demandChargePaisa) : null,
           systemNeaCost:     paisaToRupees(systemNeaCostPaisa),
           costDifference:    paisaToRupees(costDifferencePaisa),
           surplus:           costDifferencePaisa < 0,
           shortfall:         costDifferencePaisa > 0,
-          // Unit reconciliation
           purchasedUnits:    totalUnitsNum,
           meteredUnitUnits,
           unitLoss,
           lossPercent: lossPercent != null ? parseFloat(lossPercent) : null,
-          unitSurplus:  unitLoss != null && unitLoss < 0,
+          unitSurplus:       unitLoss != null && unitLoss < 0,
         },
       },
     });
@@ -173,6 +279,113 @@ export const uploadNeaBill = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to save NEA bill",
+    });
+  }
+};
+
+// ─── Pay NEA bill ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/electricity/nea-bill/:propertyId/:billId/pay
+ * Body:
+ *   paymentMethod  — cash | bank_transfer | cheque | mobile_wallet (required)
+ *   bankAccountId  — required for bank_transfer / cheque
+ *   bankAccountCode — bank account ledger code (e.g. "1010-NABIL")
+ *   paymentDate    — ISO date string (optional, defaults to now)
+ *   nepaliDate     — e.g. "2082-02-15" (optional)
+ *   notes?
+ *
+ * Journal posted:
+ *   DR  NEA Payable (2050)     totalAmountPaisa   ← clears liability
+ *   CR  Cash / Bank            totalAmountPaisa   ← money exits
+ */
+export const payNeaBill = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { propertyId, billId } = req.params;
+    const {
+      paymentMethod,
+      bankAccountId,
+      bankAccountCode,
+      paymentDate,
+      nepaliDate,
+      notes,
+    } = req.body;
+
+    if (!paymentMethod) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "paymentMethod is required" });
+    }
+
+    const neaBill = await NeaBill.findOne({ _id: billId, property: propertyId }).session(session);
+    if (!neaBill) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ success: false, message: "NEA bill not found" });
+    }
+
+    if (neaBill.status === "paid") {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(409).json({ success: false, message: "NEA bill is already marked as paid" });
+    }
+
+    const entityId = await resolveEntityForProperty(propertyId, session);
+
+    const paymentData = {
+      paymentMethod,
+      bankAccountId,
+      bankAccountCode,
+      paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+      nepaliDate,
+      createdBy: req.admin?.id,
+      notes: notes?.trim() ?? "",
+    };
+
+    // Post journal: DR NEA Payable | CR Cash/Bank
+    const journalPayload = buildNeaBillPaymentJournal(neaBill, paymentData, entityId);
+    const { transaction } = await ledgerService.postJournalEntry(
+      journalPayload,
+      session,
+      entityId,
+    );
+
+    // Update bank balance — money exits (outflow to NEA)
+    if (paymentMethod !== "cash" && bankAccountId) {
+      await applyDisbursementFromBank({
+        paymentMethod,
+        bankAccountId,
+        amountPaisa: neaBill.totalAmountPaisa,
+        session,
+      });
+    }
+
+    // Mark bill as paid
+    neaBill.status = "paid";
+    await neaBill.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({
+      success: true,
+      message: "NEA bill payment recorded",
+      data: {
+        neaBill: neaBill.toObject({ virtuals: true }),
+        transactionId: transaction._id,
+        amountPaid: paisaToRupees(neaBill.totalAmountPaisa),
+      },
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Error paying NEA bill:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to record NEA bill payment",
     });
   }
 };
@@ -196,7 +409,6 @@ export const getNeaBills = async (req, res) => {
       return res.status(200).json({ success: true, data: { bills: [], total: 0 } });
     }
 
-    // Bulk reconciliation: one aggregation for all months
     const monthKeys = bills.map((b) => ({
       nepaliMonth: b.nepaliMonth,
       nepaliYear:  b.nepaliYear,
@@ -222,7 +434,6 @@ export const getNeaBills = async (req, res) => {
       },
     ]);
 
-    // Build map: "year-month" → { systemNeaCostPaisa, meteredUnitUnits }
     const systemMap = {};
     for (const row of aggResult) {
       const key = `${row._id.nepaliYear}-${row._id.nepaliMonth}`;
@@ -242,17 +453,17 @@ export const getNeaBills = async (req, res) => {
       return {
         ...bill,
         reconciliation: {
-          neaBillTotal:      paisaToRupees(bill.totalAmountPaisa),
-          demandCharge:      bill.demandChargePaisa != null ? paisaToRupees(bill.demandChargePaisa) : null,
-          systemNeaCost:     paisaToRupees(systemNeaCostPaisa),
-          costDifference:    paisaToRupees(costDifferencePaisa),
-          surplus:           costDifferencePaisa < 0,
-          shortfall:         costDifferencePaisa > 0,
-          purchasedUnits:    bill.totalUnits,
+          neaBillTotal:   paisaToRupees(bill.totalAmountPaisa),
+          demandCharge:   bill.demandChargePaisa != null ? paisaToRupees(bill.demandChargePaisa) : null,
+          systemNeaCost:  paisaToRupees(systemNeaCostPaisa),
+          costDifference: paisaToRupees(costDifferencePaisa),
+          surplus:        costDifferencePaisa < 0,
+          shortfall:      costDifferencePaisa > 0,
+          purchasedUnits: bill.totalUnits,
           meteredUnitUnits,
           unitLoss,
           lossPercent,
-          unitSurplus:       unitLoss != null && unitLoss < 0,
+          unitSurplus:    unitLoss != null && unitLoss < 0,
         },
       };
     });

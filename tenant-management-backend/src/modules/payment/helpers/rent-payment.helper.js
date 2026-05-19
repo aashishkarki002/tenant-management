@@ -32,6 +32,8 @@ import { buildLateFeePaymentJournal } from "../../ledger/journal-builders/lateFe
 import { assertIntegerPaisa, formatMoney } from "../../../utils/moneyUtil.js";
 import { assertValidPaymentMethod } from "../../../utils/paymentAccountUtils.js";
 import { resolveNepaliPeriod } from "../../../utils/nepaliDateHelper.js";
+import { syncTenantBalance } from "../../tenantBalance/tenantBalance.service.js";
+import { smsTenant } from "../../../config/nestsms.templates.js";
 
 /**
  * Record a rent payment (rent principal + optional late fee) atomically.
@@ -81,7 +83,7 @@ export async function recordRentPayment({
 
   // ── 1. Load rent ──────────────────────────────────────────────────────────
   const rent = await Rent.findById(rentId)
-    .populate("tenant", "name")
+    .populate("tenant", "name phone")
     .populate("property", "name");
 
   if (!rent)
@@ -219,7 +221,22 @@ export async function recordRentPayment({
       }
     }
 
+    const tenantId = rent.tenant?._id ?? rent.tenant;
+    const balanceAfterPayment = await syncTenantBalance(tenantId.toString(), session);
+
     await session.commitTransaction();
+
+    // Fire-and-forget SMS — never blocks or throws
+    const tenantPhone = rent.tenant?.phone ?? null;
+    const tenantDisplayName = rent.tenant?.name ?? null;
+    if (tenantPhone && tenantDisplayName && balanceAfterPayment) {
+      smsTenant.paymentConfirmed(tenantPhone, {
+        tenantName: tenantDisplayName,
+        amountRupees: Math.round(amountPaisa / 100),
+        receiptNo: rentPaymentDoc._id.toString().slice(-8).toUpperCase(),
+        totalDuePaisa: balanceAfterPayment.totalDuePaisa,
+      });
+    }
 
     const summary = rent.getFinancialSummary();
 

@@ -45,7 +45,7 @@ const sdSchema = new mongoose.Schema(
 
     mode: {
       type: String,
-      enum: ["cash", "cheque", "bank_transfer", "bank_guarantee"],
+      enum: ["cash", "cheque", "bank_transfer", "bank_guarantee", "others"],
       required: true,
     },
 
@@ -147,11 +147,20 @@ const sdSchema = new mongoose.Schema(
       expiryDate: { type: Date },
     },
 
+    // Open-dated cheque held as security (mode: "others")
+    // Validity is 6 months from chequeDate; expiryDate is auto-computed on save.
+    othersDetails: {
+      chequeNumber: { type: String },
+      chequeDate: { type: Date },
+      expiryDate: { type: Date },   // chequeDate + 6 months
+      imageUrl: { type: String },
+    },
+
     documents: [
       {
         type: {
           type: String,
-          enum: ["cheque", "bank_guarantee", "refund_receipt"],
+          enum: ["cheque", "bank_guarantee", "refund_receipt", "others"],
           required: true,
         },
         files: [
@@ -251,6 +260,13 @@ sdSchema.pre("save", function () {
     this.amountPaisa = Math.round(this.amountPaisa);
   }
 
+  // Auto-compute expiry for open-dated cheque (6-month validity)
+  if (this.mode === "others" && this.othersDetails?.chequeDate && !this.othersDetails.expiryDate) {
+    const expiry = new Date(this.othersDetails.chequeDate);
+    expiry.setMonth(expiry.getMonth() + 6);
+    this.othersDetails.expiryDate = expiry;
+  }
+
   // ============================================
   // NEW: Synchronize root level from unit breakdown
   // ============================================
@@ -269,7 +285,7 @@ sdSchema.pre("save", function () {
       if (totalDeducted === 0) {
         // No refunds/adjustments
         if (ub.paidDate) {
-          ub.status = this.mode === "bank_guarantee" ? "held_as_bg" : "paid";
+          ub.status = (this.mode === "bank_guarantee" || this.mode === "others") ? "held_as_bg" : "paid";
         } else {
           ub.status = "pending";
         }
@@ -288,7 +304,7 @@ sdSchema.pre("save", function () {
     const totalDeducted = totalRefunded + totalAdjusted;
 
     if (totalDeducted === 0) {
-      this.status = this.mode === "bank_guarantee" ? "held_as_bg" : "paid";
+      this.status = (this.mode === "bank_guarantee" || this.mode === "others") ? "held_as_bg" : "paid";
     } else if (totalDeducted >= this.amountPaisa) {
       this.status = totalRefunded > 0 ? "refunded" : "adjusted";
     } else {

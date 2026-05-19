@@ -1,4 +1,4 @@
-import { receiveAdvanceRent, recognizeAdvanceRent, listAdvanceRents } from "./advanceRent.service.js";
+import { receiveAdvanceRent, recognizeAdvanceRent, allocateAdvance, listAdvanceRents } from "./advanceRent.service.js";
 
 export const listAdvances = async (req, res) => {
   try {
@@ -10,7 +10,7 @@ export const listAdvances = async (req, res) => {
 
 export const receiveAdvance = async (req, res) => {
   try {
-    const createdBy = req.user?._id ?? req.user?.id;
+    const createdBy = req.admin?.id ?? req.user?._id ?? req.user?.id;
     const data = await receiveAdvanceRent({ ...req.body, createdBy });
     res.status(201).json({ success: true, data });
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
@@ -18,9 +18,18 @@ export const receiveAdvance = async (req, res) => {
 
 export const recognizeAdvance = async (req, res) => {
   try {
-    const createdBy = req.user?._id ?? req.user?.id;
+    const createdBy = req.admin?.id ?? req.user?._id ?? req.user?.id;
     const { advanceRentId } = req.params;
     const data = await recognizeAdvanceRent({ advanceRentId, ...req.body, createdBy });
+    res.json({ success: true, data });
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+};
+
+export const allocateAdvanceController = async (req, res) => {
+  try {
+    const createdBy = req.admin?.id ?? req.user?._id ?? req.user?.id;
+    const { advanceRentId } = req.params;
+    const data = await allocateAdvance({ advanceRentId, ...req.body, createdBy });
     res.json({ success: true, data });
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 };
