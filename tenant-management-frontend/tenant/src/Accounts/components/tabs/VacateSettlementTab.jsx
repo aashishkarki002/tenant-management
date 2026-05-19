@@ -1,10 +1,41 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { Loader2Icon, TriangleAlertIcon, CheckCircle2Icon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useTenant } from "../../../hooks/use-tenants";
+
 import { useVacateSettlement, useVacateList } from "../../hooks/useVacateSettlement";
-
-import api from "../../../../plugins/axios";
-import {Input} from "../../../components/ui/input";
-
+import { useActiveTenants } from "../../hooks/useActiveTenants";
 import { fmtRs } from "../../../utils/formatter";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -13,24 +44,33 @@ function fmtDate(iso) {
   });
 }
 
-function StatusBadge({ status }) {
-  const map = {
-    COMPLETED: "bg-green-100 text-green-800",
-    DRAFT:     "bg-yellow-100 text-yellow-800",
-    CANCELLED: "bg-gray-100 text-gray-600",
-  };
+const STATUS_COLORS = {
+  COMPLETED: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  DRAFT: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  CANCELLED: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+};
+
+// ─── Field wrapper ─────────────────────────────────────────────────────────────
+
+function Field({ label, children, className }) {
   return (
-    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${map[status] ?? "bg-gray-100 text-gray-600"}`}>
-      {status}
-    </span>
+    <div className={cn("space-y-1.5", className)}>
+      <Label className="text-xs font-semibold text-[var(--color-text-sub)] uppercase tracking-wide">
+        {label}
+      </Label>
+      {children}
+    </div>
   );
 }
+
+// ─── Settlement preview card ──────────────────────────────────────────────────
 
 function PreviewCard({ preview }) {
   const rows = [
     { label: "Existing AR (open charges)", value: preview.finalRentDuePaisa, color: "text-orange-600" },
     { label: `Pro-rated rent (${preview.proRatedDays}/${preview.totalDaysInMonth} days)`, value: preview.proRatedRentPaisa, color: "text-orange-600" },
     { label: "Pro-rated CAM", value: preview.proRatedCamPaisa, color: "text-orange-600" },
+    null,
     { label: "Total AR at vacate", value: preview.totalArAtVacatePaisa, color: "font-bold text-[var(--color-text-body)]" },
     null,
     { label: "Security deposit held", value: preview.sdBalancePaisa, color: "text-[var(--color-text-sub)]" },
@@ -42,26 +82,64 @@ function PreviewCard({ preview }) {
   ];
 
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-      <h3 className="text-[13px] font-semibold text-[var(--color-text-body)] mb-3">Settlement Preview</h3>
-      <div className="flex flex-col gap-1">
-        {rows.map((row, i) =>
-          row === null ? (
-            <div key={i} className="border-t border-[var(--color-border)] my-1" />
-          ) : row.value !== 0 && row.value != null ? (
-            <div key={row.label} className="flex justify-between text-[12px]">
-              <span className="text-[var(--color-text-sub)]">{row.label}</span>
-              <span className={row.color}>{fmtRs(row.value)}</span>
-            </div>
-          ) : null
-        )}
-      </div>
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 space-y-1">
+      <p className="text-[13px] font-semibold text-[var(--color-text-body)] mb-3">Settlement Preview</p>
+      {rows.map((row, i) =>
+        row === null ? (
+          <Separator key={i} className="my-2 bg-[var(--color-border)]" />
+        ) : row.value !== 0 && row.value != null ? (
+          <div key={row.label} className="flex justify-between items-center text-xs">
+            <span className="text-[var(--color-text-sub)]">{row.label}</span>
+            <span className={cn("tabular-nums font-medium", row.color)}>{fmtRs(row.value)}</span>
+          </div>
+        ) : null
+      )}
     </div>
   );
 }
 
+// ─── Confirm modal ─────────────────────────────────────────────────────────────
+
+function ConfirmModal({ open, onClose, onConfirm, executing, error }) {
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-sm bg-[var(--color-bg)] border-[var(--color-border)]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-[var(--color-text-heading)]">
+            <TriangleAlertIcon className="size-4 text-amber-500" />
+            Confirm Settlement
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-[var(--color-text-sub)]">
+          This will post all journals, lock the tenant&apos;s ledger, and mark them as vacated.{" "}
+          <strong className="text-[var(--color-text-body)]">This cannot be undone.</strong>
+        </p>
+        {error && (
+          <p className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} className="border-[var(--color-border)] text-[var(--color-text-sub)]">
+            Cancel
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={executing}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            {executing && <Loader2Icon className="size-4 animate-spin" />}
+            {executing ? "Processing…" : "Confirm"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Main tab ─────────────────────────────────────────────────────────────────
+
 export default function VacateSettlementTab({ entityId }) {
-  const [tenants, setTenants] = useState([]);
   const [tenantId, setTenantId] = useState("");
   const [vacateDate, setVacateDate] = useState("");
   const [maintenanceDed, setMaintenanceDed] = useState(0);
@@ -71,18 +149,12 @@ export default function VacateSettlementTab({ entityId }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
-  const { preview, computing, executing, error, compute, execute } =
-    useVacateSettlement(entityId);
-  const { settlements, refetch: refetchList } =
-    useVacateList(entityId, undefined);
-
-  // Load active tenants
-  useEffect(() => {
-    if (!entityId) return;
-    api.get("/api/tenant", { params: { entityId, limit: 200 } })
-      .then(r => setTenants((r.data?.tenants ?? r.data?.data ?? []).filter(t => t.vacateStatus !== "vacated")))
-      .catch(() => {});
-  }, [entityId]);
+  const {
+    tenants,
+    loading: tenantsLoading,
+  } = useTenant();
+  const { preview, computing, executing, error, compute, execute } = useVacateSettlement(entityId);
+  const { settlements, refetch: refetchList } = useVacateList(entityId, undefined);
 
   const handleCompute = async () => {
     if (!tenantId || !vacateDate) return;
@@ -98,201 +170,211 @@ export default function VacateSettlementTab({ entityId }) {
 
   const handleExecute = async () => {
     try {
-      await execute({
-        tenantId,
-        paymentMethod,
-        writeOffBadDebt: writeOff,
-        notes,
-      });
+      await execute({ tenantId, paymentMethod, writeOffBadDebt: writeOff, notes });
       setSuccessMsg("Settlement completed. Tenant ledger is now locked.");
       setShowConfirm(false);
       refetchList();
-    } catch { /* error set by hook */ }
+    } catch { /* error surfaced via hook */ }
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-[15px] font-semibold text-[var(--color-text-body)]">
-          Vacate Settlement
-        </h2>
-        <p className="text-[12px] text-[var(--color-text-sub)] mt-0.5">
+        <h2 className="text-lg font-bold text-[var(--color-text-heading)]">Vacate Settlement</h2>
+        <p className="text-sm text-[var(--color-text-sub)] mt-0.5">
           Pro-rate final charges, settle security deposit, lock tenant ledger
         </p>
       </div>
 
+      {/* Alerts */}
       {successMsg && (
-        <div className="p-3 rounded-xl bg-green-50 border border-green-200 text-[12px] text-green-700 font-semibold">
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-sm text-green-700 dark:text-green-400 font-semibold">
+          <CheckCircle2Icon className="size-4 shrink-0" />
           {successMsg}
         </div>
       )}
-      {error && (
-        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-[12px] text-red-700">
+      {error && !showConfirm && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
+          <TriangleAlertIcon className="size-4 shrink-0" />
           {error}
         </div>
       )}
 
-      {/* Wizard */}
-      <div className="rounded-xl border border-[var(--color-border)] p-4 bg-[var(--color-surface)] flex flex-col gap-4">
-        <h3 className="text-[13px] font-semibold text-[var(--color-text-body)]">New Settlement</h3>
+      {/* New settlement form */}
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-4">
+        <p className="text-[13px] font-semibold text-[var(--color-text-body)]">New Settlement</p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-[11px] text-[var(--color-text-sub)] mb-1 block">Tenant</label>
-            <select
-              value={tenantId}
-              onChange={e => setTenantId(e.target.value)}
-              className="w-full text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
-            >
-              <option value="">Select tenant...</option>
-              {tenants.map(t => (
-                <option key={t._id} value={t._id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Tenant select */}
+          <Field label="Tenant">
+            <Select value={tenantId} onValueChange={setTenantId} disabled={tenantsLoading}>
+              <SelectTrigger className="h-9 w-full text-sm">
+                {tenantsLoading
+                  ? <span className="text-[var(--color-text-sub)] text-xs">Loading tenants…</span>
+                  : <SelectValue placeholder="Select tenant…" />
+                }
+              </SelectTrigger>
+              <SelectContent>
+                {tenants.length === 0 ? (
+                  <div className="px-3 py-4 text-xs text-center text-[var(--color-text-sub)]">
+                    No active tenants found
+                  </div>
+                ) : (
+                  tenants.map(t => (
+                    <SelectItem key={t._id} value={t._id}>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium">{t.name}</span>
+                        {t.unit?.name && (
+                          <span className="text-[11px] text-muted-foreground">{t.unit.name}</span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </Field>
 
-          <div>
-            <label className="text-[11px] text-[var(--color-text-sub)] mb-1 block">Vacate Date</label>
+          {/* Vacate date */}
+          <Field label="Vacate Date">
             <Input
               type="date"
               value={vacateDate}
               onChange={e => setVacateDate(e.target.value)}
-              className="w-full text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
+              className="h-9 text-sm"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label className="text-[11px] text-[var(--color-text-sub)] mb-1 block">Maintenance Deduction (Rs)</label>
-            <input
+          {/* Maintenance deduction */}
+          <Field label="Maintenance Deduction (Rs)">
+            <Input
               type="number"
               min="0"
               value={maintenanceDed}
               onChange={e => setMaintenanceDed(Number(e.target.value))}
-              className="w-full text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
+              className="h-9 text-sm"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label className="text-[11px] text-[var(--color-text-sub)] mb-1 block">SD Refund Method</label>
-            <select
-              value={paymentMethod}
-              onChange={e => setPaymentMethod(e.target.value)}
-              className="w-full text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
-            >
-              <option value="cash">Cash</option>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="cheque">Cheque</option>
-            </select>
-          </div>
+          {/* SD refund method */}
+          <Field label="SD Refund Method">
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger className="h-9 w-full text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                <SelectItem value="cheque">Cheque</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
+        {/* Write-off checkbox */}
+        <div className="flex items-start gap-2.5">
+          <Checkbox
             id="writeoff"
-            type="checkbox"
             checked={writeOff}
-            onChange={e => setWriteOff(e.target.checked)}
-            className="w-4 h-4"
+            onCheckedChange={setWriteOff}
+            className="mt-0.5"
           />
-          <label htmlFor="writeoff" className="text-[12px] text-[var(--color-text-body)]">
+          <Label htmlFor="writeoff" className="text-sm text-[var(--color-text-body)] font-normal leading-snug cursor-pointer">
             Write off remaining AR as bad debt (if any balance remains after SD)
-          </label>
+          </Label>
         </div>
 
-        <input
-          type="text"
-          placeholder="Notes (optional)"
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          className="text-[12px] px-2 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-body)]"
-        />
+        {/* Notes */}
+        <Field label="Notes (optional)">
+          <Input
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Optional notes…"
+            className="h-9 text-sm"
+          />
+        </Field>
 
-        <button
+        <Button
           onClick={handleCompute}
           disabled={!tenantId || !vacateDate || computing}
-          className="self-start px-4 py-2 text-[12px] font-semibold rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-40"
+          className="bg-[var(--color-accent)] text-white hover:opacity-90 gap-1.5"
+          size="sm"
         >
-          {computing ? "Computing..." : "Compute Preview"}
-        </button>
+          {computing && <Loader2Icon className="size-4 animate-spin" />}
+          {computing ? "Computing…" : "Compute Preview"}
+        </Button>
       </div>
 
-      {/* Preview */}
+      {/* Preview + execute */}
       {preview && (
-        <>
+        <div className="space-y-3">
           <PreviewCard preview={preview} />
-          <button
+          <Button
             onClick={() => setShowConfirm(true)}
-            className="self-start px-4 py-2 text-[12px] font-semibold rounded-lg bg-green-600 text-white hover:opacity-90 transition-opacity"
+            size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white"
           >
             Execute Settlement
-          </button>
-        </>
+          </Button>
+        </div>
+      )}
+
+      {/* Settlements history */}
+      {settlements.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[13px] font-semibold text-[var(--color-text-body)]">Settlement History</p>
+          <div className="rounded-xl border border-[var(--color-border)] overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-[var(--color-surface)] hover:bg-[var(--color-surface)] border-b border-[var(--color-border)]">
+                  <TableHead className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-sub)]">Tenant</TableHead>
+                  <TableHead className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-sub)]">Status</TableHead>
+                  <TableHead className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-sub)] text-right">Total AR</TableHead>
+                  <TableHead className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-sub)] text-right">SD Refund</TableHead>
+                  <TableHead className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-sub)]">Vacate Date</TableHead>
+                  <TableHead className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-sub)]">Settled By</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {settlements.map(s => (
+                  <TableRow key={s._id} className="border-b border-[var(--color-border)]">
+                    <TableCell className="px-4 py-3 text-sm text-[var(--color-text-body)]">
+                      {s.tenant?.name ?? "—"}
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
+                      <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold", STATUS_COLORS[s.status] ?? STATUS_COLORS.CANCELLED)}>
+                        {s.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-right font-mono text-orange-600 tabular-nums">
+                      {fmtRs(s.totalArAtVacatePaisa)}
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-right font-mono text-blue-600 tabular-nums">
+                      {fmtRs(s.sdCashRefundPaisa)}
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-[var(--color-text-sub)]">
+                      {fmtDate(s.vacateDate)}
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-[var(--color-text-sub)]">
+                      {s.settledBy?.name ?? "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
       )}
 
       {/* Confirm modal */}
-      {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm mx-4 bg-[var(--color-bg)] rounded-2xl border border-[var(--color-border)] p-6 shadow-2xl">
-            <h3 className="text-[15px] font-bold text-[var(--color-text-body)] mb-2">
-              Confirm Settlement
-            </h3>
-            <p className="text-[12px] text-[var(--color-text-sub)] mb-4">
-              This will post all journals, lock the tenant&apos;s ledger, and mark them as vacated.
-              <strong className="text-[var(--color-text-body)]"> This cannot be undone.</strong>
-            </p>
-            {error && <p className="text-[11px] text-red-600 mb-2">{error}</p>}
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setShowConfirm(false)}
-                className="px-3 py-1.5 text-[12px] rounded-lg border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-[var(--color-surface)]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExecute}
-                disabled={executing}
-                className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-green-600 text-white hover:opacity-90 disabled:opacity-40"
-              >
-                {executing ? "Processing..." : "Confirm"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Past settlements list */}
-      {settlements.length > 0 && (
-        <div>
-          <h3 className="text-[13px] font-semibold text-[var(--color-text-body)] mb-2">Settlement History</h3>
-          <div className="rounded-xl border border-[var(--color-border)] overflow-hidden">
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="bg-[var(--color-surface)] border-b border-[var(--color-border)]">
-                  <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Tenant</th>
-                  <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Status</th>
-                  <th className="text-right px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Total AR</th>
-                  <th className="text-right px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">SD Refund</th>
-                  <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Vacate Date</th>
-                  <th className="text-left px-4 py-2.5 font-semibold text-[var(--color-text-sub)]">Settled By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {settlements.map((s) => (
-                  <tr key={s._id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface)]">
-                    <td className="px-4 py-2.5 text-[var(--color-text-body)]">{s.tenant?.name ?? "—"}</td>
-                    <td className="px-4 py-2.5"><StatusBadge status={s.status} /></td>
-                    <td className="px-4 py-2.5 text-right text-orange-600 font-mono">{fmtRs(s.totalArAtVacatePaisa)}</td>
-                    <td className="px-4 py-2.5 text-right text-blue-600 font-mono">{fmtRs(s.sdCashRefundPaisa)}</td>
-                    <td className="px-4 py-2.5 text-[var(--color-text-sub)]">{fmtDate(s.vacateDate)}</td>
-                    <td className="px-4 py-2.5 text-[var(--color-text-sub)]">{s.settledBy?.name ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        onConfirm={handleExecute}
+        executing={executing}
+        error={error}
+      />
     </div>
   );
 }
