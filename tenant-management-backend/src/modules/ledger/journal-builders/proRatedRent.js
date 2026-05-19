@@ -14,7 +14,7 @@
  *     CR  Rental Income        (4000)  proRatedRentPaisa
  *
  *   PRO-RATED CAM:
- *     DR  Accounts Receivable  (1200)  proRatedCamPaisa
+ *     DR  CAM Receivable       (1210)  proRatedCamPaisa
  *     CR  CAM Revenue          (4050)  proRatedCamPaisa
  *
  * All amounts in PAISA (integers).
@@ -160,7 +160,8 @@ export function buildProRatedCamJournal({
     entityId,
     entries: [
       {
-        accountCode:       ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+        // DR 1210 (CAM_RECEIVABLE) — not Rent AR (1200).
+        accountCode:       ACCOUNT_CODES.CAM_RECEIVABLE,
         debitAmountPaisa:  proRatedCamPaisa,
         creditAmountPaisa: 0,
         description: `Pro-rated CAM receivable from ${name}`,

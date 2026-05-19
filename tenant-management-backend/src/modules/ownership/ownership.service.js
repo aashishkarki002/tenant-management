@@ -25,16 +25,23 @@ export const getBlocksForEntity = async (entityId) => {
 
 /**
  * Create a new OwnershipEntity.
+ * Blocked in single-entity mode — only one active entity is allowed.
  */
 export const createEntity = async (data, createdBy) => {
+  const existing = await OwnershipEntity.countDocuments({ isActive: true });
+  if (existing >= 1) {
+    const err = new Error("Single-entity mode is active. Disable existing entity before creating a new one.");
+    err.statusCode = 403;
+    throw err;
+  }
   return OwnershipEntity.create({ ...data, createdBy });
 };
 
 /**
- * Return all OwnershipEntity records.
+ * Return all active OwnershipEntity records.
  */
 export const getAllEntities = async () => {
-  return OwnershipEntity.find().sort({ createdAt: 1 }).lean();
+  return OwnershipEntity.find({ isActive: true }).sort({ createdAt: 1 }).lean();
 };
 
 /**

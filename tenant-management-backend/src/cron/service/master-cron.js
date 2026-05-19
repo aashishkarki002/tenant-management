@@ -28,6 +28,7 @@
 
 import cron from "node-cron";
 import NepaliDate from "nepali-datetime";
+import { randomUUID } from "crypto";
 import { CronLog } from "../model/CronLog.js";
 import Admin from "../../modules/auth/admin.Model.js";
 import { Rent } from "../../modules/rents/rent.Model.js";
@@ -40,12 +41,16 @@ import handleMonthlyRents, {
 import { handleMonthlyCams } from "../../modules/cam/cam.service.js";
 import { applyLateFees } from "./lateFee.cron.js";
 import { applyLoanEmiReminders } from "./loanEmi.cron.js";
+import { runRentDeferralCron } from "./rentDeferral.cron.js";
 import {
   getNepaliMonthDates,
   addNepaliMonths,
   getNepaliToday,
 } from "../../utils/nepaliDateHelper.js";
-import { rebuildAllTenantBalances } from "../../modules/tenantBalance/tenantBalance.service.js";
+import {
+  rebuildAllTenantBalances,
+  syncTenantBalance,
+} from "../../modules/tenantBalance/tenantBalance.service.js";
 import { buildCarryForwardMap } from "../../modules/rents/rent.service.js";
 import { getCronSettings } from "../../modules/systemConfig/systemSetting.service.js";
 import dotenv from "dotenv";
@@ -125,7 +130,7 @@ function getTodayNepali(daysBeforeMonthEnd = 7) {
 
 // ─── Step 3a: Mark overdue ────────────────────────────────────────────────────
 
-async function markOverdueRents(today) {
+export async function markOverdueRents(today) {
   const prevNepali = addNepaliMonths(today, -1);
   const prevYear = prevNepali.getYear();
   const prevMonth = prevNepali.getMonth() + 1;
@@ -251,6 +256,7 @@ export async function masterCron({ forceRun = false } = {}) {
   isRunning = true;
 
   const startedAt = new Date();
+  const runId = randomUUID();
 
   // Read configurable cron settings from DB (falls back to defaults if not set)
   const cronCfg = await getCronSettings().catch(() => null);
@@ -290,6 +296,7 @@ export async function masterCron({ forceRun = false } = {}) {
       const rentResult = await handleMonthlyRents();
       console.log(`       → ${rentResult.message}`);
       await CronLog.create({
+        runId,
         type: "MONTHLY_RENT",
         ranAt: startedAt,
         message: rentResult.message,
@@ -303,6 +310,7 @@ export async function masterCron({ forceRun = false } = {}) {
       const camResult = await handleMonthlyCams();
       console.log(`       → ${camResult.message}`);
       await CronLog.create({
+        runId,
         type: "MONTHLY_CAM",
         ranAt: startedAt,
         message: camResult.message,
@@ -312,10 +320,10 @@ export async function masterCron({ forceRun = false } = {}) {
       });
 
       // [3a] Mark previous month overdue
-      // Must run before [3b] so newly-marked rents are included in the fee query
       console.log();
       const overdueResult = await markOverdueRents(today);
       await CronLog.create({
+        runId,
         type: "OVERDUE_MARKING",
         ranAt: startedAt,
         message: `${overdueResult.marked} rent(s) marked overdue`,
@@ -324,18 +332,69 @@ export async function masterCron({ forceRun = false } = {}) {
         error: null,
       });
 
+      // [3c] Rent deferral recognition
+      console.log("\n  📒 [3c] Rent deferral recognition...");
+      const deferralPrevNepali = addNepaliMonths(today, -1);
+      const deferralPrevYear   = deferralPrevNepali.getYear();
+      const deferralPrevMonth  = deferralPrevNepali.getMonth() + 1;
+      try {
+        const deferralResult = await runRentDeferralCron({
+          targetNepaliYear:  deferralPrevYear,
+          targetNepaliMonth: deferralPrevMonth,
+          createdBy:         adminIds[0] ?? null,
+        });
+        console.log(
+          `       → processed: ${deferralResult.processed}, ` +
+          `skipped: ${deferralResult.skipped}, ` +
+          `duplicates: ${deferralResult.duplicates}, ` +
+          `failed: ${deferralResult.failed}, ` +
+          `completed schedules: ${deferralResult.schedulesCompleted}`,
+        );
+        if (deferralResult.processed > 0 || deferralResult.failed > 0) {
+          await CronLog.create({
+            runId,
+            type: "RENT_DEFERRAL_RECOGNITION",
+            ranAt: startedAt,
+            message:
+              `Period ${deferralResult.targetPeriod}: ` +
+              `${deferralResult.processed} recognised, ` +
+              `${deferralResult.skipped} skipped, ` +
+              `${deferralResult.failed} failed`,
+            count: deferralResult.processed,
+            success: deferralResult.failed === 0,
+            error: deferralResult.errors.length
+              ? deferralResult.errors
+                  .map((e) => `[${e.period}] ${e.error}`)
+                  .join(" | ")
+              : null,
+          });
+        }
+      } catch (deferralErr) {
+        console.error("   ❌ Rent deferral cron error:", deferralErr.message);
+        await CronLog.create({
+          runId,
+          type: "RENT_DEFERRAL_RECOGNITION",
+          ranAt: startedAt,
+          message: "Rent deferral cron failed",
+          count: 0,
+          success: false,
+          error: deferralErr.message,
+        });
+      }
+
       // [4] Email tenants
-      // Runs after [3a] so the email reflects the correct status
       console.log("\n  📧 [4] Emailing tenants...");
       const emailResult = await sendEmailToTenants();
       console.log(`       → ${emailResult?.message ?? "done"}`);
       await CronLog.create({
+        runId,
         type: "MONTHLY_EMAIL",
         ranAt: startedAt,
         message: emailResult?.message ?? "Completed",
         count: emailResult?.count || 0,
         success: emailResult?.success ?? true,
         error: emailResult?.error?.toString() ?? null,
+        details: emailResult?.details ?? null,
       });
     }
     console.log("\n  📊 [6] Rebuilding tenant balance snapshots...");
@@ -344,6 +403,7 @@ export async function masterCron({ forceRun = false } = {}) {
       `       → Synced: ${balanceResult.processed}, errors: ${balanceResult.errors}`,
     );
     await CronLog.create({
+      runId,
       type: "TENANT_BALANCE_REBUILD",
       ranAt: startedAt,
       message: `${balanceResult.processed} synced, ${balanceResult.errors} errors`,
@@ -352,15 +412,13 @@ export async function masterCron({ forceRun = false } = {}) {
       error:
         balanceResult.errors > 0 ? `${balanceResult.errors} sync errors` : null,
     });
-    // ── [3b] Late fees — runs EVERY day ──────────────────────────────────────
-    // Flat policies: no-op on non-first days (lateFeeApplied guard inside cron)
-    // Compounding policies: recalculates and posts delta journal daily
+
     console.log("\n  💸 [3b] Late fee run...");
     const lateFeeResult = await applyLateFees(adminIds[0] ?? null);
 
-    // Only write CronLog if something happened (avoid log spam on quiet days)
     if (lateFeeResult.processed > 0 || lateFeeResult.failed > 0) {
       await CronLog.create({
+        runId,
         type: "LATE_FEE_APPLICATION",
         ranAt: startedAt,
         message: lateFeeResult.message,
@@ -371,10 +429,12 @@ export async function masterCron({ forceRun = false } = {}) {
               .map((e) => `${e.rentId}: ${e.error}`)
               .join(" | ")
           : null,
+        details: lateFeeResult.errors?.length
+          ? { errors: lateFeeResult.errors }
+          : null,
       });
     }
 
-    // Notify admins if fees were charged today
     if (lateFeeNotifyEnabled && lateFeeResult.processed > 0 && adminIds.length > 0) {
       await notifyAdmins({
         type: "LATE_FEE_APPLIED",
@@ -408,6 +468,7 @@ export async function masterCron({ forceRun = false } = {}) {
 
     if (loanEmiResult.processed > 0 || loanEmiResult.failed > 0) {
       await CronLog.create({
+        runId,
         type: "LOAN_EMI_REMINDER",
         ranAt: startedAt,
         message: loanEmiResult.message,
@@ -420,13 +481,13 @@ export async function masterCron({ forceRun = false } = {}) {
           : null,
       });
     }
-    console.log("\n  📊 [6] Rebuilding tenant balance snapshots...");
 
     // ── [5] Admin reminders (reminder day only) ───────────────────────────────
     if (rentReminderEnabled && isReminderDay) {
       console.log();
       const reminderResult = await sendRentReminders(adminIds);
       await CronLog.create({
+        runId,
         type: "RENT_REMINDER",
         ranAt: startedAt,
         message:
@@ -445,6 +506,7 @@ export async function masterCron({ forceRun = false } = {}) {
   } catch (err) {
     console.error("❌ Master cron unhandled error:", err);
     await CronLog.create({
+      runId,
       type: "MASTER_CRON",
       ranAt: startedAt,
       message: "Master cron failed",

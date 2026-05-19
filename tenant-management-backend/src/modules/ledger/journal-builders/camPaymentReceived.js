@@ -83,7 +83,8 @@ export function buildCamPaymentReceivedJournal(payment, cam, bankAccountCode) {
         description,
       },
       {
-        accountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+        // CR 1210 (CAM_RECEIVABLE) — clears CAM AR, not Rent AR (1200).
+        accountCode: ACCOUNT_CODES.CAM_RECEIVABLE,
         debitAmountPaisa: 0,
         creditAmountPaisa: payment.amountPaisa,
         description,

@@ -1,69 +1,3 @@
-/**
- * seedAccount.js — v2 (multi-entity)  [FIXED]
- *
- * ─────────────────────────────────────────────────────────────────────────────
- * BUGS FIXED IN THIS VERSION:
- *
- * BUG 1 — Code collision: "1000" seeded as "Bank Account" (ASSET)
- *   ORIGINAL: code "1000" → "Bank Account" (used for bank transfers/cheques)
- *   PROBLEM:  ACCOUNT_CODES.CASH = "1000" means "Cash in Hand" (physical cash).
- *             The journal builder posts cash payments to "1000", expecting it to
- *             be CASH. Naming it "Bank Account" is misleading and wrong —
- *             actual bank sub-accounts are dynamic codes like "1010-NABIL".
- *             Any paymentMethod === "cash" would DR "Bank Account" instead of
- *             "Cash in Hand", silently corrupting the cash balance.
- *   FIX:      Rename code "1000" → "Cash in Hand" (physical cash only).
- *             Code "1100" (was "Cash in Hand") is now "Petty Cash / Cash Float"
- *             since "1000" owns the canonical CASH meaning.
- *
- * BUG 2 — Code collision: "5100" seeded as "Salaries & Wages"
- *   ORIGINAL: code "5100" → "Salaries & Wages"
- *   PROBLEM:  ACCOUNT_CODES.LOAN_INTEREST_EXPENSE = "5100".
- *             When any EMI payment is recorded, the journal builder posts:
- *               DR 5100  interestPaisa   (expecting "Loan Interest Expense")
- *             But "5100" in the DB is "Salaries & Wages" — a completely
- *             different account. Every loan interest posting would silently
- *             inflate the Salaries account. The P&L would show wrong salary
- *             figures and zero loan interest.
- *   FIX:      Move "Salaries & Wages" to code "5750" (free slot; was briefly 5700).
- *             Code "5100" is reserved exclusively for LOAN_INTEREST_EXPENSE,
- *             and is now seeded via ACCOUNT_CODES.LOAN_INTEREST_EXPENSE.
- *             Code "5700" is now BAD_DEBT_EXPENSE (see collision fix below).
- *
- * BUG 3 — Code collision: "5400" seeded as "Property Tax"
- *   ORIGINAL: code "5400" → "Property Tax"
- *   PROBLEM:  accounts.js defines BANK_CHARGES = "5400" (reserved).
- *             More critically, the OLD (pre-fix) accounts.js had
- *             LOAN_INTEREST_EXPENSE = "5400". If anyone ran the old
- *             seedAccount.js and the old accounts.js together, loan interest
- *             would post to "Property Tax". Even after the accounts.js fix,
- *             having "5400" as "Property Tax" is a landmine for BANK_CHARGES.
- *   FIX:      Move "Property Tax" to code "5800" (free slot).
- *             Code "5400" is reserved for BANK_CHARGES per accounts.js.
- *
- * BUG 4 — LOAN_LIABILITY and LOAN_INTEREST_EXPENSE appended at the end
- *         without checking for conflicts with the codes above them
- *   ORIGINAL: The two loan accounts were appended as a patch at the end of
- *             getChartOfAccounts() using ACCOUNT_CODES references. This is
- *             fine structurally but the codes they resolve to ("2200", "5100")
- *             were already occupied in the array above — "5100" by Salaries.
- *             Mongoose would throw a duplicate-key error on the (code, entityId)
- *             unique index when trying to create both "5100" entries.
- *   FIX:      Inline LOAN_LIABILITY (2200) and LOAN_INTEREST_EXPENSE (5100)
- *             in their correct numeric position within the array. The array
- *             is now ordered by code, making conflicts visible at a glance.
- *             Removed the separately appended patch entries at the bottom.
- *
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * Usage:
- *   # Seed CoA for ALL active entities:
- *   node seedAccount.js
- *
- *   # Seed CoA for ONE entity by _id:
- *   node seedAccount.js --entityId=<ObjectId>
- */
-
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -163,6 +97,22 @@ function getChartOfAccounts() {
         "they have paid TDS to the government, the amount moves from TDS Recoverable (1300) " +
         "to this account. Represents verified TDS that is ready for tax credit claim. " +
         "Non-cash — no bank account is ever debited for this amount.",
+    },
+    {
+      // ELECTRICITY_RECOVERABLE = "1400"
+      // Current asset: NEA energy charges recoverable from tenants.
+      // DR when NEA bill uploaded (energy portion) — asset rises, liability (NEA Payable) rises.
+      // CR when tenant electricity charge recorded — asset drains, AR rises, margin → Revenue.
+      // Balance = unbilled NEA energy cost for the month.
+      code: ACCOUNT_CODES.ELECTRICITY_RECOVERABLE,
+      name: "Electricity Recoverable - Tenants",
+      type: "ASSET",
+      description:
+        "NEA energy charges paid/accrued by the owner that are recoverable from tenants. " +
+        "DR on NEA bill upload (energy portion only; demand charge goes to 5616 Expense). " +
+        "CR when tenants are billed: cost portion reduces this asset, margin flows to Utility Revenue. " +
+        "Balance represents unbilled energy cost still on the balance sheet. " +
+        "Must not be used for demand charges or common-area costs.",
     },
 
     // ── LIABILITIES ──────────────────────────────────────────────────────────
@@ -355,10 +305,35 @@ function getChartOfAccounts() {
       name: "NEA Electricity Expense",
       type: "EXPENSE",
       description:
-        "Electricity cost billed by Nepal Electricity Authority (NEA) for common areas " +
-        "and owner-borne meters. DR when an NEA bill is posted (paired with CR to NEA_PAYABLE / 2050). " +
-        "This is a sub-account of Utilities (5600). " +
-        "String key referenced in journal builder as 'ELECTRICITY_EXPENSE_NEA'.",
+        "Per-unit NEA electricity cost recognised at time of tenant billing. " +
+        "DR when an electricity charge is posted for a unit meter (paired with CR to NEA Payable / 2050). " +
+        "Represents the owner's variable cost at 12.50/unit for units billed to tenants. " +
+        "String key: ELECTRICITY_EXPENSE_NEA.",
+    },
+    {
+      // ELECTRICITY_EXPENSE_COMMON = "5615"
+      // Operating cost for common area, parking, and sub-meter electricity.
+      // No revenue/AR — pure building running cost.
+      code: ACCOUNT_CODES.ELECTRICITY_EXPENSE_COMMON,
+      name: "Common Area Electricity Expense",
+      type: "EXPENSE",
+      description:
+        "Electricity operating cost for common areas (lobby, lift, corridors) and parking. " +
+        "DR when a sub-meter / common-area reading is posted (paired with CR to NEA Payable / 2050). " +
+        "No tenant AR involved — pure building operating expense. " +
+        "String key: ELECTRICITY_EXPENSE_COMMON.",
+    },
+    {
+      // ELECTRICITY_DEMAND_CHARGE_EXPENSE = "5616"
+      // Fixed monthly NEA demand charge — separate from per-unit energy costs.
+      code: ACCOUNT_CODES.ELECTRICITY_DEMAND_CHARGE_EXPENSE,
+      name: "NEA Demand Charge Expense",
+      type: "EXPENSE",
+      description:
+        "Fixed monthly demand charge billed by NEA regardless of consumption (~NPR 70,000/month). " +
+        "DR when the NEA bill is uploaded/finalized (paired with CR to NEA Payable / 2050). " +
+        "Kept separate from per-unit energy costs for clear P&L reporting. " +
+        "String key: ELECTRICITY_DEMAND_CHARGE_EXPENSE.",
     },
     {
       // BAD_DEBT_EXPENSE = "5700"
@@ -635,11 +610,12 @@ export function assertNoDuplicateCodes() {
     }
   }
 
-  // Electricity accounts are NOT in ACCOUNT_CODES — the journal builder resolves them
-  // by string key ("ELECTRICITY_EXPENSE_NEA" → "5610", "NEA_PAYABLE" → "2050").
-  // Those codes ARE seeded above, so we just verify they exist in the chart:
+  // Electricity accounts — verify all codes used by journal builders are seeded.
   const ELECTRICITY_CODES = {
-    ELECTRICITY_EXPENSE_NEA: "5610",
+    ELECTRICITY_RECOVERABLE: "1400",    // NEW: asset account for recoverable energy costs
+    ELECTRICITY_EXPENSE_NEA: "5610",    // LEGACY: no longer used for new entries
+    ELECTRICITY_EXPENSE_COMMON: "5615",
+    ELECTRICITY_DEMAND_CHARGE_EXPENSE: "5616",
     NEA_PAYABLE: "2050",
   };
   for (const [builderKey, code] of Object.entries(ELECTRICITY_CODES)) {

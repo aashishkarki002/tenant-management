@@ -65,16 +65,11 @@ export function getDebitAccountForPayment(paymentMethod, bankAccountCode) {
       return bankAccountCode;
 
     case PAYMENT_METHODS.CHEQUE:
-      // Cheque payments post directly to the bank account ("what goes is gone").
-      // bankAccountCode is required — stored on ChequeDraft for reference.
-      if (!bankAccountCode) {
-        throw new Error(
-          `bankAccountCode is required for payment method "cheque". ` +
-            `Pass the chart-of-accounts code of the bank account ` +
-            `(e.g. "1010-NABIL"). No clearing account is used.`,
-        );
-      }
-      return bankAccountCode;
+      // RECEIVED cheques (revenue/rent) sit in "Cheques In Hand" (1150) until
+      // the bank clears them. The second journal (deposit) moves 1150 → Bank.
+      // bankAccountCode is still required and stored on the ChequeDraft so the
+      // deposit journal knows which bank account to credit/debit.
+      return ACCOUNT_CODES.CHEQUES_IN_HAND;
 
     case PAYMENT_METHODS.MOBILE_WALLET: {
       // Wallet float has its own Account document — no fallback to cash/bank
@@ -100,14 +95,18 @@ export function getDebitAccountForPayment(paymentMethod, bankAccountCode) {
  * Returns the account code to CREDIT when money is PAID OUT
  * (the "cash / bank" side of an expense / disbursement journal entry).
  *
- * The account is always the same whether money flows in or out —
- * the difference is which side of the entry it appears on.
+ * For cheque payments this differs from the debit side:
+ *   ISSUED cheques (expenses/loans) CR 2150 Cheques Payable at issue time.
+ *   The second journal (deposit) DRs 2150 and CRs the bank account.
  *
  * @param {string}  paymentMethod
  * @param {string}  [bankAccountCode]
  * @returns {string}
  */
 export function getCreditAccountForPayment(paymentMethod, bankAccountCode) {
+  if (paymentMethod === PAYMENT_METHODS.CHEQUE) {
+    return ACCOUNT_CODES.CHEQUES_PAYABLE; // "2150"
+  }
   return getDebitAccountForPayment(paymentMethod, bankAccountCode);
 }
 

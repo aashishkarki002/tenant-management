@@ -12,6 +12,7 @@ import {
   rebuildTenantBalancesController,
   addUnitsToTenant,
   getTerminationSummary,
+  changeRentFrequency,
 } from "./tenant.controller.js";
 import upload from "../../middleware/upload.js";
 import { multerErrorHandler } from "../../middleware/multerErrorHandler.js";
@@ -35,6 +36,7 @@ router.post(
     { name: "company_docs", maxCount: 5 },
     { name: "tax_certificate", maxCount: 5 },
     { name: "other", maxCount: 5 },
+    { name: "sd_others", maxCount: 1 },
   ]),
   multerErrorHandler,
   createTenant,
@@ -49,6 +51,7 @@ router.patch(
 );
 
 router.post("/add-units/:id", protect, addUnitsToTenant);
+router.post("/change-frequency/:id", protect, changeRentFrequency);
 router.get("/termination-summary/:id", protect, getTerminationSummary);
 router.patch("/delete-tenant/:id", protect, deleteTenant);
 router.patch("/restore-tenant/:id", protect, restoreTenant);

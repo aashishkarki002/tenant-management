@@ -16,8 +16,11 @@ export function allocatePaymentProportionally(
   totalPaymentPaisa,
 ) {
   const totalRemainingPaisa = unitBreakdown.reduce((sum, unit) => {
-    const remaining = (unit.grossRentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
-    return sum + Math.max(0, remaining);
+    const remaining = Math.max(
+      0,
+      (unit.grossRentAmountPaisa || 0) - (unit.tdsAmountPaisa || 0) - (unit.paidAmountPaisa || 0),
+    );
+    return sum + remaining;
   }, 0);
 
   if (totalRemainingPaisa === 0) {
@@ -26,14 +29,16 @@ export function allocatePaymentProportionally(
 
   let remainingToAllocate = totalPaymentPaisa;
   const allocations = [];
-  // Only include units with a remaining balance
+  // Only include units with a net remaining balance (gross - tds - paid > 0)
   const unpaidUnits = unitBreakdown.filter(
-    (u) => (u.grossRentAmountPaisa || 0) - (u.paidAmountPaisa || 0) > 0,
+    (u) => (u.grossRentAmountPaisa || 0) - (u.tdsAmountPaisa || 0) - (u.paidAmountPaisa || 0) > 0,
   );
 
   unpaidUnits.forEach((unit, index) => {
-    const unitRemaining =
-      (unit.grossRentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
+    const unitRemaining = Math.max(
+      0,
+      (unit.grossRentAmountPaisa || 0) - (unit.tdsAmountPaisa || 0) - (unit.paidAmountPaisa || 0),
+    );
 
     let allocation;
     if (index === unpaidUnits.length - 1) {
@@ -69,8 +74,10 @@ export function allocatePaymentFIFO(unitBreakdown, totalPaymentPaisa) {
   for (const unit of unitBreakdown) {
     if (remainingPayment <= 0) break;
 
-    const unitRemaining =
-      (unit.grossRentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
+    const unitRemaining = Math.max(
+      0,
+      (unit.grossRentAmountPaisa || 0) - (unit.tdsAmountPaisa || 0) - (unit.paidAmountPaisa || 0),
+    );
     if (unitRemaining <= 0) continue;
 
     const allocateToUnit = Math.min(remainingPayment, unitRemaining);

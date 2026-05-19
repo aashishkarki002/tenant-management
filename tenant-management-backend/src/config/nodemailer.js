@@ -367,7 +367,17 @@ async function sendPaymentReceiptEmail({
   pdfFileName,
   rentAmount = 0,
   camAmount = 0,
+  electricityAmount = 0,
+  lateFeeAmount = 0,
 }) {
+  const lineItem = (label, value) =>
+    value > 0
+      ? `<div class="details-row">
+           <span class="label">${label}:</span>
+           <span class="value">Rs. ${value.toLocaleString()}</span>
+         </div>`
+      : "";
+
   const mailOptions = {
     from: `"Sallyan House" ${process.env.EMAIL_FROM}`,
     to: to,
@@ -379,12 +389,13 @@ async function sendPaymentReceiptEmail({
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+          .header { background-color: #1A5276; color: white; padding: 20px; text-align: center; }
           .content { padding: 20px; background-color: #f9f9f9; }
-          .details { background-color: white; padding: 15px; margin: 15px 0; border-left: 4px solid #4CAF50; }
+          .details { background-color: white; padding: 15px; margin: 15px 0; border-left: 4px solid #1A5276; }
           .details-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
           .label { font-weight: bold; color: #555; }
           .value { color: #333; }
+          .total-row { display: flex; justify-content: space-between; padding: 10px 0; border-top: 2px solid #1A5276; margin-top: 4px; }
           .footer { text-align: center; padding: 20px; color: #777; font-size: 12px; }
         </style>
       </head>
@@ -392,45 +403,18 @@ async function sendPaymentReceiptEmail({
         <div class="container">
           <div class="header">
             <h1>Payment Receipt</h1>
+            <p style="margin:4px 0 0;font-size:13px;opacity:0.8;">Sallyan House · Property Management</p>
           </div>
-          
+
           <div class="content">
             <p>Dear <strong>${tenantName}</strong>,</p>
-            <p>Thank you for your payment. We have successfully received your payment and a detailed receipt is attached to this email.</p>
-            
+            <p>Thank you for your payment. A detailed receipt is attached to this email.</p>
+
             <div class="details">
-              <h3 style="margin-top: 0; color: #4CAF50;">Payment Details</h3>
+              <h3 style="margin-top: 0; color: #1A5276;">Payment Details</h3>
               <div class="details-row">
                 <span class="label">Receipt No:</span>
                 <span class="value">${receiptNo}</span>
-              </div>
-              ${
-                rentAmount && rentAmount > 0
-                  ? `
-              <div class="details-row">
-                <span class="label">Rent Amount:</span>
-                <span class="value">Rs. ${rentAmount.toLocaleString()}</span>
-              </div>
-              `
-                  : ""
-              }
-              ${
-                camAmount && camAmount > 0
-                  ? `
-              <div class="details-row">
-                <span class="label">CAM Charges:</span>
-                <span class="value">Rs. ${camAmount.toLocaleString()}</span>
-              </div>
-              `
-                  : ""
-              }
-              <div class="details-row">
-                <span class="label">Total Amount Paid:</span>
-                <span class="value"><strong>${formatMoney(amount)}</strong></span>
-              </div>
-              <div class="details-row">
-                <span class="label">Payment Date:</span>
-                <span class="value">${paymentDate}</span>
               </div>
               <div class="details-row">
                 <span class="label">Period:</span>
@@ -440,16 +424,24 @@ async function sendPaymentReceiptEmail({
                 <span class="label">Property:</span>
                 <span class="value">${propertyName}</span>
               </div>
+              <div class="details-row">
+                <span class="label">Payment Date:</span>
+                <span class="value">${paymentDate}</span>
+              </div>
+              ${lineItem("Rent", rentAmount)}
+              ${lineItem("CAM Charges", camAmount)}
+              ${lineItem("Electricity", electricityAmount)}
+              ${lineItem("Late Fee", lateFeeAmount)}
+              <div class="total-row">
+                <span class="label">Total Paid:</span>
+                <span class="value"><strong>${formatMoney(amount)}</strong></span>
+              </div>
             </div>
-            
-            <p>Please find your official payment receipt attached as a PDF document. Keep this for your records.</p>
-            
-            <p>If you have any questions or concerns, please don't hesitate to contact us.</p>
-            
-            <p>Best regards,<br>
-            <strong>Sallyan House Management</strong></p>
+
+            <p>Please keep the attached PDF receipt for your records.</p>
+            <p>Best regards,<br><strong>Sallyan House Management</strong></p>
           </div>
-          
+
           <div class="footer">
             <p>Contact us: info@sallyanhouse.com | +977-9812345678</p>
             <p>This is an automated email. Please do not reply directly to this message.</p>

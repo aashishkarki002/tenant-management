@@ -5,6 +5,7 @@ import { sendPaymentReceiptEmail } from "../config/nodemailer.js";
 import { uploadPDFBufferToCloudinary } from "../utils/rentGenrator.js";
 import { Payment } from "../modules/payment/payment.model.js";
 import { rupeesToPaisa, paisaToRupees } from "../utils/moneyUtil.js";
+import adminModel from "../modules/auth/admin.Model.js";
 
 export async function handleReceiptSideEffects({ payment, rentId, camId }) {
   if (!payment) {
@@ -13,39 +14,32 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
   }
 
   // Ensure we have a fresh payment object with allocations
-  // If payment is a Mongoose document, convert to plain object or fetch fresh
   let paymentData = payment;
   if (
     !payment.allocations ||
     (!payment.allocations.rent && !payment.allocations.cam)
   ) {
-    // Fetch fresh payment from database to ensure allocations are included
     paymentData = await Payment.findById(payment._id || payment).lean();
     if (!paymentData) {
       console.error("Payment not found in database");
       return;
     }
   } else if (payment.toObject) {
-    // Convert Mongoose document to plain object if needed
     paymentData = payment.toObject();
   }
 
-  const rent = rentId
-    ? await Rent.findById(rentId)
-        .populate("tenant", "name email")
-        .populate("property", "name")
-    : null;
+  const [rent, cam] = await Promise.all([
+    rentId
+      ? Rent.findById(rentId).populate("tenant", "name email").populate("property", "name")
+      : null,
+    camId
+      ? Cam.findById(camId).populate("tenant", "name email").populate("property", "name")
+      : null,
+  ]);
 
-  const cam = camId
-    ? await Cam.findById(camId)
-        .populate("tenant", "name email")
-        .populate("property", "name")
-    : null;
-
-  // If neither rent nor cam exists, we still need to get tenant from payment
+  // Resolve tenant
   let tenant = rent?.tenant || cam?.tenant;
   if (!tenant && paymentData.tenant) {
-    // Populate tenant from payment if not available from rent/cam
     const { Tenant } = await import("../modules/tenant/Tenant.Model.js");
     tenant = await Tenant.findById(paymentData.tenant).select("name email");
   }
@@ -53,6 +47,18 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
   if (!tenant) {
     console.error("Tenant not found for receipt generation");
     return;
+  }
+
+  // Resolve receivedBy name — field is ObjectId ref to Admin
+  let receivedByName = "";
+  const receivedByRef = paymentData.receivedBy ?? rent?.lastPaidBy;
+  if (receivedByRef) {
+    try {
+      const admin = await adminModel.findById(receivedByRef).select("name").lean();
+      receivedByName = admin?.name ?? "";
+    } catch {
+      // non-blocking
+    }
   }
 
   const property = rent?.property || cam?.property;
@@ -113,13 +119,25 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
           ? rupeesToPaisa(paymentData.allocations.cam.amount)
           : 0;
 
+  const electricityAmountPaisa = (paymentData.allocations?.electricity ?? [])
+    .reduce((sum, e) => sum + (e.amountPaisa ?? rupeesToPaisa(e.amount || 0)), 0);
+
+  const lateFeeAmountPaisa =
+    paymentData.allocations?.lateFee?.amountPaisa !== undefined
+      ? paymentData.allocations.lateFee.amountPaisa
+      : paymentData.allocations?.lateFee?.amount
+        ? rupeesToPaisa(paymentData.allocations.lateFee.amount)
+        : 0;
+
   const rentAmount = paisaToRupees(rentAmountPaisa);
   const camAmount = paisaToRupees(camAmountPaisa);
+  const electricityAmount = paisaToRupees(electricityAmountPaisa);
+  const lateFeeAmount = paisaToRupees(lateFeeAmountPaisa);
 
   // Total amount in paisa for consistent money formatting in email
   const totalAmountPaisa =
     (paymentData.amountPaisa ?? payment.amountPaisa ?? 0) ||
-    rentAmountPaisa + camAmountPaisa;
+    rentAmountPaisa + camAmountPaisa + electricityAmountPaisa + lateFeeAmountPaisa;
 
   // Format payment method
   const paymentMethod = paymentData.paymentMethod || payment.paymentMethod;
@@ -132,35 +150,34 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
           ? "Cash"
           : paymentMethod || "N/A";
 
-  // Prepare PDF data in the format expected by generatePDFToBuffer
+  // Use human-readable RCPT document number; fall back to _id for legacy payments
+  const paymentObjectId = (paymentData._id || paymentData.id || payment._id).toString();
+  const receiptNo = paymentData.documentNumber || paymentObjectId;
+
+  // Prepare PDF data
   const pdfData = {
-    receiptNo: (paymentData._id || paymentData.id || payment._id).toString(),
-    // PDF expects rupees, so convert from paisa using helper
+    receiptNo,
     amount:
       paymentData.amount ??
       payment.amount ??
       paisaToRupees(totalAmountPaisa),
     paymentDate: formattedPaymentDate,
+    nepaliDate: paymentData.nepaliDate || "",
     tenantName: tenant?.name || "N/A",
     property: property?.name || "N/A",
     paidFor,
     paymentMethod: paymentMethodDisplay,
-    transactionRef:
-      paymentData.transactionRef || payment.transactionRef || null,
-    receivedBy:
-      rent?.lastPaidBy || paymentData.receivedBy || payment.receivedBy || "",
+    transactionRef: paymentData.transactionRef || payment.transactionRef || null,
+    receivedBy: receivedByName,
     rentAmount,
     camAmount,
+    electricityAmount,
+    lateFeeAmount,
   };
 
   const pdfBuffer = await generatePDFToBuffer(pdfData);
 
   if (tenant?.email) {
-    const receiptNo = (
-      paymentData._id ||
-      paymentData.id ||
-      payment._id
-    ).toString();
     await sendPaymentReceiptEmail({
       to: tenant.email,
       tenantName: tenant.name,
@@ -171,10 +188,11 @@ export async function handleReceiptSideEffects({ payment, rentId, camId }) {
       cam,
       rentAmount,
       camAmount,
+      electricityAmount,
+      lateFeeAmount,
       paidFor,
       propertyName: property?.name || "N/A",
       receiptNo,
-      // Email template uses formatMoney(amount) where amount is in paisa
       amount: totalAmountPaisa,
       paymentDate: formattedPaymentDate,
     });

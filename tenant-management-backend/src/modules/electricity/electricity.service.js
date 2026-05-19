@@ -1,21 +1,3 @@
-/**
- * electricity.service.js — updated
- *
- * Key changes:
- *   1. createElectricityReading resolves BOTH customRate and neaRate from
- *      ElectricityRate.resolveRates(). Both are snapshotted on the reading doc.
- *   2. recordElectricityCharge posts TWO journal entries:
- *        DR  Accounts Receivable  |  CR  Electricity Revenue   (tenant charge)
- *        DR  NEA Payable Expense  |  CR  NEA Payable            (owner's NEA cost)
- *      Margin (Rs 500 on a Rs 2000/Rs 1500 example) shows cleanly in P&L.
- *   3. setPropertyRate now accepts neaRatePerUnit in addition to customRatePerUnit.
- *   4. getPropertyRate exposes both rates + margin.
- *   5. Fixed: updateElectricityReading must use ratePerUnitPaisa not ratePerUnit
- *      (ratePerUnit is a read-only virtual — setting it has no effect).
- *   6. recordElectricityCharge checks totalAmountPaisa (not totalAmount virtual)
- *      for the > 0 guard, which is safe whether doc is lean or not.
- */
-
 import mongoose from "mongoose";
 import { Electricity } from "./Electricity.Model.js";
 import { ElectricityRate } from "./ElectricityRate.Model.js";
@@ -25,7 +7,7 @@ import { ledgerService } from "../ledger/ledger.service.js";
 import {
   buildElectricityChargeJournal,
   buildElectricityPaymentJournal,
-  buildElectricityNeaCostJournal,
+  buildElectricityCommonAreaJournal,
 } from "../ledger/journal-builders/electricity.js";
 import { Revenue } from "../revenue/Revenue.Model.js";
 import { RevenueSource } from "../revenue/RevenueSource.Model.js";
@@ -443,22 +425,20 @@ class ElectricityService {
   /**
    * Record electricity charge in ledger.
    *
-   * For unit readings (tenant-billed), posts TWO journal entries:
+   * For unit readings (tenant-billed), posts ONE journal entry:
    *
-   *   Entry 1 — Tenant charge (revenue):
+   *   Tenant charge (revenue):
    *     DR  Accounts Receivable       totalAmountPaisa   (tenant owes you)
    *     CR  Electricity Revenue       totalAmountPaisa   (your income)
    *
-   *   Entry 2 — NEA cost (expense, only when neaCostPaisa is set):
-   *     DR  Electricity Expense (NEA) neaCostPaisa       (your cost from NEA)
-   *     CR  NEA Payable               neaCostPaisa       (you owe NEA)
-   *
-   * The margin (totalAmountPaisa - neaCostPaisa) flows through naturally in P&L:
-   *   Electricity Revenue Rs 2000 - Electricity Expense Rs 1500 = Net Rs 500
+   * NEA cost is NOT posted here. The actual NEA cost is only known when the
+   * monthly NEA bill arrives. It is posted in neaBill.controller.js:uploadNeaBill:
+   *     DR  Electricity Expense (NEA) energyChargePaisa  (your cost from NEA)
+   *     CR  NEA Payable               energyChargePaisa  (you owe NEA)
    *
    * For sub-meter readings (property-billed):
    *   DR  Property Electricity Expense  totalAmountPaisa
-   *   CR  NEA Payable / Electricity Payable
+   *   CR  NEA Payable
    */
   async recordElectricityCharge(electricityId, session = null) {
     const electricity = await Electricity.findById(electricityId)
@@ -469,7 +449,16 @@ class ElectricityService {
         populate: {
           path: "block",
           select: "name ownershipEntityId",
-          populate: { path: "ownershipEntityId", select: "_id type" },
+          populate: { path: "ownershipEntityId", select: "_id" },
+        },
+      })
+      .populate({
+        // Sub-meter readings: unit is null, resolve entity via subMeter.block
+        path: "subMeter",
+        populate: {
+          path: "block",
+          select: "name ownershipEntityId",
+          populate: { path: "ownershipEntityId", select: "_id" },
         },
       })
       .session(session);
@@ -480,10 +469,39 @@ class ElectricityService {
     if (electricity.totalAmountPaisa <= 0)
       return { success: true, skipped: true };
 
-    // Resolve entity from the block that owns this electricity record
-    const entityId = electricity.unit?.block?.ownershipEntityId ?? null;
+    // ── Property-billed (common area / parking / sub-meter) ───────────────────
+    // These are operating expenses — no tenant, no AR, no revenue.
+    // Journal: DR Electricity Expense Common (5615) | CR NEA Payable (2050)
+    // Amount: neaCostPaisa (actual NEA cost at 12.50/unit) if set, else totalAmountPaisa.
+    if (electricity.billTo === "property") {
+      const subMeterDoc = electricity.subMeter;
+      const block =
+        (typeof subMeterDoc === "object" && subMeterDoc?.block) ?? null;
+      const rawEntity = block?.ownershipEntityId ?? null;
+      const entityId = rawEntity?._id ?? rawEntity ?? null;
+
+      const expenseAmountPaisa =
+        electricity.neaCostPaisa ?? electricity.totalAmountPaisa;
+
+      if (expenseAmountPaisa <= 0) return { success: true, skipped: true };
+
+      const commonAreaPayload = buildElectricityCommonAreaJournal(electricity);
+      const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
+        commonAreaPayload,
+        session,
+        entityId,
+      );
+
+      return { success: true, transaction, ledgerEntries };
+    }
+
+    // ── Tenant-billed (unit meter) ────────────────────────────────────────────
+    // Resolve entity from unit.block.ownershipEntityId
+    const rawEntity = electricity.unit?.block?.ownershipEntityId ?? null;
+    const entityId = rawEntity?._id ?? rawEntity ?? null;
 
     // Entry 1: Tenant charge → Revenue
+    //   DR Accounts Receivable (1200) | CR Utility Revenue (4100)
     const chargePayload = buildElectricityChargeJournal(electricity);
     const { transaction, ledgerEntries } = await ledgerService.postJournalEntry(
       chargePayload,
@@ -491,24 +509,13 @@ class ElectricityService {
       entityId,
     );
 
-    // Entry 2: NEA cost → Liability (only when NEA rate was configured at read time)
-    // This records: DR Electricity Expense (NEA) | CR NEA Payable
-    // The Rs 1500 NEA cost is a LIABILITY at this point — not yet a cash expense.
-    // It only becomes a real cash expense when you physically pay the NEA bill.
-    // The dashboard must NOT count ELECTRICITY_NEA_COST transactions as actual expenses.
-    if (electricity.neaCostPaisa != null && electricity.neaCostPaisa > 0) {
-      const neaExpensePayload = buildElectricityNeaCostJournal(electricity);
-      await ledgerService.postJournalEntry(neaExpensePayload, session, entityId);
-    }
+    // NOTE: NEA cost (DR Electricity Expense NEA | CR NEA Payable) is NOT posted here.
+    // Per-unit NEA cost is an estimate — the actual cost is only known when the
+    // monthly NEA bill arrives. The journal is posted in neaBill.controller.js
+    // (uploadNeaBill) using the real bill amount. Posting it here would create
+    // incorrect ledger entries that don't match the actual NEA invoice.
 
-    // Entry 3: Create Revenue record for the MARGIN only (at charge time, not payment time).
-    // Revenue recognised = customRate amount (Rs 2000). NEA cost is a liability — not yet
-    // an expense. The margin (Rs 500) is your true earned revenue on electricity billing.
-    //
-    // WHY HERE (not in recordElectricityPayment):
-    //   Accrual accounting: revenue is earned when the bill is raised, not when cash arrives.
-    //   Recording at payment time would cause the Revenue collection to double-count:
-    //   the journal already credits UTILITY_REVENUE at charge time.
+    // Entry 2: Revenue record (accrual basis — at charge time, not payment time).
     if (electricity.meterType === "unit" && electricity.tenant) {
       try {
         let utilitySource = await RevenueSource.findOne({
@@ -528,6 +535,9 @@ class ElectricityService {
                 electricity.tenant._id ?? electricity.tenant,
               );
 
+        // blockId: raw ObjectId from the populated block document
+        const blockId = electricity.unit?.block?._id ?? null;
+
         // Record the full tenant charge as revenue (accrual basis).
         // The NEA cost will reduce net income via the ELECTRICITY_NEA_COST expense
         // transaction — but only when that payable is settled (NEA bill paid).
@@ -546,6 +556,9 @@ class ElectricityService {
               referenceId: electricity._id,
               createdBy: electricity.createdBy,
               notes: `Electricity charge – ${electricity.nepaliMonth}/${electricity.nepaliYear}`,
+              transactionScope: "building",
+              entityId,
+              blockId,
             },
           ],
           { session },
@@ -571,7 +584,7 @@ class ElectricityService {
    *   3. Create Revenue record (unit meter, tenant-billed only)
    *   4. Increment BankAccount.balance for bank_transfer / cheque payments
    */
-  async recordElectricityPayment(paymentData, session = null) {
+  async recordElectricityPayment(paymentData, session = null, { skipBankUpdate = false } = {}) {
     const electricity = await Electricity.findById(paymentData.electricityId)
       .populate("tenant", "name")
       .populate("property", "name")
@@ -630,17 +643,20 @@ class ElectricityService {
     // Revenue document was already written at that point.
     // The payment journal (DR Cash | CR Accounts Receivable) is all that's needed here.
 
-    // 3. Update bank balance
-    const bankAccountId = paymentData.bankAccountId ?? paymentData.bankAccount;
-    const paymentMethod =
-      paymentData.paymentMethod || (bankAccountId ? "bank_transfer" : "cash");
+    // 3. Update bank balance (skipped when called within a larger payment transaction
+    //    that handles the bank increment for the full combined total)
+    if (!skipBankUpdate) {
+      const bankAccountId = paymentData.bankAccountId ?? paymentData.bankAccount;
+      const paymentMethod =
+        paymentData.paymentMethod || (bankAccountId ? "bank_transfer" : "cash");
 
-    await applyPaymentToBank({
-      paymentMethod,
-      bankAccountId,
-      amountPaisa: paymentAmountPaisa,
-      session,
-    });
+      await applyPaymentToBank({
+        paymentMethod,
+        bankAccountId,
+        amountPaisa: paymentAmountPaisa,
+        session,
+      });
+    }
 
     return { success: true, electricity, transaction, ledgerEntries };
   }

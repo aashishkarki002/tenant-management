@@ -28,7 +28,12 @@ import {
   validateCombinedPayment,
 } from "./rent.domain.js";
 import { formatMoney } from "../../utils/moneyUtil.js";
-import { resolveEntityFromBlock } from "../../helper/resolveEntity.js"; // ← NEW
+import { resolveEntityFromBlock } from "../../helper/resolveEntity.js";
+import { syncTenantBalance } from "../tenantBalance/tenantBalance.service.js";
+import { smsTenant } from "../../config/nestsms.templates.js";
+import { Tenant } from "../tenant/Tenant.Model.js";
+import { createChequeDraft } from "../chequeDrafts/chequeDraft.service.js";
+import { ACCOUNT_CODES } from "../ledger/config/accounts.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RECORD RENT PAYMENT
@@ -54,6 +59,8 @@ import { resolveEntityFromBlock } from "../../helper/resolveEntity.js"; // ← N
  * @param {*}       [params.receivedBy]
  * @param {string}  [params.notes]
  * @param {Object}  [params.explicitSplit]     { rentPaymentPaisa, lateFeePaymentPaisa }
+ * @param {string}  [params.chequeNumber]      required when paymentMethod === "cheque"
+ * @param {string}  [params.partyName]
  */
 export async function recordRentPayment({
   rentId,
@@ -66,6 +73,8 @@ export async function recordRentPayment({
   receivedBy,
   notes,
   explicitSplit = null,
+  chequeNumber,
+  partyName,
 }) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -182,12 +191,56 @@ export async function recordRentPayment({
       );
     }
 
+    // ── 9. ChequeDraft ────────────────────────────────────────────────────────
+    if (paymentMethod === "cheque") {
+      if (!chequeNumber?.trim()) {
+        console.warn(`[recordRentPayment] chequeNumber missing for cheque payment on rent=${rentId} — draft NOT created`);
+      } else if (!entityId) {
+        console.warn(`[recordRentPayment] entityId null for cheque payment on rent=${rentId} — draft NOT created`);
+      } else {
+        await createChequeDraft(
+          {
+            chequeNumber: chequeNumber.trim(),
+            chequeDate: paymentDate,
+            direction: "RECEIVED",
+            amountPaisa,
+            bankAccountCode,
+            referenceAccountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+            referenceType: null,
+            referenceId: null,
+            entityId,
+            partyName: partyName ?? null,
+            nepaliDate: nepaliDate ?? null,
+            nepaliMonth: rent.nepaliMonth,
+            nepaliYear: rent.nepaliYear,
+            createdBy: receivedBy,
+            skipReceiptJournal: true,
+          },
+          session,
+        );
+      }
+    }
+
+    const balanceAfterPayment = await syncTenantBalance(rent.tenant.toString(), session);
+
     await session.commitTransaction();
     session.endSession();
 
     console.log(
       `[recordRentPayment] ✅ rent=${rentId} paid=${formatMoney(amountPaisa)} entity=${entityId ?? "null"}`,
     );
+
+    // Fire-and-forget SMS — never blocks or throws
+    Tenant.findById(rent.tenant).select("name phone").lean().then((t) => {
+      if (t?.phone && balanceAfterPayment) {
+        smsTenant.paymentConfirmed(t.phone, {
+          tenantName: t.name,
+          amountRupees: Math.round(amountPaisa / 100),
+          receiptNo: payment._id.toString().slice(-8).toUpperCase(),
+          totalDuePaisa: balanceAfterPayment.totalDuePaisa,
+        });
+      }
+    }).catch(() => {});
 
     return {
       success: true,
@@ -228,6 +281,8 @@ export async function recordRentPayment({
  * @param {Date}    [params.nepaliDate]
  * @param {*}       [params.receivedBy]
  * @param {string}  [params.notes]
+ * @param {string}  [params.chequeNumber]      required when paymentMethod === "cheque"
+ * @param {string}  [params.partyName]
  */
 export async function recordUnitRentPayment({
   rentId,
@@ -240,6 +295,8 @@ export async function recordUnitRentPayment({
   nepaliDate,
   receivedBy,
   notes,
+  chequeNumber,
+  partyName,
 }) {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -330,12 +387,56 @@ export async function recordUnitRentPayment({
       entityId,
     );
 
+    // ── 7. ChequeDraft ────────────────────────────────────────────────────────
+    if (paymentMethod === "cheque") {
+      if (!chequeNumber?.trim()) {
+        console.warn(`[recordUnitRentPayment] chequeNumber missing for cheque payment on rent=${rentId} — draft NOT created`);
+      } else if (!entityId) {
+        console.warn(`[recordUnitRentPayment] entityId null for cheque payment on rent=${rentId} — draft NOT created`);
+      } else {
+        await createChequeDraft(
+          {
+            chequeNumber: chequeNumber.trim(),
+            chequeDate: paymentDate,
+            direction: "RECEIVED",
+            amountPaisa,
+            bankAccountCode,
+            referenceAccountCode: ACCOUNT_CODES.ACCOUNTS_RECEIVABLE,
+            referenceType: null,
+            referenceId: null,
+            entityId,
+            partyName: partyName ?? null,
+            nepaliDate: nepaliDate ?? null,
+            nepaliMonth: rent.nepaliMonth,
+            nepaliYear: rent.nepaliYear,
+            createdBy: receivedBy,
+            skipReceiptJournal: true,
+          },
+          session,
+        );
+      }
+    }
+
+    const unitBalanceAfterPayment = await syncTenantBalance(rent.tenant.toString(), session);
+
     await session.commitTransaction();
     session.endSession();
 
     console.log(
       `[recordUnitRentPayment] ✅ rent=${rentId} paid=${formatMoney(amountPaisa)} entity=${entityId ?? "null"}`,
     );
+
+    // Fire-and-forget SMS
+    Tenant.findById(rent.tenant).select("name phone").lean().then((t) => {
+      if (t?.phone && unitBalanceAfterPayment) {
+        smsTenant.paymentConfirmed(t.phone, {
+          tenantName: t.name,
+          amountRupees: Math.round(amountPaisa / 100),
+          receiptNo: payment._id.toString().slice(-8).toUpperCase(),
+          totalDuePaisa: unitBalanceAfterPayment.totalDuePaisa,
+        });
+      }
+    }).catch(() => {});
 
     return {
       success: true,

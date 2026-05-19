@@ -20,6 +20,8 @@ import {
   createBulkArrearsPayment,
 } from "./payment.service.js";
 import { Rent } from "../rents/rent.Model.js";
+import { Cam } from "../cam/cam.model.js";
+import { Electricity } from "../electricity/Electricity.Model.js";
 import { Payment } from "./payment.model.js";
 import { getFilteredPaymentHistoryService } from "./payment.service.js";
 import parsePaginationParams from "../../helper/paginator.js";
@@ -52,6 +54,8 @@ export async function payRentAndCam(req, res) {
       tdsPaidDate,
       tdsNepaliDate,
       tdsNotes,
+      chequeNumber,
+      partyName,
     } = req.body;
     
     // Parse allocations if it's a string (from FormData)
@@ -100,6 +104,8 @@ export async function payRentAndCam(req, res) {
       allocations: paymentAllocations,
       allocationStrategy,
       tdsDocument: req.file, // Add file from multer
+      chequeNumber: chequeNumber || null,
+      partyName: partyName || null,
     };
     console.log("paymentData", paymentData);
 
@@ -478,10 +484,13 @@ export async function getTenantArrears(req, res) {
   try {
     const { tenantId } = req.params;
     if (!tenantId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "tenantId is required" });
+      return res.status(400).json({ success: false, message: "tenantId is required" });
     }
+
+    const NEPALI_MONTHS = [
+      "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
+      "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
+    ];
 
     const arrears = await Rent.find({
       tenant: tenantId,
@@ -493,35 +502,53 @@ export async function getTenantArrears(req, res) {
       .sort({ nepaliYear: 1, nepaliMonth: 1 })
       .lean();
 
-    const NEPALI_MONTHS = [
-      "Baisakh",
-      "Jestha",
-      "Ashadh",
-      "Shrawan",
-      "Bhadra",
-      "Ashwin",
-      "Kartik",
-      "Mangsir",
-      "Poush",
-      "Magh",
-      "Falgun",
-      "Chaitra",
-    ];
+    if (arrears.length === 0) {
+      return res.json({ success: true, data: [], totalMonths: 0, totalRemainingPaisa: 0, totalRemaining: 0 });
+    }
+
+    const periodFilter = {
+      tenant: tenantId,
+      status: { $in: ["pending", "partially_paid"] },
+      $or: arrears.map((r) => ({ nepaliYear: r.nepaliYear, nepaliMonth: r.nepaliMonth })),
+    };
+
+    const [camRecords, elecRecords] = await Promise.all([
+      Cam.find(periodFilter).select("_id tenant nepaliYear nepaliMonth amountPaisa paidAmountPaisa").lean(),
+      Electricity.find({ ...periodFilter, billTo: "tenant" }).select("_id tenant nepaliYear nepaliMonth totalAmountPaisa paidAmountPaisa").lean(),
+    ]);
+
+    const camMap = new Map();
+    for (const c of camRecords) {
+      camMap.set(`${c.nepaliYear}_${c.nepaliMonth}`, c);
+    }
+
+    const elecMap = new Map();
+    for (const e of elecRecords) {
+      const key = `${e.nepaliYear}_${e.nepaliMonth}`;
+      if (!elecMap.has(key)) elecMap.set(key, []);
+      elecMap.get(key).push(e);
+    }
 
     const shaped = arrears.map((r) => {
       const grossPaisa = r.grossRentAmountPaisa ?? 0;
       const tdsPaisa = r.tdsAmountPaisa ?? 0;
       const paidPaisa = r.paidAmountPaisa ?? 0;
-      const effectiveDuePaisa = grossPaisa - tdsPaisa;
-      const remainingRentPaisa = Math.max(0, effectiveDuePaisa - paidPaisa);
+      const remainingRentPaisa = Math.max(0, grossPaisa - tdsPaisa - paidPaisa);
 
-      const hasLateFee =
-        r.lateFeeApplied &&
-        (r.lateFeePaisa ?? 0) > 0 &&
-        r.lateFeeStatus !== "paid";
-      const remainingLateFeePaisa = hasLateFee
-        ? (r.lateFeePaisa ?? 0) - (r.latePaidAmountPaisa ?? 0)
-        : 0;
+      const hasLateFee = r.lateFeeApplied && (r.lateFeePaisa ?? 0) > 0 && r.lateFeeStatus !== "paid";
+      const remainingLateFeePaisa = hasLateFee ? (r.lateFeePaisa ?? 0) - (r.latePaidAmountPaisa ?? 0) : 0;
+
+      const key = `${r.nepaliYear}_${r.nepaliMonth}`;
+      const cam = camMap.get(key);
+      const camRemainingPaisa = cam ? Math.max(0, (cam.amountPaisa ?? 0) - (cam.paidAmountPaisa ?? 0)) : 0;
+
+      const elecList = elecMap.get(key) ?? [];
+      const electricityRemainingPaisa = elecList.reduce(
+        (sum, e) => sum + Math.max(0, (e.totalAmountPaisa ?? 0) - (e.paidAmountPaisa ?? 0)),
+        0,
+      );
+
+      const totalRemainingPaisa = remainingRentPaisa + remainingLateFeePaisa + camRemainingPaisa + electricityRemainingPaisa;
 
       return {
         _id: r._id.toString(),
@@ -534,8 +561,17 @@ export async function getTenantArrears(req, res) {
         remainingRent: remainingRentPaisa / 100,
         remainingLateFeePaisa,
         remainingLateFee: remainingLateFeePaisa / 100,
-        totalRemainingPaisa: remainingRentPaisa + remainingLateFeePaisa,
-        totalRemaining: (remainingRentPaisa + remainingLateFeePaisa) / 100,
+        camId: cam?._id?.toString() ?? null,
+        camRemainingPaisa,
+        camRemaining: camRemainingPaisa / 100,
+        electricityRecords: elecList.map((e) => ({
+          _id: e._id.toString(),
+          remainingPaisa: Math.max(0, (e.totalAmountPaisa ?? 0) - (e.paidAmountPaisa ?? 0)),
+        })),
+        electricityRemainingPaisa,
+        electricityRemaining: electricityRemainingPaisa / 100,
+        totalRemainingPaisa,
+        totalRemaining: totalRemainingPaisa / 100,
         hasLateFee,
         rentFrequency: r.rentFrequency,
         units: r.units,
@@ -544,10 +580,7 @@ export async function getTenantArrears(req, res) {
       };
     });
 
-    const totalRemainingPaisa = shaped.reduce(
-      (sum, r) => sum + r.totalRemainingPaisa,
-      0,
-    );
+    const totalRemainingPaisa = shaped.reduce((sum, r) => sum + r.totalRemainingPaisa, 0);
 
     return res.json({
       success: true,
@@ -578,6 +611,8 @@ export async function payArrears(req, res) {
       transactionRef,
       note,
       allocationStrategy,
+      chequeNumber,
+      partyName,
     } = req.body;
 
     if (!tenantId) {
@@ -624,6 +659,8 @@ export async function payArrears(req, res) {
       transactionRef: transactionRef || null,
       note: note || null,
       allocationStrategy: allocationStrategy || "proportional",
+      chequeNumber: chequeNumber || null,
+      partyName: partyName || null,
     });
 
     if (!result.success) {

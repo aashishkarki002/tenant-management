@@ -13,6 +13,10 @@ import mongoose from "mongoose";
 import { Payment } from "./payment.model.js";
 import { ExternalPayment } from "./externalPayment.model.js";
 import { rupeesToPaisa } from "../../utils/moneyUtil.js";
+import {
+  generateDocumentNumber,
+  DOCUMENT_TYPES,
+} from "../documentCounter/documentNumber.service.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PAYLOAD BUILDERS
@@ -274,6 +278,27 @@ export function mergePaymentPayloads(rentPayload, camPayload, lateFeePayload) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createPaymentRecord(paymentPayload, session) {
+  // Generate RCPT document number if nepaliDate is available
+  if (paymentPayload.nepaliDate && !paymentPayload.documentNumber) {
+    const [yearStr, monthStr] = (paymentPayload.nepaliDate ?? "").split("-");
+    const nepaliYear = Number(yearStr);
+    const nepaliMonth = Number(monthStr);
+    if (nepaliYear >= 2070 && nepaliMonth >= 1) {
+      const fiscalYear = nepaliMonth >= 4 ? nepaliYear : nepaliYear - 1;
+      const entityId = paymentPayload.entityId?.toString() ?? null;
+      try {
+        paymentPayload.documentNumber = await generateDocumentNumber(DOCUMENT_TYPES.RCPT, {
+          fiscalYear,
+          entityId,
+          session,
+        });
+      } catch (docNumErr) {
+        // Non-blocking — log and continue without document number
+        console.error("[createPaymentRecord] Failed to generate RCPT document number:", docNumErr.message);
+      }
+    }
+  }
+
   const [payment] = await Payment.create([paymentPayload], { session });
   return payment;
 }
@@ -287,7 +312,7 @@ export async function createExternalPaymentRecord(paymentPayload, session) {
 // UTILITIES
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Compute total paisa across all allocations (rent + CAM). */
+/** Compute total paisa across all allocations (rent + CAM + electricity + late fee). */
 export function calculateTotalAmountFromAllocations(allocations) {
   const rentPaisa =
     allocations?.rent?.amountPaisa !== undefined
@@ -298,20 +323,35 @@ export function calculateTotalAmountFromAllocations(allocations) {
     allocations?.cam?.paidAmountPaisa !== undefined
       ? allocations.cam.paidAmountPaisa
       : rupeesToPaisa(allocations?.cam?.paidAmount || 0);
+
   const lateFeePaisa =
     allocations?.lateFee?.amountPaisa !== undefined
       ? allocations.lateFee.amountPaisa
       : rupeesToPaisa(allocations?.lateFee?.amount || 0);
 
-  return rentPaisa + camPaisa + lateFeePaisa;
+  const electricityPaisa = Array.isArray(allocations?.electricity)
+    ? allocations.electricity.reduce((sum, e) => {
+        return sum + (e.amountPaisa !== undefined
+          ? e.amountPaisa
+          : rupeesToPaisa(e.amount || 0));
+      }, 0)
+    : 0;
+
+  return rentPaisa + camPaisa + lateFeePaisa + electricityPaisa;
 }
 
 /** Structural validation of allocations (shape, IDs, amounts). */
 export function validatePaymentAllocations(allocations) {
-  if (!allocations || (!allocations.rent && !allocations.cam)) {
+  const hasElectricity =
+    Array.isArray(allocations?.electricity) &&
+    allocations.electricity.some(
+      (e) => (e.amountPaisa || 0) > 0 || (e.amount || 0) > 0,
+    );
+
+  if (!allocations || (!allocations.rent && !allocations.cam && !hasElectricity)) {
     return {
       isValid: false,
-      error: "At least one allocation (rent or CAM) is required",
+      error: "At least one allocation (rent, CAM, or electricity) is required",
     };
   }
   if (allocations.rent) {

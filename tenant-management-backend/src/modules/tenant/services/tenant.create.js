@@ -16,7 +16,6 @@ import { applyPaymentToBank } from "../../banks/bank.domain.js";
 import { createSd } from "../../securityDeposits/sd.service.js";
 import { calculateQuarterlyRentCycle } from "../../../utils/quarterlyRentHelper.js";
 import { buildCamChargeJournal } from "../../ledger/journal-builders/camCharge.js";
-import buildDocumentsFromFiles from "../helpers/fileUploadHelper.js";
 import {
   rupeesToPaisa,
   divideMoney,
@@ -29,8 +28,38 @@ import {
   buildUnitBreakdown,
 } from "../domain/rent.calculator.service.js";
 import { resolveEntityFromBlock } from "../../../helper/resolveEntity.js";
+import NepaliDate from "nepali-datetime";
 
-export async function createTenantTransaction(body, files, adminId, session) {
+/**
+ * Prorate a paisa amount for the first billing period when a tenant joins mid-period.
+ *
+ * @param {number}  fullPeriodPaisa   - Full period charge in paisa (integer)
+ * @param {number}  joinDay           - BS day the tenant joins (1 = no proration)
+ * @param {number}  periodStartMonth1 - 1-based BS month the billing period starts
+ * @param {number}  periodStartYear   - BS year the billing period starts
+ * @param {number}  periodMonths      - Number of months in the billing period (1 or 3)
+ * @returns {number} Prorated integer paisa (or fullPeriodPaisa if joinDay ≤ 1)
+ */
+function prorateFirstPeriod(fullPeriodPaisa, joinDay, periodStartMonth1, periodStartYear, periodMonths) {
+  if (!joinDay || joinDay <= 1) return fullPeriodPaisa;
+
+  // Sum actual BS days across all months in the billing period
+  let totalPeriodDays = 0;
+  for (let i = 0; i < periodMonths; i++) {
+    const month0 = (periodStartMonth1 - 1 + i) % 12;         // 0-based month index
+    const year = periodStartYear + Math.floor((periodStartMonth1 - 1 + i) / 12);
+    totalPeriodDays += NepaliDate.getDaysOfMonth(year, month0);
+  }
+
+  // Days the tenant missed at the start (days 1 … joinDay-1)
+  const daysElapsed = joinDay - 1;
+  const remainingDays = totalPeriodDays - daysElapsed;
+
+  if (remainingDays <= 0) return 0;
+  return Math.round(fullPeriodPaisa * remainingDays / totalPeriodDays);
+}
+
+export async function createTenantTransaction(body, documents, adminId, session) {
   // Allow caller to specify which Nepali month/year rent should start from.
   // Body fields: rentStartNepaliYear (number), rentStartNepaliMonth (1-based number).
   // If omitted, defaults to current Nepali month/year.
@@ -76,11 +105,11 @@ export async function createTenantTransaction(body, files, adminId, session) {
   const unitLeaseConfigs = usePerUnitConfig
     ? body.unitLeases
     : unitIds.map((unitId) => ({
-        unitId,
-        leasedSquareFeet: body.leasedSquareFeet,
-        pricePerSqft: body.pricePerSqft,
-        camRatePerSqft: body.camRatePerSqft,
-      }));
+      unitId,
+      leasedSquareFeet: body.leasedSquareFeet,
+      pricePerSqft: body.pricePerSqft,
+      camRatePerSqft: body.camRatePerSqft,
+    }));
 
   const units = await Unit.find({ _id: { $in: unitIds } }).session(session);
   if (units.length !== unitIds.length)
@@ -94,10 +123,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
   }
   const entityId = await resolveEntityFromBlock(body.block, session);
   const tdsPercentage = 10;
-  const originalCalculation = calculateMultiUnitLease(
-    unitLeaseConfigs,
-    tdsPercentage,
-  );
+
   const leaseCalculation = calculateMultiUnitLeaseInPaisa(
     unitLeaseConfigs,
     tdsPercentage,
@@ -154,7 +180,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
     };
   }
 
-  const documents = await buildDocumentsFromFiles(files);
+  // documents already uploaded + processed by tenant.service.js before the session opened
 
   const tenant = await Tenant.create(
     [
@@ -192,6 +218,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
           quarterlyRentAmount: totals.rentMonthly * frequencyMonths,
           nextRentDueDate: rentCycleData.dueDate.english,
           lastRentChargedDate: rentCycleData.chargeDate.english,
+          camQuarterStartMonth: npMonth, // cron uses this to know which month to charge CAM
         }),
       },
     ],
@@ -222,14 +249,41 @@ export async function createTenantTransaction(body, files, adminId, session) {
   );
   const periodTdsPaisa = totals.totalTdsPaisa * rentFrequencyCalc.periodMonths;
   const grossRentPeriodPaisa = totals.grossMonthlyPaisa * rentFrequencyCalc.periodMonths;
+
+  // ── Pro-rate first period when tenant joins mid-period ─────────────────────
+  // rentStartNepaliDay is the BS day of the billing month the tenant joins on.
+  // Sent from the billing-start dialog in addTenants.jsx.
+  // Day 1 = no proration (full period charge). Day > 1 = prorated.
+  const joinDay = body.rentStartNepaliDay ? Math.max(1, Number(body.rentStartNepaliDay)) : 1;
+
+  const firstPeriodGrossPaisa = prorateFirstPeriod(
+    grossRentPeriodPaisa,
+    joinDay,
+    npMonth,          // 1-based billing period start month (same as join month)
+    npYear,
+    rentFrequencyCalc.periodMonths,
+  );
+  const firstPeriodTdsPaisa = prorateFirstPeriod(
+    periodTdsPaisa,
+    joinDay,
+    npMonth,
+    npYear,
+    rentFrequencyCalc.periodMonths,
+  );
+
+  // Proration ratio for unit-level breakdown (avoid floating point: use paisa ratio)
+  const prorateRatio = grossRentPeriodPaisa > 0
+    ? firstPeriodGrossPaisa / grossRentPeriodPaisa
+    : 1;
+
   const rentResult = await createNewRent(
     {
       tenant: tenant[0]._id,
       innerBlock: tenant[0].innerBlock,
       block: tenant[0].block,
       property: tenant[0].property,
-      grossRentAmountPaisa: grossRentPeriodPaisa,
-      tdsAmountPaisa: periodTdsPaisa,
+      grossRentAmountPaisa: firstPeriodGrossPaisa,
+      tdsAmountPaisa: firstPeriodTdsPaisa,
       paidAmountPaisa: 0,
       rentFrequency: body.rentPaymentFrequency,
       status: "pending",
@@ -250,8 +304,8 @@ export async function createTenantTransaction(body, files, adminId, session) {
       useUnitBreakdown: true,
       unitBreakdown: calculatedUnits.map((u) => ({
         unit: u.unitId,
-        grossRentAmountPaisa: u.grossMonthlyPaisa * rentFrequencyCalc.periodMonths,
-        tdsAmountPaisa: u.totalTdsPaisa * rentFrequencyCalc.periodMonths,
+        grossRentAmountPaisa: Math.round(u.grossMonthlyPaisa * rentFrequencyCalc.periodMonths * prorateRatio),
+        tdsAmountPaisa: Math.round(u.totalTdsPaisa * rentFrequencyCalc.periodMonths * prorateRatio),
         paidAmountPaisa: 0,
       })),
     },
@@ -271,6 +325,21 @@ export async function createTenantTransaction(body, files, adminId, session) {
 
   await recordTdsLedgerEntry(rentResult.data, session, entityId);
 
+  // CAM for the first period:
+  // - Quarterly tenants: multiply monthly CAM by period months (3), then prorate
+  // - Monthly tenants: just prorate the monthly amount
+  const camPeriodMonths = rentFrequencyCalc.periodMonths; // 1 or 3
+  const fullPeriodCamPaisa = totals.camMonthlyPaisa * camPeriodMonths;
+  const firstPeriodCamPaisa = Math.round(fullPeriodCamPaisa * prorateRatio);
+
+  // Quarter end month/year (for quarterly records)
+  const camNepaliMonthEnd = isQuarterly
+    ? (((npMonth - 1) + (camPeriodMonths - 1)) % 12) + 1
+    : null;
+  const camNepaliYearEnd = isQuarterly
+    ? npYear + Math.floor(((npMonth - 1) + (camPeriodMonths - 1)) / 12)
+    : null;
+
   const camResult = await createCam(
     {
       tenant: tenant[0]._id,
@@ -280,13 +349,16 @@ export async function createTenantTransaction(body, files, adminId, session) {
       nepaliMonth: npMonth,
       nepaliYear: npYear,
       nepaliDate: firstDayNepali,
-      amountPaisa: totals.camMonthlyPaisa,
-      amount: totals.camMonthly,
+      amountPaisa: firstPeriodCamPaisa,
+      amount: firstPeriodCamPaisa / 100,
       status: "pending",
       year: englishYear,
       month: englishMonth,
       nepaliDueDate: rentCycleData.dueDate.english,
       englishDueDate: rentCycleData.dueDate.english,
+      camFrequency: isQuarterly ? "quarterly" : "monthly",
+      nepaliMonthEnd: camNepaliMonthEnd,
+      nepaliYearEnd: camNepaliYearEnd,
     },
     adminId,
     session,
@@ -327,7 +399,7 @@ export async function createTenantTransaction(body, files, adminId, session) {
       innerBlock: tenant[0].innerBlock,
       amountPaisa: rupeesToPaisa(baseSecurityDeposit),
       amount: baseSecurityDeposit,
-      status: mode === "bank_guarantee" ? "held_as_bg" : "paid",
+      status: (mode === "bank_guarantee" || mode === "others") ? "held_as_bg" : "paid",
       paidDate: new Date(),
       year: englishYear,
       month: englishMonth,
@@ -362,12 +434,19 @@ export async function createTenantTransaction(body, files, adminId, session) {
         expiryDate: body.bgExpiryDate,
       };
     }
+    if (mode === "others") {
+      sdPayload.othersDetails = {
+        chequeNumber: body.sdOthersChequeNumber,
+        chequeDate: body.sdOthersDate ? new Date(body.sdOthersDate) : null,
+        imageUrl: body.sdOthersImageUrl ?? null,
+      };
+    }
 
     const sd = await createSd(sdPayload, adminId, session, entityId);
     if (!sd.success) throw new Error(sd.message);
     const sdDoc = sd.data;
 
-    if (mode !== "bank_guarantee") {
+    if (mode !== "bank_guarantee" && mode !== "others") {
       // Journal 3 (Security deposit) is already posted inside createSd().
       // Only update the operational BankAccount.balancePaisa here.
       await applyPaymentToBank({

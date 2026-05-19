@@ -16,6 +16,9 @@ export const createEntity = async (req, res) => {
     const entity = await ownershipService.createEntity(req.body, req.admin?.id);
     return res.status(201).json({ success: true, data: entity });
   } catch (error) {
+    if (error.statusCode === 403) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
     if (error.name === "ValidationError") {
       return res.status(400).json({ success: false, message: error.message });
     }

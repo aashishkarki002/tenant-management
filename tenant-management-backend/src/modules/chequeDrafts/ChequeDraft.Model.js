@@ -76,7 +76,7 @@ const ChequeDraftSchema = new Schema(
 
     referenceType: {
       type: String,
-      enum: ["Expense", "Revenue", "LoanPayment"],
+      enum: ["Expense", "Revenue", "LoanPayment", "AdvanceRent"],
       default: null,
     },
 

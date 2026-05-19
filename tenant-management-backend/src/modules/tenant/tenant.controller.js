@@ -82,6 +82,27 @@ export const updateTenant = async (req, res) => {
   }
 };
 
+export const changeRentFrequency = async (req, res) => {
+  try {
+    const adminId = req.admin_id ?? req.admin?.id;
+    const { newFrequency, reason, strategy } = req.body;
+    const result = await tenantService.changeRentFrequency(req.params.id, {
+      newFrequency,
+      reason,
+      strategy,
+      adminId,
+    });
+    return res.status(result.statusCode ?? 500).json(
+      result.success
+        ? { success: true, message: result.message, data: result }
+        : { success: false, message: result.message, ...(result.error && { error: result.error }) },
+    );
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Error changing rent frequency", error: error.message });
+  }
+};
+
 export const addUnitsToTenant = async (req, res) => {
   try {
     const adminId = req.admin_id ?? req.admin?.id;

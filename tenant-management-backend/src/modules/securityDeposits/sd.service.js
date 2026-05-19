@@ -175,13 +175,17 @@ export async function createSd(
     const created = await Sd.create([sdData], opts);
     const sd = created[0];
     await sd.populate("tenant", "name");
-    // Pass payment routing details to the journal builder to avoid "Invalid payment method"
-    const sdPayload = buildSecurityDepositJournal(sd, {
-      createdBy,
-      paymentMethod: sdData.paymentMethod ?? sdData.mode,
-      bankAccountCode: sdData.bankAccountCode,
-    });
-    await ledgerService.postJournalEntry(sdPayload, session, entityId);
+
+    // "others" = open-dated cheque held as document only — no money received yet,
+    // so no cash/bank journal entry. Same principle as bank_guarantee.
+    if (sd.mode !== "others") {
+      const sdPayload = buildSecurityDepositJournal(sd, {
+        createdBy,
+        paymentMethod: sdData.paymentMethod ?? sdData.mode,
+        bankAccountCode: sdData.bankAccountCode,
+      });
+      await ledgerService.postJournalEntry(sdPayload, session, entityId);
+    }
 
     // ✅ Use paisa for liability creation
     const amountPaisa =

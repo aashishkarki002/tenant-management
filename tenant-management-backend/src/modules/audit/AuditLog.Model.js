@@ -40,11 +40,25 @@ const auditLogSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Who performed the action
+    // "user" = human admin, "system" = cron/background job
+    actorType: {
+      type: String,
+      enum: ["user", "system"],
+      default: "user",
+      required: true,
+    },
+
+    // Human actor — null for system events
     performedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
-      required: true,
+      default: null,
+    },
+
+    // System actor name — null for user events (e.g. "master-cron/rent-charge")
+    systemActor: {
+      type: String,
+      default: null,
     },
 
     // When — immutable after insert
@@ -96,5 +110,7 @@ auditLogSchema.index({ entityId: 1, performedAt: -1 });
 auditLogSchema.index({ resourceType: 1, resourceId: 1 });
 auditLogSchema.index({ performedBy: 1, performedAt: -1 });
 auditLogSchema.index({ eventType: 1, performedAt: -1 });
+auditLogSchema.index({ actorType: 1, performedAt: -1 });
+auditLogSchema.index({ systemActor: 1, performedAt: -1 });
 
 export const AuditLog = mongoose.model("AuditLog", auditLogSchema);

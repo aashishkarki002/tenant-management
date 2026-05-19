@@ -36,6 +36,21 @@ export const smsTenant = {
     ),
 
   /**
+   * Sent immediately after a payment is recorded.
+   *
+   * @param {string} phone
+   * @param {{ tenantName: string, amountRupees: number, receiptNo: string, totalDuePaisa: number }} data
+   *   totalDuePaisa — pass 0 when all dues are cleared, positive integer otherwise.
+   */
+  paymentConfirmed: (phone, { tenantName, amountRupees, receiptNo, totalDuePaisa }) => {
+    const msg =
+      totalDuePaisa > 0
+        ? `Dear ${tenantName}, Rs.${amountRupees} received (Rcpt #${receiptNo}). Outstanding: Rs.${Math.round(totalDuePaisa / 100)}. ${SIGN}`
+        : `Dear ${tenantName}, Rs.${amountRupees} received (Rcpt #${receiptNo}). All dues cleared. Thank you! ${SIGN}`;
+    return sendSMSSafe(phone, msg, "transactional");
+  },
+
+  /**
    * Sent when rent is due (cron reminder before due date).
    */
   rentDue: (phone, { tenantName, amount, dueDate }) =>

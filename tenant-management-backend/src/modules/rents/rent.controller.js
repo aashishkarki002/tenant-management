@@ -27,6 +27,8 @@ import {
 import { handleTdsDocumentUpload } from "./rent.tds.service.js";
 import { generateTdsCertificate } from "../../utils/tdsCertificateGenerator.js";
 import { generateRentRollPDF } from "../../utils/rentRollPdfGenerator.js";
+import { generateTenantInvoicePDF } from "../../utils/tenantInvoicePdfGenerator.js";
+import { generateDocumentNumber } from "../documentCounter/documentNumber.service.js";
 
 // ── Read ──────────────────────────────────────────────────────────────────────
 
@@ -162,7 +164,13 @@ export async function processMonthlyRents(req, res) {
 
 export async function sendEmailToTenantsController(req, res) {
   try {
-    const result = await sendEmailToTenants();
+    const { nepaliMonth, nepaliYear, tenantId } = req.body ?? {};
+    const result = await sendEmailToTenants({
+      nepaliMonth: nepaliMonth ? Number(nepaliMonth) : undefined,
+      nepaliYear: nepaliYear ? Number(nepaliYear) : undefined,
+      tenantId: tenantId || null,
+      forceResend: true,
+    });
     return res
       .status(200)
       .json({ success: result.success, message: result.message });
@@ -209,6 +217,8 @@ export async function recordRentPaymentController(req, res) {
       nepaliDate,
       notes,
       unitPayments,
+      chequeNumber,
+      partyName,
       tdsPaidToGovt,
       tdsPaidDate,
       tdsNepaliDate,
@@ -242,6 +252,8 @@ export async function recordRentPaymentController(req, res) {
       receivedBy: req.admin?._id ?? req.admin?.id,
       unitPayments,
       notes,
+      chequeNumber: chequeNumber ?? null,
+      partyName: partyName ?? null,
     });
 
     const status = result.statusCode ?? (result.success ? 200 : 500);
@@ -326,7 +338,7 @@ export async function backfillTenantRentsController(req, res) {
     }
     for (const m of months) {
       if (!Number.isInteger(m.nepaliYear) || !Number.isInteger(m.nepaliMonth) ||
-          m.nepaliMonth < 1 || m.nepaliMonth > 12) {
+        m.nepaliMonth < 1 || m.nepaliMonth > 12) {
         return res.status(400).json({
           success: false,
           message: "Each month entry must have integer nepaliYear and nepaliMonth (1-12)",
@@ -602,27 +614,33 @@ export async function generateTdsCertificateController(req, res) {
  */
 export async function exportRentRollPdfController(req, res) {
   try {
-    const { nepaliMonth, nepaliYear, propertyId } = req.query;
+    const { nepaliMonth, nepaliYear, propertyId, tenantId } = req.query;
 
     if (!nepaliYear) {
       return res.status(400).json({ success: false, message: "nepaliYear is required" });
     }
 
-    const filter = { nepaliYear: Number(nepaliYear) };
-    if (nepaliMonth) filter.nepaliMonth = Number(nepaliMonth);
+    const yr = Number(nepaliYear);
+    const mo = nepaliMonth ? Number(nepaliMonth) : null;
 
-    const Rent = (await import("./rent.Model.js")).Rent;
-    let query = Rent.find(filter)
-      .populate("tenant", "name")
-      .populate("block", "name")
+    const rentFilter = { nepaliYear: yr };
+    if (mo) rentFilter.nepaliMonth = mo;
+    if (tenantId) rentFilter.tenant = tenantId;
+
+    const [{ Rent }, { Cam }, { Electricity }] = await Promise.all([
+      import("./rent.Model.js"),
+      import("../cam/cam.model.js"),
+      import("../electricity/Electricity.Model.js"),
+    ]);
+
+    const rents = await Rent.find(rentFilter)
+      .populate("tenant", "name email")
+      .populate("block", "name property")
       .populate("innerBlock", "name")
-      .sort({ "tenant.name": 1, nepaliMonth: 1 })
+      .sort({ nepaliMonth: 1 })
       .lean();
 
-    const rents = await query;
-
-    // Filter by property if requested (block belongs to property)
-    const filteredRents = propertyId
+    const filteredRensts = propertyId
       ? rents.filter((r) => r.block?.property?.toString() === propertyId)
       : rents;
 
@@ -630,12 +648,51 @@ export async function exportRentRollPdfController(req, res) {
       return res.status(404).json({ success: false, message: "No rent records found for this period" });
     }
 
-    const period = { nepaliMonth: nepaliMonth ? Number(nepaliMonth) : null, nepaliYear: Number(nepaliYear) };
-    const pdfBuffer = await generateRentRollPDF(filteredRents, period);
+    // Collect tenant ids for batch CAM + electricity lookup
+    const tenantIds = [...new Set(filteredRents.map((r) => r.tenant?._id?.toString()).filter(Boolean))];
 
-    const filename = nepaliMonth
-      ? `Rent-Roll-${nepaliYear}-Month${nepaliMonth}.pdf`
-      : `Rent-Roll-${nepaliYear}.pdf`;
+    const camFilter = { tenant: { $in: tenantIds }, nepaliYear: yr };
+    if (mo) camFilter.nepaliMonth = mo;
+
+    const elecFilter = { tenant: { $in: tenantIds }, nepaliYear: yr, billTo: "tenant" };
+    if (mo) elecFilter.nepaliMonth = mo;
+
+    const [camRecords, elecRecords] = await Promise.all([
+      Cam.find(camFilter).select("tenant nepaliYear nepaliMonth amountPaisa paidAmountPaisa").lean(),
+      Electricity.find(elecFilter).select("tenant nepaliYear nepaliMonth totalAmountPaisa paidAmountPaisa").lean(),
+    ]);
+
+    // Build key → paisa maps; key = `${tenantId}_${nepaliYear}_${nepaliMonth}`
+    const camMap = new Map();
+    for (const c of camRecords) {
+      camMap.set(`${c.tenant}_${c.nepaliYear}_${c.nepaliMonth}`, c.amountPaisa ?? 0);
+    }
+    const elecMap = new Map();
+    for (const e of elecRecords) {
+      const key = `${e.tenant}_${e.nepaliYear}_${e.nepaliMonth}`;
+      elecMap.set(key, (elecMap.get(key) ?? 0) + (e.totalAmountPaisa ?? 0));
+    }
+
+    // Attach CAM and electricity amounts to each rent
+    const enrichedRents = filteredRents.map((r) => {
+      const tId = r.tenant?._id?.toString();
+      const key = `${tId}_${r.nepaliYear}_${r.nepaliMonth}`;
+      return {
+        ...r,
+        camAmountPaisa: camMap.get(key) ?? 0,
+        electricityAmountPaisa: elecMap.get(key) ?? 0,
+      };
+    });
+
+    const period = { nepaliMonth: mo, nepaliYear: yr };
+    const pdfBuffer = await generateRentRollPDF(enrichedRents, period);
+
+    const tenantName = enrichedRents[0]?.tenant?.name?.replace(/\s+/g, "-") || "tenant";
+    const filename = tenantId
+      ? `Invoice-${tenantName}-${nepaliYear}${mo ? `-M${mo}` : ""}.pdf`
+      : mo
+        ? `Rent-Roll-${nepaliYear}-Month${mo}.pdf`
+        : `Rent-Roll-${nepaliYear}.pdf`;
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -646,6 +703,76 @@ export async function exportRentRollPdfController(req, res) {
     return res.status(500).json({
       success: false,
       message: "Failed to generate rent roll PDF",
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * GET /api/rent/:rentId/invoice
+ *
+ * Generates a per-tenant invoice PDF for a specific rent record by its _id.
+ * If documentNumber is null (legacy record), assigns one lazily and persists it.
+ */
+export async function downloadRentInvoiceController(req, res) {
+  try {
+    const { rentId } = req.params;
+
+    const [{ Rent }, { Cam }, { Electricity }] = await Promise.all([
+      import("./rent.Model.js"),
+      import("../cam/cam.model.js"),
+      import("../electricity/Electricity.Model.js"),
+    ]);
+
+    let rent = await Rent.findById(rentId)
+      .populate("tenant", "name email phone")
+      .populate("block", "name property")
+      .populate("innerBlock", "name")
+      .populate("units", "name")
+      .lean();
+
+    if (!rent) {
+      return res.status(404).json({ success: false, message: "Rent record not found" });
+    }
+
+    // Lazy-assign documentNumber for legacy records that were never backfilled
+    if (!rent.documentNumber) {
+      const docNum = await generateDocumentNumber("INV", { fiscalYear: rent.nepaliYear });
+      await Rent.findByIdAndUpdate(rentId, { documentNumber: docNum });
+      rent = { ...rent, documentNumber: docNum };
+    }
+
+    const tId = rent.tenant?._id?.toString();
+    const periodFilter = { tenant: tId, nepaliYear: rent.nepaliYear, nepaliMonth: rent.nepaliMonth };
+
+    const [camRecords, elecRecords] = await Promise.all([
+      Cam.find(periodFilter).select("amountPaisa").lean(),
+      Electricity.find({ ...periodFilter, billTo: "tenant" }).select("totalAmountPaisa").lean(),
+    ]);
+
+    const camAmountPaisa = camRecords.reduce((s, c) => s + (c.amountPaisa ?? 0), 0);
+    const electricityAmountPaisa = elecRecords.reduce((s, e) => s + (e.totalAmountPaisa ?? 0), 0);
+
+    const pdfBuffer = await generateTenantInvoicePDF({
+      rent,
+      camAmountPaisa,
+      electricityAmountPaisa,
+      invoiceNumber: rent.documentNumber,
+    });
+
+    const tenantName = (rent.tenant?.name || "tenant").replace(/\s+/g, "-");
+    const mo = rent.nepaliMonth ? `-M${rent.nepaliMonth}` : "";
+    const filename = `Invoice-${rent.documentNumber}-${tenantName}-${rent.nepaliYear}${mo}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error("[downloadRentInvoiceController]", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate invoice",
       error: error.message,
     });
   }

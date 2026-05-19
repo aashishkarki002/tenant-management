@@ -48,6 +48,10 @@ import BankAccount from "../banks/BankAccountModel.js";
  * @param {number}       [params.nepaliMonth]
  * @param {number}       [params.nepaliYear]
  * @param {ObjectId}     params.createdBy
+ * @param {boolean}      [params.skipReceiptJournal=false]
+ *   Set to true when the caller has already posted the receipt-side journal
+ *   entry (e.g. payment.service.js posts DR 1150 / CR AR for rent cheques).
+ *   Prevents a double-posting of the DR 1150 / CR Revenue entry.
  * @param {mongoose.ClientSession} session
  * @returns {Promise<Object>} created ChequeDraft document
  */
@@ -67,6 +71,7 @@ export async function createChequeDraft(params, session) {
     nepaliMonth,
     nepaliYear,
     createdBy,
+    skipReceiptJournal = false,
   } = params;
 
   if (!chequeNumber?.trim()) throw new Error("chequeNumber is required");
@@ -96,12 +101,12 @@ export async function createChequeDraft(params, session) {
     { session },
   );
 
-  // RECEIVED cheques: post receipt journal immediately
-  //   DR 1150 Cheques In Hand / CR Revenue (4xxx)
+  // RECEIVED cheques: post receipt journal immediately (unless caller already did it).
+  //   DR 1150 Cheques In Hand / CR Revenue/AR (4xxx / 1200)
   // Revenue is recognised when the cheque is handed over, not at bank clearance.
   // ISSUED cheques: the caller (expense.service.js) already posted
   //   DR Expense / CR 2150 Cheques Payable — no journal needed here.
-  if (direction === "RECEIVED" && referenceAccountCode) {
+  if (!skipReceiptJournal && direction === "RECEIVED" && referenceAccountCode) {
     const journalPayload = buildChequeReceiptJournal(draft.toObject());
     await ledgerService.postJournalEntry(journalPayload, session, entityId);
   }

@@ -34,6 +34,15 @@ const tenantBalanceSchema = new Schema(
       type: Types.ObjectId,
       ref: "Block",
     },
+    advancePaisa:{
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "Must be integer paisa",
+      },
+    },
 
     // ── Outstanding balances (INTEGER PAISA) ──────────────────────────────
     rentDuePaisa: {
@@ -63,8 +72,17 @@ const tenantBalanceSchema = new Schema(
         message: "Must be integer paisa",
       },
     },
+    electricityDuePaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "Must be integer paisa",
+      },
+    },
 
-    // ── Denormalized total (rentDue + camDue + lateFeeDue) ────────────────
+    // ── Denormalized total (rentDue + camDue + lateFeeDue + electricityDue - advance) ──
     // Set in pre-save; never written directly by callers.
     totalDuePaisa: {
       type: Number,
@@ -98,12 +116,14 @@ const tenantBalanceSchema = new Schema(
   { timestamps: true },
 );
 
-// ── Pre-save: always derive totalDuePaisa ────────────────────────────────────
+// ── Pre-save: derive totalDuePaisa net of advance ────────────────────────────
 tenantBalanceSchema.pre("save", function () {
-  this.totalDuePaisa =
+  const gross =
     (this.rentDuePaisa || 0) +
     (this.camDuePaisa || 0) +
-    (this.lateFeeDuePaisa || 0);
+    (this.lateFeeDuePaisa || 0) +
+    (this.electricityDuePaisa || 0);
+  this.totalDuePaisa = Math.max(0, gross - (this.advancePaisa || 0));
 });
 
 // ── Indexes ──────────────────────────────────────────────────────────────────

@@ -35,13 +35,7 @@ import {
   FISCAL_QUARTER_MONTHS,
   FISCAL_YEAR_MONTH_ORDER,
 } from "../../config/fiscalCalendar.js";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const NEPALI_MONTH_NAMES = [
-  "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
-  "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra",
-];
+import { NEPALI_MONTH_NAMES } from "../../utils/nepaliDateHelper.js";
 
 const OPERATING_REF_TYPES = new Set(["MAINTENANCE", "UTILITY", "SALARY"]);
 
@@ -58,12 +52,20 @@ const REVENUE_ACCOUNT_STREAM = {
 };
 
 // Maps ledger account codes to P&L expense categories.
+// 5610 (NEA energy expense) is LEGACY — no new entries are posted to it.
+// Energy charges now go to 1400 (ASSET), so 5610 only appears in historical data.
+// 5616 (demand charge) is a real owner-borne operating expense → OPERATING.
 const EXPENSE_ACCOUNT_CATEGORY = {
   "5000": "OPERATING",
   "5100": "LOAN_INTEREST",
   "5200": "OPERATING",
   "5450": "OPERATING",
-  "5610": "ELECTRICITY_NEA",
+  "5615": "OPERATING",         // common area electricity — owner-borne operating cost
+  "5616": "OPERATING",         // NEA demand charge — owner-borne fixed monthly cost
+  "5700": "OPERATING",         // bad debt expense
+  "5750": "OPERATING",         // salaries
+  "5800": "OPERATING",         // property tax
+  "5900": "OPERATING",         // miscellaneous
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -125,9 +127,9 @@ function addRevenueTrendBucket(r, trendMap) {
 
 function bsMonthToDateRange(year, month0) {
   const firstNp = new NepaliDate(year, month0, 1);
-  const lastDay  = NepaliDate.getDaysOfMonth(year, month0);
-  const lastNp   = new NepaliDate(year, month0, lastDay);
-  const toISO    = (nd) => nd.getDateObject().toISOString().split("T")[0];
+  const lastDay = NepaliDate.getDaysOfMonth(year, month0);
+  const lastNp = new NepaliDate(year, month0, lastDay);
+  const toISO = (nd) => nd.getDateObject().toISOString().split("T")[0];
   return { startDate: toISO(firstNp), endDate: toISO(lastNp) };
 }
 
@@ -136,7 +138,7 @@ function getLastNMonths(n = 5) {
   const months = [];
   for (let i = n - 1; i >= 0; i--) {
     let month0 = now.getMonth() - i;
-    let year   = now.getYear();
+    let year = now.getYear();
     while (month0 < 0) { month0 += 12; year -= 1; }
     months.push({ year, month0 });
   }
@@ -184,14 +186,14 @@ function resolveDateRange({ startDate, endDate, month, quarter, fiscalYear }) {
   }
   if (quarter) {
     const months = getQuarterMonths(Number(quarter), fiscalYear);
-    const first  = bsMonthToDateRange(months[0].year, months[0].month0);
-    const last   = bsMonthToDateRange(months[months.length - 1].year, months[months.length - 1].month0);
+    const first = bsMonthToDateRange(months[0].year, months[0].month0);
+    const last = bsMonthToDateRange(months[months.length - 1].year, months[months.length - 1].month0);
     return { resolvedStart: first.startDate, resolvedEnd: last.endDate };
   }
   if (fiscalYear) {
     const fyMonths = getFiscalYearMonths(fiscalYear);
-    const first    = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
-    const last     = bsMonthToDateRange(fyMonths[fyMonths.length - 1].year, fyMonths[fyMonths.length - 1].month0);
+    const first = bsMonthToDateRange(fyMonths[0].year, fyMonths[0].month0);
+    const last = bsMonthToDateRange(fyMonths[fyMonths.length - 1].year, fyMonths[fyMonths.length - 1].month0);
     return { resolvedStart: first.startDate, resolvedEnd: last.endDate };
   }
   return { resolvedStart: null, resolvedEnd: null };
@@ -201,50 +203,193 @@ function resolveDateRange({ startDate, endDate, month, quarter, fiscalYear }) {
 
 /**
  * Returns current balances for cash/bank, AR, and AP accounts.
- * These are all-time running balances (balance-sheet view), not period-scoped.
+ * LEDGER-FIRST: derived from LedgerEntry aggregations (all-time cumulative).
+ * Account.currentBalancePaisa is NOT read here.
  */
 async function getBalanceSheetKPIs(entityId) {
-  const filter = { isActive: true };
+  const entityMatch = {};
   if (entityId && entityId !== "private") {
-    try { filter.entityId = new mongoose.Types.ObjectId(String(entityId)); } catch { /* skip */ }
+    try { entityMatch.entityId = new mongoose.Types.ObjectId(String(entityId)); } catch { /* skip */ }
   }
-  const accounts = await Account.find(filter, { code: 1, currentBalancePaisa: 1 }).lean();
+
+  // Single aggregation: join account, filter to cash/AR/AP codes, group by code
+  const agg = await LedgerEntry.aggregate([
+    { $match: entityMatch },
+    {
+      $lookup: {
+        from: "accounts",
+        localField: "account",
+        foreignField: "_id",
+        as: "acct",
+      },
+    },
+    { $unwind: "$acct" },
+    {
+      $match: {
+        "acct.isActive": true,
+        $or: [
+          { "acct.code": { $in: ["1000", "1050", "1200", "2000"] } },
+          { "acct.code": { $regex: /^1010/ } },
+        ],
+      },
+    },
+    {
+      $group: {
+        _id: "$acct.code",
+        totalDebit: { $sum: "$debitAmountPaisa" },
+        totalCredit: { $sum: "$creditAmountPaisa" },
+      },
+    },
+  ]);
 
   let cashBalancePaisa = 0;
-  let arBalancePaisa   = 0;
-  let apBalancePaisa   = 0;
+  let arBalancePaisa = 0;
+  let apBalancePaisa = 0;
 
-  for (const acct of accounts) {
-    const bal = acct.currentBalancePaisa ?? 0;
-    // Cash on hand + mobile wallet + all bank sub-accounts (1010-*)
-    if (acct.code === "1000" || acct.code === "1050" || acct.code.startsWith("1010")) {
-      cashBalancePaisa += bal;
+  for (const row of agg) {
+    const code = String(row._id);
+    if (code === "1000" || code === "1050" || code.startsWith("1010")) {
+      cashBalancePaisa += row.totalDebit - row.totalCredit; // ASSET: debit-normal
+    } else if (code === "1200") {
+      arBalancePaisa = row.totalDebit - row.totalCredit;    // AR: ASSET, debit-normal
+    } else if (code === "2000") {
+      apBalancePaisa = row.totalCredit - row.totalDebit;    // AP: LIABILITY, credit-normal
     }
-    if (acct.code === "1200") arBalancePaisa = bal; // AR — debit balance
-    if (acct.code === "2000") apBalancePaisa = bal; // AP — credit balance
   }
 
   return { cashBalancePaisa, arBalancePaisa, apBalancePaisa };
 }
 
-/**
- * True Operating Cash Flow for the period.
- * Measures actual cash/bank account movements — debit (cash in) minus credit (cash out).
- * This differs from accrual net income when AR is outstanding.
- */
-async function getOperatingCashFlow(ledgerMatch, entityId) {
+async function getCashAccountIds(entityId) {
   const acctFilter = { type: "ASSET", code: { $regex: /^10/ } };
   if (entityId && entityId !== "private") {
     try { acctFilter.entityId = new mongoose.Types.ObjectId(String(entityId)); } catch { /* skip */ }
   }
   const cashAccts = await Account.find(acctFilter, { _id: 1 }).lean();
-  if (!cashAccts.length) return 0;
-  const ids = cashAccts.map((a) => a._id);
+  return cashAccts.map((a) => a._id);
+}
+
+// Financing account codes excluded from operating cash flow.
+// SD receipts (2100), loan proceeds/repayments (2200), and capital movements (3000, 3100)
+// are balance-sheet events, not operating cash.
+const FINANCING_ACCOUNT_CODES = ["2100", "2200", "3000", "3100"];
+
+/**
+ * Operating Cash Flow for the period — cash/bank movements excluding financing.
+ * Excludes transactions where the offsetting leg touches a financing account (SD, loans, capital).
+ */
+async function getOperatingCashFlow(ledgerMatch, entityId) {
+  const ids = await getCashAccountIds(entityId);
+  if (!ids.length) return 0;
+
+  // Find transaction IDs that involve a financing account — these are not operating flows.
+  const financingTxns = await LedgerEntry.aggregate([
+    { $match: ledgerMatch },
+    { $lookup: { from: "accounts", localField: "account", foreignField: "_id", as: "acct" } },
+    { $unwind: "$acct" },
+    { $match: { "acct.code": { $in: FINANCING_ACCOUNT_CODES } } },
+    { $group: { _id: "$transaction" } },
+  ]);
+  const excludedTxnIds = financingTxns.map((t) => t._id);
+
+  const cashMatch = { ...ledgerMatch, account: { $in: ids } };
+  if (excludedTxnIds.length) cashMatch.transaction = { $nin: excludedTxnIds };
+
   const result = await LedgerEntry.aggregate([
-    { $match: { ...ledgerMatch, account: { $in: ids } } },
+    { $match: cashMatch },
     { $group: { _id: null, dr: { $sum: "$debitAmountPaisa" }, cr: { $sum: "$creditAmountPaisa" } } },
   ]);
   return (result[0]?.dr ?? 0) - (result[0]?.cr ?? 0);
+}
+
+/**
+ * Cash-basis inflow/outflow breakdown.
+ * Finds all journals touching cash/bank accounts (code ^10), then categorizes
+ * by the offsetting (non-cash) account — i.e. WHERE the cash came from or went to.
+ *
+ * Inflow  = DR cash/bank → categorized by the CR leg of that journal
+ * Outflow = CR cash/bank → categorized by the DR leg of that journal
+ */
+async function getCashFlowBreakdown(ledgerMatch, entityId) {
+  const cashIds = await getCashAccountIds(entityId);
+  if (!cashIds.length) return { inflows: [], outflows: [], totalIn: 0, totalOut: 0, totalInPaisa: 0, totalOutPaisa: 0, net: 0, netPaisa: 0 };
+
+  const [inflowRows, outflowRows] = await Promise.all([
+    LedgerEntry.aggregate([
+      { $match: { ...ledgerMatch, account: { $in: cashIds }, debitAmountPaisa: { $gt: 0 } } },
+      { $group: { _id: "$transaction" } },
+      {
+        $lookup: {
+          from: "ledgerentries",
+          let: { txn: "$_id" },
+          pipeline: [
+            { $match: { $expr: { $and: [
+              { $eq: ["$transaction", "$$txn"] },
+              { $not: { $in: ["$account", cashIds] } },
+              { $gt: ["$creditAmountPaisa", 0] },
+            ] } } },
+            { $lookup: { from: "accounts", localField: "account", foreignField: "_id", as: "acct" } },
+            { $unwind: "$acct" },
+          ],
+          as: "credits",
+        },
+      },
+      { $unwind: "$credits" },
+      { $group: { _id: { name: "$credits.acct.name", code: "$credits.acct.code", type: "$credits.acct.type" }, amountPaisa: { $sum: "$credits.creditAmountPaisa" } } },
+      { $match: { amountPaisa: { $gt: 0 } } },
+      { $sort: { amountPaisa: -1 } },
+    ]),
+
+    LedgerEntry.aggregate([
+      { $match: { ...ledgerMatch, account: { $in: cashIds }, creditAmountPaisa: { $gt: 0 } } },
+      { $group: { _id: "$transaction" } },
+      {
+        $lookup: {
+          from: "ledgerentries",
+          let: { txn: "$_id" },
+          pipeline: [
+            { $match: { $expr: { $and: [
+              { $eq: ["$transaction", "$$txn"] },
+              { $not: { $in: ["$account", cashIds] } },
+              { $gt: ["$debitAmountPaisa", 0] },
+            ] } } },
+            { $lookup: { from: "accounts", localField: "account", foreignField: "_id", as: "acct" } },
+            { $unwind: "$acct" },
+          ],
+          as: "debits",
+        },
+      },
+      { $unwind: "$debits" },
+      { $group: { _id: { name: "$debits.acct.name", code: "$debits.acct.code", type: "$debits.acct.type" }, amountPaisa: { $sum: "$debits.debitAmountPaisa" } } },
+      { $match: { amountPaisa: { $gt: 0 } } },
+      { $sort: { amountPaisa: -1 } },
+    ]),
+  ]);
+
+  const totalInPaisa = inflowRows.reduce((s, r) => s + r.amountPaisa, 0);
+  const totalOutPaisa = outflowRows.reduce((s, r) => s + r.amountPaisa, 0);
+
+  const inflows = inflowRows.map(r => ({
+    name: r._id.name, code: r._id.code, type: r._id.type,
+    amount: paisaToRupees(r.amountPaisa), amountPaisa: r.amountPaisa,
+    pct: totalInPaisa > 0 ? +((r.amountPaisa / totalInPaisa) * 100).toFixed(1) : 0,
+  }));
+  const outflows = outflowRows.map(r => ({
+    name: r._id.name, code: r._id.code, type: r._id.type,
+    amount: paisaToRupees(r.amountPaisa), amountPaisa: r.amountPaisa,
+    pct: totalOutPaisa > 0 ? +((r.amountPaisa / totalOutPaisa) * 100).toFixed(1) : 0,
+  }));
+
+  return {
+    inflows,
+    outflows,
+    totalIn: paisaToRupees(totalInPaisa),
+    totalOut: paisaToRupees(totalOutPaisa),
+    net: paisaToRupees(totalInPaisa - totalOutPaisa),
+    totalInPaisa,
+    totalOutPaisa,
+    netPaisa: totalInPaisa - totalOutPaisa,
+  };
 }
 
 // ─── Ledger aggregation helpers ───────────────────────────────────────────────
@@ -288,7 +433,7 @@ async function aggregateLedgerByAccount(ledgerMatch) {
           type: "$acct.type",
         },
         creditPaisa: { $sum: "$creditAmountPaisa" },
-        debitPaisa:  { $sum: "$debitAmountPaisa" },
+        debitPaisa: { $sum: "$debitAmountPaisa" },
       },
     },
   ]);
@@ -302,10 +447,10 @@ async function aggregateLedgerByAccount(ledgerMatch) {
  *   expenseByCode  Map<code, { name, netPaisa }>
  */
 function processAccountTotals(rows) {
-  let totalRevenuePaisa  = 0;
-  let totalExpensePaisa  = 0;
-  const revenueByCode    = new Map();
-  const expenseByCode    = new Map();
+  let totalRevenuePaisa = 0;
+  let totalExpensePaisa = 0;
+  const revenueByCode = new Map();
+  const expenseByCode = new Map();
 
   for (const row of rows) {
     const { code, name, type } = row._id;
@@ -324,41 +469,81 @@ function processAccountTotals(rows) {
 }
 
 /**
- * Get outstanding liability balance from Account.currentBalancePaisa.
- * Liabilities are balance-sheet accounts — their balance is cumulative (all-time),
- * not period-scoped. Using the pre-computed running balance is correct here.
+ * Get outstanding liability balance.
+ * LEDGER-FIRST: aggregated from LedgerEntry (all-time cumulative).
+ * LIABILITY accounts are credit-normal: balance = credit − debit.
  */
 async function getLiabilityBalancePaisa(entityId) {
-  const filter = { type: "LIABILITY", isActive: true };
+  const entityMatch = {};
   if (entityId && entityId !== "private") {
-    try {
-      filter.entityId = new mongoose.Types.ObjectId(String(entityId));
-    } catch {
-      // invalid ObjectId — skip entity filter
-    }
+    try { entityMatch.entityId = new mongoose.Types.ObjectId(String(entityId)); } catch { /* skip */ }
   }
-  const accounts = await Account.find(filter).lean();
-  return accounts.reduce((s, a) => s + (a.currentBalancePaisa ?? 0), 0);
+
+  const [result] = await LedgerEntry.aggregate([
+    { $match: entityMatch },
+    {
+      $lookup: {
+        from: "accounts",
+        localField: "account",
+        foreignField: "_id",
+        as: "acct",
+      },
+    },
+    { $unwind: "$acct" },
+    { $match: { "acct.type": "LIABILITY", "acct.isActive": true } },
+    {
+      $group: {
+        _id: null,
+        totalCredit: { $sum: "$creditAmountPaisa" },
+        totalDebit: { $sum: "$debitAmountPaisa" },
+      },
+    },
+  ]);
+
+  return (result?.totalCredit ?? 0) - (result?.totalDebit ?? 0);
 }
 
 /**
- * Build liabilitiesBreakdown array from Account records.
+ * Build liabilitiesBreakdown array.
+ * LEDGER-FIRST: aggregated from LedgerEntry per liability account.
  */
 async function getLiabilitiesBreakdown(entityId) {
-  const filter = { type: "LIABILITY", isActive: true };
+  const entityMatch = {};
   if (entityId && entityId !== "private") {
-    try {
-      filter.entityId = new mongoose.Types.ObjectId(String(entityId));
-    } catch { /* skip */ }
+    try { entityMatch.entityId = new mongoose.Types.ObjectId(String(entityId)); } catch { /* skip */ }
   }
-  const accounts = await Account.find(filter).lean();
-  return accounts
-    .filter((a) => (a.currentBalancePaisa ?? 0) !== 0)
-    .map((a) => ({
-      code: a.code,
-      name: a.name,
-      amount: Math.abs(paisaToRupees(a.currentBalancePaisa ?? 0)),
-    }));
+
+  const rows = await LedgerEntry.aggregate([
+    { $match: entityMatch },
+    {
+      $lookup: {
+        from: "accounts",
+        localField: "account",
+        foreignField: "_id",
+        as: "acct",
+      },
+    },
+    { $unwind: "$acct" },
+    { $match: { "acct.type": "LIABILITY", "acct.isActive": true } },
+    {
+      $group: {
+        _id: { code: "$acct.code", name: "$acct.name" },
+        totalCredit: { $sum: "$creditAmountPaisa" },
+        totalDebit: { $sum: "$debitAmountPaisa" },
+      },
+    },
+  ]);
+
+  return rows
+    .map((row) => {
+      const balancePaisa = row.totalCredit - row.totalDebit;
+      return {
+        code: row._id.code,
+        name: row._id.name,
+        amount: Math.abs(paisaToRupees(balancePaisa)),
+      };
+    })
+    .filter((a) => a.amount !== 0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -396,7 +581,7 @@ export async function getAccountingSummary({
       ? { $gte: resolvedStart }
       : null;
 
-  const [accountRows, totalLiabilityPaisa, liabilitiesBreakdown, bsKPIs, operatingCashFlowPaisa, collectionRows] = await Promise.all([
+  const [accountRows, totalLiabilityPaisa, liabilitiesBreakdown, bsKPIs, operatingCashFlowPaisa, collectionRows, cashFlowBreakdown] = await Promise.all([
     aggregateLedgerByAccount(ledgerMatch),
     getLiabilityBalancePaisa(entityId),
     getLiabilitiesBreakdown(entityId),
@@ -414,23 +599,28 @@ export async function getAccountingSummary({
         {
           $group: {
             _id: null,
-            billedPaisa:    { $sum: { $subtract: ["$grossRentAmountPaisa", { $ifNull: ["$tdsAmountPaisa", 0] }] } },
-            collectedPaisa: { $sum: { $ifNull: ["$paidAmountPaisa", 0] } },
-            totalRents:     { $sum: 1 },
-            paidCount:      { $sum: { $cond: [{ $eq: ["$status", "paid"] }, 1, 0] } },
+            grossBilledPaisa: { $sum: { $ifNull: ["$grossRentAmountPaisa", 0] } },
+            tdsPaisa:         { $sum: { $ifNull: ["$tdsAmountPaisa", 0] } },
+            billedPaisa:      { $sum: { $subtract: ["$grossRentAmountPaisa", { $ifNull: ["$tdsAmountPaisa", 0] }] } },
+            collectedPaisa:   { $sum: { $ifNull: ["$paidAmountPaisa", 0] } },
+            totalRents: { $sum: 1 },
+            paidCount: { $sum: { $cond: [{ $eq: ["$status", "paid"] }, 1, 0] } },
           },
         },
       ]);
     })(),
+    getCashFlowBreakdown(ledgerMatch, entityId),
   ]);
 
   const { totalRevenuePaisa, totalExpensePaisa, revenueByCode, expenseByCode } =
     processAccountTotals(accountRows);
 
   // ── Collection gap (rent billed vs collected for the period) ─────────────
-  const cRow           = collectionRows[0] ?? {};
-  const billedPaisa    = Math.max(0, cRow.billedPaisa    ?? 0);
-  const collectedPaisa = Math.max(0, cRow.collectedPaisa ?? 0);
+  const cRow = collectionRows[0] ?? {};
+  const grossBilledPaisa       = Math.max(0, cRow.grossBilledPaisa ?? 0);
+  const tdsPaisa               = Math.max(0, cRow.tdsPaisa ?? 0);
+  const billedPaisa            = Math.max(0, cRow.billedPaisa ?? 0); // net of TDS
+  const collectedPaisa         = Math.max(0, cRow.collectedPaisa ?? 0);
   const outstandingCollectionPaisa = Math.max(0, billedPaisa - collectedPaisa);
   const collectionRatePct = billedPaisa > 0
     ? +((collectedPaisa / billedPaisa) * 100).toFixed(1)
@@ -440,11 +630,11 @@ export async function getAccountingSummary({
   const incomeStreams = { breakdown: [] };
   for (const [code, { name, netPaisa }] of revenueByCode) {
     const streamKey = REVENUE_ACCOUNT_STREAM[code] ?? code;
-    const amount    = paisaToRupees(netPaisa);
+    const amount = paisaToRupees(netPaisa);
     incomeStreams.breakdown.push({ code: streamKey, name, amount });
     // Backward-compat named properties the frontend dashboard reads
-    if (streamKey === "RENT")    incomeStreams.rentRevenue    = amount;
-    if (streamKey === "CAM")     incomeStreams.camRevenue     = amount;
+    if (streamKey === "RENT") incomeStreams.rentRevenue = amount;
+    if (streamKey === "CAM") incomeStreams.camRevenue = amount;
     if (streamKey === "UTILITY") incomeStreams.utilityRevenue = amount;
   }
 
@@ -455,10 +645,10 @@ export async function getAccountingSummary({
   }
 
   // ── Summary totals ────────────────────────────────────────────────────────
-  const totalRevenue     = paisaToRupees(totalRevenuePaisa);
-  const totalExpenses    = paisaToRupees(totalExpensePaisa);
+  const totalRevenue = paisaToRupees(totalRevenuePaisa);
+  const totalExpenses = paisaToRupees(totalExpensePaisa);
   const totalLiabilities = paisaToRupees(totalLiabilityPaisa);
-  const netCashFlow      = totalRevenue - totalExpenses;
+  const netCashFlow = totalRevenue - totalExpenses;
 
   // ── Ledger summary (for audit trail / ledger tab) ─────────────────────────
   // Re-aggregate without account join for the raw ledger tab
@@ -467,9 +657,9 @@ export async function getAccountingSummary({
     {
       $group: {
         _id: null,
-        totalDebitPaisa:  { $sum: "$debitAmountPaisa" },
+        totalDebitPaisa: { $sum: "$debitAmountPaisa" },
         totalCreditPaisa: { $sum: "$creditAmountPaisa" },
-        entryCount:       { $sum: 1 },
+        entryCount: { $sum: 1 },
       },
     },
   ]);
@@ -483,42 +673,48 @@ export async function getAccountingSummary({
       // not true cash flow. Use operatingCashFlow for actual cash movement.
       netCashFlow,
       netIncome: netCashFlow, // correctly-labeled alias
-      cashBalance:         paisaToRupees(bsKPIs.cashBalancePaisa),
-      arBalance:           paisaToRupees(bsKPIs.arBalancePaisa),
-      apBalance:           paisaToRupees(bsKPIs.apBalancePaisa),
-      operatingCashFlow:   paisaToRupees(operatingCashFlowPaisa),
+      cashBalance: paisaToRupees(bsKPIs.cashBalancePaisa),
+      arBalance: paisaToRupees(bsKPIs.arBalancePaisa),
+      apBalance: paisaToRupees(bsKPIs.apBalancePaisa),
+      operatingCashFlow: paisaToRupees(operatingCashFlowPaisa),
       // Paisa variants — use these in downstream functions to avoid rupee×100 fragility
       totalRevenuePaisa,
       totalExpensePaisa,
       totalLiabilityPaisa,
-      netCashFlowPaisa:        totalRevenuePaisa - totalExpensePaisa,
-      cashBalancePaisa:        bsKPIs.cashBalancePaisa,
-      arBalancePaisa:          bsKPIs.arBalancePaisa,
-      apBalancePaisa:          bsKPIs.apBalancePaisa,
+      netCashFlowPaisa: totalRevenuePaisa - totalExpensePaisa,
+      cashBalancePaisa: bsKPIs.cashBalancePaisa,
+      arBalancePaisa: bsKPIs.arBalancePaisa,
+      apBalancePaisa: bsKPIs.apBalancePaisa,
       operatingCashFlowPaisa,
     },
     collectionGap: {
+      // Gross = full rent before TDS; billed = net tenant cash obligation (gross - TDS)
+      grossBilledPaisa,
+      tdsPaisa,
       billedPaisa,
       collectedPaisa,
       outstandingPaisa: outstandingCollectionPaisa,
       collectionRatePct,
+      grossBilled: paisaToRupees(grossBilledPaisa),
+      tds:         paisaToRupees(tdsPaisa),
       billed:      paisaToRupees(billedPaisa),
       collected:   paisaToRupees(collectedPaisa),
       outstanding: paisaToRupees(outstandingCollectionPaisa),
-      totalRents:  cRow.totalRents ?? 0,
-      paidCount:   cRow.paidCount  ?? 0,
+      totalRents: cRow.totalRents ?? 0,
+      paidCount:  cRow.paidCount ?? 0,
     },
     incomeStreams,
     liabilitiesBreakdown,
     expensesBreakdown,
+    cashFlowBreakdown,
     ledger: {
       grandTotal: {
         paisa: {
-          totalDebit:  ledgerTotals?.totalDebitPaisa  ?? 0,
+          totalDebit: ledgerTotals?.totalDebitPaisa ?? 0,
           totalCredit: ledgerTotals?.totalCreditPaisa ?? 0,
-          netBalance:  (ledgerTotals?.totalDebitPaisa ?? 0) - (ledgerTotals?.totalCreditPaisa ?? 0),
+          netBalance: (ledgerTotals?.totalDebitPaisa ?? 0) - (ledgerTotals?.totalCreditPaisa ?? 0),
         },
-        totalDebit:  paisaToRupees(ledgerTotals?.totalDebitPaisa  ?? 0),
+        totalDebit: paisaToRupees(ledgerTotals?.totalDebitPaisa ?? 0),
         totalCredit: paisaToRupees(ledgerTotals?.totalCreditPaisa ?? 0),
         totalEntries: ledgerTotals?.entryCount ?? 0,
       },
@@ -535,7 +731,7 @@ export async function getPortfolioHealth({
 } = {}) {
   const { resolvedStart, resolvedEnd } = resolveDateRange({ startDate, endDate, month, quarter, fiscalYear });
 
-  const dateFilter  = buildDateFilter(resolvedStart, resolvedEnd);
+  const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
   const entityFilter = buildEntityFilter(entityId);
 
   // ── 1. YoY summaries ──────────────────────────────────────────────────────
@@ -556,10 +752,10 @@ export async function getPortfolioHealth({
     {
       $group: {
         _id: "$status",
-        count:      { $sum: 1 },
+        count: { $sum: 1 },
         grossPaisa: { $sum: "$grossRentAmountPaisa" },
-        paidPaisa:  { $sum: "$paidAmountPaisa" },
-        tdsPaisa:   { $sum: { $ifNull: ["$tdsAmountPaisa", 0] } },
+        paidPaisa: { $sum: "$paidAmountPaisa" },
+        tdsPaisa: { $sum: { $ifNull: ["$tdsAmountPaisa", 0] } },
       },
     },
   ]);
@@ -596,9 +792,9 @@ export async function getPortfolioHealth({
         _id: {
           $switch: {
             branches: [
-              { case: { $lte: ["$daysPastDue", 0]  }, then: "current" },
-              { case: { $lte: ["$daysPastDue", 30] }, then: "1-30"    },
-              { case: { $lte: ["$daysPastDue", 60] }, then: "31-60"   },
+              { case: { $lte: ["$daysPastDue", 0] }, then: "current" },
+              { case: { $lte: ["$daysPastDue", 30] }, then: "1-30" },
+              { case: { $lte: ["$daysPastDue", 60] }, then: "31-60" },
             ],
             default: "60+",
           },
@@ -610,9 +806,9 @@ export async function getPortfolioHealth({
   ]);
 
   const arrearsAging = {
-    current:  { count: 0, amountPaisa: 0 },
-    days30:   { count: 0, amountPaisa: 0 },
-    days60:   { count: 0, amountPaisa: 0 },
+    current: { count: 0, amountPaisa: 0 },
+    days30: { count: 0, amountPaisa: 0 },
+    days60: { count: 0, amountPaisa: 0 },
     days90Plus: { count: 0, amountPaisa: 0 },
   };
   for (const b of agingPipeline) {
@@ -621,8 +817,9 @@ export async function getPortfolioHealth({
   }
 
   // ── 4. NOI (from ledger totals now) ──────────────────────────────────────
-  // NOI = Revenue − Operating Expenses (excl. loan interest & NEA payable)
-  // Operating expenses = all EXPENSE accounts EXCEPT 5100 (interest) and 5610 (NEA)
+  // NOI = Revenue − Operating Expenses (excl. loan interest)
+  // 5616 (demand charge) and 5615 (common area) are now OPERATING → included in NOI calc.
+  // 5610 legacy entries remain ELECTRICITY_NEA → excluded (same as before).
   const { resolvedStart: s, resolvedEnd: e } = resolveDateRange({ startDate, endDate, month, quarter, fiscalYear });
   const noiLedgerMatch = buildLedgerMatch(s, e, entityId);
   const expRows = await aggregateLedgerByAccount(noiLedgerMatch);
@@ -644,17 +841,17 @@ export async function getPortfolioHealth({
   const yoyDeltas = prevSummary ? {
     revenue: {
       currentPaisa: currentSummary.totals.totalRevenuePaisa,
-      prevPaisa:    prevSummary.totals.totalRevenuePaisa,
+      prevPaisa: prevSummary.totals.totalRevenuePaisa,
       pct: pctChange(prevSummary.totals.totalRevenue, currentSummary.totals.totalRevenue),
     },
     expenses: {
       currentPaisa: currentSummary.totals.totalExpensePaisa,
-      prevPaisa:    prevSummary.totals.totalExpensePaisa,
+      prevPaisa: prevSummary.totals.totalExpensePaisa,
       pct: pctChange(prevSummary.totals.totalExpenses, currentSummary.totals.totalExpenses),
     },
     netCashFlow: {
       currentPaisa: currentSummary.totals.netCashFlowPaisa,
-      prevPaisa:    prevSummary.totals.netCashFlowPaisa,
+      prevPaisa: prevSummary.totals.netCashFlowPaisa,
       pct: pctChange(prevSummary.totals.netCashFlow, currentSummary.totals.netCashFlow),
     },
   } : null;
@@ -707,9 +904,9 @@ export async function getMonthlyChartData({
   }
 
   const firstMonth = months[0];
-  const lastMonth  = months[months.length - 1];
+  const lastMonth = months[months.length - 1];
   const { startDate: rangeStart } = bsMonthToDateRange(firstMonth.year, firstMonth.month0);
-  const { endDate: rangeEnd }     = bsMonthToDateRange(lastMonth.year,  lastMonth.month0);
+  const { endDate: rangeEnd } = bsMonthToDateRange(lastMonth.year, lastMonth.month0);
 
   const ledgerMatch = buildLedgerMatch(rangeStart, rangeEnd, entityId);
 
@@ -729,12 +926,12 @@ export async function getMonthlyChartData({
     {
       $group: {
         _id: {
-          year:  "$nepaliYear",
+          year: "$nepaliYear",
           month: "$nepaliMonth",
-          type:  "$acct.type",
+          type: "$acct.type",
         },
         creditPaisa: { $sum: "$creditAmountPaisa" },
-        debitPaisa:  { $sum: "$debitAmountPaisa" },
+        debitPaisa: { $sum: "$debitAmountPaisa" },
       },
     },
   ]);
@@ -746,20 +943,20 @@ export async function getMonthlyChartData({
     const key = `${row._id.year}-${String(row._id.month).padStart(2, "0")}`;
     if (!byKey.has(key)) byKey.set(key, { revPaisa: 0, expPaisa: 0, liabPaisa: 0 });
     const entry = byKey.get(key);
-    if (row._id.type === "REVENUE")    entry.revPaisa  += row.creditPaisa - row.debitPaisa;
-    if (row._id.type === "EXPENSE")    entry.expPaisa  += row.debitPaisa  - row.creditPaisa;
-    if (row._id.type === "LIABILITY")  entry.liabPaisa += row.creditPaisa - row.debitPaisa;
+    if (row._id.type === "REVENUE") entry.revPaisa += row.creditPaisa - row.debitPaisa;
+    if (row._id.type === "EXPENSE") entry.expPaisa += row.debitPaisa - row.creditPaisa;
+    if (row._id.type === "LIABILITY") entry.liabPaisa += row.creditPaisa - row.debitPaisa;
   }
 
   return months.map(({ year, month0 }) => {
     const nepaliMonth = month0 + 1;
     const key = `${year}-${String(nepaliMonth).padStart(2, "0")}`;
-    const d   = byKey.get(key) ?? { revPaisa: 0, expPaisa: 0, liabPaisa: 0 };
+    const d = byKey.get(key) ?? { revPaisa: 0, expPaisa: 0, liabPaisa: 0 };
     return {
       key,
-      label:       NEPALI_MONTH_NAMES[month0],
-      revenue:     paisaToRupees(d.revPaisa),
-      expenses:    paisaToRupees(d.expPaisa),
+      label: NEPALI_MONTH_NAMES[month0],
+      revenue: paisaToRupees(d.revPaisa),
+      expenses: paisaToRupees(d.expPaisa),
       liabilities: paisaToRupees(d.liabPaisa),
     };
   });
@@ -779,11 +976,11 @@ export async function getRevenueBreakdownSummary({
 } = {}) {
   const { resolvedStart, resolvedEnd } = resolveDateRange({ startDate, endDate, month, quarter, fiscalYear });
 
-  const dateFilter   = buildDateFilter(resolvedStart, resolvedEnd);
+  const dateFilter = buildDateFilter(resolvedStart, resolvedEnd);
   const entityFilter = buildEntityFilter(entityId);
 
   const match = { ...entityFilter };
-  if (dateFilter)    match.englishDate   = dateFilter;
+  if (dateFilter) match.englishDate = dateFilter;
   if (paymentMethod) match.paymentMethod = paymentMethod;
 
   const revenues = await Revenue.aggregate([
@@ -811,7 +1008,7 @@ export async function getRevenueBreakdownSummary({
   const totalPaisa = revenues.reduce((s, r) => s + (r.amountPaisa || 0), 0);
   const total = paisaToRupees(totalPaisa);
   const count = revenues.length;
-  const avg   = count ? total / count : 0;
+  const avg = count ? total / count : 0;
 
   const srcMap = new Map();
   revenues.forEach((r) => {
@@ -848,7 +1045,7 @@ export async function getRevenueBreakdownSummary({
     else externalPaisa += r.amountPaisa || 0;
   });
   const payerSplit = [
-    { name: "Tenant",   amount: paisaToRupees(tenantPaisa),   pct: total > 0 ? +((paisaToRupees(tenantPaisa)   / total) * 100).toFixed(1) : 0 },
+    { name: "Tenant", amount: paisaToRupees(tenantPaisa), pct: total > 0 ? +((paisaToRupees(tenantPaisa) / total) * 100).toFixed(1) : 0 },
     { name: "External", amount: paisaToRupees(externalPaisa), pct: total > 0 ? +((paisaToRupees(externalPaisa) / total) * 100).toFixed(1) : 0 },
   ].filter((p) => p.amount > 0);
 
@@ -974,13 +1171,13 @@ export async function getExpenseBreakdownSummary({
   const totalPaisa = expenses.reduce((s, e) => s + (e.amountPaisa || 0), 0);
   const total = paisaToRupees(totalPaisa);
   const count = expenses.length;
-  const avg   = count ? total / count : 0;
+  const avg = count ? total / count : 0;
 
   const catMap = new Map();
   expenses.forEach((e) => {
     const isLoanInterest = e.referenceType === "LOAN_INTEREST";
     const src = e.source && e.source._id ? e.source : null;
-    const id  = src ? String(src._id) : isLoanInterest ? "__LOAN_INTEREST__" : `orphan_${e._id}`;
+    const id = src ? String(src._id) : isLoanInterest ? "__LOAN_INTEREST__" : `orphan_${e._id}`;
     if (!catMap.has(id)) {
       catMap.set(id, {
         code: src?.code ?? (isLoanInterest ? "INTEREST" : "?"),
@@ -1027,7 +1224,7 @@ export async function getExpenseBreakdownSummary({
   });
   const payeeSplit = [
     { name: "External", amount: paisaToRupees(extPaisa), pct: total > 0 ? +((paisaToRupees(extPaisa) / total) * 100).toFixed(1) : 0 },
-    { name: "Tenant",   amount: paisaToRupees(tenPaisa), pct: total > 0 ? +((paisaToRupees(tenPaisa)  / total) * 100).toFixed(1) : 0 },
+    { name: "Tenant", amount: paisaToRupees(tenPaisa), pct: total > 0 ? +((paisaToRupees(tenPaisa) / total) * 100).toFixed(1) : 0 },
   ].filter((p) => p.amount > 0);
 
   const methodMap = new Map();
@@ -1078,9 +1275,9 @@ export async function getExpenseBreakdownSummary({
     bsDate: e.nepaliYear && e.nepaliMonth
       ? `${NEPALI_MONTH_NAMES[(e.nepaliMonth - 1) % 12]} ${e.nepaliYear}`
       : (() => {
-          const bs = toBS(new Date(e.englishDate ?? e.createdAt));
-          return bs ? `${NEPALI_MONTH_NAMES[bs.month0]} ${bs.year}` : "—";
-        })(),
+        const bs = toBS(new Date(e.englishDate ?? e.createdAt));
+        return bs ? `${NEPALI_MONTH_NAMES[bs.month0]} ${bs.year}` : "—";
+      })(),
     status: e.status ?? "RECORDED",
     notes: e.notes ?? "",
     paymentMethod: e.paymentMethod ?? null,
@@ -1108,117 +1305,314 @@ export async function getExpenseBreakdownSummary({
  * become more detailed.
  */
 export async function getProfitLossStatement({
-  startDate, endDate, quarter, month, fiscalYear, entityId = null,
+  startDate,
+  endDate,
+  quarter,
+  month,
+  fiscalYear,
+  entityId = null,
 }) {
-  const { resolvedStart, resolvedEnd } = resolveDateRange({ startDate, endDate, month, quarter, fiscalYear });
+  const { resolvedStart, resolvedEnd } = resolveDateRange({
+    startDate,
+    endDate,
+    month,
+    quarter,
+    fiscalYear,
+  });
 
-  const ledgerMatch = buildLedgerMatch(resolvedStart, resolvedEnd, entityId);
+  const ledgerMatch = buildLedgerMatch(
+    resolvedStart,
+    resolvedEnd,
+    entityId
+  );
 
   const prevFiscalYear = fiscalYear ? fiscalYear - 1 : null;
 
   const [accountRows, prevSummary, monthlyTrend] = await Promise.all([
     aggregateLedgerByAccount(ledgerMatch),
+
     prevFiscalYear !== null
-      ? getAccountingSummary({ quarter, month, fiscalYear: prevFiscalYear, entityId })
+      ? getAccountingSummary({
+        quarter,
+        month,
+        fiscalYear: prevFiscalYear,
+        entityId,
+      })
       : Promise.resolve(null),
+
     fiscalYear
-      ? getMonthlyChartData({ fiscalYear, allYear: true, entityId })
-      : getMonthlyChartData({ quarter, entityId }),
+      ? getMonthlyChartData({
+        fiscalYear,
+        allYear: true,
+        entityId,
+      })
+      : getMonthlyChartData({
+        quarter,
+        entityId,
+      }),
   ]);
 
-  const { totalRevenuePaisa, totalExpensePaisa, revenueByCode, expenseByCode } =
-    processAccountTotals(accountRows);
+  const {
+    totalRevenuePaisa,
+    totalExpensePaisa,
+    revenueByCode,
+    expenseByCode,
+  } = processAccountTotals(accountRows);
 
-  // ── Expense category breakdown by account code ────────────────────────────
-  let operatingExpPaisa  = 0;
-  let interestPaisa      = 0;
-  let electricityPaisa   = 0; // NEA accrual — shown as pending payable
-  let maintenancePaisa   = 0;
-  let otherExpPaisa      = 0;
+  // ─────────────────────────────────────────────────────────────
+  // EXPENSE CLASSIFICATION
+  // ─────────────────────────────────────────────────────────────
+
+  let operatingExpPaisa = 0;
+
+  let interestPaisa = 0;
+
+  let electricityPaisa = 0;
+
+  let maintenancePaisa = 0;
+
+  let utilityPaisa = 0;
+
+  let salaryPaisa = 0;
+
+  let manualPaisa = 0;
 
   for (const [code, { netPaisa }] of expenseByCode) {
     const cat = EXPENSE_ACCOUNT_CATEGORY[code] ?? "OPERATING";
-    if (cat === "LOAN_INTEREST") {
-      interestPaisa += netPaisa;
-    } else if (cat === "ELECTRICITY_NEA") {
-      electricityPaisa += netPaisa;
-    } else {
-      operatingExpPaisa += netPaisa;
+
+    switch (cat) {
+      case "LOAN_INTEREST": {
+        interestPaisa += netPaisa;
+        break;
+      }
+
+      case "ELECTRICITY_NEA": {
+        electricityPaisa += netPaisa;
+        utilityPaisa += netPaisa;
+        operatingExpPaisa += netPaisa;
+        break;
+      }
+
+      case "MAINTENANCE": {
+        maintenancePaisa += netPaisa;
+        operatingExpPaisa += netPaisa;
+        break;
+      }
+
+      case "SALARY": {
+        salaryPaisa += netPaisa;
+        operatingExpPaisa += netPaisa;
+        break;
+      }
+
+      case "UTILITY": {
+        utilityPaisa += netPaisa;
+        operatingExpPaisa += netPaisa;
+        break;
+      }
+
+      default: {
+        manualPaisa += netPaisa;
+        operatingExpPaisa += netPaisa;
+      }
     }
   }
 
-  const grossRevenuePaisa  = totalRevenuePaisa;
-  const ebitPaisa          = grossRevenuePaisa - operatingExpPaisa;
-  const netIncomePaisa     = ebitPaisa - interestPaisa;
-  const totalCashExpPaisa  = operatingExpPaisa + interestPaisa;
+  // ─────────────────────────────────────────────────────────────
+  // PROFIT CALCULATIONS
+  // ─────────────────────────────────────────────────────────────
 
-  const ebitMarginPct   = grossRevenuePaisa > 0 ? +((ebitPaisa      / grossRevenuePaisa) * 100).toFixed(1) : 0;
-  const netMarginPct    = grossRevenuePaisa > 0 ? +((netIncomePaisa  / grossRevenuePaisa) * 100).toFixed(1) : 0;
-  const expenseRatioPct = grossRevenuePaisa > 0 ? +((totalCashExpPaisa / grossRevenuePaisa) * 100).toFixed(1) : 0;
+  const grossRevenuePaisa = totalRevenuePaisa;
 
-  // Revenue breakdown for display
-  const revenueBreakdown = [...revenueByCode.entries()].map(([code, { name, netPaisa }]) => ({
+  const ebitPaisa =
+    grossRevenuePaisa - operatingExpPaisa;
+
+  const netIncomePaisa =
+    ebitPaisa - interestPaisa;
+
+  const totalCashExpPaisa =
+    operatingExpPaisa + interestPaisa;
+
+  const ebitMarginPct =
+    grossRevenuePaisa > 0
+      ? +(
+        (ebitPaisa / grossRevenuePaisa) *
+        100
+      ).toFixed(1)
+      : 0;
+
+  const netMarginPct =
+    grossRevenuePaisa > 0
+      ? +(
+        (netIncomePaisa / grossRevenuePaisa) *
+        100
+      ).toFixed(1)
+      : 0;
+
+  const expenseRatioPct =
+    grossRevenuePaisa > 0
+      ? +(
+        (totalCashExpPaisa / grossRevenuePaisa) *
+        100
+      ).toFixed(1)
+      : 0;
+
+  // ─────────────────────────────────────────────────────────────
+  // REVENUE BREAKDOWN
+  // ─────────────────────────────────────────────────────────────
+
+  const revenueBreakdown = [
+    ...revenueByCode.entries(),
+  ].map(([code, { name, netPaisa }]) => ({
     code: REVENUE_ACCOUNT_STREAM[code] ?? code,
     name,
     amount: paisaToRupees(netPaisa),
   }));
 
-  const expensesBreakdown = [...expenseByCode.entries()].map(([code, { name, netPaisa }]) => ({
+  // ─────────────────────────────────────────────────────────────
+  // EXPENSE BREAKDOWN
+  // ─────────────────────────────────────────────────────────────
+
+  const expensesBreakdown = [
+    ...expenseByCode.entries(),
+  ].map(([code, { name, netPaisa }]) => ({
     code,
+    category:
+      EXPENSE_ACCOUNT_CATEGORY[code] ?? "OPERATING",
     name,
     amount: paisaToRupees(netPaisa),
   }));
 
-  // ── YoY comparison ────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
+  // YOY COMPARISON
+  // ─────────────────────────────────────────────────────────────
+
   let comparison = null;
+
   if (prevSummary) {
-    const prevRevPaisa = prevSummary.totals.totalRevenuePaisa ?? 0;
-    const prevExpPaisa = prevSummary.totals.totalExpensePaisa ?? 0;
-    const prevNetPaisa = prevSummary.totals.netCashFlowPaisa  ?? 0;
+    const prevRevPaisa =
+      prevSummary.totals.totalRevenuePaisa ?? 0;
+
+    const prevExpPaisa =
+      prevSummary.totals.totalExpensePaisa ?? 0;
+
+    const prevNetPaisa =
+      prevSummary.totals.netCashFlowPaisa ?? 0;
+
     comparison = {
       prevFiscalYear,
-      prevRevenuePaisa:   prevRevPaisa,
-      prevExpensesPaisa:  prevExpPaisa,
+
+      prevRevenuePaisa: prevRevPaisa,
+
+      prevExpensesPaisa: prevExpPaisa,
+
       prevNetIncomePaisa: prevNetPaisa,
-      revenuePct:  pctChange(paisaToRupees(prevRevPaisa), paisaToRupees(grossRevenuePaisa)),
-      expensesPct: pctChange(paisaToRupees(prevExpPaisa), paisaToRupees(totalExpensePaisa)),
-      netPct:      pctChange(paisaToRupees(prevNetPaisa), paisaToRupees(netIncomePaisa)),
+
+      revenuePct: pctChange(
+        paisaToRupees(prevRevPaisa),
+        paisaToRupees(grossRevenuePaisa)
+      ),
+
+      expensesPct: pctChange(
+        paisaToRupees(prevExpPaisa),
+        paisaToRupees(totalExpensePaisa)
+      ),
+
+      netPct: pctChange(
+        paisaToRupees(prevNetPaisa),
+        paisaToRupees(netIncomePaisa)
+      ),
     };
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // RESPONSE
+  // ─────────────────────────────────────────────────────────────
+
   return {
-    period: { fiscalYear, quarter, month, startDate: resolvedStart, endDate: resolvedEnd },
+    period: {
+      fiscalYear,
+      quarter,
+      month,
+      startDate: resolvedStart,
+      endDate: resolvedEnd,
+    },
+
     revenue: {
-      totalPaisa:  grossRevenuePaisa,
-      totalRupees: paisaToRupees(grossRevenuePaisa),
-      breakdown:   revenueBreakdown,
+      totalPaisa: grossRevenuePaisa,
+
+      totalRupees:
+        paisaToRupees(grossRevenuePaisa),
+
+      breakdown: revenueBreakdown,
     },
+
     expenses: {
-      totalCashPaisa:   totalCashExpPaisa,
-      totalCashRupees:  paisaToRupees(totalCashExpPaisa),
-      operatingPaisa:   operatingExpPaisa,
-      operatingRupees:  paisaToRupees(operatingExpPaisa),
+      totalCashPaisa: totalCashExpPaisa,
+
+      totalCashRupees:
+        paisaToRupees(totalCashExpPaisa),
+
+      operatingPaisa: operatingExpPaisa,
+
+      operatingRupees:
+        paisaToRupees(operatingExpPaisa),
+
       interestPaisa,
-      interestRupees:   paisaToRupees(interestPaisa),
-      electricityPaisa, // NEA accrual — pending payable, shown separately
-      maintenancePaisa, // 0 until dedicated account code added (see accounts.js)
-      utilityPaisa: 0,  // 0 until dedicated account code added
-      salaryPaisa:  0,  // 0 until dedicated account code added
-      manualPaisa:  operatingExpPaisa, // all goes to 5000 until codes split
-      breakdown:    expensesBreakdown,
+
+      interestRupees:
+        paisaToRupees(interestPaisa),
+
+      electricityPaisa,
+
+      electricityRupees:
+        paisaToRupees(electricityPaisa),
+
+      maintenancePaisa,
+
+      maintenanceRupees:
+        paisaToRupees(maintenancePaisa),
+
+      utilityPaisa,
+
+      utilityRupees:
+        paisaToRupees(utilityPaisa),
+
+      salaryPaisa,
+
+      salaryRupees:
+        paisaToRupees(salaryPaisa),
+
+      manualPaisa,
+
+      manualRupees:
+        paisaToRupees(manualPaisa),
+
+      breakdown: expensesBreakdown,
     },
+
     ebit: {
-      paisa:     ebitPaisa,
-      rupees:    paisaToRupees(ebitPaisa),
+      paisa: ebitPaisa,
+
+      rupees:
+        paisaToRupees(ebitPaisa),
+
       marginPct: ebitMarginPct,
     },
+
     netIncome: {
-      paisa:     netIncomePaisa,
-      rupees:    paisaToRupees(netIncomePaisa),
+      paisa: netIncomePaisa,
+
+      rupees:
+        paisaToRupees(netIncomePaisa),
+
       marginPct: netMarginPct,
     },
+
     expenseRatioPct,
+
     comparison,
+
     monthlyTrend,
   };
 }
@@ -1251,30 +1645,30 @@ export async function getFinancialRatios({
   ]);
 
   // Use paisa variants directly — no × 100 fragility
-  const revPaisa  = currentSummary.totals.totalRevenuePaisa  ?? 0;
-  const expPaisa  = currentSummary.totals.totalExpensePaisa  ?? 0;
-  const netPaisa  = currentSummary.totals.netCashFlowPaisa   ?? 0;
+  const revPaisa = currentSummary.totals.totalRevenuePaisa ?? 0;
+  const expPaisa = currentSummary.totals.totalExpensePaisa ?? 0;
+  const netPaisa = currentSummary.totals.netCashFlowPaisa ?? 0;
   const liabPaisa = currentSummary.totals.totalLiabilityPaisa ?? 0;
 
-  const netMarginPct       = revPaisa > 0 ? +((netPaisa  / revPaisa) * 100).toFixed(2) : 0;
+  const netMarginPct = revPaisa > 0 ? +((netPaisa / revPaisa) * 100).toFixed(2) : 0;
   const operatingMarginPct = health.noi.noiMarginPct;
-  const expenseRatioPct    = revPaisa > 0 ? +((expPaisa  / revPaisa) * 100).toFixed(2) : 0;
-  const grossProfitPct     = revPaisa > 0 ? +((health.noi.noiPaisa / revPaisa) * 100).toFixed(2) : 0;
+  const expenseRatioPct = revPaisa > 0 ? +((expPaisa / revPaisa) * 100).toFixed(2) : 0;
+  const grossProfitPct = revPaisa > 0 ? +((health.noi.noiPaisa / revPaisa) * 100).toFixed(2) : 0;
 
   let prevRatios = null;
   if (prevSummary) {
-    const pRev = prevSummary.totals.totalRevenuePaisa  ?? 0;
-    const pExp = prevSummary.totals.totalExpensePaisa  ?? 0;
-    const pNet = prevSummary.totals.netCashFlowPaisa   ?? 0;
+    const pRev = prevSummary.totals.totalRevenuePaisa ?? 0;
+    const pExp = prevSummary.totals.totalExpensePaisa ?? 0;
+    const pNet = prevSummary.totals.netCashFlowPaisa ?? 0;
     prevRatios = {
-      netMarginPct:    pRev > 0 ? +((pNet / pRev) * 100).toFixed(2) : 0,
+      netMarginPct: pRev > 0 ? +((pNet / pRev) * 100).toFixed(2) : 0,
       expenseRatioPct: pRev > 0 ? +((pExp / pRev) * 100).toFixed(2) : 0,
       revenuePaisa: pRev,
       expensesPaisa: pExp,
     };
   }
 
-  const debtToRevenuePct       = revPaisa > 0 ? +((liabPaisa / revPaisa) * 100).toFixed(2) : 0;
+  const debtToRevenuePct = revPaisa > 0 ? +((liabPaisa / revPaisa) * 100).toFixed(2) : 0;
   const annualDebtServicePaisa = debtServiceAgg[0]?.debtServicePaisa ?? 0;
   // DSCR = NOI / Debt Service. > 1.25 = healthy, 1.0-1.25 = watch, < 1.0 = distress
   const dscr = annualDebtServicePaisa > 0
@@ -1286,15 +1680,15 @@ export async function getFinancialRatios({
     : await getMonthlyChartData({ quarter, entityId });
 
   const ratioTrend = monthlyData.map((m) => {
-    const rev = m.revenue  ?? 0;
+    const rev = m.revenue ?? 0;
     const exp = m.expenses ?? 0;
     const net = rev - exp;
     return {
-      key:             m.key,
-      label:           m.label,
-      revenue:         rev,
-      expenses:        exp,
-      netMarginPct:    rev > 0 ? +((net / rev) * 100).toFixed(1) : 0,
+      key: m.key,
+      label: m.label,
+      revenue: rev,
+      expenses: exp,
+      netMarginPct: rev > 0 ? +((net / rev) * 100).toFixed(1) : 0,
       expenseRatioPct: rev > 0 ? +((exp / rev) * 100).toFixed(1) : 0,
     };
   });
@@ -1302,24 +1696,24 @@ export async function getFinancialRatios({
   return {
     profitability: { netMarginPct, operatingMarginPct, expenseRatioPct, grossProfitPct, prev: prevRatios },
     efficiency: {
-      collectionRatePct:   health.collection.ratePct,
+      collectionRatePct: health.collection.ratePct,
       outstandingRatioPct: health.collection.totalExpectedNetPaisa > 0
         ? +((health.collection.outstandingPaisa / health.collection.totalExpectedNetPaisa) * 100).toFixed(1)
         : 0,
       outstandingPaisa: health.collection.outstandingPaisa,
-      paidCount:        health.collection.paidCount,
-      totalRents:       health.collection.totalRents,
-      arrearsAging:     health.arrearsAging,
+      paidCount: health.collection.paidCount,
+      totalRents: health.collection.totalRents,
+      arrearsAging: health.arrearsAging,
     },
     leverage: {
       debtToRevenuePct,
-      totalLiabilitiesPaisa:     liabPaisa,
-      totalLiabilitiesRupees:    paisaToRupees(liabPaisa),
+      totalLiabilitiesPaisa: liabPaisa,
+      totalLiabilitiesRupees: paisaToRupees(liabPaisa),
       annualDebtServicePaisa,
-      annualDebtServiceRupees:   paisaToRupees(annualDebtServicePaisa),
+      annualDebtServiceRupees: paisaToRupees(annualDebtServicePaisa),
       dscr, // null = no debt; > 1.25 healthy; 1.0-1.25 watch; < 1.0 distress
     },
-    noi:       health.noi,
+    noi: health.noi,
     yoyDeltas: health.yoyDeltas,
     ratioTrend,
     summary: { revenuePaisa: revPaisa, expensesPaisa: expPaisa, netPaisa, liabPaisa },
@@ -1334,19 +1728,19 @@ function linearRegression(values) {
   const n = values.length;
   if (n === 0) return { slope: 0, intercept: 0 };
   if (n === 1) return { slope: 0, intercept: values[0] };
-  const sumX  = (n * (n - 1)) / 2;
+  const sumX = (n * (n - 1)) / 2;
   const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
-  const sumY  = values.reduce((s, v) => s + v, 0);
+  const sumY = values.reduce((s, v) => s + v, 0);
   const sumXY = values.reduce((s, v, i) => s + i * v, 0);
   const denom = n * sumX2 - sumX * sumX;
   if (denom === 0) return { slope: 0, intercept: sumY / n };
-  const slope     = (n * sumXY - sumX * sumY) / denom;
+  const slope = (n * sumXY - sumX * sumY) / denom;
   const intercept = (sumY - slope * sumX) / n;
   return { slope, intercept };
 }
 
 function rSquared(values, slope, intercept) {
-  const mean  = values.reduce((s, v) => s + v, 0) / values.length;
+  const mean = values.reduce((s, v) => s + v, 0) / values.length;
   const ssTot = values.reduce((s, v) => s + (v - mean) ** 2, 0);
   const ssRes = values.reduce((s, v, i) => s + (v - (slope * i + intercept)) ** 2, 0);
   return ssTot === 0 ? 1 : Math.max(0, 1 - ssRes / ssTot);
@@ -1354,44 +1748,44 @@ function rSquared(values, slope, intercept) {
 
 export async function getProjections({ fiscalYear, entityId = null }) {
   const currentFY = fiscalYear ?? new NepaliDate().getYear();
-  const prevFY    = currentFY - 1;
+  const prevFY = currentFY - 1;
 
   const [currentYearData, prevYearData] = await Promise.all([
     getMonthlyChartData({ fiscalYear: currentFY, allYear: true, entityId }),
-    getMonthlyChartData({ fiscalYear: prevFY,    allYear: true, entityId }),
+    getMonthlyChartData({ fiscalYear: prevFY, allYear: true, entityId }),
   ]);
 
-  const historicalRaw  = [...prevYearData, ...currentYearData];
-  const firstActivity  = historicalRaw.findIndex((m) => (m.revenue ?? 0) > 0 || (m.expenses ?? 0) > 0);
-  const historical     = firstActivity >= 0 ? historicalRaw.slice(firstActivity) : historicalRaw;
-  const last12         = historical.slice(-12);
+  const historicalRaw = [...prevYearData, ...currentYearData];
+  const firstActivity = historicalRaw.findIndex((m) => (m.revenue ?? 0) > 0 || (m.expenses ?? 0) > 0);
+  const historical = firstActivity >= 0 ? historicalRaw.slice(firstActivity) : historicalRaw;
+  const last12 = historical.slice(-12);
 
-  const revValues = last12.map((m) => m.revenue  ?? 0);
+  const revValues = last12.map((m) => m.revenue ?? 0);
   const expValues = last12.map((m) => m.expenses ?? 0);
 
   const revModel = linearRegression(revValues);
   const expModel = linearRegression(expValues);
-  const revR2    = rSquared(revValues, revModel.slope, revModel.intercept);
-  const expR2    = rSquared(expValues, expModel.slope, expModel.intercept);
+  const revR2 = rSquared(revValues, revModel.slope, revModel.intercept);
+  const expR2 = rSquared(expValues, expModel.slope, expModel.intercept);
 
-  const lastActual  = last12[last12.length - 1];
+  const lastActual = last12[last12.length - 1];
   const [lastYear, lastMonthStr] = (lastActual?.key ?? `${currentFY}-03`).split("-");
-  let projYear  = Number(lastYear);
+  let projYear = Number(lastYear);
   let projMonth = Number(lastMonthStr);
 
   const projected = [];
   for (let i = 0; i < 6; i++) {
     projMonth += 1;
     if (projMonth > 12) { projMonth = 1; projYear += 1; }
-    const idx     = last12.length + i;
+    const idx = last12.length + i;
     const baseRev = Math.max(0, revModel.slope * idx + revModel.intercept);
     const baseExp = Math.max(0, expModel.slope * idx + expModel.intercept);
-    const key     = `${projYear}-${String(projMonth).padStart(2, "0")}`;
-    const label   = NEPALI_MONTH_NAMES[(projMonth - 1) % 12];
+    const key = `${projYear}-${String(projMonth).padStart(2, "0")}`;
+    const label = NEPALI_MONTH_NAMES[(projMonth - 1) % 12];
     projected.push({
       key, label, isProjected: true,
-      base:        { revenue: +baseRev.toFixed(2), expenses: +baseExp.toFixed(2), net: +(baseRev - baseExp).toFixed(2) },
-      optimistic:  { revenue: +(baseRev * 1.15).toFixed(2), expenses: +(baseExp * 0.92).toFixed(2), net: +(baseRev * 1.15 - baseExp * 0.92).toFixed(2) },
+      base: { revenue: +baseRev.toFixed(2), expenses: +baseExp.toFixed(2), net: +(baseRev - baseExp).toFixed(2) },
+      optimistic: { revenue: +(baseRev * 1.15).toFixed(2), expenses: +(baseExp * 0.92).toFixed(2), net: +(baseRev * 1.15 - baseExp * 0.92).toFixed(2) },
       pessimistic: { revenue: +(baseRev * 0.85).toFixed(2), expenses: +(baseExp * 1.08).toFixed(2), net: +(baseRev * 0.85 - baseExp * 1.08).toFixed(2) },
     });
   }
@@ -1406,14 +1800,14 @@ export async function getProjections({ fiscalYear, entityId = null }) {
     historical: last12,
     projected,
     model: {
-      revenue:  { slope: +revModel.slope.toFixed(2), intercept: +revModel.intercept.toFixed(2), r2: +revR2.toFixed(3) },
+      revenue: { slope: +revModel.slope.toFixed(2), intercept: +revModel.intercept.toFixed(2), r2: +revR2.toFixed(3) },
       expenses: { slope: +expModel.slope.toFixed(2), intercept: +expModel.intercept.toFixed(2), r2: +expR2.toFixed(3) },
       dataPoints: last12.length,
     },
     stats: {
-      avgMonthlyRevenue:  +avgMonthlyRev.toFixed(2),
+      avgMonthlyRevenue: +avgMonthlyRev.toFixed(2),
       avgMonthlyExpenses: +avgMonthlyExp.toFixed(2),
-      avgMonthlyNet:      +(avgMonthlyRev - avgMonthlyExp).toFixed(2),
+      avgMonthlyNet: +(avgMonthlyRev - avgMonthlyExp).toFixed(2),
       projectedAnnualRev: +(projected.reduce((s, m) => s + m.base.revenue, 0) * 2).toFixed(2),
       revenueGrowthPct,
     },

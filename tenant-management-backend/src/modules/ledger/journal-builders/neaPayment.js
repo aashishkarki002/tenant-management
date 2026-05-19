@@ -4,10 +4,9 @@
  * Journal payload builder for clearing the NEA Payable when the owner pays
  * the NEA electricity bill.
  *
- * M2 FIX: buildElectricityNeaCostJournal (electricity.js) correctly CRs
- * NEA_PAYABLE (2050) when a charge is raised. Without this builder, account
- * 2050 grows unbounded and is never cleared. This builder discharges that
- * liability when the NEA bill is actually paid.
+ * buildNeaBillEnergyCostJournal and buildElectricityDemandChargeJournal (electricity.js)
+ * CR NEA_PAYABLE (2050) when the monthly NEA bill is uploaded. This builder
+ * discharges that liability when the NEA bill is actually paid.
  *
  * Double-entry:
  *   DR  NEA Payable (2050)      neaCostPaisa  — liability cleared

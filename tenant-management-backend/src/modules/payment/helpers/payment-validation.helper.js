@@ -38,7 +38,10 @@ export function validateUnitAllocations(
 
     if (!unit) throw new Error(`Unit ${unitId} not found in rent breakdown`);
 
-    const remaining = (unit.grossRentAmountPaisa || 0) - (unit.paidAmountPaisa || 0);
+    const remaining = Math.max(
+      0,
+      (unit.grossRentAmountPaisa || 0) - (unit.tdsAmountPaisa || 0) - (unit.paidAmountPaisa || 0),
+    );
     if (amountPaisa > remaining) {
       throw new Error(
         `Payment ${formatMoneySafe(amountPaisa)} exceeds remaining ${formatMoneySafe(remaining)} for unit ${unitId}`,
@@ -202,11 +205,11 @@ export function validatePaymentNotExceeding(
       );
     } else {
       const totalRemaining = rent.unitBreakdown.reduce((sum, unit) => {
-        return (
-          sum +
-          ((unit.grossRentAmountPaisa || 0) - (unit.paidAmountPaisa || 0)) +
-          (unit.lateFeePaisa || 0)
+        const unitRemaining = Math.max(
+          0,
+          (unit.grossRentAmountPaisa || 0) - (unit.tdsAmountPaisa || 0) - (unit.paidAmountPaisa || 0),
         );
+        return sum + unitRemaining + Math.max(0, (unit.lateFeePaisa || 0) - (unit.latePaidAmountPaisa || 0));
       }, 0);
       if (paymentPaisa > totalRemaining) {
         throw new Error(
@@ -215,10 +218,15 @@ export function validatePaymentNotExceeding(
       }
     }
   } else {
-    const remaining =
-      (rent.grossRentAmountPaisa || 0) -
-      (rent.paidAmountPaisa || 0) +
-      (rent.lateFeePaisa || 0);
+    const rentRemaining = Math.max(
+      0,
+      (rent.grossRentAmountPaisa || 0) - (rent.tdsAmountPaisa || 0) - (rent.paidAmountPaisa || 0),
+    );
+    const lateFeeRemaining = Math.max(
+      0,
+      (rent.lateFeePaisa || 0) - (rent.latePaidAmountPaisa || 0),
+    );
+    const remaining = rentRemaining + lateFeeRemaining;
     if (paymentPaisa > remaining) {
       throw new Error(
         `Payment ${formatMoneySafe(paymentPaisa)} exceeds remaining balance ${formatMoneySafe(remaining)}`,

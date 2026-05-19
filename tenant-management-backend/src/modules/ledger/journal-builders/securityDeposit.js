@@ -28,6 +28,15 @@ import {
 } from "../../../utils/paymentAccountUtils.js";
 import NepaliDate from "nepali-datetime";
 
+function resolveDrAccountLabel(paymentMethod, drAccountCode) {
+  if (paymentMethod === "cash") return "Cash";
+  if (paymentMethod === "cheque") return "Cheque";
+  if (paymentMethod === "mobile_wallet") return "Mobile Wallet";
+  // bank_transfer: drAccountCode is "1010-BANKNAME" — extract bank name
+  const parts = drAccountCode.split("-");
+  return parts.length > 1 ? `${parts.slice(1).join("-")} Bank` : drAccountCode;
+}
+
 function resolveNepaliDateString(raw, fallback) {
   if (typeof raw === "string" && raw.length > 0) return raw;
   const base = raw instanceof Date ? raw : fallback;
@@ -103,7 +112,9 @@ export function buildSecurityDepositJournal(sd, options = {}, bankAccountCode) {
   // ── 4. Description ───────────────────────────────────────────────────────
   const tenantName =
     optTenantName ?? sd?.tenant?.name ?? (sd?.tenant ? "Tenant" : "Unknown");
-  const description = `Security deposit received from ${tenantName}`;
+
+  const drLabel = resolveDrAccountLabel(paymentMethod, drAccountCode);
+  const description = `Security deposit received from ${tenantName} via ${drLabel}`;
 
   // ── 5. Payload ───────────────────────────────────────────────────────────
   return {
@@ -124,13 +135,13 @@ export function buildSecurityDepositJournal(sd, options = {}, bankAccountCode) {
         accountCode: drAccountCode, // ← specific bank or CASH, never hard-coded
         debitAmountPaisa: amountPaisa,
         creditAmountPaisa: 0,
-        description,
+        description: `${drLabel} — security deposit received from ${tenantName}`,
       },
       {
         accountCode: ACCOUNT_CODES.SECURITY_DEPOSIT_LIABILITY,
         debitAmountPaisa: 0,
         creditAmountPaisa: amountPaisa,
-        description,
+        description: `Security Deposit Liability — security deposit from ${tenantName}`,
       },
     ],
   };

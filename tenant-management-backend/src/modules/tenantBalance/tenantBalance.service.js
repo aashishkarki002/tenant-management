@@ -4,53 +4,53 @@
  * Two public exports:
  *
  *   syncTenantBalance(tenantId, session?)
- *     Called inside every service that mutates money (payment, cron charge).
- *     Runs two aggregations against Rent + CAM and upserts one document.
- *     Must receive the active Mongoose session so the snapshot stays
- *     consistent with the mutation that triggered it.
+ *     Called inside every service that mutates money (payment, cron charge,
+ *     advance rent receipt/recognition).
+ *     Runs aggregations against Rent, CAM, and AdvanceRent and upserts one
+ *     document.  Must receive the active Mongoose session so the snapshot
+ *     stays consistent with the mutation that triggered it.
  *
  *   rebuildAllTenantBalances()
- *     Sessionless batch rebuild. Run once after deployment, or nightly
- *     as a reconciliation guard. Safe to call at any time.
+ *     Sessionless batch rebuild.  Run once after deployment, or nightly as a
+ *     reconciliation guard.  Safe to call at any time.
  *
- * ── Why aggregation instead of loading documents ─────────────────────────────
+ * ── advancePaisa semantics ────────────────────────────────────────────────────
  *
- *   A tenant with 24 months of partial payments would require loading 24 Rent
- *   + 24 CAM documents just to compute one number. The aggregation pipeline
- *   does the arithmetic on the server and returns a single row — O(1) network
- *   traffic regardless of history length.
+ *   advancePaisa = sum of (amountPaisa - recognizedAmountPaisa) across all
+ *   ACTIVE AdvanceRent documents for the tenant.
+ *
+ *   totalDuePaisa = max(0, rentDue + camDue + lateFeeDue - advancePaisa)
+ *
+ *   A tenant who paid advance equal to or greater than their outstanding dues
+ *   will show totalDuePaisa = 0 (never negative).
  */
 
 import mongoose from "mongoose";
 import { Rent } from "../rents/rent.Model.js";
 import { Cam } from "../cam/cam.model.js";
+import { AdvanceRent } from "../advanceRent/AdvanceRent.Model.js";
+import { Electricity } from "../electricity/Electricity.Model.js";
 import { TenantBalance } from "./tenantBalance.model.js";
 
 const OPEN_STATUSES = ["pending", "partially_paid", "overdue"];
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
 
+function toObjectId(id) {
+  return id instanceof mongoose.Types.ObjectId
+    ? id
+    : new mongoose.Types.ObjectId(String(id));
+}
+
 /**
  * Returns { rentDuePaisa, lateFeeDuePaisa, oldestYear, oldestMonth }
- * for a single tenant across ALL their open Rent documents.
  */
 async function aggregateRent(tenantId, session) {
-  const tenantObjId =
-    tenantId instanceof mongoose.Types.ObjectId
-      ? tenantId
-      : new mongoose.Types.ObjectId(tenantId);
-
   const [row] = await Rent.aggregate([
-    {
-      $match: {
-        tenant: tenantObjId,
-        status: { $in: OPEN_STATUSES },
-      },
-    },
+    { $match: { tenant: toObjectId(tenantId), status: { $in: OPEN_STATUSES } } },
     {
       $group: {
         _id: null,
-        // (gross - tds) - paid  =  net rent still owed
         rentDuePaisa: {
           $sum: {
             $subtract: [
@@ -64,7 +64,6 @@ async function aggregateRent(tenantId, session) {
             ],
           },
         },
-        // late fee still owed
         lateFeeDuePaisa: {
           $sum: {
             $subtract: [
@@ -73,7 +72,6 @@ async function aggregateRent(tenantId, session) {
             ],
           },
         },
-        // oldest unpaid month for the "overdue since" badge
         oldestYear: { $min: "$nepaliYear" },
         oldestMonth: { $min: "$nepaliMonth" },
       },
@@ -89,21 +87,11 @@ async function aggregateRent(tenantId, session) {
 }
 
 /**
- * Returns { camDuePaisa } for a single tenant.
+ * Returns { camDuePaisa }
  */
 async function aggregateCam(tenantId, session) {
-  const tenantObjId =
-    tenantId instanceof mongoose.Types.ObjectId
-      ? tenantId
-      : new mongoose.Types.ObjectId(tenantId);
-
   const [row] = await Cam.aggregate([
-    {
-      $match: {
-        tenant: tenantObjId,
-        status: { $in: OPEN_STATUSES },
-      },
-    },
+    { $match: { tenant: toObjectId(tenantId), status: { $in: OPEN_STATUSES } } },
     {
       $group: {
         _id: null,
@@ -114,33 +102,74 @@ async function aggregateCam(tenantId, session) {
     },
   ]).session(session ?? null);
 
-  return {
-    camDuePaisa: Math.max(0, Math.round(row?.camDuePaisa ?? 0)),
-  };
+  return { camDuePaisa: Math.max(0, Math.round(row?.camDuePaisa ?? 0)) };
 }
 
 /**
- * Count how many consecutive months (walking backwards from the most recent
- * open month) the tenant has at least one open-status Rent document.
+ * Returns { advancePaisa }
+ *
+ * Sums unrecognized advance from all ACTIVE AdvanceRent documents:
+ *   unrecognized = amountPaisa - recognizedAmountPaisa
+ */
+async function aggregateAdvance(tenantId, session) {
+  const [row] = await AdvanceRent.aggregate([
+    {
+      $match: {
+        tenant: toObjectId(tenantId),
+        status: "ACTIVE",
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        advancePaisa: {
+          $sum: { $subtract: ["$amountPaisa", "$recognizedAmountPaisa"] },
+        },
+      },
+    },
+  ]).session(session ?? null);
+
+  return { advancePaisa: Math.max(0, Math.round(row?.advancePaisa ?? 0)) };
+}
+
+/**
+ * Returns { electricityDuePaisa }
+ */
+async function aggregateElectricity(tenantId, session) {
+  const [row] = await Electricity.aggregate([
+    {
+      $match: {
+        tenant: toObjectId(tenantId),
+        billTo: "tenant",
+        status: { $in: OPEN_STATUSES },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        electricityDuePaisa: {
+          $sum: { $subtract: ["$totalAmountPaisa", "$paidAmountPaisa"] },
+        },
+      },
+    },
+  ]).session(session ?? null);
+
+  return { electricityDuePaisa: Math.max(0, Math.round(row?.electricityDuePaisa ?? 0)) };
+}
+
+/**
+ * Count consecutive unpaid months walking backwards from the most recent open month.
  */
 async function computeConsecutiveUnpaidMonths(tenantId, session) {
-  const tenantObjId =
-    tenantId instanceof mongoose.Types.ObjectId
-      ? tenantId
-      : new mongoose.Types.ObjectId(tenantId);
-
   const openMonths = await Rent.aggregate([
-    { $match: { tenant: tenantObjId, status: { $in: OPEN_STATUSES } } },
+    { $match: { tenant: toObjectId(tenantId), status: { $in: OPEN_STATUSES } } },
     { $group: { _id: { year: "$nepaliYear", month: "$nepaliMonth" } } },
     { $sort: { "_id.year": -1, "_id.month": -1 } },
   ]).session(session ?? null);
 
   if (openMonths.length === 0) return 0;
 
-  const monthSet = new Set(
-    openMonths.map(({ _id }) => _id.year * 12 + _id.month),
-  );
-
+  const monthSet = new Set(openMonths.map(({ _id }) => _id.year * 12 + _id.month));
   let count = 0;
   let y = openMonths[0]._id.year;
   let m = openMonths[0]._id.month;
@@ -148,10 +177,7 @@ async function computeConsecutiveUnpaidMonths(tenantId, session) {
   while (monthSet.has(y * 12 + m)) {
     count++;
     m--;
-    if (m === 0) {
-      m = 12;
-      y--;
-    }
+    if (m === 0) { m = 12; y--; }
   }
 
   return count;
@@ -162,25 +188,30 @@ async function computeConsecutiveUnpaidMonths(tenantId, session) {
 /**
  * Recompute and upsert the TenantBalance snapshot for one tenant.
  *
- * Call this at the END of every service that mutates money, BEFORE
- * committing the session:
+ * Call at the END of every service that mutates money, BEFORE committing:
  *
- *   await syncTenantBalance(rent.tenant, session);
+ *   await syncTenantBalance(tenantId, session);
  *   await session.commitTransaction();
  *
- * @param {string|ObjectId} tenantId
+ * @param {string|mongoose.Types.ObjectId} tenantId
  * @param {mongoose.ClientSession|null} [session]
  */
 export async function syncTenantBalance(tenantId, session = null) {
-  const [rentData, camData, consecutiveUnpaidMonths] = await Promise.all([
+  const [rentData, camData, advanceData, electricityData, consecutiveUnpaidMonths] = await Promise.all([
     aggregateRent(tenantId, session),
     aggregateCam(tenantId, session),
+    aggregateAdvance(tenantId, session),
+    aggregateElectricity(tenantId, session),
     computeConsecutiveUnpaidMonths(tenantId, session),
   ]);
 
   const { rentDuePaisa, lateFeeDuePaisa, oldestYear, oldestMonth } = rentData;
   const { camDuePaisa } = camData;
-  const totalDuePaisa = rentDuePaisa + camDuePaisa + lateFeeDuePaisa;
+  const { advancePaisa } = advanceData;
+  const { electricityDuePaisa } = electricityData;
+
+  const grossDuePaisa = rentDuePaisa + camDuePaisa + lateFeeDuePaisa + electricityDuePaisa;
+  const totalDuePaisa = Math.max(0, grossDuePaisa - advancePaisa);
 
   await TenantBalance.findOneAndUpdate(
     { tenant: tenantId },
@@ -189,6 +220,8 @@ export async function syncTenantBalance(tenantId, session = null) {
         rentDuePaisa,
         camDuePaisa,
         lateFeeDuePaisa,
+        electricityDuePaisa,
+        advancePaisa,
         totalDuePaisa,
         consecutiveUnpaidMonths,
         oldestOverdueNepaliYear: oldestYear,
@@ -199,41 +232,38 @@ export async function syncTenantBalance(tenantId, session = null) {
     { upsert: true, new: true, session: session ?? undefined },
   );
 
-  return { rentDuePaisa, camDuePaisa, lateFeeDuePaisa, totalDuePaisa };
+  return { rentDuePaisa, camDuePaisa, lateFeeDuePaisa, electricityDuePaisa, advancePaisa, totalDuePaisa };
 }
 
 // ── Public: batch rebuild (no session — used by cron / backfill) ──────────────
 
 /**
  * Rebuild TenantBalance for ALL tenants that have at least one open
- * Rent or CAM document.
- *
- * Runs as a reconciliation step at the end of the master cron's Day-1
- * block so the snapshot stays consistent after bulk insertMany operations
- * (which bypass per-document session hooks).
+ * Rent, CAM, or ACTIVE AdvanceRent document.
  *
  * @returns {{ processed: number, errors: number }}
  */
 export async function rebuildAllTenantBalances() {
   console.log("[tenantBalance] Starting full rebuild...");
 
-  // Collect every tenant that has any open document
-  const [rentTenants, camTenants] = await Promise.all([
+  const [rentTenants, camTenants, advanceTenants, elecTenants] = await Promise.all([
     Rent.distinct("tenant", { status: { $in: OPEN_STATUSES } }),
     Cam.distinct("tenant", { status: { $in: OPEN_STATUSES } }),
+    AdvanceRent.distinct("tenant", { status: "ACTIVE" }),
+    Electricity.distinct("tenant", { billTo: "tenant", status: { $in: OPEN_STATUSES }, tenant: { $ne: null } }),
   ]);
 
-  // Deduplicate across collections
   const tenantIdSet = new Set([
     ...rentTenants.map((id) => id.toString()),
     ...camTenants.map((id) => id.toString()),
+    ...advanceTenants.map((id) => id.toString()),
+    ...elecTenants.map((id) => id.toString()),
   ]);
 
   const tenantIds = [...tenantIdSet];
   let processed = 0;
   let errors = 0;
 
-  // Process in batches of 50 to avoid overwhelming the DB
   const BATCH = 50;
   for (let i = 0; i < tenantIds.length; i += BATCH) {
     const batch = tenantIds.slice(i, i + BATCH);
@@ -244,27 +274,27 @@ export async function rebuildAllTenantBalances() {
           processed++;
         } catch (err) {
           errors++;
-          console.error(
-            `[tenantBalance] rebuild failed for ${tenantId}:`,
-            err.message,
-          );
+          console.error(`[tenantBalance] rebuild failed for ${tenantId}:`, err.message);
         }
       }),
     );
   }
 
-  // Zero out balances for tenants who no longer have open documents
-  // (e.g. all their rents were paid this month)
+  // Zero out balances for tenants who no longer have any open docs or active advance
+  const allActiveTenants = [...rentTenants, ...camTenants, ...advanceTenants, ...elecTenants];
+
   await TenantBalance.updateMany(
     {
-      tenant: { $nin: rentTenants.concat(camTenants) },
-      totalDuePaisa: { $gt: 0 },
+      tenant: { $nin: allActiveTenants },
+      $or: [{ totalDuePaisa: { $gt: 0 } }, { advancePaisa: { $gt: 0 } }],
     },
     {
       $set: {
         rentDuePaisa: 0,
         camDuePaisa: 0,
         lateFeeDuePaisa: 0,
+        electricityDuePaisa: 0,
+        advancePaisa: 0,
         totalDuePaisa: 0,
         oldestOverdueNepaliYear: null,
         oldestOverdueNepaliMonth: null,
@@ -273,20 +303,18 @@ export async function rebuildAllTenantBalances() {
     },
   );
 
-  console.log(
-    `[tenantBalance] Rebuild done: ${processed} synced, ${errors} errors`,
-  );
+  console.log(`[tenantBalance] Rebuild done: ${processed} synced, ${errors} errors`);
   return { processed, errors };
 }
 
 // ── Public: single-tenant read ────────────────────────────────────────────────
 
 /**
- * Fast balance read for a single tenant — O(1), no aggregation.
- * Used by payment form to show "current balance" before recording payment.
+ * O(1) fast read — no aggregation.
+ * Used by payment form to show current balance before recording payment.
  *
- * @param {string|ObjectId} tenantId
- * @returns {Promise<TenantBalanceDocument|null>}
+ * @param {string|mongoose.Types.ObjectId} tenantId
+ * @returns {Promise<Object|null>}
  */
 export async function getTenantBalance(tenantId) {
   return TenantBalance.findOne({ tenant: tenantId }).lean();
